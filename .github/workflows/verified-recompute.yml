@@ -1,0 +1,39 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` snapshots audit / ACP-smoke once (no wall-clock poll).
+# When either workflow reaches a terminal state, re-run `verified` for that SHA
+# so its verdict is a deterministic function of their terminal state.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'merge_group'
+    steps:
+      - name: Re-run verified for the triggering SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          set -euo pipefail
+          run_id="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=${EVENT}" \
+            -q '.workflow_runs | sort_by(.created_at) | last | .id // empty')"
+          if [ -z "$run_id" ]; then echo "no ci.yml run for ${SHA}; nothing to recompute"; exit 0; fi
+          # Event-driven wait: a run in progress cannot be re-run; wait for ci.yml to finish.
+          while [ "$(gh api "repos/${GH_REPO}/actions/runs/${run_id}" -q .status)" != "completed" ]; do sleep 20; done
+          job_id="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs" --paginate \
+            -q '.jobs[] | select(.name=="verified" and .conclusion!="success") | .id' | tail -1)"
+          if [ -z "$job_id" ]; then echo "verified already green; nothing to do"; exit 0; fi
+          gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun"
+          echo "re-ran verified job ${job_id} (run ${run_id})"

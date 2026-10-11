@@ -17,9 +17,16 @@
 # registered) is still reported `failure` (fail-closed: the "wedge waiting on
 # a context that'll never post" mode).
 #
+# RESILIENT-1562: --no-wait takes ONE snapshot (no wall-clock window). Any
+# check not yet terminal — including one not yet registered — is reported
+# `in_progress` (PENDING). The verdict is then completed by event: the
+# verified-recompute.yml workflow_run workflow re-runs `verified` when
+# audit / integrations finish, so the result is deterministic wrt their
+# terminal state rather than dependent on when a poll window happened to open.
+#
 # Usage:
 #   poll-cross-workflow-checks.sh --sha SHA --check "name" [--check "name" ...] \
-#       [--repo owner/repo] [--timeout-s N] [--interval-s N]
+#       [--repo owner/repo] [--timeout-s N] [--interval-s N] [--no-wait]
 #
 # Requires: gh CLI (authenticated via GH_TOKEN/GITHUB_TOKEN), jq.
 
@@ -30,6 +37,7 @@ SHA=""
 CHECKS=()
 TIMEOUT_S=600
 INTERVAL_S=15
+NO_WAIT=0
 
 usage() {
     grep '^#' "$0" | sed 's/^# \?//'
@@ -42,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --repo)        REPO="$2"; shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
+        --no-wait)     NO_WAIT=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[poll-cross-workflow-checks] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -92,6 +101,9 @@ while true; do
     if [[ "$all_terminal" -eq 1 ]]; then
         break
     fi
+    if [[ "$NO_WAIT" -eq 1 ]]; then
+        break
+    fi
     if [[ $(date +%s) -ge $deadline ]]; then
         echo "[poll-cross-workflow-checks] WARN: timed out after ${TIMEOUT_S}s waiting on: ${CHECKS[*]} (still-running lanes stay pending; never-seen lanes fail-closed)" >&2
         break
@@ -101,7 +113,7 @@ done
 
 for c in "${CHECKS[@]}"; do
     # never-seen at timeout => fail-closed; seen-but-still-running => stays in_progress (PENDING)
-    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
+    if [[ "$NO_WAIT" -eq 0 && "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
         RESULT["$c"]="failure"
     fi
     printf '%s=%s\n' "$c" "${RESULT[$c]}"

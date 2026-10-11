@@ -87,6 +87,17 @@ else
     fail "still-running timeout: got: $out"
 fi
 
+# ---- Test 4c (RESILIENT-1562): --no-wait snapshots; unseen + running lanes both pending, no sleep ----
+gh() { echo '[]'; }
+export -f gh
+start=$SECONDS
+out="$("$POLL" --sha deadbeef --check "audit" --no-wait 2>/dev/null)"
+if echo "$out" | grep -qx "audit=in_progress" && [[ $((SECONDS - start)) -lt 3 ]]; then
+    ok "--no-wait: unregistered lane is pending immediately (no window)"
+else
+    fail "--no-wait unseen: got: $out"
+fi
+
 # ---- Test 5: still in_progress on first poll, resolves on second ----
 POLL_COUNT_FILE="$(mktemp)"
 export POLL_COUNT_FILE
