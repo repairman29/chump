@@ -17,9 +17,15 @@
 # registered) is still reported `failure` (fail-closed: the "wedge waiting on
 # a context that'll never post" mode).
 #
+# RESILIENT-1562: --no-wait evaluates the Checks API exactly once (no wall-clock
+# window). Any check not yet terminal — including one that has not registered
+# yet — is reported `in_progress` (PENDING). The `verified` job is then
+# re-run by .github/workflows/verified-recompute.yml when audit.yml /
+# integrations.yml complete, so the verdict depends only on terminal state.
+#
 # Usage:
 #   poll-cross-workflow-checks.sh --sha SHA --check "name" [--check "name" ...] \
-#       [--repo owner/repo] [--timeout-s N] [--interval-s N]
+#       [--repo owner/repo] [--timeout-s N] [--interval-s N] [--no-wait]
 #
 # Requires: gh CLI (authenticated via GH_TOKEN/GITHUB_TOKEN), jq.
 
@@ -30,6 +36,7 @@ SHA=""
 CHECKS=()
 TIMEOUT_S=600
 INTERVAL_S=15
+NO_WAIT=0
 
 usage() {
     grep '^#' "$0" | sed 's/^# \?//'
@@ -42,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --repo)        REPO="$2"; shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
+        --no-wait)     NO_WAIT=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[poll-cross-workflow-checks] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -89,7 +97,7 @@ while true; do
         esac
     done
 
-    if [[ "$all_terminal" -eq 1 ]]; then
+    if [[ "$all_terminal" -eq 1 || "$NO_WAIT" -eq 1 ]]; then
         break
     fi
     if [[ $(date +%s) -ge $deadline ]]; then
@@ -101,7 +109,7 @@ done
 
 for c in "${CHECKS[@]}"; do
     # never-seen at timeout => fail-closed; seen-but-still-running => stays in_progress (PENDING)
-    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
+    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 && "$NO_WAIT" -eq 0 ]]; then
         RESULT["$c"]="failure"
     fi
     printf '%s=%s\n' "$c" "${RESULT[$c]}"

@@ -1,0 +1,41 @@
+# RESILIENT-1562: re-run the CI `verified` aggregator when audit.yml or
+# integrations.yml (ACP smoke) finishes, so `verified` is deterministic wrt
+# their terminal state instead of depending on a wall-clock poll window.
+name: Verified recompute
+
+on:
+  workflow_run:
+    workflows: ["Audit", "integrations"]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  rerun-verified:
+    name: rerun verified
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'merge_group'
+    steps:
+      - name: Re-run CI verified job for this head SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          run_id="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&per_page=20" \
+            -q '[.workflow_runs[]] | sort_by(.created_at) | last | .id // empty')"
+          if [ -z "$run_id" ]; then echo "no CI run for ${SHA}; nothing to recompute"; exit 0; fi
+          status="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}" -q .status)"
+          if [ "$status" != "completed" ]; then
+            echo "CI run ${run_id} still ${status}; its own verified job will read the final state"; exit 0
+          fi
+          job_id="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs?per_page=100" \
+            -q '[.jobs[] | select(.name == "verified")] | last | .id // empty')"
+          if [ -z "$job_id" ]; then echo "no verified job in run ${run_id}"; exit 0; fi
+          gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun" || \
+            echo "::warning::rerun of verified job ${job_id} failed"
