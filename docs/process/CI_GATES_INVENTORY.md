@@ -106,6 +106,7 @@ Documented for completeness; do **not** file follow-ups.
 | `editor-integration.yml` | Needs editor process + IPC |
 | `audit-weekly.yml` | Weekly summary of audit metrics; reads merged-PR history |
 | `pr-triage-bot.yml` | Triages OTHER PRs; not gating this one |
+| `verified-recompute.yml` | RESILIENT-1562: workflow_run re-runner of ci.yml `verified`; GitHub-API-only |
 | `queue-driver.yml` | Manipulates merge queue state |
 | `ftue-clean-machine-2026.yml` | Requires a fresh VM |
 | `no-anthropic-smoke.yml` | Validates chump-first contract under no-network |

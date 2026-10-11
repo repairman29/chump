@@ -17,9 +17,15 @@
 # registered) is still reported `failure` (fail-closed: the "wedge waiting on
 # a context that'll never post" mode).
 #
+# RESILIENT-1562: --snapshot reads the Checks API exactly once (no wall-clock
+# window) and reports every non-terminal OR not-yet-registered lane as
+# `in_progress` (aggregator => PENDING, exit 2). The verdict then depends only
+# on audit/ACP terminal state; verified-recompute.yml re-runs `verified` on
+# audit/integrations workflow_run completion to resolve the PENDING.
+#
 # Usage:
 #   poll-cross-workflow-checks.sh --sha SHA --check "name" [--check "name" ...] \
-#       [--repo owner/repo] [--timeout-s N] [--interval-s N]
+#       [--repo owner/repo] [--timeout-s N] [--interval-s N] [--snapshot]
 #
 # Requires: gh CLI (authenticated via GH_TOKEN/GITHUB_TOKEN), jq.
 
@@ -30,6 +36,7 @@ SHA=""
 CHECKS=()
 TIMEOUT_S=600
 INTERVAL_S=15
+SNAPSHOT=0
 
 usage() {
     grep '^#' "$0" | sed 's/^# \?//'
@@ -42,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --repo)        REPO="$2"; shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
+        --snapshot)    SNAPSHOT=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[poll-cross-workflow-checks] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -92,6 +100,9 @@ while true; do
     if [[ "$all_terminal" -eq 1 ]]; then
         break
     fi
+    if [[ "$SNAPSHOT" -eq 1 ]]; then
+        break
+    fi
     if [[ $(date +%s) -ge $deadline ]]; then
         echo "[poll-cross-workflow-checks] WARN: timed out after ${TIMEOUT_S}s waiting on: ${CHECKS[*]} (still-running lanes stay pending; never-seen lanes fail-closed)" >&2
         break
@@ -101,7 +112,7 @@ done
 
 for c in "${CHECKS[@]}"; do
     # never-seen at timeout => fail-closed; seen-but-still-running => stays in_progress (PENDING)
-    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
+    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 && "$SNAPSHOT" -eq 0 ]]; then
         RESULT["$c"]="failure"
     fi
     printf '%s=%s\n' "$c" "${RESULT[$c]}"

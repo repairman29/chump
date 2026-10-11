@@ -1,0 +1,52 @@
+name: verified-recompute
+
+# RESILIENT-1562: ci.yml's `verified` aggregator snapshots audit / ACP lanes
+# (no wall-clock poll). When either separate workflow reaches a terminal state,
+# re-run `verified` on the same SHA so its verdict is deterministic wrt their
+# terminal state.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Re-run verified for this SHA
+        run: |
+          set -uo pipefail
+          # Wait (bounded) for the ci.yml run to finish so its job can be re-run.
+          for _ in $(seq 1 80); do
+            runs="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&per_page=20" -q '.workflow_runs' 2>/dev/null || echo '[]')"
+            pending="$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')"
+            [ "$pending" = "0" ] && break
+            sleep 15
+          done
+          echo "$runs" | jq -r '.[].id' | while read -r run_id; do
+            [ -n "$run_id" ] || continue
+            job="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs" --paginate -q '.jobs[] | select(.name=="verified") | "\(.id) \(.conclusion)"' | tail -1)"
+            [ -n "$job" ] || continue
+            job_id="${job% *}"; concl="${job#* }"
+            if [ "$concl" = "success" ]; then
+              echo "run $run_id: verified already success"; continue
+            fi
+            echo "run $run_id: re-running verified job $job_id (was: $concl)"
+            gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun" >/dev/null \
+              || echo "::warning::rerun of job $job_id failed"
+          done
