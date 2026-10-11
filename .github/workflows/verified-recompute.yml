@@ -1,0 +1,32 @@
+name: verified recompute
+
+# RESILIENT-1562 — `verified` (ci.yml) polls audit / ACP smoke with a fixed
+# 600s window that can open too late vs. audit runtime. Instead of relying on
+# wall-clock, re-run `verified` whenever audit.yml or integrations.yml
+# completes: its verdict is then a function of the lanes' terminal state.
+
+on:
+  workflow_run:
+    workflows: ["Audit", "integrations"]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified against terminal lane state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/ci/verified-recompute.sh --sha "${{ github.event.workflow_run.head_sha }}"

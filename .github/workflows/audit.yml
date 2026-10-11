@@ -845,6 +845,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-rot-reaper-verified-red-spare.sh
 
+      - name: verified recomputes on audit/ACP completion via workflow_run (RESILIENT-1562)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-verified-recompute.sh
+
       - name: back-pressure breaker can't deadlock — dead-zone escape resumes, 6+ jam still halts (RESILIENT-324)
         if: matrix.shard == 3
         run: bash scripts/ci/test-back-pressure-hysteresis.sh
