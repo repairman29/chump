@@ -1,0 +1,36 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` (ci.yml) polls audit / ACP smoke cross-workflow
+# via a bounded in-job window that can open too late vs audit runtime. Instead
+# of depending on that wall-clock window, re-run ONLY the `verified` job when
+# Audit or integrations completes, so its verdict is a function of the
+# audit/ACP terminal state (scripts/ci/verified-recompute.sh).
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    name: verified-recompute
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified if it is not green
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/ci/verified-recompute.sh --sha "$HEAD_SHA"
