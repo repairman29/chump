@@ -1,0 +1,30 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` (ci.yml) polls audit/ACP cross-workflow on a
+# bounded window that can open before/after the slow lane finishes. Instead of
+# depending on that wall-clock window, recompute `verified` on the terminal
+# event of the lanes it waits for: when audit.yml or integrations.yml finishes
+# for a SHA, re-run the (completed, non-success) `verified` job of that SHA's
+# ci.yml run so its verdict reflects the audit/ACP terminal state.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified for the SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/ci/rerun-verified-on-lane-complete.sh --sha "$HEAD_SHA"
