@@ -1,0 +1,33 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` (ci.yml) takes a single non-blocking snapshot of
+# the cross-workflow lanes (audit, ACP smoke). When one is still running it is
+# PENDING (red). This workflow re-runs the failed `verified` job the moment
+# Audit / integrations completes, so the verdict is a deterministic function of
+# the lanes' terminal state — no fixed wall-clock poll window.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified on lane completion
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/ci/verified-recompute.sh "$HEAD_SHA"
