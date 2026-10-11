@@ -130,6 +130,22 @@ else
 fi
 
 echo
+
+# ---- RESILIENT-1562: --single-shot never waits; unseen + running lanes stay pending ----
+gh() { echo '[{"name":"audit","status":"in_progress","started_at":"2026-08-20T00:00:00Z"}]'; }
+export -f gh
+start=$(date +%s)
+out="$("$POLL" --sha deadbeef --check "audit" --check "ACP protocol smoke test (Zed / JetBrains compatible)" --single-shot 2>/dev/null)"
+elapsed=$(( $(date +%s) - start ))
+if echo "$out" | grep -qx "audit=in_progress" \
+   && echo "$out" | grep -qx "ACP protocol smoke test (Zed / JetBrains compatible)=in_progress" \
+   && [[ $elapsed -lt 5 ]]; then
+    ok "single-shot: running/unseen lanes pending, no wall-clock wait"
+else
+    fail "single-shot: got: $out (elapsed=${elapsed}s)"
+fi
+
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]] || exit 1
 exit 0

@@ -1,0 +1,54 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` (ci.yml) samples audit/ACP once and reports PENDING
+# if they are still running. This workflow closes the loop by event: when the
+# Audit or integrations workflow completes for a commit, re-run `verified` for
+# that commit's CI run so its verdict follows audit/ACP terminal state, with no
+# fixed wall-clock window.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Re-run verified for this commit once its CI run is complete
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          set -euo pipefail
+          ci_id="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=${EVENT}&per_page=1" -q '.workflow_runs[0].id // empty')"
+          if [[ -z "$ci_id" ]]; then
+            echo "no ci.yml run for ${SHA}; nothing to recompute"; exit 0
+          fi
+          # Wait on the CI run's own completion (state, not a verdict window):
+          # a job can only be re-run once the whole run has finished.
+          while true; do
+            status="$(gh api "repos/${GH_REPO}/actions/runs/${ci_id}" -q .status)"
+            [[ "$status" == "completed" ]] && break
+            sleep 20
+          done
+          job="$(gh api "repos/${GH_REPO}/actions/runs/${ci_id}/jobs" --paginate -q '.jobs[] | select(.name=="verified") | "\(.id) \(.conclusion)"' | tail -1)"
+          [[ -z "$job" ]] && { echo "no verified job in run ${ci_id}"; exit 0; }
+          job_id="${job% *}"; concl="${job#* }"
+          if [[ "$concl" == "success" ]]; then
+            echo "verified already success; nothing to do"; exit 0
+          fi
+          echo "verified=${concl}; re-running job ${job_id} now that audit/ACP completed"
+          gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun"

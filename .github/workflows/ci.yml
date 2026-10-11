@@ -576,6 +576,9 @@ jobs:
   # polling is proven live on a real PR (docs/design/CI_VERIFIED_AGGREGATOR.md,
   # META-134). Today's required contexts remain `test` / `audit` / `ACP
   # protocol smoke test` per docs/baselines/branch-protection-main.json.
+  # RESILIENT-1562: no wall-clock wait. One Checks API sample; a still-running
+  # audit/ACP yields PENDING (job fails), and verified-recompute.yml re-runs
+  # this job on audit/integrations workflow_run completion.
   verified:
     name: verified
     needs: [fast-checks, fast-checks-heavy, clippy, cargo-test, pr-hygiene, test]
@@ -595,7 +598,7 @@ jobs:
             --sha "$sha" \
             --check "audit" \
             --check "ACP protocol smoke test (Zed / JetBrains compatible)" \
-            --timeout-s 600 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+            --single-shot > /tmp/cross-workflow-lanes.txt
           cat /tmp/cross-workflow-lanes.txt
           audit_result="$(grep '^audit=' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
           acp_result="$(grep '^ACP protocol smoke test' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
