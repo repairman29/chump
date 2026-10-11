@@ -19,7 +19,13 @@
 #
 # Usage:
 #   poll-cross-workflow-checks.sh --sha SHA --check "name" [--check "name" ...] \
-#       [--repo owner/repo] [--timeout-s N] [--interval-s N]
+#       [--repo owner/repo] [--timeout-s N] [--interval-s N] [--once]
+#
+# RESILIENT-1562: --once takes ONE snapshot with no wall-clock wait. Any lane
+# not yet terminal (including one that has not registered a check-run yet) is
+# reported `in_progress` (PENDING), never fail-closed — the verdict is then
+# completed event-driven by .github/workflows/verified-recompute.yml, which
+# re-runs `verified` when audit / ACP reach a terminal state.
 #
 # Requires: gh CLI (authenticated via GH_TOKEN/GITHUB_TOKEN), jq.
 
@@ -30,6 +36,7 @@ SHA=""
 CHECKS=()
 TIMEOUT_S=600
 INTERVAL_S=15
+ONCE=0
 
 usage() {
     grep '^#' "$0" | sed 's/^# \?//'
@@ -42,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --repo)        REPO="$2"; shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
+        --once)        ONCE=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[poll-cross-workflow-checks] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -92,6 +100,9 @@ while true; do
     if [[ "$all_terminal" -eq 1 ]]; then
         break
     fi
+    if [[ "$ONCE" -eq 1 ]]; then
+        break
+    fi
     if [[ $(date +%s) -ge $deadline ]]; then
         echo "[poll-cross-workflow-checks] WARN: timed out after ${TIMEOUT_S}s waiting on: ${CHECKS[*]} (still-running lanes stay pending; never-seen lanes fail-closed)" >&2
         break
@@ -101,7 +112,7 @@ done
 
 for c in "${CHECKS[@]}"; do
     # never-seen at timeout => fail-closed; seen-but-still-running => stays in_progress (PENDING)
-    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
+    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 && "$ONCE" -eq 0 ]]; then
         RESULT["$c"]="failure"
     fi
     printf '%s=%s\n' "$c" "${RESULT[$c]}"

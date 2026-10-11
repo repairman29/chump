@@ -1,0 +1,31 @@
+name: verified-recompute
+
+# RESILIENT-1562: event-driven completion of ci.yml's `verified` aggregator.
+# verified takes a single non-blocking snapshot of audit / ACP; when either of
+# those workflows finishes, this re-runs verified so its verdict is
+# deterministic wrt their terminal state (no 600s wall-clock poll window).
+on:
+  workflow_run:
+    workflows: ["Audit", "integrations"]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified once audit + ACP are terminal
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/ci/verified-recompute.sh --sha "${{ github.event.workflow_run.head_sha }}"

@@ -129,6 +129,19 @@ else
     fail "retry-to-success: got: $out"
 fi
 
+# ---- Test 7: RESILIENT-1562 --once: no wait, unseen/running lanes stay in_progress ----
+gh() {
+    echo '[{"name":"audit","status":"in_progress","conclusion":null,"started_at":"2026-08-20T00:00:00Z"}]'
+}
+export -f gh
+start=$(date +%s)
+out="$("$POLL" --sha deadbeef --check "audit" --check "ACP" --once)"
+if echo "$out" | grep -qx "audit=in_progress" && echo "$out" | grep -qx "ACP=in_progress" && [[ $(( $(date +%s) - start )) -lt 5 ]]; then
+    ok "--once: running + unseen lanes -> in_progress, no wait"
+else
+    fail "--once: got: $out"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]] || exit 1
