@@ -1,0 +1,29 @@
+name: verified-recompute
+
+# RESILIENT-1562: event-coordinate `verified` with the cross-workflow lanes it
+# polls (audit.yml `audit`, integrations.yml ACP smoke). `verified` samples
+# those lanes inside a bounded poll that can open after / close before the
+# lane finishes. When a lane reaches a terminal state, re-run the SAME SHA's
+# `verified` job so its verdict is recomputed from the lane's terminal state
+# rather than from a wall-clock window.
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified for the lane's head SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/ci/verified-recompute.sh --sha "$SHA"
