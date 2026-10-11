@@ -1,0 +1,54 @@
+name: Verified recompute
+
+# RESILIENT-1562: `verified` (ci.yml) polls audit/ACP cross-workflow with a
+# short best-effort window only. The authoritative verdict is event-driven:
+# when Audit or Integrations completes, re-run `verified` for that SHA if it
+# finished non-success (e.g. PENDING because audit was still running), so the
+# verdict is deterministic wrt audit/ACP terminal state, not a wall-clock race.
+
+on:
+  workflow_run:
+    workflows: [Audit, Integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Re-run verified once ci.yml settles
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 90); do
+            run="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=${EVENT}" \
+              -q '.workflow_runs | sort_by(.created_at) | last // empty')"
+            if [[ -z "$run" ]]; then sleep 20; continue; fi
+            status="$(jq -r '.status' <<<"$run")"
+            if [[ "$status" != "completed" ]]; then sleep 20; continue; fi
+            run_id="$(jq -r '.id' <<<"$run")"
+            job="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs" --paginate \
+              -q '[.jobs[] | select(.name == "verified")] | last // empty')"
+            if [[ -z "$job" ]]; then echo "no verified job in run ${run_id}"; exit 0; fi
+            concl="$(jq -r '.conclusion // ""' <<<"$job")"
+            if [[ "$concl" == "success" || "$concl" == "skipped" ]]; then
+              echo "verified already ${concl}; nothing to recompute"; exit 0
+            fi
+            echo "verified=${concl}; re-running with audit/ACP now terminal"
+            gh api -X POST "repos/${GH_REPO}/actions/jobs/$(jq -r '.id' <<<"$job")/rerun"
+            exit 0
+          done
+          echo "ci.yml did not settle in time; verified polls audit itself" >&2
