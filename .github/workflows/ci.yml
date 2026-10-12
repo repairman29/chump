@@ -595,7 +595,8 @@ jobs:
             --sha "$sha" \
             --check "audit" \
             --check "ACP protocol smoke test (Zed / JetBrains compatible)" \
-            --timeout-s 600 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+            --timeout-s 120 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+          # RESILIENT-1562: fast-path only; a still-running lane => PENDING, and verified-recompute.yml re-runs this job on workflow_run completion.
           cat /tmp/cross-workflow-lanes.txt
           audit_result="$(grep '^audit=' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
           acp_result="$(grep '^ACP protocol smoke test' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"

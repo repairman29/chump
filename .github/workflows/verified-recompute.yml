@@ -1,0 +1,44 @@
+name: verified-recompute
+
+# RESILIENT-1562: event-driven recompute of ci.yml's `verified` aggregator.
+# `verified` polls audit / ACP smoke only briefly (fast path). If either lane
+# was still running when it gave up (verdict PENDING => job red), this workflow
+# re-runs the failed `verified` job the moment the Audit or Integrations
+# workflow completes, so the verdict depends on the lanes' terminal state and
+# not on a wall-clock window.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Re-run failed CI `verified` job for this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Latest completed CI run for this commit whose `verified` job failed.
+          ci_run="$(gh run list --workflow ci.yml --commit "$SHA" --status completed \
+            --limit 5 --json databaseId,conclusion -q '[.[] | select(.conclusion=="failure")][0].databaseId // empty')"
+          if [ -z "$ci_run" ]; then
+            echo "No completed failed CI run for $SHA; nothing to recompute."
+            exit 0
+          fi
+          vstate="$(gh run view "$ci_run" --json jobs -q '[.jobs[] | select(.name=="verified")][0].conclusion // empty')"
+          if [ "$vstate" != "failure" ]; then
+            echo "verified conclusion=$vstate; no recompute needed."
+            exit 0
+          fi
+          echo "Re-running verified in CI run $ci_run (triggered by ${{ github.event.workflow_run.name }})"
+          gh run rerun "$ci_run" --job "$(gh run view "$ci_run" --json jobs -q '[.jobs[] | select(.name=="verified")][0].databaseId')"
