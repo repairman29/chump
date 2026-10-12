@@ -4,7 +4,7 @@ name: Verified recompute
 # terminal state (workflow_run) instead of relying on its wall-clock poll window.
 on:
   workflow_run:
-    workflows: [Audit, Integrations]
+    workflows: [Audit, integrations]
     types: [completed]
 
 permissions:
