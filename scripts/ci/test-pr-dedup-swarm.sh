@@ -22,7 +22,8 @@ cat > "$TMP/pulls.json" <<JSON
 [{"number":901,"title":"RESILIENT-9999: fix verified race","created_at":"$old","updated_at":"$fresh"},
  {"number":902,"title":"RESILIENT-9999: fix verified race again","created_at":"$old","updated_at":"$fresh"},
  {"number":903,"title":"RESILIENT-9999: fix verified race once more","created_at":"$old","updated_at":"$fresh"},
- {"number":904,"title":"RESILIENT-9999: brand new attempt","created_at":"$new","updated_at":"$fresh"}]
+ {"number":904,"title":"RESILIENT-9999: brand new attempt","created_at":"$new","updated_at":"$fresh"},
+ {"number":905,"title":"fix(dedup): detector bug (RESILIENT-9999 wedge)","created_at":"$old","updated_at":"$fresh"}]
 JSON
 
 # stub gh so the detector runs offline against the fixture
@@ -44,4 +45,6 @@ echo "$out" | grep -q "RESILIENT-9999" || fail "swarm not detected (old-created/
 echo "$out" | grep -qi "WINNER" || fail "no winner chosen for the duplicate group"
 # the genuinely-new PR (#904, created 1m ago) must NOT be closed as a loser
 echo "$out" | grep -qi "LOSER #904" && fail "closed a genuinely-new PR (#904) that is still inside the fresh window"
-echo "PASS: stale swarm deduped despite bot-fresh updated_at; genuinely-new PR spared"
+# #905 only MENTIONS the gap mid-title ("(RESILIENT-9999 wedge)") — it must NOT be grouped/closed
+echo "$out" | grep -qi "LOSER #905" && fail "grouped a PR that merely mentions the gap mid-title (the false-positive that nearly closed the fix's own PR)"
+echo "PASS: stale swarm deduped despite bot-fresh updated_at; new PR + gap-mention PR both spared"

@@ -58,13 +58,17 @@ from datetime import datetime
 prs_file = sys.argv[1]
 skip_fresh_mins = int(sys.argv[2])
 data = json.load(open(prs_file))
-GAP_RE = re.compile(r'\b([A-Z]+-\d+)\b')
+# Only the LEADING gap id identifies a PR's gap (chump convention is
+# "GAP-ID: title"). A gap id merely MENTIONED later in the title — e.g.
+# "fix(dedup): ... (RESILIENT-1562 wedge)" — must NOT group the PR as a
+# duplicate of that gap. The old `\b...\b` findall-anywhere matched such
+# mentions and nearly closed the dedup fix's own PR (INFRA-8111).
+GAP_RE = re.compile(r'^\s*([A-Z]+-\d+)\b')
 groups = defaultdict(list)
 for p in data:
-    title = p.get('title', '')
-    gids = list(set(GAP_RE.findall(title)))
-    for g in gids:
-        groups[g].append(p)
+    m = GAP_RE.match(p.get('title', ''))
+    if m:
+        groups[m.group(1)].append(p)
 decisions = []
 now = time.time()
 for g, prs in groups.items():
