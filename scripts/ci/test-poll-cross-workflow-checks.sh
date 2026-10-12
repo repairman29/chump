@@ -77,6 +77,17 @@ else
     fail "missing check-run timeout: got: $out"
 fi
 
+# ---- Test 4a (RESILIENT-1562): --once never waits; unseen lane = pending, not failure ----
+gh() { echo '[]'; }
+export -f gh
+start=$(date +%s)
+out="$("$POLL" --sha deadbeef --check "audit" --once 2>/dev/null)"
+if echo "$out" | grep -qx "audit=in_progress" && [ $(( $(date +%s) - start )) -lt 3 ]; then
+    ok "--once returns immediately; unseen lane pending"
+else
+    fail "--once: got: $out"
+fi
+
 # ---- Test 4b (RESILIENT-1561): still running at timeout -> in_progress (pending), not failure ----
 gh() { echo '[{"name":"audit","status":"in_progress","started_at":"2026-08-20T00:00:00Z"}]'; }
 export -f gh
