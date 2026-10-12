@@ -1,0 +1,40 @@
+name: verified-rerun
+
+# RESILIENT-1562: ci.yml's `verified` aggregator takes a single, non-blocking
+# snapshot of the cross-workflow lanes (audit, ACP smoke). While either is
+# non-terminal it is PENDING (job red). When Audit or integrations completes,
+# this workflow re-runs the `verified` job for that head SHA so it recomputes
+# against the terminal state -- event-driven, no fixed wall-clock window.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  rerun-verified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Re-run failed verified job on the same SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          runs="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&per_page=20" -q '.workflow_runs | sort_by(.created_at) | reverse | .[] | select(.status=="completed") | .id')"
+          for run_id in $runs; do
+            job="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs" --paginate -q '.jobs[] | select(.name=="verified" and .conclusion=="failure") | .id' | head -1)"
+            if [ -n "$job" ]; then
+              echo "re-running verified job $job (run $run_id) for $SHA"
+              gh api -X POST "repos/${GH_REPO}/actions/jobs/${job}/rerun" || echo "rerun failed (non-fatal)"
+              exit 0
+            fi
+          done
+          echo "no failed verified job to re-run for $SHA"

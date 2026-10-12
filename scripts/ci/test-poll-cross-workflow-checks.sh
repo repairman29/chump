@@ -129,6 +129,20 @@ else
     fail "retry-to-success: got: $out"
 fi
 
+# ---- RESILIENT-1562: --once never waits; unseen/in-progress => in_progress ----
+gh() {
+    echo '[{"name":"audit","status":"in_progress","conclusion":null,"started_at":"2026-08-20T00:00:00Z"}]'
+}
+export -f gh
+start=$(date +%s)
+out="$("$POLL" --sha deadbeef --check "audit" --check "ACP protocol smoke test (Zed / JetBrains compatible)" --once --timeout-s 600 --interval-s 15)"
+if [[ $(( $(date +%s) - start )) -lt 5 ]] && echo "$out" | grep -qx "audit=in_progress" \
+   && echo "$out" | grep -qx "ACP protocol smoke test (Zed / JetBrains compatible)=in_progress"; then
+    ok "--once: returns immediately, pending lanes (seen and unseen) => in_progress"
+else
+    fail "--once: got: $out"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]] || exit 1
