@@ -1,0 +1,26 @@
+name: Verified recompute
+
+# RESILIENT-1562: recompute ci.yml's `verified` aggregate on audit / ACP
+# terminal state (workflow_run) instead of relying on its wall-clock poll window.
+on:
+  workflow_run:
+    workflows: [Audit, Integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Re-run verified for the completed lane's SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/ci/verified-recompute-on-workflow-run.sh --sha "${{ github.event.workflow_run.head_sha }}"
