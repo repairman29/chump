@@ -1,0 +1,55 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` (ci.yml) snapshots audit / ACP state once instead of
+# polling a fixed wall-clock window. When audit.yml or integrations.yml reaches a
+# terminal state, this workflow re-runs the `verified` job of the ci.yml run for
+# the same SHA, so the verdict is a deterministic function of the audit/ACP
+# terminal state rather than of how long audit happened to take.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    name: recompute verified
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Re-run verified on the same SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          # Event-driven: wait for the ci.yml run to finish (re-run needs a
+          # completed run), bounded only by the job timeout.
+          while true; do
+            run="$(gh run list --workflow ci.yml --branch "$BRANCH" --event pull_request \
+              --json databaseId,headSha,status,conclusion --limit 20 \
+              -q "[.[] | select(.headSha == \"$SHA\")] | first // empty")"
+            if [ -z "$run" ]; then echo "no ci.yml run for $SHA"; exit 0; fi
+            status="$(echo "$run" | jq -r .status)"
+            if [ "$status" = "completed" ]; then break; fi
+            sleep 20
+          done
+          id="$(echo "$run" | jq -r .databaseId)"
+          conclusion="$(echo "$run" | jq -r .conclusion)"
+          if [ "$conclusion" = "cancelled" ]; then echo "ci run cancelled; skip"; exit 0; fi
+          job="$(gh run view "$id" --json jobs -q '.jobs[] | select(.name=="verified") | .databaseId')"
+          [ -n "$job" ] || { echo "no verified job"; exit 0; }
+          vconc="$(gh run view "$id" --json jobs -q '.jobs[] | select(.name=="verified") | .conclusion')"
+          if [ "$vconc" = "success" ]; then echo "verified already green"; exit 0; fi
+          gh run rerun "$id" --job "$job"

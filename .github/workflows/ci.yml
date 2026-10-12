@@ -584,7 +584,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - name: Poll cross-workflow lanes (audit, ACP-smoke) — CREDIBLE-269
+      - name: Snapshot cross-workflow lanes (audit, ACP-smoke) — CREDIBLE-269 / RESILIENT-1562 (re-run by verified-recompute.yml on workflow_run)
         id: cross
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -595,7 +595,7 @@ jobs:
             --sha "$sha" \
             --check "audit" \
             --check "ACP protocol smoke test (Zed / JetBrains compatible)" \
-            --timeout-s 600 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+            --timeout-s 0 --unseen-pending > /tmp/cross-workflow-lanes.txt
           cat /tmp/cross-workflow-lanes.txt
           audit_result="$(grep '^audit=' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
           acp_result="$(grep '^ACP protocol smoke test' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
