@@ -1,0 +1,8 @@
+# RESILIENT-1573 — one-shot no-ship-loop / service-crash-loop detector.
+[Unit]
+Description=Chump no-ship-loop + service crash-loop detector (RESILIENT-1573)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/Projects/chump
+ExecStart=/bin/bash /root/Projects/chump/scripts/coord/no-ship-loop-detector.sh

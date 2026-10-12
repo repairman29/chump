@@ -1,0 +1,12 @@
+# RESILIENT-1573 — every 10 min. Enable: systemctl enable --now chump-no-ship-loop-detector.timer
+[Unit]
+Description=Run the Chump no-ship-loop detector every 10 minutes (RESILIENT-1573)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+OnUnitInactiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

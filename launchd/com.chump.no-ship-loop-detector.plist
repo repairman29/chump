@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- com.chump.no-ship-loop-detector — RESILIENT-1573. Placeholder paths; adjust /path/to/Chump at install. -->
+<dict>
+  <key>Label</key>
+  <string>com.chump.no-ship-loop-detector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/no-ship-loop-detector.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+  <key>StartInterval</key>
+  <integer>600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/.chump-locks/no-ship-loop-detector.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/.chump-locks/no-ship-loop-detector.log</string>
+</dict>
+</plist>
