@@ -202,3 +202,4 @@ install-state-db-yaml-sync-launchd.sh
 # organ like the other curator loops, not a fresh-bootstrap requirement: a
 # checkout without it still functions, the pickable queue just goes untended.
 install-queue-tender.sh
+install-no-ship-loop-detector.sh   # RESILIENT-1573: launchd+systemd; opt-in until bootstrap wiring
