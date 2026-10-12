@@ -1,0 +1,46 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` (ci.yml) polls audit/ACP for a bounded window; if
+# those lanes finish after the window, verified is left PENDING/failed by a
+# race against wall-clock. This workflow closes the race with an event: when
+# Audit or integrations completes, re-run ci.yml's `verified` job for the same
+# head SHA so its verdict is recomputed from the terminal state of audit/ACP.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  recompute:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Re-run verified on ci.yml run for this SHA
+        run: |
+          run_json="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=pull_request" \
+            -q '.workflow_runs | sort_by(.created_at) | last // empty')"
+          if [ -z "$run_json" ]; then echo "no ci.yml run for $SHA"; exit 0; fi
+          run_id="$(echo "$run_json" | jq -r .id)"
+          status="$(echo "$run_json" | jq -r .status)"
+          if [ "$status" != "completed" ]; then
+            echo "ci.yml run $run_id still $status; verified will observe the terminal state itself"
+            exit 0
+          fi
+          job="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs" --paginate \
+            -q '.jobs[] | select(.name=="verified") | [.id,.conclusion] | @tsv' | tail -1)"
+          job_id="${job%%$'\t'*}"; concl="${job##*$'\t'}"
+          if [ -z "$job_id" ]; then echo "no verified job"; exit 0; fi
+          if [ "$concl" = "success" ]; then echo "verified already success"; exit 0; fi
+          echo "re-running verified job $job_id (was: $concl)"
+          gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun"
