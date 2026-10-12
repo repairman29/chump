@@ -1,0 +1,29 @@
+name: verified-rerun
+
+# RESILIENT-1562: event-driven recompute of the `verified` aggregator.
+# ci.yml `verified` takes a single snapshot of audit / ACP (no 600s poll
+# window). When audit.yml / integrations.yml (ACP) or ci.yml completes, this
+# re-runs `verified` if it ran before those lanes went terminal, so the
+# verdict is deterministic wrt their terminal state.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations, CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  checks: read
+  actions: write
+
+jobs:
+  rerun-verified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified if stale vs audit/ACP
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/ci/verified-rerun-on-cross-workflow.sh --sha "${{ github.event.workflow_run.head_sha }}"

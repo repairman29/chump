@@ -129,6 +129,16 @@ else
     fail "retry-to-success: got: $out"
 fi
 
+# ---- Test 6 (RESILIENT-1562): --snapshot is single-read; running/unseen => in_progress, no wait ----
+gh() { echo '[{"name":"audit","status":"in_progress","conclusion":null,"started_at":"2026-08-20T00:00:00Z"}]'; }
+export -f gh
+out="$("$POLL" --sha deadbeef --check "audit" --check "other" --snapshot)"
+if echo "$out" | grep -qx "audit=in_progress" && echo "$out" | grep -qx "other=in_progress"; then
+    ok "--snapshot: running and unseen lanes report in_progress immediately"
+else
+    fail "--snapshot: got: $out"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]] || exit 1

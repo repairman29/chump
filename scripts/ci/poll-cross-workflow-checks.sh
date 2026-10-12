@@ -17,9 +17,14 @@
 # registered) is still reported `failure` (fail-closed: the "wedge waiting on
 # a context that'll never post" mode).
 #
+# RESILIENT-1562: --snapshot reads the Checks API ONCE (no wall-clock window).
+# Not-yet-terminal OR not-yet-registered lanes report `in_progress` (PENDING);
+# verified-rerun.yml re-runs `verified` on audit/ACP workflow_run completion,
+# so the verdict depends on the lanes' terminal state, not on a poll window.
+#
 # Usage:
 #   poll-cross-workflow-checks.sh --sha SHA --check "name" [--check "name" ...] \
-#       [--repo owner/repo] [--timeout-s N] [--interval-s N]
+#       [--repo owner/repo] [--timeout-s N] [--interval-s N] [--snapshot]
 #
 # Requires: gh CLI (authenticated via GH_TOKEN/GITHUB_TOKEN), jq.
 
@@ -30,6 +35,7 @@ SHA=""
 CHECKS=()
 TIMEOUT_S=600
 INTERVAL_S=15
+SNAPSHOT=0
 
 usage() {
     grep '^#' "$0" | sed 's/^# \?//'
@@ -42,6 +48,7 @@ while [[ $# -gt 0 ]]; do
         --repo)        REPO="$2"; shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
+        --snapshot)    SNAPSHOT=1; TIMEOUT_S=0; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[poll-cross-workflow-checks] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -92,6 +99,9 @@ while true; do
     if [[ "$all_terminal" -eq 1 ]]; then
         break
     fi
+    if [[ "$SNAPSHOT" -eq 1 ]]; then
+        break
+    fi
     if [[ $(date +%s) -ge $deadline ]]; then
         echo "[poll-cross-workflow-checks] WARN: timed out after ${TIMEOUT_S}s waiting on: ${CHECKS[*]} (still-running lanes stay pending; never-seen lanes fail-closed)" >&2
         break
@@ -101,7 +111,7 @@ done
 
 for c in "${CHECKS[@]}"; do
     # never-seen at timeout => fail-closed; seen-but-still-running => stays in_progress (PENDING)
-    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
+    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 && "$SNAPSHOT" -eq 0 ]]; then
         RESULT["$c"]="failure"
     fi
     printf '%s=%s\n' "$c" "${RESULT[$c]}"
