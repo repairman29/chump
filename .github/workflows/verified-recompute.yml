@@ -1,0 +1,54 @@
+name: verified-recompute
+
+# RESILIENT-1562 — deterministic `verified` verdict wrt audit/ACP terminal state.
+# ci.yml's `verified` aggregator only takes a short bounded snapshot of the
+# cross-workflow lanes (audit.yml, integrations.yml ACP smoke). When one of
+# those workflows finishes AFTER that snapshot, this workflow re-runs the
+# `verified` job on the same commit so it recomputes against the terminal state.
+# Event-driven (workflow_run) — no dependence on a fixed wall-clock window.
+
+on:
+  workflow_run:
+    workflows: ["Audit", "integrations"]
+    types: [completed]
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Re-run verified if it is not green for this SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Wait (event-bounded by CI completing, not a fixed window) for the CI run
+          # on this SHA to finish; a still-running CI's verified job will see the
+          # now-terminal lane itself.
+          for _ in $(seq 1 120); do
+            run="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&per_page=20" \
+              -q '.workflow_runs | sort_by(.created_at) | last // empty')"
+            if [[ -z "$run" ]]; then echo "no CI run for ${SHA}; nothing to do"; exit 0; fi
+            status="$(jq -r .status <<<"$run")"
+            [[ "$status" == "completed" ]] && break
+            sleep 15
+          done
+          [[ "$status" == "completed" ]] || { echo "CI still running; its verified job will observe terminal state"; exit 0; }
+          run_id="$(jq -r .id <<<"$run")"
+          job="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs" --paginate \
+            -q '[.jobs[] | select(.name == "verified")] | last // empty')"
+          if [[ -z "$job" ]]; then echo "no verified job in run ${run_id}"; exit 0; fi
+          concl="$(jq -r '.conclusion // ""' <<<"$job")"
+          if [[ "$concl" == "success" ]]; then echo "verified already green"; exit 0; fi
+          echo "verified=${concl} on ${SHA}; re-running job $(jq -r .id <<<"$job")"
+          gh run rerun "$run_id" --job "$(jq -r .id <<<"$job")"
