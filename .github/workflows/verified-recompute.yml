@@ -1,0 +1,31 @@
+name: verified-recompute
+
+# RESILIENT-1562: recompute ci.yml's `verified` aggregate when a cross-workflow
+# lane (audit.yml `Audit`, integrations.yml ACP smoke) reaches a terminal state,
+# so the verdict is event-driven rather than a function of the 600s poll window.
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+  checks: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Re-run verified for the completed lane's head SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/ci/verified-recompute-on-lane.sh --sha "${{ github.event.workflow_run.head_sha }}"
