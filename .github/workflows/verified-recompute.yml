@@ -1,0 +1,50 @@
+name: verified-recompute
+
+# RESILIENT-1562: ci.yml's `verified` takes a single snapshot of the audit / ACP
+# check-runs (no wall-clock poll). When either workflow completes, re-run the
+# `verified` job for the same head SHA so its verdict is deterministic wrt their
+# terminal state.
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push'
+    steps:
+      - name: Re-run verified on ci.yml run for this SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          EVT: ${{ github.event.workflow_run.event }}
+        run: |
+          set -euo pipefail
+          run_id="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=${EVT}" \
+            -q '.workflow_runs | sort_by(.created_at) | last | .id // empty')"
+          [ -n "$run_id" ] || { echo "no ci.yml run for ${SHA}; nothing to recompute"; exit 0; }
+          # A run can only be re-run once it has completed; wait for it (event-bound, not a verdict window).
+          for _ in $(seq 1 60); do
+            status="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}" -q .status)"
+            [ "$status" = "completed" ] && break
+            sleep 15
+          done
+          [ "$status" = "completed" ] || { echo "ci run ${run_id} still in progress; its verified will snapshot later state"; exit 0; }
+          job="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs" --paginate \
+            -q '.jobs[] | select(.name=="verified") | "\(.id) \(.conclusion)"' | tail -1)"
+          [ -n "$job" ] || { echo "no verified job in run ${run_id}"; exit 0; }
+          job_id="${job% *}"; concl="${job#* }"
+          if [ "$concl" = "success" ]; then echo "verified already green"; exit 0; fi
+          echo "re-running verified job ${job_id} (was ${concl}) in run ${run_id}"
+          gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun"

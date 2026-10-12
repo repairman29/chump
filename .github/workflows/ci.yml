@@ -584,6 +584,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      # RESILIENT-1562: single snapshot, no wall-clock wait. Pending lanes make
+      # this job red-pending; verified-recompute.yml re-runs it on audit/ACP
+      # workflow_run completion.
       - name: Poll cross-workflow lanes (audit, ACP-smoke) — CREDIBLE-269
         id: cross
         env:
@@ -595,7 +598,7 @@ jobs:
             --sha "$sha" \
             --check "audit" \
             --check "ACP protocol smoke test (Zed / JetBrains compatible)" \
-            --timeout-s 600 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+            --timeout-s 0 --event-driven > /tmp/cross-workflow-lanes.txt
           cat /tmp/cross-workflow-lanes.txt
           audit_result="$(grep '^audit=' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
           acp_result="$(grep '^ACP protocol smoke test' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
