@@ -17,6 +17,11 @@
 # registered) is still reported `failure` (fail-closed: the "wedge waiting on
 # a context that'll never post" mode).
 #
+# RESILIENT-1562: --never-seen pending|failure (default failure). With
+# `pending`, a lane not yet registered stays in_progress; verified-recompute.yml
+# re-runs `verified` when that lane's workflow completes (event-driven, no
+# dependence on the wall-clock window).
+#
 # Usage:
 #   poll-cross-workflow-checks.sh --sha SHA --check "name" [--check "name" ...] \
 #       [--repo owner/repo] [--timeout-s N] [--interval-s N]
@@ -30,6 +35,7 @@ SHA=""
 CHECKS=()
 TIMEOUT_S=600
 INTERVAL_S=15
+NEVER_SEEN="failure"
 
 usage() {
     grep '^#' "$0" | sed 's/^# \?//'
@@ -42,6 +48,7 @@ while [[ $# -gt 0 ]]; do
         --repo)        REPO="$2"; shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
+        --never-seen)  NEVER_SEEN="$2"; shift 2 ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[poll-cross-workflow-checks] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -102,7 +109,7 @@ done
 for c in "${CHECKS[@]}"; do
     # never-seen at timeout => fail-closed; seen-but-still-running => stays in_progress (PENDING)
     if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
-        RESULT["$c"]="failure"
+        RESULT["$c"]="$([[ "$NEVER_SEEN" == pending ]] && echo in_progress || echo "$NEVER_SEEN")"
     fi
     printf '%s=%s\n' "$c" "${RESULT[$c]}"
 done

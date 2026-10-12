@@ -87,6 +87,16 @@ else
     fail "still-running timeout: got: $out"
 fi
 
+# ---- Test 4c (RESILIENT-1562): --never-seen pending -> unregistered lane stays in_progress ----
+gh() { echo '[]'; }
+export -f gh
+out="$("$POLL" --sha deadbeef --check "audit" --timeout-s 2 --interval-s 1 --never-seen pending 2>/dev/null)"
+if echo "$out" | grep -qx "audit=in_progress"; then
+    ok "never-seen lane with --never-seen pending stays pending"
+else
+    fail "never-seen pending: got: $out"
+fi
+
 # ---- Test 5: still in_progress on first poll, resolves on second ----
 POLL_COUNT_FILE="$(mktemp)"
 export POLL_COUNT_FILE

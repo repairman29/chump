@@ -1,0 +1,48 @@
+name: verified-recompute
+
+# RESILIENT-1562: event-driven recompute of the `verified` aggregator.
+# `verified` (ci.yml) polls audit/ACP only briefly; when either lives in a
+# separate workflow that finishes later, `verified` reports PENDING (red). When
+# audit.yml or integrations.yml completes, re-run the `verified` job of the CI
+# run for the same head SHA so its verdict is a deterministic function of the
+# terminal state of audit/ACP, not a wall-clock race.
+
+on:
+  workflow_run:
+    workflows: [audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  rerun-verified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Re-run verified for the completed workflow's head SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          run_id="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&per_page=10" \
+            -q '[.workflow_runs[] | select(.event=="pull_request" or .event=="merge_group")] | sort_by(.created_at) | last | .id // empty')"
+          if [ -z "$run_id" ]; then
+            echo "no ci.yml run for ${HEAD_SHA}; nothing to recompute"; exit 0
+          fi
+          status="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}" -q .status)"
+          if [ "$status" != "completed" ]; then
+            echo "ci run ${run_id} still ${status}; its own verified job will see the terminal lane state"; exit 0
+          fi
+          job_id="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs?per_page=100" \
+            -q '[.jobs[] | select(.name=="verified")] | last | .id // empty')"
+          if [ -z "$job_id" ]; then
+            echo "no verified job in run ${run_id}"; exit 0
+          fi
+          gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun" >/dev/null \
+            && echo "re-ran verified job ${job_id} of run ${run_id}" \
+            || echo "::warning::rerun of verified job ${job_id} failed (non-fatal)"
