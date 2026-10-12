@@ -1,0 +1,46 @@
+name: verified-recompute
+
+# RESILIENT-1562: `verified` (ci.yml) no longer waits on audit / ACP via a
+# wall-clock poll. It takes one snapshot; any lane still running is PENDING.
+# When audit.yml or integrations.yml (ACP smoke) reaches a terminal state,
+# this workflow re-runs `verified` for that head SHA so its verdict is
+# recomputed from the lanes' terminal state — event-driven, not time-driven.
+
+on:
+  workflow_run:
+    workflows: [Audit, integrations]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  rerun-verified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push'
+    steps:
+      - name: Re-run verified on the CI run for this head SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          set -euo pipefail
+          run_id="$(gh api "repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=${TRIGGER_EVENT}&per_page=20" \
+            -q '[.workflow_runs[]] | sort_by(.created_at) | last | .id // empty')"
+          if [ -z "$run_id" ]; then
+            echo "no ci.yml run for ${HEAD_SHA}; nothing to recompute"; exit 0
+          fi
+          status="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}" -q .status)"
+          if [ "$status" != "completed" ]; then
+            echo "ci run ${run_id} still ${status}; its own verified job will observe the lane state"; exit 0
+          fi
+          job_id="$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/jobs?per_page=100" --paginate \
+            -q '.jobs[] | select(.name == "verified") | .id' | tail -1)"
+          if [ -z "$job_id" ]; then echo "no verified job in run ${run_id}"; exit 0; fi
+          gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun" \
+            && echo "re-ran verified job ${job_id} (run ${run_id})" \
+            || echo "::warning::rerun of verified job ${job_id} failed (non-fatal)"

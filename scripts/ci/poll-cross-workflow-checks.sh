@@ -19,7 +19,12 @@
 #
 # Usage:
 #   poll-cross-workflow-checks.sh --sha SHA --check "name" [--check "name" ...] \
-#       [--repo owner/repo] [--timeout-s N] [--interval-s N]
+#       [--repo owner/repo] [--timeout-s N] [--interval-s N] [--pending-if-unseen]
+#
+# RESILIENT-1562: --timeout-s 0 takes a single snapshot; with --pending-if-unseen
+# a not-yet-registered lane stays in_progress (PENDING) instead of failure, and
+# .github/workflows/verified-recompute.yml re-runs `verified` when the lane
+# workflow completes (no wall-clock window).
 #
 # Requires: gh CLI (authenticated via GH_TOKEN/GITHUB_TOKEN), jq.
 
@@ -30,6 +35,7 @@ SHA=""
 CHECKS=()
 TIMEOUT_S=600
 INTERVAL_S=15
+PENDING_IF_UNSEEN=0
 
 usage() {
     grep '^#' "$0" | sed 's/^# \?//'
@@ -42,6 +48,7 @@ while [[ $# -gt 0 ]]; do
         --repo)        REPO="$2"; shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
+        --pending-if-unseen) PENDING_IF_UNSEEN=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[poll-cross-workflow-checks] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -101,7 +108,7 @@ done
 
 for c in "${CHECKS[@]}"; do
     # never-seen at timeout => fail-closed; seen-but-still-running => stays in_progress (PENDING)
-    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 ]]; then
+    if [[ "${RESULT[$c]}" == "in_progress" && "${SEEN[$c]}" -eq 0 && "$PENDING_IF_UNSEEN" -eq 0 ]]; then
         RESULT["$c"]="failure"
     fi
     printf '%s=%s\n' "$c" "${RESULT[$c]}"
