@@ -13850,3 +13850,21 @@ events:
     trigger: infra-watcher disk_headroom finding invoked the idle-gated reclaim actuator (deferred, aborted, or reclaimed)
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, detail]
+
+  - kind: no_ship_loop_detected
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/no-ship-loop-detector.sh (RESILIENT-1573)
+    emitter_paths: [scripts/coord/no-ship-loop-detector.sh]
+    trigger: a gap accumulated >=N cycle_end events (unverified_ship/failed/timeout/wedge) with zero shipped; gap auto-blocked and re-blocked on each new re-pick
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, gap_id, count, last_kind]
+
+  - kind: service_crash_loop
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/no-ship-loop-detector.sh (RESILIENT-1573)
+    emitter_paths: [scripts/coord/no-ship-loop-detector.sh]
+    trigger: systemd NRestarts (user or system scope) for a unit exceeded CHUMP_CRASH_LOOP_THRESHOLD
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, unit, scope, nrestarts]
