@@ -1503,7 +1503,7 @@ mod tests {
 
     #[test]
     fn default_budget_at_least_worker_timeout() {
-        assert!(DEFAULT_SUBAGENT_BUDGET_SECS >= 1800);
+        const { assert!(DEFAULT_SUBAGENT_BUDGET_SECS >= 1800) };
     }
 
     #[test]
