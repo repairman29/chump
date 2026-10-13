@@ -1082,6 +1082,12 @@ jobs:
         # Promote to --strict once INFRA-1053 backfill closes the long-tail.
         run: bash scripts/ci/test-no-claude-leak.sh
 
+      - name: no prohibited "claude --once" flag (RESILIENT-1142)
+        # Enforces the transition from "claude --once" (deprecated) to "claude -p"
+        # (auth probe). The --once flag is only allowed in CI test scripts.
+        # Exits 0 if no prohibited usage found in production scripts.
+        run: bash scripts/ci/check-no-claude-once.sh
+
       - name: release staleness gate (INFRA-1373, P2 warn-only)
         # Warns when the latest GitHub release is > CHUMP_RELEASE_STALENESS_DAYS
         # (default 14d) behind main HEAD. Non-blocking at P2; promote to
