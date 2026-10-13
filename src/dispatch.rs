@@ -759,9 +759,15 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
         // Dropping `stdin` here closes the pipe (EOF), which is how `claude
         // -p` knows the prompt is complete and starts working.
     }
-    let status = wait_with_hang_detection(child, "claude -p", opts.gap_id)
-        .context("waiting for claude -p to complete")?;
+    let status = match wait_with_hang_detection(child, "claude -p", opts.gap_id) {
+        Ok(s) => s,
+        Err(e) => {
+            salvage_partial_work(ws);
+            return Err(e).context("waiting for claude -p to complete");
+        }
+    };
     if !status.success() {
+        salvage_partial_work(ws);
         bail!(
             "claude -p exited {} for gap {}",
             status.code().unwrap_or(-1),
@@ -807,6 +813,55 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
     Ok(())
 }
 
+/// RESILIENT-1494: matches the fleet worker's 1800s; the old 900s default
+/// SIGTERMed real infra work before it could commit or open a PR.
+const DEFAULT_SUBAGENT_BUDGET_SECS: u64 = 1800;
+
+/// RESILIENT-1494: after a headless agent is killed/fails, commit + push any
+/// uncommitted work in the dispatch worktree so a working change is never
+/// silently lost. Best-effort; reports loudly.
+fn salvage_partial_work(ws: &Workspace) {
+    let dir = ws.working_dir();
+    let dirty = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(dir)
+        .output()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false);
+    if !dirty {
+        return;
+    }
+    let gap = ws.opts().gap_id;
+    let committed = Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(dir)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+        && Command::new("git")
+            .args([
+                "commit",
+                "-q",
+                "-m",
+                &format!("wip({gap}): partial progress salvaged after dispatch agent was killed"),
+            ])
+            .current_dir(dir)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+    let pushed = committed
+        && Command::new("git")
+            .args(["push", "-q", "-u", "origin", "HEAD"])
+            .current_dir(dir)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+    eprintln!(
+        "[dispatch] RESILIENT-1494: salvaged partial work for {gap} in {} (committed={committed}, pushed={pushed})",
+        dir.display()
+    );
+}
+
 /// Wait for a child process with hang detection (INFRA-406).
 /// If the process doesn't complete within the timeout period, send SIGTERM
 /// and emit an ALERT to ambient.jsonl.
@@ -819,7 +874,7 @@ fn wait_with_hang_detection(
     gap_id: &str,
 ) -> Result<std::process::ExitStatus> {
     // Two cooperating deadlines:
-    //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 900s):
+    //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 1800s, RESILIENT-1494):
     //      parent-enforced upper bound on wall-clock per subagent dispatch.
     //      INFRA-1972 (critique H3): CLAUDE.md documents this as a
     //      "self-discipline rule" for the subagent itself, but yesterday's
@@ -844,7 +899,7 @@ fn wait_with_hang_detection(
                 .ok()
                 .and_then(|s| s.parse().ok())
         })
-        .unwrap_or(900);
+        .unwrap_or(DEFAULT_SUBAGENT_BUDGET_SECS);
 
     let hang_secs: u64 = std::env::var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS")
         .ok()
@@ -1445,6 +1500,19 @@ mod tests {
     // tracked in INFRA-191 design doc test plan.
 
     // ── Phase 2 tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn default_budget_at_least_worker_timeout() {
+        assert!(DEFAULT_SUBAGENT_BUDGET_SECS >= 1800);
+    }
+
+    #[test]
+    fn auto_prompt_targets_requested_gap_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = crate::execute_gap::build_execute_gap_prompt("RESILIENT-1494", tmp.path());
+        assert!(p.contains("working on gap RESILIENT-1494"));
+        assert!(p.contains("--gap RESILIENT-1494"));
+    }
 
     #[test]
     fn headless_backend_constructs() {
