@@ -1706,6 +1706,23 @@ self_test() {
     no "interactive-shell hook missing — re-run chump-node-install.sh to wire .bashrc/.profile"
     fail=1
   fi
+  # INFRA-3706: resolve store path & detect local .chump/state.db (AC2/AC3)
+  # Source node.env if present to get the resolved store path, then:
+  # (a) detect local .chump/state.db in current directory → error exit
+  # (b) verify resolved store matches CHUMP_STATE_DIR → error exit
+  # (c) only then invoke chump gap list to complete the test
+  if [ -f ".chump/state.db" ]; then
+    no "Error : local .chump/state.db detected; use canonical store"
+    fail=1
+  fi
+  local resolved_store_dir="${CHUMP_STATE_DIR:-}"
+  if [ -z "$resolved_store_dir" ] && [ -f "$node_env" ]; then
+    resolved_store_dir="$(grep -E '^export CHUMP_STATE_DIR=' "$node_env" 2>/dev/null | sed 's/^export CHUMP_STATE_DIR=//')"
+  fi
+  if [ -n "$resolved_store_dir" ] && [ -n "$CHUMP_STATE_DIR" ] && [ "$resolved_store_dir" != "$CHUMP_STATE_DIR" ]; then
+    no "Error : resolved store path does not match CHUMP_STATE_DIR"
+    fail=1
+  fi
   # INFRA-3632 AC2/AC3: the ONE canonical-store contract, verified LIVE with
   # the actual binary (not just a sqlite3 row-count proxy). A bare
   # `chump gap list` run from $HOME (no repo context) and from the installed
