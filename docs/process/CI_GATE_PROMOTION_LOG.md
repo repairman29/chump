@@ -48,6 +48,14 @@ Each entry is a markdown sub-heading with a structured body:
 ## test-preflight-ci-parity
 
 - **Promoted at:** 2026-05-29 00:00:00 UTC
+- **Demoted at:** 2026-10-13 (TEMPORARY, RESILIENT-1592/R-track) — the gate
+  drifted into a fleet-wide merge jam: unmirrored CI steps accumulated on main
+  via `--admin` merges that skip this very gate, so the required check went red
+  on every PR and nothing could land. Demoted to advisory (`continue-on-error`,
+  still emits `ci_parity_drift`) to unjam shipping. RE-PROMOTE once Phase R3
+  (remove the `--admin` land-bypass) stops the drift at its source — the gate's
+  job is drift PREVENTION, which only works when new unclassified steps cannot
+  land in the first place.
 - **CI file:** .github/workflows/ci.yml
 - **CI line (anchor):** preflight-vs-CI parity smoke (INFRA-1867)
 - **Promoted by:** INFRA-2120
