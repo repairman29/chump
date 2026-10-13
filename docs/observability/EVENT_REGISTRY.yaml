@@ -2311,6 +2311,28 @@ events:
       since main_red_span resets to 0 the moment a benign status line lands.
     consumers: [ambient]
     fields_required: [ts, kind, main_red_span_min, threshold_min]
+  - kind: main_red_fix_dispatched
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-1130, RESILIENT-417 slice)
+    trigger: sustained_main_red fired and the fix dispatcher chose a remediation
+      path (path=known_fix via pattern-fix-dispatcher.sh, or path=queued_remediation
+      via a filed gap). Idempotent per CHUMP_BOARD_VITALS_FIX_DISPATCH_WINDOW_S.
+    consumers: [ambient]
+    fields_required: [ts, kind, path, dry_run, main_red_span_min]
+  - kind: main_red_fix_dispatch_failed
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-1130, RESILIENT-417 slice)
+    trigger: the chosen main-red remediation path exited non-zero; no idempotency
+      marker is written so the next beat retries.
+    consumers: [ambient]
+    fields_required: [ts, kind, path, exit_code, main_red_span_min]
+  - kind: main_red_fix_dispatch_deduped
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-1130, RESILIENT-417 slice)
+    trigger: sustained_main_red still holds but a fix was already dispatched inside
+      the idempotency window; nothing re-dispatched.
+    consumers: [ambient]
+    fields_required: [ts, kind, main_red_span_min]
   - kind: main_sat_sustained_red
     effect_metric: self
     emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-1123, RESILIENT-416 slice)

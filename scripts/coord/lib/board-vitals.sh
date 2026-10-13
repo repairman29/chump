@@ -387,6 +387,63 @@ _bv_maybe_page() {
     return 0
 }
 
+# RESILIENT-1130 (RESILIENT-417 slice): act on a sustained main-red. Path A —
+# a CI failure log (CHUMP_BOARD_VITALS_MAIN_RED_LOG) matching a known pattern is
+# handed to pattern-fix-dispatcher.sh (lands the fix PR). Path B — otherwise
+# queue a remediation gap. Idempotent: one successful dispatch per
+# CHUMP_BOARD_VITALS_FIX_DISPATCH_WINDOW_S (default 86400); failures are not
+# recorded so the next beat retries. DRY_RUN logs the chosen path, mutates nothing.
+_bv_dispatch_main_red_fix() {  # span_min
+    local span="$1" root state_dir window marker now last path="" rc=0
+    root="$(_bv_repo_root)"
+    state_dir="${CHUMP_BOARD_VITALS_STATE_DIR:-${root}/.chump-locks/board-vitals}"
+    window="${CHUMP_BOARD_VITALS_FIX_DISPATCH_WINDOW_S:-86400}"
+    marker="$state_dir/main_red_fix_dispatch.json"
+    now="$(_bv_now)"
+    if [[ -f "$marker" ]]; then
+        last="$(python3 -c "import json;print(json.load(open('$marker')).get('last_epoch',0))" 2>/dev/null || echo 0)"
+        [[ "$last" =~ ^[0-9]+$ ]] || last=0
+        if (( now - last < window )); then
+            # scanner-anchor: "kind":"main_red_fix_dispatch_deduped"
+            _bv_emit "main_red_fix_dispatch_deduped" "\"main_red_span_min\":${span}"
+            return 0
+        fi
+    fi
+    mkdir -p "$state_dir" 2>/dev/null || true
+
+    local log="${CHUMP_BOARD_VITALS_MAIN_RED_LOG:-}"
+    if [[ -n "$log" && -r "$log" ]]; then
+        path="known_fix"
+    else
+        path="queued_remediation"
+    fi
+
+    if [[ "${CHUMP_BOARD_VITALS_DRY_RUN:-0}" == "1" ]]; then
+        _bv_emit "main_red_fix_dispatched" "\"path\":\"${path}\",\"dry_run\":true,\"main_red_span_min\":${span}"
+        return 0
+    fi
+
+    if [[ "$path" == "known_fix" ]]; then
+        bash "$root/scripts/coord/pattern-fix-dispatcher.sh" "$log" >/dev/null 2>&1 || rc=$?
+        if (( rc == 3 || rc == 4 )); then   # no known pattern / nothing to ship → queue instead
+            path="queued_remediation"; rc=0
+        fi
+    fi
+    if [[ "$path" == "queued_remediation" ]]; then
+        "${CHUMP_BOARD_VITALS_CHUMP_BIN:-chump}" gap reserve --domain RESILIENT --priority P2 \
+            --title "RESILIENT: main CI red ${span}m (sustained) — diagnose and land fix" >/dev/null 2>&1 || rc=$?
+    fi
+    if (( rc != 0 )); then
+        # scanner-anchor: "kind":"main_red_fix_dispatch_failed"
+        _bv_emit "main_red_fix_dispatch_failed" "\"path\":\"${path}\",\"exit_code\":${rc},\"main_red_span_min\":${span}"
+        return 0
+    fi
+    # scanner-anchor: "kind":"main_red_fix_dispatched"
+    _bv_emit "main_red_fix_dispatched" "\"path\":\"${path}\",\"dry_run\":false,\"main_red_span_min\":${span}"
+    python3 -c "import json;json.dump({'last_epoch':${now},'path':'${path}'}, open('$marker','w'))" 2>/dev/null || true
+    return 0
+}
+
 # Bounded LLM diagnosis of a novel/unclassifiable anomaly. Returns the model's
 # one-paragraph diagnosis on stdout (empty on any failure). Never hangs the beat
 # (hard timeout). Skipped in DRY_RUN and when disabled.
@@ -579,6 +636,7 @@ board_vitals_check() {
         # scanner-anchor: "kind":"sustained_main_red"
         _bv_emit "sustained_main_red" \
             "\"main_red_span_min\":${main_red_span},\"threshold_min\":${sustained_main_red_min}"
+        _bv_dispatch_main_red_fix "$main_red_span"
     fi
 
     # ── 4c · main-sat gate SUSTAINED red (RESILIENT-1123, RESILIENT-416 slice) ─

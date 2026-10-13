@@ -411,6 +411,44 @@ SR3="$TMP/sustained-red-transient.jsonl"
 _notemitted "long-past red span since recovered to green → sustained_main_red NOT emitted" \
     "$SR3" '"kind":"sustained_main_red"'
 
+# ── RESILIENT-1130 (RESILIENT-417 slice): fix dispatch on sustained red ──────
+echo "[test-board-vitals] RESILIENT-1130: sustained red dispatches a remediation path (idempotent)"
+FD="$TMP/fixdispatch.jsonl"
+{
+  echo '{"ts":"2026-08-25T00:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"red"}'
+} > "$FD"
+_fd_run() {
+  ( set -a
+    CHUMP_AMBIENT_LOG="$FD"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-fd"
+    CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+    CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+    CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+    CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+    set +a
+    source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+}
+_fd_run
+_emitted "sustained red → main_red_fix_dispatched logs queued_remediation path" \
+    "$FD" '"kind":"main_red_fix_dispatched".*"path":"queued_remediation"'
+
+echo "[test-board-vitals] RESILIENT-1130: failed dispatch is reported as an error event"
+FD="$TMP/fixdispatch-fail.jsonl"
+grep main_red_detected "$TMP/sustained-red.jsonl" > "$FD"
+( set -a
+  CHUMP_AMBIENT_LOG="$FD"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-fd2"
+  CHUMP_BOARD_VITALS_DRY_RUN=0; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+  set +a
+  mkdir -p "$TMP/nochump"; printf '#!/bin/sh\nexit 7\n' > "$TMP/nochump/chump"; chmod +x "$TMP/nochump/chump"
+  CHUMP_BOARD_VITALS_CHUMP_BIN="$TMP/nochump/chump"
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "chump gap reserve failing → main_red_fix_dispatch_failed emitted" \
+    "$FD" '"kind":"main_red_fix_dispatch_failed".*"exit_code":7'
+_notemitted "failed dispatch → no dispatched event" "$FD" '"kind":"main_red_fix_dispatched"'
+
 # ── RESILIENT-1123 (RESILIENT-416 slice): main_sat_sustained_red past 48h ────
 echo "[test-board-vitals] RESILIENT-1123: main_sat_sustained_red fires past the 48h threshold"
 MS="$TMP/main-sat-red.jsonl"
