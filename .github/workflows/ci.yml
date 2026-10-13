@@ -1612,17 +1612,6 @@ jobs:
         run: bash scripts/ci/test-review-handoff-smoke.sh
 
       - name: preflight-vs-CI parity smoke (INFRA-1867)
-        # TEMPORARILY WARN-ONLY (2026-10-13, RESILIENT-1592/R-track). The gate
-        # drifted into a fleet-wide jam: unmirrored CI steps accumulated on main
-        # via --admin merges (the gate that would catch them is the one failing,
-        # and --admin skips it), so this REQUIRED check went red on every PR and
-        # nothing could land. A drift-PREVENTION gate that hard-blocks all
-        # shipping once drift exists is failing its own purpose. Demoted to
-        # advisory (still runs + emits kind=ci_parity_drift) so the fleet ships;
-        # re-promote once Phase R3 (remove --admin) stops the drift at the source.
-        # Sanctioned demotion: see CI_GATE_PROMOTION_LOG.md "Demoted gates" +
-        # the CI-Promotion-Reverted trailer on this commit (INFRA-1869 ceremony).
-        continue-on-error: true
         run: bash scripts/ci/test-preflight-ci-parity.sh
 
       - name: preflight-ci-parity synthetic-gate smoke (INFRA-2084)
