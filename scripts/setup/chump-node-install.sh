@@ -68,6 +68,11 @@ STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
 # would silently diverge from the machine's real gap backlog.
 STATE_DB="${CHUMP_STATE_DB:-$STATE_DIR/state.db}"
 export CHUMP_STATE_DB="$STATE_DB"
+# INFRA-3707: pin the canonical store environment variable to a fixed path
+# so every phase and organ resolves the same gap-store.db instead of any
+# falling back to a repo-local default.
+CANONICAL_STORE_PATH="${CHUMP_CANONICAL_STORE_PATH:-$STATE_DIR/gap-store.db}"
+export CANONICAL_STORE_PATH
 CREDS="$STATE_DIR/providers.env"
 # INFRA-3634: pin the canonical *shared* gap store (PostgREST-fronted
 # Postgres, currently CJ per docs/strategy/DATA_HOME_PLAN.md's dated note)
