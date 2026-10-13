@@ -1,0 +1,17 @@
+[0;32m[bot-merge] INFRA-209: pre-commit hook missing, running install-hooks.sh[0m
+[0;31m[bot-merge] WARN: install-hooks.sh failed; continuing without hooks[0m
+[bot-merge] WARN: install-hooks.sh failed; pre-commit guards may be skipped
+[0;36m[bot-merge 16:01:44] ⏳ alive — step=init (0s; heartbeat every 30s)[0m
+[bot-merge 16:01:44] INFRA-119: health monitoring active (file=bot-merge-1173808.health budget=900s steps=bot-merge-1173808.steps)
+[bot-merge] log: /home/jeff/Projects/chump/.claude/worktrees/infra-3706-fleet-1-20261013-155609/.chump-locks/bot-merge-1173808.log
+[bot-merge 16:01:44] [INFRA-1034] full log: /home/jeff/Projects/chump/.claude/worktrees/infra-3706-fleet-1-20261013-155609/.chump-locks/bot-merge-1173808.log  (tail -f to follow)
+[0;32m[bot-merge 16:01:48] === bot-merge: chump/infra-3706-fleet-1-20261013-155609 → main ===[0m
+[bot-merge] INFRA-2523: integrator daemon unhealthy — failing open to per-PR auto-merge (Mode B) so INFRA-3706 can't land in limbo.
+[bot-merge 16:01:49] INFRA-2133: routing mode=B reason=integrator daemon unhealthy — fail-open to per-PR (INFRA-2523)
+[bot-merge 16:01:52] [INFRA-1346] ship_plan_advisory emitted (action=unknown gap=INFRA-3706)
+[bot-merge 16:01:52] Running gap pre-flight for: INFRA-3706 …
+[preflight] OK INFRA-3706 — open and unclaimed.
+[0;32m[bot-merge 16:01:52] Gap pre-flight passed.[0m
+chump claim: INFRA-1982: open PR #5368 already covers INFRA-3706 (branch: chump/infra-3706-fleet-1-20261013-151809).
+  Resolve there or use CHUMP_CLAIM_ALLOW_DUPLICATE_PR=1 to override.
+Terminated                 sleep "$budget"
