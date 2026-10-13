@@ -1644,6 +1644,21 @@ self_test() {
     # shellcheck disable=SC1090
     . "$node_env"
   fi
+  # INFRA-3706: verify canonical store resolution against CHUMP_STATE_DIR.
+  # Check for local .chump/state.db collision in cwd.
+  if [ -f ".chump/state.db" ]; then
+    printf '\033[31mError : local .chump/state.db detected; use canonical store\033[0m\n'
+    return 1
+  fi
+  # Verify resolved store path matches canonical CHUMP_STATE_DIR.
+  local resolved_store="${CHUMP_STATE_DIR:-$HOME/.chump}"
+  if [ "$resolved_store" != "$STATE_DIR" ]; then
+    printf '\033[31mError : resolved store path does not match CHUMP_STATE_DIR\033[0m\n'
+    printf '  resolved: %s\n' "$resolved_store"
+    printf '  expected: %s\n' "$STATE_DIR"
+    return 1
+  fi
+  ok "canonical store resolved: $resolved_store"
   if [ "$CONTROL_PLANE_ONLY" = 1 ]; then
     CHUMP_NODE_WORK_ENABLED=0
     CHUMP_NODE_MODE="control-plane"
