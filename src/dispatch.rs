@@ -193,6 +193,12 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
 
     // Step 1: preflight (read-only check).
     preflight(&workspace).context("preflight")?;
+    if matches!(
+        opts.work,
+        WorkBackend::Headless { .. } | WorkBackend::ExecGap
+    ) {
+        require_gap_loadable(&opts.repo_root, opts.gap_id).context("gap load check")?;
+    }
 
     // Step 2: claim (writes .chump-locks/<session>.json).
     claim(&workspace).context("claim")?;
@@ -632,9 +638,16 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
         // Dropping `stdin` here closes the pipe (EOF), which is how `claude
         // -p` knows the prompt is complete and starts working.
     }
-    let status = wait_with_hang_detection(child, "claude -p", opts.gap_id)
-        .context("waiting for claude -p to complete")?;
+    let waited = wait_with_hang_detection(child, "claude -p", opts.gap_id);
+    let status = match waited {
+        Ok(s) => s,
+        Err(e) => {
+            salvage_partial_progress(ws.working_dir(), opts.gap_id);
+            return Err(e).context("waiting for claude -p to complete");
+        }
+    };
     if !status.success() {
+        salvage_partial_progress(ws.working_dir(), opts.gap_id);
         bail!(
             "claude -p exited {} for gap {}",
             status.code().unwrap_or(-1),
@@ -664,9 +677,16 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
     let child = cmd
         .spawn()
         .with_context(|| format!("spawn `chump --execute-gap {}`", opts.gap_id))?;
-    let status = wait_with_hang_detection(child, "chump --execute-gap", opts.gap_id)
-        .context("waiting for chump --execute-gap to complete")?;
+    let waited = wait_with_hang_detection(child, "chump --execute-gap", opts.gap_id);
+    let status = match waited {
+        Ok(s) => s,
+        Err(e) => {
+            salvage_partial_progress(ws.working_dir(), opts.gap_id);
+            return Err(e).context("waiting for chump --execute-gap to complete");
+        }
+    };
     if !status.success() {
+        salvage_partial_progress(ws.working_dir(), opts.gap_id);
         bail!(
             "chump --execute-gap exited {} for gap {}",
             status.code().unwrap_or(-1),
@@ -674,6 +694,59 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// RESILIENT-1494 AC4: when the work process dies (SIGTERM/timeout/crash),
+/// commit whatever it left in the worktree so a working change is never
+/// silently lost; if the commit is refused (hooks), save a patch instead.
+fn salvage_partial_progress(dir: &Path, gap_id: &str) {
+    let git = |args: &[&str]| Command::new("git").args(args).current_dir(dir).output();
+    let dirty = git(&["status", "--porcelain"])
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false);
+    if !dirty {
+        return;
+    }
+    let _ = git(&["add", "-A"]);
+    let msg = format!("WIP({gap_id}): partial progress salvaged after dispatch work process died");
+    let committed = git(&["commit", "-m", &msg])
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if committed {
+        eprintln!(
+            "[dispatch] salvaged partial progress for {gap_id} as a WIP commit in {}",
+            dir.display()
+        );
+        return;
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let out_dir = PathBuf::from(home).join(".chump").join("salvage");
+    let _ = std::fs::create_dir_all(&out_dir);
+    let patch = out_dir.join(format!("{gap_id}-{}.patch", std::process::id()));
+    if let Ok(o) = git(&["diff", "--cached", "HEAD"]) {
+        let _ = std::fs::write(&patch, o.stdout);
+    }
+    eprintln!(
+        "[dispatch] WIP commit refused for {gap_id}; partial diff saved to {} (worktree {} left dirty)",
+        patch.display(),
+        dir.display()
+    );
+}
+
+/// RESILIENT-1494 AC2: refuse to spawn an agent when the gap cannot be loaded
+/// from the canonical store (a wrong/empty prompt makes the agent freelance).
+fn require_gap_loadable(repo_root: &Path, gap_id: &str) -> Result<()> {
+    let store = chump_gap_store::GapStore::open(repo_root)
+        .with_context(|| format!("open canonical gap store at {}", repo_root.display()))?;
+    match store.get(gap_id) {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => bail!(
+            "gap {gap_id} not found in canonical state.db under {} — refusing to spawn an agent \
+             on an empty/fallback prompt",
+            repo_root.display()
+        ),
+        Err(e) => Err(e).with_context(|| format!("load gap {gap_id} from canonical state.db")),
+    }
 }
 
 /// Wait for a child process with hang detection (INFRA-406).
@@ -688,7 +761,8 @@ fn wait_with_hang_detection(
     gap_id: &str,
 ) -> Result<std::process::ExitStatus> {
     // Two cooperating deadlines:
-    //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 900s):
+    //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 1800s = fleet worker
+    //      timeout; RESILIENT-1494 raised it from 900s, which SIGTERMed real infra work):
     //      parent-enforced upper bound on wall-clock per subagent dispatch.
     //      INFRA-1972 (critique H3): CLAUDE.md documents this as a
     //      "self-discipline rule" for the subagent itself, but yesterday's
@@ -713,7 +787,7 @@ fn wait_with_hang_detection(
                 .ok()
                 .and_then(|s| s.parse().ok())
         })
-        .unwrap_or(900);
+        .unwrap_or(1800);
 
     let hang_secs: u64 = std::env::var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS")
         .ok()
@@ -1305,6 +1379,20 @@ mod tests {
     // tracked in INFRA-191 design doc test plan.
 
     // ── Phase 2 tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn require_gap_loadable_fails_loud_for_unknown_gap() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(require_gap_loadable(dir.path(), "NOPE-999999").is_err());
+    }
+
+    #[test]
+    fn auto_prompt_names_the_dispatched_gap() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = crate::execute_gap::build_execute_gap_prompt("RESILIENT-1494", dir.path());
+        assert!(p.contains("working on gap RESILIENT-1494"));
+        assert!(p.contains("--gap RESILIENT-1494"));
+    }
 
     #[test]
     fn headless_backend_constructs() {
