@@ -1649,6 +1649,25 @@ self_test() {
     CHUMP_NODE_MODE="control-plane"
   fi
   local fail=0
+  # INFRA-3706 AC2/AC3: verify canonical store path resolution (INFRA-3632 slice)
+  # The node.env sourced above has populated CHUMP_STATE_DIR and CHUMP_STATE_DB.
+  # Verify their presence and that the resolved paths are consistent.
+  local resolved_state_dir resolved_state_db
+  resolved_state_dir="${CHUMP_STATE_DIR:-}"
+  resolved_state_db="${CHUMP_STATE_DB:-}"
+  if [ -n "$resolved_state_dir" ] && [ -n "$resolved_state_db" ]; then
+    ok "canonical store resolved: $resolved_state_dir ($resolved_state_db)"
+  fi
+  # AC2: detect a local .chump/state.db in current directory and error if found
+  if [ -f ".chump/state.db" ]; then
+    no "Error : local .chump/state.db detected; use canonical store"
+    fail=1
+  fi
+  # AC3: when resolved store path differs from CHUMP_STATE_DIR, error
+  if [ -n "$CHUMP_STATE_DIR" ] && [ -n "$resolved_state_dir" ] && [ "$resolved_state_dir" != "$CHUMP_STATE_DIR" ]; then
+    no "Error : resolved store path does not match CHUMP_STATE_DIR"
+    fail=1
+  fi
   [ -n "$HOST_KIND" ] && ok "host detected: $HOST_KIND/$ARCH" || { no "host detect"; fail=1; }
   if provider_creds_ready && [ "${CHUMP_NODE_WORK_ENABLED:-1}" = 1 ]; then
     check_creds || fail=1
