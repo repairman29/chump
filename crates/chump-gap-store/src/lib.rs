@@ -5026,10 +5026,14 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
         "-n".into(),
         "1".into(),
         "--format=%H".into(),
-        format!("--grep={gap_id}"),
     ];
-    if let Some(n) = closed_pr {
-        args.push(format!("--grep=(#{n})"));
+    // RESILIENT-1592 R1: a claimed PR must itself be the landing receipt. A
+    // bare gap-ID mention (a dup-close, a follow-up, a doc note) is NOT proof
+    // the claimed PR merged, so when closed_pr is given only the `(#N)` squash
+    // marker counts; the gap-ID match is the fallback only when no PR is named.
+    match closed_pr {
+        Some(n) => args.push(format!("--grep=(#{n})")),
+        None => args.push(format!("--grep={gap_id}")),
     }
     let out = std::process::Command::new("git")
         .args(&args)
