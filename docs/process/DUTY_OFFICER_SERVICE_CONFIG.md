@@ -188,7 +188,7 @@ For containers, this is expected behavior. The fallback ensures the script doesn
 
 ## Related Gaps and References
 
-- **RESILIENT-1297** — The duty-officer fallback implementation (this script feature)
+- **RESILIENT-1297** — The duty-officer fallback implementation (lines 90–98 of duty-officer-loop.sh)
 - **RESILIENT-1294** — The original gap: document the user-bus environment requirements
 - **RESILIENT-1258** — Health-sentinel timer (related user-session systemd work)
 - **RESILIENT-1050** — Cold-install FTUE with user-session systemd in Docker
