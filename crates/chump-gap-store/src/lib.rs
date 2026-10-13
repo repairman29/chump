@@ -1493,6 +1493,44 @@ impl GapStore {
                         );
                     }
                 }
+
+                // RESILIENT-1592 R1: a numeric closed_pr is a claim, not a receipt.
+                // Flipping to done via `gap set` must carry the same verified
+                // merge-on-main proof that ship() demands.
+                let already_done: bool = self
+                    .conn
+                    .query_row("SELECT status FROM gaps WHERE id=?", [gap_id], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .map(|st| st == "done")
+                    .unwrap_or(false);
+                if !already_done {
+                    let pr = if supplied_pr != 0 {
+                        Some(supplied_pr)
+                    } else {
+                        self.conn
+                            .query_row("SELECT closed_pr FROM gaps WHERE id=?", [gap_id], |row| {
+                                row.get::<_, Option<i64>>(0)
+                            })
+                            .ok()
+                            .flatten()
+                    };
+                    if self.repo_root.join(".git").exists() {
+                        let _ = std::process::Command::new("git")
+                            .args(["fetch", "origin", "main", "--quiet"])
+                            .current_dir(&self.repo_root)
+                            .stderr(std::process::Stdio::null())
+                            .stdout(std::process::Stdio::null())
+                            .status();
+                    }
+                    if !verify_proof_of_merge(&self.repo_root, gap_id, pr) {
+                        bail!(
+                            "RESILIENT-1592 R1: refusing to flip {gap_id} to status=done via set — \
+                             no merge commit on origin/main carries this gap ID or PR. \
+                             Wait for the merge to land and use `chump gap ship`."
+                        );
+                    }
+                }
             }
         }
 
