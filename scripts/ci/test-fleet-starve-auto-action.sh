@@ -102,10 +102,17 @@ run_worker() {
     echo "5" > "$fake_home/.chump/AUTONOMY_LEVEL"
 
     set +e
+    # RESILIENT-1591 contract: worker.sh now REFUSES to default to the free-tier
+    # floor (exit 78) when there is no sub auth AND no explicit backend — "we
+    # don't ship with free". This test's fake HOME has no auth, so it must opt
+    # into an explicit backend to exercise the STARVE path (what it tests) rather
+    # than tripping the auth-refusal guard. chump-local is the explicit non-ship
+    # sweep backend and is honored by the guard.
     env PATH="$TMP/bin:/usr/bin:/bin" \
         HOME="$fake_home" \
         AGENT_ID="9" \
         REPO_ROOT="$FAKE_ROOT" \
+        FLEET_BACKEND="chump-local" \
         FLEET_LOG_DIR="$TMP/fleet-logs" \
         IDLE_SLEEP_S="1" \
         CHUMP_POLL_JITTER="0" \
