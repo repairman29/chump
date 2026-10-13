@@ -87,6 +87,7 @@ pub struct DoctorReport {
 }
 
 impl DoctorReport {
+    /// Detect if any check has a FAIL status. See RESILIENT-1353 for context.
     pub fn any_failed(&self) -> bool {
         self.checks.iter().any(|c| c.status == CheckStatus::Fail)
     }
