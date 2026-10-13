@@ -5944,6 +5944,24 @@ pub fn pr_references_gap(repo_root: &std::path::Path, gap_id: &str, pr: i64) -> 
     )
 }
 
+/// RESILIENT-1592 R1: true only when the cache positively shows PR `pr` was
+/// closed WITHOUT merging (can never land). Unknown/absent/open => false, so
+/// the normal pre-merge close path in bot-merge is unaffected.
+pub fn pr_closed_unmerged(repo_root: &std::path::Path, pr: i64) -> bool {
+    let Some(conn) = open_github_cache(repo_root) else {
+        return false;
+    };
+    conn.query_row(
+        "SELECT merged_at IS NULL AND json_extract(raw_payload_json, '$.state') = 'closed' \
+         FROM pr_state WHERE number = ?1",
+        [pr],
+        |r| r.get::<_, Option<i64>>(0),
+    )
+    .ok()
+    .flatten()
+        == Some(1)
+}
+
 /// CREDIBLE-1489: the PR that actually MERGED `branch` (cache `head_ref` match,
 /// most recently merged first). Lets `chump gap ship` stamp the real closing PR
 /// instead of trusting an arbitrary caller-supplied number. `None` when the

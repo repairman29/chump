@@ -12577,6 +12577,14 @@ async fn main() -> Result<()> {
                         found
                     }
                 };
+                if let Some(n) = closed_pr {
+                    if chump_gap_store::pr_closed_unmerged(&repo_root, n) {
+                        eprintln!(
+                            "chump gap ship: PR #{n} was closed WITHOUT merging — {gap_id} cannot be shipped against it (RESILIENT-1592 R1). Ship against the PR that actually merged."
+                        );
+                        std::process::exit(1);
+                    }
+                }
                 match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
