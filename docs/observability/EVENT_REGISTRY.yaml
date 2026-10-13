@@ -4039,6 +4039,15 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, source, pr, note]
 
+  # ── Stalled-P0 detector (RESILIENT-1582) ──────────────────────────────────
+  - kind: p0_stalled
+    effect_metric: self
+    emitter: scripts/coord/stalled-p0-detector.sh (RESILIENT-1582)
+    trigger: P0 gap has been unclaimed for > CHUMP_STALLED_P0_THRESHOLD_HOURS (default 24h);
+      indicates potential priority inversion due to effort filter or lack of pickable decomposition
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, gap_id, hours_stalled, effort, threshold_hours]
+
   # ── Orphan-PR closer (INFRA-1139) ─────────────────────────────────────────
   - kind: orphan_pr_candidate
     effect_metric: self
