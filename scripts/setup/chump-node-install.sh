@@ -1649,6 +1649,45 @@ self_test() {
     CHUMP_NODE_MODE="control-plane"
   fi
   local fail=0
+
+  # INFRA-3706: canonical store resolution verification
+  if [ -f "$node_env" ]; then
+    local resolved_store
+    # Source node.env to get the canonical store settings
+    ( . "$node_env" && printf '%s' "$CHUMP_STATE_DIR" > /tmp/.chump_resolved_store_$$)
+    resolved_store="$(cat /tmp/.chump_resolved_store_$$ 2>/dev/null)"
+    rm -f /tmp/.chump_resolved_store_$$
+
+    if [ -z "$resolved_store" ]; then
+      no "Error : failed to resolve store path from node.env"
+      fail=1
+    else
+      ok "resolved store path: $resolved_store"
+
+      # Check if resolved store matches canonical CHUMP_STATE_DIR
+      if [ "$resolved_store" != "$CHUMP_STATE_DIR" ]; then
+        no "Error : resolved store path does not match CHUMP_STATE_DIR (resolved=$resolved_store, canonical=$CHUMP_STATE_DIR)"
+        fail=1
+      fi
+    fi
+
+    # Check for local .chump/state.db in current directory
+    if [ -f ".chump/state.db" ]; then
+      no "Error : local .chump/state.db detected; use canonical store"
+      fail=1
+    fi
+
+    # AC4: if all checks above passed, invoke chump gap list to complete the test
+    if [ "$fail" = 0 ] && [ -x "$BIN" ]; then
+      if . "$node_env" && "$BIN" gap list >/dev/null 2>&1; then
+        ok "canonical store verified: chump gap list successful"
+      else
+        no "chump gap list failed — canonical store verification incomplete"
+        fail=1
+      fi
+    fi
+  fi
+
   [ -n "$HOST_KIND" ] && ok "host detected: $HOST_KIND/$ARCH" || { no "host detect"; fail=1; }
   if provider_creds_ready && [ "${CHUMP_NODE_WORK_ENABLED:-1}" = 1 ]; then
     check_creds || fail=1
