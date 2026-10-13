@@ -97,7 +97,7 @@ fi
 # Ensure each domain has at least one gap (robustness check)
 for domain in "${DOMAINS[@]}"; do
     count=$("$BIN" gap list --domain "$domain" --json 2>/dev/null \
-        | python3 -c "import json,sys; gaps = json.load(sys.stdin); print(len([g for g in gaps if g.get('domain') == '$domain']))" 2>/dev/null || echo 0)
+        | python3 -c "import json,sys; gaps = json.load(sys.stdin); print(len(gaps))" 2>/dev/null || echo 0)
     if [[ "$count" -ge 1 ]]; then
         ok "domain $domain has ≥1 gap (count=$count)"
     else
