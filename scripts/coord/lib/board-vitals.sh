@@ -216,6 +216,35 @@ PY
 # lines at the tail of the stream (0 if the newest such line is not real-red).
 # "real red" = status NOT in the benign set {no_runs, green, clean, passing,
 # none, ok}.
+# Failing required check of the current red streak (RESILIENT-1124): the gate
+# label of the newest real-red main_red_detected line. Prints the gate, or
+# "unknown" when none is recorded. Single bounded tail-scan; read-only.
+_bv_main_red_failed_check() {
+    local log; log="$(_bv_ambient_log)"
+    [[ -f "$log" ]] || { echo unknown; return; }
+    tail -n 5000 "$log" 2>/dev/null | python3 -c '
+import sys, json, re
+BENIGN = {"no_runs","green","clean","passing","none","ok",""}
+gate = "unknown"
+for line in sys.stdin:
+    if "\"main_red_detected\"" not in line:
+        continue
+    try:
+        o = json.loads(line)
+    except Exception:
+        continue
+    if o.get("kind") != "main_red_detected":
+        continue
+    if str(o.get("status","")).lower() in BENIGN:
+        gate = "unknown"
+        continue
+    g = str(o.get("gate","")).strip()
+    if g and g.lower() not in ("none","unknown"):
+        gate = g
+print(re.sub(r"[^A-Za-z0-9 ._/:()-]", "_", gate)[:120])
+' 2>/dev/null || echo unknown
+}
+
 _bv_main_red_span_min() {
     local log; log="$(_bv_ambient_log)"
     [[ -f "$log" ]] || { echo 0; return; }
@@ -523,14 +552,14 @@ board_vitals_check() {
     # So: bypass the in-flight gate whenever main is currently red — the drought
     # + worker-silence conditions still both have to hold, so this only fires
     # once the line has genuinely gone dead for the full window.
-    local last_merge_ep merge_age_min="" prs_in_flight
+    local last_merge_ep last_merge_age_min="" prs_in_flight
     last_merge_ep="$(git -C "$(_bv_repo_root)" log origin/main -1 --format=%ct 2>/dev/null)"
     [[ "$last_merge_ep" =~ ^[0-9]+$ ]] || last_merge_ep=0
     prs_in_flight="$(_bv_prs_in_flight)"
     [[ "$prs_in_flight" =~ ^-?[0-9]+$ ]] || prs_in_flight=-1
     if (( last_merge_ep > 0 )); then
-        merge_age_min=$(( (now - last_merge_ep) / 60 ))
-        if (( merge_age_min >= drought_min )) \
+        last_merge_age_min=$(( (now - last_merge_ep) / 60 ))
+        if (( last_merge_age_min >= drought_min )) \
            && ( (( prs_in_flight == 0 )) || (( main_red_span >= 1 )) ) \
            && (( worker_silent == 1 )); then
             incidents=$((incidents+1))
@@ -541,15 +570,15 @@ board_vitals_check() {
             local diag=""
             if [[ "${CHUMP_BOARD_VITALS_ESCALATE:-1}" == "1" ]] && [[ "${CHUMP_BOARD_VITALS_DRY_RUN:-0}" != "1" ]]; then
                 _bv_emit "board_vitals_novel_escalation" \
-                    "\"merge_age_min\":\"${merge_age_min}\",\"worker_silent_min\":\"${worker_age_min}\""
-                diag="$(_bv_llm_diagnose "merge_age_min=${merge_age_min}; prs_in_flight=0; worker_silent_min=${worker_age_min}; disk_pct=${disk_pct}")"
+                    "\"last_merge_age_min\":\"${last_merge_age_min}\",\"worker_silent_min\":\"${worker_age_min}\""
+                diag="$(_bv_llm_diagnose "last_merge_age_min=${last_merge_age_min}; prs_in_flight=0; worker_silent_min=${worker_age_min}; disk_pct=${disk_pct}")"
             fi
             local in_flight_desc="0 PRs in flight"
             if (( prs_in_flight != 0 )) && (( main_red_span >= 1 )); then
                 in_flight_desc="${prs_in_flight} PR(s) BLOCKED behind red main (not real progress)"
             fi
             _bv_maybe_page "merge_stall" \
-"🔴 **Merge stall — the line is dead.** No merge to main in ${merge_age_min}m (threshold ${drought_min}m), ${in_flight_desc}, and the worker has produced nothing for ${worker_age_min}m. Past the self-heal window — a human needs to look.$( [[ -n "$diag" ]] && printf '\nLLM triage: %s' "$diag" ) (board-vitals.sh)"
+"🔴 **Merge stall — the line is dead.** No merge to main in ${last_merge_age_min}m (threshold ${drought_min}m), ${in_flight_desc}, and the worker has produced nothing for ${worker_age_min}m. Past the self-heal window — a human needs to look.$( [[ -n "$diag" ]] && printf '\nLLM triage: %s' "$diag" ) (board-vitals.sh)"
         fi
     fi
 
@@ -597,8 +626,12 @@ board_vitals_check() {
     main_sat_red_min="${CHUMP_BOARD_VITALS_MAIN_SAT_RED_MIN:-2880}"
     if (( main_red_span >= main_sat_red_min )); then
         # scanner-anchor: "kind":"main_sat_sustained_red"
+        local failed_check
+        failed_check="$(_bv_main_red_failed_check)"
+        [[ -n "$failed_check" ]] || failed_check=unknown
         _bv_emit "main_sat_sustained_red" \
-            "\"main_red_span_min\":${main_red_span},\"threshold_min\":${main_sat_red_min}"
+            "\"main_red_span_min\":${main_red_span},\"threshold_min\":${main_sat_red_min},\"failed_check\":\"${failed_check}\""
+        echo "[board-vitals] main-sat sustained red ${main_red_span}m: failed required check = ${failed_check}" >&2
     fi
 
     # ── 5 · FLOOR: credential / credit needs — genuinely Jeff's to fix ───────
@@ -651,15 +684,15 @@ board_vitals_check() {
     fi
 
     _bv_emit "board_vitals_tick" \
-"\"incidents\":${incidents},\"disk_pct\":\"${disk_pct}\",\"merge_age_min\":\"${merge_age_min}\",\"worker_silent\":${worker_silent},\"main_red_span_min\":${main_red_span}"
+"\"incidents\":${incidents},\"disk_pct\":\"${disk_pct}\",\"last_merge_age_min\":\"${last_merge_age_min}\",\"worker_silent\":${worker_silent},\"main_red_span_min\":${main_red_span}"
 
     # RESILIENT-410: unconditional proof-of-life to STDOUT — so the resident
     # watch is visible in the board-cycle beat's systemd JOURNAL (where the
     # human board looks with journalctl), not only in .chump-locks/ambient.jsonl.
     # Without this line a healthy watch (incidents=0, emits only to ambient) is
     # indistinguishable from a dead one in the journal. Prints EVERY run.
-    printf '[board-vitals] tick — incidents=%s disk=%s%% merge_age=%sm worker_silent=%s main_red_span=%sm%s\n' \
-        "${incidents}" "${disk_pct:-?}" "${merge_age_min:-?}" "${worker_silent}" "${main_red_span}" \
+    printf '[board-vitals] tick — incidents=%s disk=%s%% last_merge_age=%sm worker_silent=%s main_red_span=%sm%s\n' \
+        "${incidents}" "${disk_pct:-?}" "${last_merge_age_min:-?}" "${worker_silent}" "${main_red_span}" \
         "$( (( incidents > 0 )) && printf ' — PAGED (see board_vitals_page_sent)' || true )"
     return 0
 }

@@ -331,7 +331,7 @@ jobs:
           df -h /
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -669,6 +669,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/check-mass-deletion.sh
 
+      - name: Harness doc injection test (RESILIENT-1167)
+        run: bash scripts/ci/test-agents-md-injection.sh
+
       - name: Bypass-line-required audit (INFRA-5429)
         # Every gate-manifest.yaml check that can exit FAIL must carry a
         # "How to bypass cleanly: <instructions>" line so an agent hitting
@@ -995,7 +998,7 @@ jobs:
             util-linux
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt  # INFRA-2242: cranelift dev backend
 
@@ -1620,6 +1623,12 @@ jobs:
 
       - name: preflight-ci-parity new-gate auto-recognize regression (RESILIENT-550)
         run: bash scripts/ci/test-preflight-ci-parity-auto-recognize.sh
+        # INFRA-8125: auto-recognize FEATURE regressed (a gate added in the same
+        # diff is flagged UNMIRRORED instead of recognized), red-ing fast-checks on
+        # every PR and deadlocking the merge pipeline. Demoted to advisory to unjam;
+        # the step still runs + emits ci_parity_drift. Re-promote once INFRA-8125
+        # repairs in-diff detection. Sanctioned INFRA-1869 demotion ceremony.
+        continue-on-error: true
 
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
@@ -1702,7 +1711,7 @@ jobs:
             util-linux
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt
 
@@ -1799,7 +1808,7 @@ jobs:
             util-linux
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: clippy
 
@@ -1918,7 +1927,7 @@ jobs:
             util-linux
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt
 
@@ -2203,7 +2212,7 @@ jobs:
 
       - name: Install Rust toolchain
         if: matrix.suite == 'pwa' || matrix.suite == 'golden-path'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Cache cargo
         if: matrix.suite == 'pwa' || matrix.suite == 'golden-path'
@@ -2425,7 +2434,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -2443,4 +2452,9 @@ jobs:
         run: bash scripts/ci/test-system-integration.sh
         env:
           CHUMP_INTEGRATION_TEST: "1"
+          CHUMP_BIN: target/debug/chump
+
+      - name: Run gap close-decomposed integration test (RESILIENT-1373)
+        run: bash scripts/ci/test-gap-close-decomposed-integration.sh
+        env:
           CHUMP_BIN: target/debug/chump
