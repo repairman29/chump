@@ -39,7 +39,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --role) ROLE="$2"; shift 2;;
     --home) NODE_DIR="$2"; shift 2;;
-    --self-test-only|--check) SELF_TEST_ONLY=1; shift;;
+    --self-test-only|--check|self_test) SELF_TEST_ONLY=1; shift;;
     --dry-run) DRY=1; shift;;
     --control-plane-only) CONTROL_PLANE_ONLY=1; shift;;
     --with-fleet-server) WITH_FLEET_SERVER=1; shift;;
@@ -1647,10 +1647,41 @@ self_test() {
     # shellcheck disable=SC1090
     . "$node_env"
   fi
+
+  # INFRA-3706: resolve and verify canonical store path from node.env
+  local resolved_store="${CHUMP_STATE_DIR:-}"
+  if [ -z "$resolved_store" ]; then
+    no "Error : CHUMP_STATE_DIR not set in node.env or environment"
+    return 1
+  fi
+
+  # AC2: Check for local .chump/state.db in current directory
+  if [ -f "./.chump/state.db" ]; then
+    no "Error : local .chump/state.db detected; use canonical store"
+    return 1
+  fi
+
+  # AC3: Verify resolved store path matches the canonical STATE_DIR
+  if [ "$resolved_store" != "$STATE_DIR" ]; then
+    no "Error : resolved store path does not match CHUMP_STATE_DIR"
+    return 1
+  fi
+
+  # AC1: Print resolved path
+  ok "canonical store resolved: $resolved_store"
+
+  # AC4: invoke chump gap list to complete the test
+  if ! "$BIN" gap list --status open --json >/dev/null 2>&1; then
+    no "Error : chump gap list failed"
+    return 1
+  fi
+  ok "chump gap list executed successfully"
+
   if [ "$CONTROL_PLANE_ONLY" = 1 ]; then
     CHUMP_NODE_WORK_ENABLED=0
     CHUMP_NODE_MODE="control-plane"
   fi
+
   local fail=0
   [ -n "$HOST_KIND" ] && ok "host detected: $HOST_KIND/$ARCH" || { no "host detect"; fail=1; }
   if provider_creds_ready && [ "${CHUMP_NODE_WORK_ENABLED:-1}" = 1 ]; then
