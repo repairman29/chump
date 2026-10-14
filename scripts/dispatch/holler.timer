@@ -1,0 +1,32 @@
+# MISSION-111 — holler timer for autonomous portfolio discovery.
+# Triggers holler.service on a configurable schedule (default: every 5 minutes for testing,
+# 3600s for production). Pairs with holler.service to enable autonomous
+# portfolio scanning without manual invocation.
+#
+# The timer fires holler.service at regular intervals. OnBootSec ensures the first run
+# happens shortly after boot, so holler starts operating without waiting for the next
+# full cycle.
+#
+# AccuracySec=1s is REQUIRED for consistent sub-minute cadences (systemd defaults to 1min
+# accuracy which would smear a 5min interval). See RESILIENT-313 (farmer timer) for
+# the same reasoning.
+#
+# OnUnitInactiveSec is REQUIRED for oneshot services: ensures the timer re-arms after
+# each run completes (the service goes inactive after it finishes).
+#
+# Enable: systemctl enable --now holler.timer
+# Check cadence: systemctl list-timers holler.timer
+#
+[Unit]
+Description=Run holler service on schedule — autonomous portfolio discovery
+Documentation=docs/POSSE_AUTONOMY_CHECKLIST.md
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=300s
+OnUnitInactiveSec=300s
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

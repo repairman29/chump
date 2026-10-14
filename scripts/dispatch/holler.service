@@ -1,0 +1,28 @@
+# MISSION-111 — holler service for autonomous portfolio discovery and holler integration.
+# Loads HOLLER_SERVICE_KEY from environment file during service start.
+# Runs the portfolio scanner and files findings into the holler knowledge base.
+# Depends on: HOLLER_SERVICE_KEY set in /root/.chump/holler.env or equivalent
+#
+# Enable: systemctl enable --now holler.timer
+# Status: systemctl status holler.timer
+#
+[Unit]
+Description=Holler service — autonomous portfolio discovery and finding filing
+After=network-online.target
+Requires=network-online.target
+Documentation=docs/POSSE_AUTONOMY_CHECKLIST.md
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+# Load holler credentials from env file before starting.
+# The env file MUST contain HOLLER_SERVICE_KEY, HOLLER_SUPABASE_URL, HOLLER_ANON_KEY.
+# Sourcing the whole *.env glob ensures credentials are loaded even if the specific
+# holler.env path changes. Pattern matches chump-farmer.service approach (RESILIENT-313).
+ExecStart=/bin/bash -c 'set -a; for e in /root/.chump/*.env; do source "$e" 2>/dev/null; done; set +a; exec /root/Projects/chump/scripts/dispatch/holler-run.sh'
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
