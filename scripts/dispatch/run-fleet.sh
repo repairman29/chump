@@ -1053,6 +1053,9 @@ worker_env=(
     # Operator's personal shell rc is NOT modified by this change; add
     # CHUMP_CONSENSUS_MERGE_GATE=1 there manually to cover interactive invocations.
     "CHUMP_CONSENSUS_MERGE_GATE=${CHUMP_CONSENSUS_MERGE_GATE:-1}"
+    # RESILIENT-383: forward headless test flag to workers so spawn_worker_tool
+    # can detect and handle HEADLESS_TEST=1 mode.
+    ${HEADLESS_TEST:+"HEADLESS_TEST=$HEADLESS_TEST"}
 )
 env_prefix="$(printf '%s ' "${worker_env[@]}")"
 
