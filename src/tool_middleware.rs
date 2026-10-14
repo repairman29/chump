@@ -654,6 +654,8 @@ struct PostconditionResult {
     passed: bool,
     /// Human-readable explanation for logging / blackboard posts.
     detail: String,
+    /// Whether the main branch has moved (detected by comparing commit hashes).
+    pub main_moved: bool,
 }
 
 /// Per-call postcondition check. Returns `None` for tools we don't have a
@@ -688,6 +690,7 @@ fn check_postconditions(
                 return Some(PostconditionResult {
                     passed: false,
                     detail: format!("file '{}' does not exist after write", path),
+                    main_moved: false,
                 });
             }
             // For write_file we expected the file to land. We can't easily
@@ -708,12 +711,14 @@ fn check_postconditions(
                             "file '{}' exists but is empty after non-empty write",
                             path
                         ),
+                        main_moved: false,
                     });
                 }
             }
             Some(PostconditionResult {
                 passed: true,
                 detail: format!("file '{}' exists post-write", path),
+                main_moved: false,
             })
         }
         "git_commit" => {
@@ -734,6 +739,7 @@ fn check_postconditions(
                          committing again",
                         count, limit
                     ),
+                    main_moved: false,
                 });
             }
 
@@ -754,6 +760,7 @@ fn check_postconditions(
                 return Some(PostconditionResult {
                     passed: false,
                     detail: "git status query failed after commit".to_string(),
+                    main_moved: false,
                 });
             }
             let porcelain = String::from_utf8_lossy(&out.stdout);
@@ -770,11 +777,13 @@ fn check_postconditions(
                         "git tree has uncommitted changes after commit: {}",
                         porcelain.lines().take(3).collect::<Vec<_>>().join("; ")
                     ),
+                    main_moved: false,
                 })
             } else {
                 Some(PostconditionResult {
                     passed: true,
                     detail: "git tree clean post-commit".to_string(),
+                    main_moved: false,
                 })
             }
         }
@@ -801,13 +810,76 @@ fn check_postconditions(
                 Some(PostconditionResult {
                     passed: false,
                     detail: format!("branch still ahead of upstream after push: {}", first_line),
+                    main_moved: false,
                 })
             } else {
                 Some(PostconditionResult {
                     passed: true,
                     detail: "branch matches upstream post-push".to_string(),
+                    main_moved: false,
                 })
             }
+        }
+        "main_branch_moved" => {
+            // Detect if the main branch has moved by comparing stored commit
+            // hash with current origin/main hash. Read .organ_commit_hash,
+            // run git rev-parse origin/main, compare, and log the result.
+            let repo_root = crate::repo_path::repo_root();
+            if !repo_root.is_dir() {
+                return None;
+            }
+
+            // Read stored commit hash from .organ_commit_hash file
+            let hash_file = repo_root.join(".organ_commit_hash");
+            let stored_hash = std::fs::read_to_string(&hash_file).ok();
+
+            // Get current origin/main commit hash
+            let out = std::process::Command::new("git")
+                .args(["rev-parse", "origin/main"])
+                .current_dir(&repo_root)
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return Some(PostconditionResult {
+                    passed: false,
+                    detail: "failed to get origin/main commit hash".to_string(),
+                    main_moved: false,
+                });
+            }
+            let current_hash = String::from_utf8_lossy(&out.stdout).trim().to_string();
+
+            // Compare hashes
+            let main_moved = match &stored_hash {
+                None => {
+                    // No stored hash, consider it moved
+                    tracing::info!("Main branch moved: true");
+                    println!("Main branch moved: true");
+                    true
+                }
+                Some(stored) if stored.trim() != current_hash => {
+                    // Hashes differ
+                    tracing::info!("Main branch moved: true");
+                    println!("Main branch moved: true");
+                    true
+                }
+                Some(_) => {
+                    // Hashes match, update the file and log
+                    let _ = std::fs::write(&hash_file, &current_hash);
+                    tracing::info!("Main branch moved: false");
+                    println!("Main branch moved: false");
+                    false
+                }
+            };
+
+            Some(PostconditionResult {
+                passed: true,
+                detail: if main_moved {
+                    "main branch has moved".to_string()
+                } else {
+                    "main branch unchanged".to_string()
+                },
+                main_moved,
+            })
         }
         // run_cli + git_stash/git_revert/cleanup_branches/merge_subtask: too
         // open-ended to verify without re-parsing intent. Heuristic only.
