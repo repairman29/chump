@@ -150,6 +150,9 @@ else
     OPERATOR_ID="${CHUMP_OPERATOR_ID:-}"
 fi
 
+# RESILIENT-464: AUTOPLACE configuration flag (enabled by default)
+AUTOPLACE="${AUTOPLACE:-1}"
+
 # ── Build JSON payload ────────────────────────────────────────────────────────
 build_json() {
     python3 -c "import json,sys; print(json.dumps(dict(zip(sys.argv[1::2],sys.argv[2::2]))))" "$@"
@@ -299,6 +302,13 @@ record_sent_pending() {
         "$TS" "$corr_id" "$to" "$expires_at" >> "$pending_file" 2>/dev/null || true
 }
 
+# ── RESILIENT-464: place() — automatic relocation on high-pressure conditions ──
+# Invoked when AUTOPLACE is enabled and high-pressure conditions (CRIT/EMERGENCY) detected.
+place() {
+    [[ "$AUTOPLACE" == "1" ]] || return 0
+    printf 'AUTOPLACE enabled – automatic relocation engaged\n'
+}
+
 # ── INFRA-2015: urgency-tier routing ─────────────────────────────────────────
 # Called AFTER the primary emit_to_file + emit_to_inbox so the main event
 # always lands in ambient regardless of urgency side-effects.
@@ -343,6 +353,8 @@ print(json.dumps(entry))
                 "$TS" "$SESSION_ID" \
                 "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
                 >> "$AMBIENT" 2>/dev/null || true
+            # High-pressure condition: check AUTOPLACE
+            place
             ;;
         EMERGENCY)
             # Write to global urgent inbox (same as CRIT).
@@ -370,6 +382,8 @@ print(json.dumps(entry))
                 CHUMP_SESSION_ID="$SESSION_ID" \
                     "$injector" --urgency EMERGENCY --body "$msg_body" 2>/dev/null || true
             fi
+            # High-pressure condition: check AUTOPLACE
+            place
             ;;
     esac
 }
