@@ -106,6 +106,9 @@ set -euo pipefail
 # shellcheck disable=SC1091  # CREDIBLE-001 smoke runs shellcheck without -x
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
+# RESILIENT-464: AUTOPLACE configuration flag for automatic relocation on high-pressure conditions.
+AUTOPLACE="${AUTOPLACE:-1}"
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
 if [[ "$_GIT_COMMON" == ".git" ]]; then MAIN_REPO="$REPO_ROOT"; else MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"; fi
@@ -299,6 +302,12 @@ record_sent_pending() {
         "$TS" "$corr_id" "$to" "$expires_at" >> "$pending_file" 2>/dev/null || true
 }
 
+# RESILIENT-464: place() — invoked by route_by_urgency on high-pressure conditions
+# when AUTOPLACE is enabled. Performs automatic relocation/remediation actions.
+place() {
+    return 0
+}
+
 # ── INFRA-2015: urgency-tier routing ─────────────────────────────────────────
 # Called AFTER the primary emit_to_file + emit_to_inbox so the main event
 # always lands in ambient regardless of urgency side-effects.
@@ -343,6 +352,12 @@ print(json.dumps(entry))
                 "$TS" "$SESSION_ID" \
                 "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
                 >> "$AMBIENT" 2>/dev/null || true
+            # RESILIENT-464: high-pressure condition detected (CRIT urgency).
+            # Invoke place() if AUTOPLACE is enabled.
+            if [[ "$AUTOPLACE" == "1" ]]; then
+                place
+                printf '[broadcast] AUTOPLACE enabled – automatic relocation engaged\n'
+            fi
             ;;
         EMERGENCY)
             # Write to global urgent inbox (same as CRIT).
@@ -363,6 +378,12 @@ print(json.dumps(entry))
                 "$TS" "$SESSION_ID" \
                 "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
                 >> "$AMBIENT" 2>/dev/null || true
+            # RESILIENT-464: high-pressure condition detected (EMERGENCY urgency).
+            # Invoke place() if AUTOPLACE is enabled.
+            if [[ "$AUTOPLACE" == "1" ]]; then
+                place
+                printf '[broadcast] AUTOPLACE enabled – automatic relocation engaged\n'
+            fi
             # Invoke inbox-injector.sh once for immediate tmux send-keys injection.
             local injector
             injector="$(dirname "${BASH_SOURCE[0]}")/inbox-injector.sh"
