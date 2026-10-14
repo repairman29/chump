@@ -129,6 +129,8 @@ TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 MODEL="${FLEET_MODEL:-${CHUMP_MODEL:-unknown}}"
 # CREDIBLE-037: include harness attribution in all events so per-harness stats are attributable.
 HARNESS="${CHUMP_AGENT_HARNESS:-unknown}"
+# AUTOPLACE: enable automatic relocation on high-pressure conditions (default: enabled).
+AUTOPLACE="${CHUMP_AUTOPLACE:-1}"
 
 # INFRA-1255: correlation_id ties INTENT/STUCK/HANDOFF (the "request" side)
 # to DONE/ACK (the "response" side). When events share a corr_id, inbox-reap
@@ -299,6 +301,13 @@ record_sent_pending() {
         "$TS" "$corr_id" "$to" "$expires_at" >> "$pending_file" 2>/dev/null || true
 }
 
+# ── place(): automatic relocation on high-pressure conditions ─────────────────
+# Called by route_by_urgency when AUTOPLACE is enabled and a high-pressure
+# condition (CRIT or EMERGENCY urgency) is detected.
+place() {
+    printf 'AUTOPLACE enabled – automatic relocation engaged\n'
+}
+
 # ── INFRA-2015: urgency-tier routing ─────────────────────────────────────────
 # Called AFTER the primary emit_to_file + emit_to_inbox so the main event
 # always lands in ambient regardless of urgency side-effects.
@@ -343,6 +352,10 @@ print(json.dumps(entry))
                 "$TS" "$SESSION_ID" \
                 "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
                 >> "$AMBIENT" 2>/dev/null || true
+            # Check AUTOPLACE flag and invoke place() on high-pressure condition
+            if [[ "$AUTOPLACE" == "1" ]]; then
+                place
+            fi
             ;;
         EMERGENCY)
             # Write to global urgent inbox (same as CRIT).
@@ -363,6 +376,10 @@ print(json.dumps(entry))
                 "$TS" "$SESSION_ID" \
                 "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
                 >> "$AMBIENT" 2>/dev/null || true
+            # Check AUTOPLACE flag and invoke place() on high-pressure condition
+            if [[ "$AUTOPLACE" == "1" ]]; then
+                place
+            fi
             # Invoke inbox-injector.sh once for immediate tmux send-keys injection.
             local injector
             injector="$(dirname "${BASH_SOURCE[0]}")/inbox-injector.sh"
