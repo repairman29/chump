@@ -1658,7 +1658,7 @@ self_test() {
     return 1
   fi
 
-  # AC3: Verify resolved store path matches the canonical STATE_DIR
+  # AC3: Verify resolved store path matches the canonical default
   if [ "$resolved_store" != "$STATE_DIR" ]; then
     no "Error : resolved store path does not match CHUMP_STATE_DIR"
     return 1
@@ -1668,7 +1668,9 @@ self_test() {
   ok "canonical store resolved: $resolved_store"
 
   # AC4: invoke chump gap list to complete the test
-  if ! "$BIN" gap list --status open --json >/dev/null 2>&1; then
+  local chump_bin="${BIN:-}"
+  [ -x "$chump_bin" ] || chump_bin="$(command -v chump)"
+  if [ -z "$chump_bin" ] || ! "$chump_bin" gap list --status open --json >/dev/null 2>&1; then
     no "Error : chump gap list failed"
     return 1
   fi
