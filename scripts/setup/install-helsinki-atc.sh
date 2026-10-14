@@ -109,6 +109,9 @@ emit() {  # kind, extra-json (no leading/trailing comma)
 SYSTEM_UNITS=(
   chump-pr-lander.service
   chump-pr-lander.timer
+  # RESILIENT-1296: duty-officer routes T1 auto-heal/T2 runbook/T3 pages; needs
+  # explicit XDG_RUNTIME_DIR/DBUS_SESSION_BUS_ADDRESS for systemctl --user access.
+  chump-duty-officer.service
   # RESILIENT-1054/1055: chump-armed-rebaser is REMOVED from the roster. The
   # cross-node rebaser swarm (armed-rebaser / armed-pr-rebaser / pr-auto-rebase)
   # caused the merge-race — multiple nodes rebasing armed PRs reset each other's
@@ -303,7 +306,7 @@ SYSTEM_UNITS=(
   chump-conductor.service
   chump-conductor.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-gap-close-decomposed.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -475,6 +478,25 @@ for unit in "${SYSTEM_UNITS[@]}"; do
   fi
   cp -f "$tmp" "$dest"; rm -f "$tmp"
   echo "  installed $unit (host-rewritten -> $RUN_USER)"
+
+  # RESILIENT-1296: copy .service.d drop-in directories if they exist
+  src_dropin="$REPO_ROOT/scripts/dispatch/${unit}.d"
+  if [[ -d "$src_dropin" ]]; then
+    dest_dropin="$SYSTEMD_DEST_DIR/${unit}.d"
+    mkdir -p "$dest_dropin"
+    # Compute the UID for the run-user so drop-ins can reference it
+    run_uid="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f3)"
+    for dropin_file in "$src_dropin"/*; do
+      [[ -f "$dropin_file" ]] || continue
+      dropin_name="$(basename "$dropin_file")"
+      dropin_tmp="$(mktemp)"
+      # Replace @UID@ placeholder with the actual UID for systemd drop-in path references
+      sed "s/@UID@/$run_uid/g" "$dropin_file" > "$dropin_tmp"
+      cp -f "$dropin_tmp" "$dest_dropin/$dropin_name"
+      rm -f "$dropin_tmp"
+      echo "    installed drop-in $(basename "$dest_dropin")/$dropin_name (UID=$run_uid)"
+    done
+  fi
 done
 
 # RESILIENT-318 / INFRA-2130: the Batched Merge Train needs its own binary, which

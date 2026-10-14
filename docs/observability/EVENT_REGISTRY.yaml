@@ -544,6 +544,14 @@ events:
       (automated form of the board hand-block)
     consumers: [fleet-brief, watchdog]
     fields_required: [gap_id, offenses, last_kind, rc]
+  - kind: capable_agent_escalation
+    effect_metric: self
+    emitter: scripts/dispatch/lib/offense-ledger.sh (RESILIENT-1344)
+    trigger: a gap accrued CHUMP_AUTO_BLOCK_THRESHOLD consecutive non-ship cycles
+      with Capability classification (repeated failures after model-tier escalation);
+      routes gap to capable_agent escalation queue instead of auto-blocking
+    consumers: [escalation-lane, fleet-brief]
+    fields_required: [gap_id, offenses, last_kind, reason]
   - kind: unverified_ship_attempt
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
@@ -2321,7 +2329,7 @@ events:
       Never fires on a transient red that clears before the window, since
       main_red_span resets to 0 the moment a benign status line lands.
     consumers: [ambient]
-    fields_required: [ts, kind, main_red_span_min, threshold_min]
+    fields_required: [ts, kind, main_red_span_min, threshold_min, failed_check]
   # NOTE: board_vitals_alert (the notify/page kind set via CHUMP_NOTIFY_KIND) is
   # deliberately NOT registered here — like its sibling board_cycle_alert, it is
   # a notify/page kind whose home is scripts/coord/operator-escalation-registry.txt,
