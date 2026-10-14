@@ -15788,6 +15788,66 @@ async fn main() -> Result<()> {
 
                 return Ok(());
             }
+            "migrate-decomposed" => {
+                // RESILIENT-1383: migrate legacy decomposed umbrellas from open/blocked to decomposed status.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!("Usage: chump gap migrate-decomposed [--json]");
+                    println!();
+                    println!("Migrate legacy decomposed umbrellas to status=decomposed.");
+                    println!("Selects gaps with 'Decomposed into' notes + ≥1 non-terminal child.");
+                    println!("  --json                    Output migration log as JSON");
+                    return Ok(());
+                }
+                let json_out = args.iter().skip(3).any(|a| a == "--json");
+                match store.migrate_decomposed_umbrellas() {
+                    Ok(log_entries) => {
+                        let total_inspected = log_entries.len();
+                        let migrated = log_entries
+                            .iter()
+                            .filter(|e| e.migration_status == "MIGRATED")
+                            .count();
+                        let skipped = total_inspected - migrated;
+
+                        if json_out {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&serde_json::json!({
+                                    "total_inspected": total_inspected,
+                                    "migrated": migrated,
+                                    "skipped": skipped,
+                                    "log": log_entries
+                                }))
+                                .unwrap_or_default()
+                            );
+                        } else {
+                            println!("Migration summary:");
+                            println!("  Total inspected: {}", total_inspected);
+                            println!("  Migrated: {}", migrated);
+                            println!("  Skipped: {}", skipped);
+                            if !log_entries.is_empty() {
+                                println!();
+                                for entry in &log_entries {
+                                    if entry.migration_status == "MIGRATED" {
+                                        println!(
+                                            "  ✓ {} — {} ({} children)",
+                                            entry.gap_id, entry.gap_title, entry.child_count
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        std::process::exit(if migrated > 0 { 0 } else { 0 });
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap migrate-decomposed: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "close-decomposed" => {
                 // RESILIENT-1364 fix #2: sweep every status='decomposed'
                 // umbrella and auto-close (-> done) any whose slices
