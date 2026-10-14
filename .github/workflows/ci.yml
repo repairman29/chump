@@ -1531,6 +1531,11 @@ jobs:
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-bot-merge-auto-close.sh
 
+      - name: timer-driven auto-close of decomposed parents (RESILIENT-1374)
+        run: |
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
+            bash scripts/ci/test-auto-close.sh
+
       - name: bot-merge health monitoring + hung-process detection (INFRA-119)
         run: bash scripts/ci/test-infra-119-bot-merge-hang.sh
 
