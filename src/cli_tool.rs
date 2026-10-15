@@ -291,6 +291,21 @@ impl CliTool {
         if cmd.is_empty() {
             return Err(anyhow!("empty command"));
         }
+
+        // RESILIENT-1427: check admission for cargo build/install commands (agent builds).
+        if cmd.starts_with("cargo build") || cmd.starts_with("cargo install") {
+            let max_concurrent_jobs = std::env::var("CARGO_BUILD_JOBS")
+                .ok()
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(4);
+            if let Err(e) = crate::admission_check::check_admission(max_concurrent_jobs) {
+                return Err(anyhow!("cargo job admission check failed: {}", e));
+            }
+            // Log the job as running for metrics.
+            let _ =
+                crate::job_log::insert_job("cargo_job", "running", None, None, Some(&cmd), None);
+        }
+
         let (risk_level, risk_reason) = heuristic_risk(&cmd);
         let preview = if cmd.len() > 80 {
             format!("{}...", &cmd[..80])

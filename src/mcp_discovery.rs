@@ -564,7 +564,16 @@ pub fn install_mcp_server(
     } else if no_install {
         InstallOutcome::ConfigOnly
     } else {
+        // RESILIENT-1427: check admission before running cargo install (install-time job).
+        let max_concurrent_jobs = std::env::var("CARGO_BUILD_JOBS")
+            .ok()
+            .and_then(|s| s.parse::<i32>().ok())
+            .unwrap_or(4);
+        crate::admission_check::check_admission(max_concurrent_jobs)?;
+
         let package = entry.package.as_deref().unwrap_or(&binary_name);
+        crate::job_log::insert_job("cargo_job", "running", None, None, Some(package), None)?;
+
         let status = std::process::Command::new("cargo")
             .args(["install", package])
             .status()
