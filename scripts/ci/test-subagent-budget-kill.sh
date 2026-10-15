@@ -66,16 +66,18 @@ else
     fail "src/dispatch.rs missing legacy env-var fallback"
 fi
 
-# ---- 6. Default is 900s (matching CLAUDE.md self-discipline rule) ----
-# Look for .unwrap_or(900) on the budget chain.
-if grep -A2 'CHUMP_SUBAGENT_BUDGET_S' "$SRC" | grep -q 'unwrap_or(900)'; then
-    pass "src/dispatch.rs default budget = 900s"
+# ---- 6. Default is 1800s (RESILIENT-1494 operator ruling; matches CLAUDE.md) ----
+# The default lives in DEFAULT_SUBAGENT_BUDGET_SECS and is used via
+# .unwrap_or(DEFAULT_SUBAGENT_BUDGET_SECS) on the budget chain.
+if grep -q 'const DEFAULT_SUBAGENT_BUDGET_SECS: u64 = 1800' "$SRC" \
+    || grep -A2 'CHUMP_SUBAGENT_BUDGET_S' "$SRC" | grep -q 'unwrap_or(1800)'; then
+    pass "src/dispatch.rs default budget = 1800s"
 else
     # Less strict — allow it on a nearby line
-    if grep -B5 -A20 'CHUMP_SUBAGENT_BUDGET_S' "$SRC" | grep -q 'unwrap_or(900)'; then
-        pass "src/dispatch.rs default budget = 900s (within budget block)"
+    if grep -B5 -A20 'CHUMP_SUBAGENT_BUDGET_S' "$SRC" | grep -q 'unwrap_or(1800)'; then
+        pass "src/dispatch.rs default budget = 1800s (within budget block)"
     else
-        fail "src/dispatch.rs default budget should be 900 (matching CLAUDE.md)"
+        fail "src/dispatch.rs default budget should be 1800 (matching CLAUDE.md)"
     fi
 fi
 

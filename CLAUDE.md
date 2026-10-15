@@ -273,7 +273,7 @@ Opus orchestrates and reviews; Sonnet implements per-gap; Haiku does mechanical
 sweeps. When an Opus instance picks an `xs` or `s` gap, the default move is to
 dispatch a Sonnet rather than hand-implement.
 
-**Wall-clock budget:** `CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S` (default 900s = 15 min).
+Subagent budget default 1800s/30min (900s SIGTERMed real work mid-ship — e.g. a 956s clippy run — producing empty-branch ships, INFRA-8114). Stall-discipline: scripts/dispatch/worker.sh has a real no-output stall detector (idle-kill, defers while a build descendant is live, ~L2041, RESILIENT-157). The `chump dispatch` path (src/dispatch.rs) has ONLY this 1800s budget plus a 3600s wall-clock backstop (CHUMP_DISPATCH_HANG_TIMEOUT_SECS) — a no-output kill there is still TODO (INFRA-8187).
 If `bot-merge.sh` has been running for 15 min without progress markers, the
 subagent **must** switch to manual recovery — passive waiting is a stall pattern.
 See the SUBAGENT_DISPATCH.md "STOP" block for the exact mandate.
