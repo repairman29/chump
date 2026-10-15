@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.chump.supabase-db-size-monitor</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>bash</string>
+		<string>/Users/jeffadkins/Projects/Chump/scripts/ops/supabase-db-size-monitor.sh</string>
+	</array>
+	<key>StartInterval</key>
+	<integer>86400</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/var/log/com.chump.supabase-db-size-monitor.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/log/com.chump.supabase-db-size-monitor.err</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+</dict>
+</plist>

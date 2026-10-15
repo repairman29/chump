@@ -202,3 +202,8 @@ install-state-db-yaml-sync-launchd.sh
 # organ like the other curator loops, not a fresh-bootstrap requirement: a
 # checkout without it still functions, the pickable queue just goes untended.
 install-queue-tender.sh
+
+# PRODUCT-378 — Supabase database size monitor (launchd user agent). Opt-in
+# situational installer: requires OLIVE_SUPABASE_URL and OLIVE_SUPABASE_KEY
+# credentials to be set, not a universal fresh-bootstrap requirement.
+install-supabase-db-size-monitor-launchd.sh
