@@ -31,6 +31,8 @@ _sccache_ambient() {
     echo "${CHUMP_AMBIENT_LOG:-$(_sccache_repo_root)/.chump-locks/ambient.jsonl}"
 }
 
+# scanner-anchor (EVENT_REGISTRY coverage; kinds are passed via $1 below):
+#   {"kind":"sccache_wrapper_enabled"} {"kind":"sccache_daemon_start_failed"} {"kind":"sccache_build_stats"}
 # Emit a structured event to ambient (best-effort).
 _sccache_emit() {
     local kind="$1"; shift
