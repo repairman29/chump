@@ -362,6 +362,17 @@ fn write_state_db_scaffold(path: &Path) -> Result<()> {
             gap_id      TEXT NOT NULL,
             event       TEXT NOT NULL,
             ts          TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS chump_async_jobs (
+            id          TEXT PRIMARY KEY,
+            job_type    TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            task_id     INTEGER,
+            session_id  TEXT,
+            last_error  TEXT,
+            detail      TEXT NOT NULL DEFAULT '',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );",
     )
     .map_err(|e| anyhow!("state.db scaffold failed: {e}"))?;

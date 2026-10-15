@@ -31,6 +31,16 @@ pub fn insert_job(
     Ok(())
 }
 
+/// Update job status (for tracking completion).
+pub fn update_job_status(id: &str, status: &str, error: Option<&str>) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    conn.execute(
+        "UPDATE chump_async_jobs SET status = ?1, last_error = ?2, updated_at = datetime('now') WHERE id = ?3",
+        params![status, error.unwrap_or(""), id],
+    )?;
+    Ok(())
+}
+
 /// Recent jobs, newest first.
 pub fn recent_jobs(limit: usize) -> Result<Vec<Value>> {
     let conn = crate::db_pool::get()?;
