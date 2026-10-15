@@ -239,4 +239,105 @@ mod tests {
         assert!(outcomes[0].success);
         assert!(outcomes[1].success);
     }
+
+    // RESILIENT-1359: Integration tests for synthetic FAIL triggering gap filing
+    #[test]
+    fn synthetic_fail_gap_drift_creates_gap_with_tag() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path();
+
+        // Initialize gap store
+        let store = chump_gap_store::GapStore::open(repo_root).unwrap();
+
+        // Verify store is empty initially
+        let initial_gaps = store.list(Some("open")).unwrap();
+        assert_eq!(initial_gaps.len(), 0, "Store should start empty");
+
+        // Dispatch synthetic FAIL for gap-drift (first time)
+        let outcome1 = dispatch_fail(repo_root, health_check_routing::check_id::GAP_DRIFT);
+
+        // Verify dispatch succeeded
+        assert!(outcome1.success, "dispatch should succeed");
+        assert_eq!(outcome1.check_id, "gap-drift");
+        assert_eq!(outcome1.action, FixerAction::GapFile);
+
+        // Query gap store and verify gap was created with tag
+        let gaps_after = store.list(Some("open")).unwrap();
+        assert_eq!(gaps_after.len(), 1, "Exactly one gap should be created");
+
+        let created_gap = &gaps_after[0];
+
+        // Verify gap has the health-check:gap-drift tag
+        assert!(
+            created_gap.notes.contains("health-check:gap-drift"),
+            "Gap notes should contain health-check:gap-drift tag"
+        );
+        assert_eq!(created_gap.domain, "INFRA");
+        assert_eq!(created_gap.priority, "P1");
+        assert_eq!(created_gap.status, "open");
+    }
+
+    #[test]
+    fn synthetic_fail_gap_drift_second_call_deduplicates() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path();
+
+        let store = chump_gap_store::GapStore::open(repo_root).unwrap();
+
+        // First dispatch
+        let outcome1 = dispatch_fail(repo_root, health_check_routing::check_id::GAP_DRIFT);
+        assert!(outcome1.success);
+
+        let gaps_after_first = store.list(Some("open")).unwrap();
+        assert_eq!(gaps_after_first.len(), 1);
+        let first_gap_id = gaps_after_first[0].id.clone();
+
+        // Second dispatch (same check)
+        let outcome2 = dispatch_fail(repo_root, health_check_routing::check_id::GAP_DRIFT);
+        assert!(outcome2.success);
+
+        // Verify NO duplicate was created
+        let gaps_after_second = store.list(Some("open")).unwrap();
+        assert_eq!(
+            gaps_after_second.len(),
+            1,
+            "Second dispatch should not create duplicate (idempotent)"
+        );
+
+        // Verify it's the same gap
+        assert_eq!(
+            gaps_after_second[0].id, first_gap_id,
+            "Should return the same gap ID on second call"
+        );
+    }
+
+    #[test]
+    fn synthetic_fail_different_checks_create_separate_gaps() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path();
+
+        let store = chump_gap_store::GapStore::open(repo_root).unwrap();
+
+        // Dispatch gap-drift
+        let outcome1 = dispatch_fail(repo_root, health_check_routing::check_id::GAP_DRIFT);
+        assert!(outcome1.success);
+
+        // Dispatch p0-budget (different check)
+        let outcome2 = dispatch_fail(repo_root, health_check_routing::check_id::P0_BUDGET);
+        assert!(outcome2.success);
+
+        // Verify both gaps exist with different tags
+        let gaps = store.list(Some("open")).unwrap();
+        assert_eq!(gaps.len(), 2, "Two different checks should create two gaps");
+
+        let gap1 = gaps.iter().find(|g| g.notes.contains("gap-drift")).unwrap();
+        let gap2 = gaps.iter().find(|g| g.notes.contains("p0-budget")).unwrap();
+
+        assert_ne!(
+            gap1.id, gap2.id,
+            "Different checks should produce different gap IDs"
+        );
+        assert!(gap1.notes.contains("health-check:gap-drift"));
+        assert!(gap2.notes.contains("health-check:p0-budget"));
+    }
 }
