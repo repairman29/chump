@@ -13,6 +13,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+#[cfg(test)]
+use std::os::unix::fs::PermissionsExt;
 
 const STALE_THRESHOLD_SECS: i64 = 24 * 3600;
 
@@ -248,6 +252,71 @@ pub fn render_status_text(rows: &[StatusRow]) -> String {
     out
 }
 
+/// Send a wake signal to a curator via the curator-communication channel.
+///
+/// Invokes `scripts/coord/broadcast.sh --to role:<curator_id> ALERT kind=curator_wake`
+/// to notify the specified curator role to wake/refresh. Emits an ambient event at
+/// DEBUG level recording the wake attempt.
+///
+/// # Arguments
+/// * `repo_root` - Path to the chump repository root
+/// * `curator_id` - Curator role identifier (e.g., "deliberator", "shepherd")
+///
+/// Returns Ok(()) on successful delivery, Err with details on failure.
+pub fn send_wake_signal(repo_root: &Path, curator_id: &str) -> std::io::Result<()> {
+    let broadcast_script = repo_root.join("scripts/coord/broadcast.sh");
+
+    if !broadcast_script.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("broadcast.sh not found at {}", broadcast_script.display()),
+        ));
+    }
+
+    let role_target = format!("role:{}", curator_id);
+    let message = format!("Wake signal for curator: {}", curator_id);
+
+    let output = Command::new("bash")
+        .arg(&broadcast_script)
+        .arg("--to")
+        .arg(&role_target)
+        .arg("ALERT")
+        .arg("kind=curator_wake")
+        .arg(&message)
+        .output()?;
+
+    let success = output.status.success();
+    let success_str = success.to_string();
+
+    eprintln!(
+        "DEBUG: curator_wake signal sent to '{}': success={}, stdout={}, stderr={}",
+        curator_id,
+        success,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    emit_ambient_event(
+        repo_root,
+        "curator_wake_signal_sent",
+        &[
+            ("curator", curator_id.to_string()),
+            ("success", success_str),
+            ("message", message),
+        ],
+    );
+
+    if success {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "broadcast.sh failed for curator '{}': {}",
+            curator_id,
+            String::from_utf8_lossy(&output.stderr)
+        )))
+    }
+}
+
 // INFRA-2185: ring-the-bell core-mechanism coverage — lane parsing, the
 // refresh action (memory write + staleness resolution), and status rows.
 #[cfg(test)]
@@ -331,5 +400,32 @@ mod tests {
         assert!(rows[0].stale);
         assert_eq!(rows[0].last_refresh, None);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn send_wake_signal_requires_broadcast_script() {
+        let root = tempfile::tempdir().unwrap();
+        let result = send_wake_signal(root.path(), "shepherd");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn send_wake_signal_emits_ambient_event() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("scripts/coord")).unwrap();
+        let script = root.path().join("scripts/coord/broadcast.sh");
+        std::fs::write(&script, "#!/bin/bash\nexit 0\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let result = send_wake_signal(root.path(), "deliberator");
+        assert!(result.is_ok());
+
+        let ambient = root.path().join(".chump-locks/ambient.jsonl");
+        assert!(ambient.exists());
+        let content = std::fs::read_to_string(&ambient).unwrap();
+        assert!(content.contains("curator_wake_signal_sent"));
+        assert!(content.contains("\"curator\":\"deliberator\""));
     }
 }

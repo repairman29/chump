@@ -11,6 +11,7 @@
 //! Each dispatch logs the chosen action at INFO level via ambient events for audit trail visibility.
 
 use crate::ambient_emit::{emit, EmitArgs};
+use crate::curator_bell;
 use crate::gap_filer;
 use crate::health_check_routing::{self, FixerAction};
 use std::path::Path;
@@ -49,7 +50,7 @@ pub fn dispatch_fail(repo_root: &Path, check_id: &str) -> DispatchOutcome {
             });
             match action {
                 FixerAction::GapFile => handle_gap_file(repo_root, check_id),
-                FixerAction::CuratorWake => handle_curator_wake(check_id),
+                FixerAction::CuratorWake => handle_curator_wake(repo_root, check_id),
             }
         }
         None => {
@@ -137,17 +138,32 @@ fn handle_gap_file(repo_root: &Path, check_id: &str) -> DispatchOutcome {
 }
 
 /// Handler for `curator_wake` action: trigger restart of silent curator role.
-fn handle_curator_wake(check_id: &str) -> DispatchOutcome {
+fn handle_curator_wake(repo_root: &Path, check_id: &str) -> DispatchOutcome {
     let curator_label = match check_id {
         health_check_routing::check_id::A2A_CONSENSUS => "deliberator",
         health_check_routing::check_id::CURATOR_SILENT => "silent-curator",
         _ => "unknown-curator",
     };
 
-    let message = format!(
-        "curator_wake handler: would wake curator '{}'",
-        curator_label
-    );
+    let wake_result = curator_bell::send_wake_signal(repo_root, curator_label);
+
+    let (success, message) = match wake_result {
+        Ok(_) => (
+            true,
+            format!(
+                "curator_wake handler: successfully woke curator '{}'",
+                curator_label
+            ),
+        ),
+        Err(e) => (
+            false,
+            format!(
+                "curator_wake handler: failed to wake curator '{}': {}",
+                curator_label, e
+            ),
+        ),
+    };
+
     let _ = emit(&EmitArgs {
         kind: "fleet_doctor_dispatcher_curator_wake".to_string(),
         source: Some("fleet_doctor_dispatcher".to_string()),
@@ -155,17 +171,15 @@ fn handle_curator_wake(check_id: &str) -> DispatchOutcome {
             ("check_id".to_string(), check_id.to_string()),
             ("action".to_string(), "curator_wake".to_string()),
             ("curator".to_string(), curator_label.to_string()),
+            ("success".to_string(), success.to_string()),
         ],
         ..Default::default()
     });
 
-    // TODO(RESILIENT-1356): implement actual curator wake-up logic
-    // For now, just log the intent.
-
     DispatchOutcome {
         check_id: check_id.to_string(),
         action: FixerAction::CuratorWake,
-        success: true,
+        success,
         message,
     }
 }
