@@ -106,7 +106,6 @@ mod file_watch;
 mod fleet;
 mod fleet_capability;
 mod fleet_db;
-mod fleet_doctor_dispatcher; // RESILIENT-1355: routing dispatcher for health check failures
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
 mod fleet_mode;
@@ -120,7 +119,6 @@ mod fleet_tool;
 mod fleet_velocity;
 mod floor_temp; // INFRA-1992: THE FLOOR Phase 1 — floor-temperature signal
 mod ftue_tool;
-mod gap_filer; // RESILIENT-1356: gap filing and deduplication
 mod rebase_queue; // INFRA-2225: fleet rebase-queue — auto-rebase daemon backlog surface
                   // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
                   // The rename keeps every `gap_store::*` call site compiling unchanged.
@@ -152,7 +150,6 @@ mod github_rate_limit;
 mod gonogo; // INFRA-3481/INFRA-5340: honest go/no-go verdict parsing, cloned from pr_ac_coverage::parse_judge_verdicts
 mod harvester_cli; // INFRA-1823: chump harvest <scan|check|brief|deep-scan|list-clusters> — fleet cartographer CLI
 mod health;
-mod health_check_routing; // RESILIENT-1354: routing configuration for health check failures
 mod health_server;
 mod hitl_escalation;
 mod hooks;

@@ -10,4 +10,7 @@
 //! unchanged. Future slices move more modules here the same way.
 
 pub mod calc_tool;
+pub mod fleet_doctor_dispatcher;
+pub mod gap_filer;
+pub mod health_check_routing;
 pub mod subcommand_registry;

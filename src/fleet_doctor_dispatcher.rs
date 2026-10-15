@@ -10,7 +10,6 @@
 //!
 //! Each dispatch logs the chosen action at INFO level via ambient events for audit trail visibility.
 
-use crate::ambient_emit::{emit, EmitArgs};
 use crate::gap_filer;
 use crate::health_check_routing::{self, FixerAction};
 use anyhow::Result;
@@ -38,29 +37,12 @@ pub struct DispatchOutcome {
 /// Returns a DispatchOutcome documenting what was attempted and whether it succeeded.
 pub fn dispatch_fail(repo_root: &Path, check_id: &str) -> DispatchOutcome {
     match health_check_routing::fixer_for_check(check_id) {
-        Some(action) => {
-            let _ = emit(&EmitArgs {
-                kind: "fleet_doctor_dispatcher_invoked".to_string(),
-                source: Some("fleet_doctor_dispatcher".to_string()),
-                fields: vec![
-                    ("check_id".to_string(), check_id.to_string()),
-                    ("action".to_string(), action.as_str().to_string()),
-                ],
-                ..Default::default()
-            });
-            match action {
-                FixerAction::GapFile => handle_gap_file(repo_root, check_id),
-                FixerAction::CuratorWake => handle_curator_wake(check_id),
-            }
-        }
+        Some(action) => match action {
+            FixerAction::GapFile => handle_gap_file(repo_root, check_id),
+            FixerAction::CuratorWake => handle_curator_wake(check_id),
+        },
         None => {
             let message = format!("unknown health check: {}; no action configured", check_id);
-            let _ = emit(&EmitArgs {
-                kind: "fleet_doctor_dispatcher_unknown_check".to_string(),
-                source: Some("fleet_doctor_dispatcher".to_string()),
-                fields: vec![("check_id".to_string(), check_id.to_string())],
-                ..Default::default()
-            });
             DispatchOutcome {
                 check_id: check_id.to_string(),
                 action: FixerAction::GapFile,
@@ -86,7 +68,7 @@ fn handle_gap_file(repo_root: &Path, check_id: &str) -> DispatchOutcome {
     // Attempt to file the gap with deduplication
     match gap_filer::file_gap_with_dedup(repo_root, check_id, title, "INFRA", "P1", "s") {
         Ok(outcome) => {
-            let (message, gap_id) = match outcome {
+            let (message, _gap_id) = match outcome {
                 gap_filer::FileGapOutcome::Created(id) => {
                     (format!("gap_file handler: created new gap {}", id), id)
                 }
@@ -95,18 +77,6 @@ fn handle_gap_file(repo_root: &Path, check_id: &str) -> DispatchOutcome {
                     id,
                 ),
             };
-
-            let _ = emit(&EmitArgs {
-                kind: "fleet_doctor_dispatcher_gap_file".to_string(),
-                source: Some("fleet_doctor_dispatcher".to_string()),
-                fields: vec![
-                    ("check_id".to_string(), check_id.to_string()),
-                    ("action".to_string(), "gap_file".to_string()),
-                    ("gap_id".to_string(), gap_id.clone()),
-                    ("title".to_string(), title.to_string()),
-                ],
-                ..Default::default()
-            });
 
             DispatchOutcome {
                 check_id: check_id.to_string(),
@@ -117,15 +87,6 @@ fn handle_gap_file(repo_root: &Path, check_id: &str) -> DispatchOutcome {
         }
         Err(e) => {
             let message = format!("gap_file handler: error filing gap: {}", e);
-            let _ = emit(&EmitArgs {
-                kind: "fleet_doctor_dispatcher_gap_file_error".to_string(),
-                source: Some("fleet_doctor_dispatcher".to_string()),
-                fields: vec![
-                    ("check_id".to_string(), check_id.to_string()),
-                    ("error".to_string(), e.to_string()),
-                ],
-                ..Default::default()
-            });
 
             DispatchOutcome {
                 check_id: check_id.to_string(),
@@ -153,16 +114,6 @@ pub fn curator_wake_signal(curator_id: &str) -> Result<()> {
         curator_id
     );
 
-    let _ = emit(&EmitArgs {
-        kind: "curator_wake_signal".to_string(),
-        source: Some("fleet_doctor_dispatcher".to_string()),
-        fields: vec![
-            ("curator_id".to_string(), curator_id.to_string()),
-            ("action".to_string(), "wake".to_string()),
-        ],
-        ..Default::default()
-    })?;
-
     tracing::debug!(
         "curator_wake_signal: wake message delivered to curator '{}'",
         curator_id
@@ -177,17 +128,6 @@ fn handle_curator_wake(check_id: &str) -> DispatchOutcome {
         health_check_routing::check_id::CURATOR_SILENT => "silent-curator",
         _ => "unknown-curator",
     };
-
-    let _ = emit(&EmitArgs {
-        kind: "fleet_doctor_dispatcher_curator_wake".to_string(),
-        source: Some("fleet_doctor_dispatcher".to_string()),
-        fields: vec![
-            ("check_id".to_string(), check_id.to_string()),
-            ("action".to_string(), "curator_wake".to_string()),
-            ("curator".to_string(), curator_label.to_string()),
-        ],
-        ..Default::default()
-    });
 
     match curator_wake_signal(curator_label) {
         Ok(()) => {
