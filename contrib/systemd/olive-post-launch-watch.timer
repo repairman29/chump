@@ -1,0 +1,16 @@
+[Unit]
+Description=Olive Post-Launch Watch Daily Timer
+Documentation=file:///path/to/PRODUCT-382.md
+Requires=olive-post-launch-watch.service
+
+[Timer]
+# Run every day at 09:00 UTC
+OnCalendar=daily
+OnCalendar=*-*-* 09:00:00
+# Run immediately on startup if we missed a scheduled time (e.g., machine was off)
+Persistent=true
+# Run with 60s random delay to avoid thundering herd if multiple machines
+RandomizedDelaySec=60s
+
+[Install]
+WantedBy=timers.target

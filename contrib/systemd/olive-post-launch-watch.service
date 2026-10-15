@@ -1,0 +1,21 @@
+[Unit]
+Description=Olive Post-Launch Watch Daily Reporter
+Documentation=file:///path/to/PRODUCT-382.md
+Requires=olive-post-launch-watch.timer
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash %h/chump/scripts/product/olive-post-launch-report.sh
+WorkingDirectory=%h/chump
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=olive-watch
+Environment="CHUMP_DATA_DIR=%h/chump/.chump-locks"
+
+# Service-role token via environment, not in the script
+# This follows the mint-on-node pattern per PRODUCT-382 AC #4
+# The token is injected by systemd or read from secure storage
+# Example: ExecStart=/bin/bash -c 'source secure-token-provider.sh && %h/chump/scripts/product/olive-post-launch-report.sh'
+
+[Install]
+WantedBy=multi-user.target

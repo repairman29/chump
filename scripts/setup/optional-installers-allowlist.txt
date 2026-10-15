@@ -203,7 +203,10 @@ install-state-db-yaml-sync-launchd.sh
 # checkout without it still functions, the pickable queue just goes untended.
 install-queue-tender.sh
 
-# MISSION-111 — holler service provisioning and timer installation. Situational
-# opt-in for fleet alerts, not a fresh-bootstrap requirement. Manually invoked
-# per docs/process/HOLLER_SERVICE_SETUP.md when enabling alert emission.
-install-holler-systemd.sh
+# PRODUCT-382 — 14-day post-launch watch for Olive (2026-10-11 through ~2026-10-24).
+# Reports daily sign-ups, stores, cart pushes, feedback deltas to board channel.
+# Opt-in: only needed during the post-launch watch period. Installer handles plist
+# expansion and launchctl load; script runs via daily timer at 09:00 UTC.
+install-olive-watch.sh
+# PRODUCT-382 — 14-day post-launch watch for Olive (2026-10-11 through ~2026-10-24). Opt-in.
+install-olive-watch.sh

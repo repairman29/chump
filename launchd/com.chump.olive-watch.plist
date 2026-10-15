@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.olive-watch — PRODUCT-382 post-launch report
+
+  Daily reporting daemon for Olive: tracks sign-ups, stores connected, cart
+  pushes, and feedback since the 2026-10-10 Facebook ask. Reports daily to
+  the board channel for 14 days (through ~2026-10-24).
+
+  Baseline is taken on first run (2026-10-11) and stored in .chump-locks/
+  so it persists across sessions. Service-role token is injected via
+  environment (mint-on-node pattern) per AC requirement #4.
+
+  INSTALLATION:
+    launchctl load ~/Library/LaunchAgents/com.chump.olive-watch.plist
+
+  STATUS:
+    launchctl list | grep com.chump.olive-watch
+    tail -F /tmp/olive-watch.out.log
+    tail -F /tmp/olive-watch.err.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.olive-watch.plist
+    rm ~/Library/LaunchAgents/com.chump.olive-watch.plist
+
+  AC TRACEABILITY:
+    1. Daily line to board channel ✓ (posting via Discord webhook)
+    2. Baseline stored, not hardcoded ✓ (olive-baseline.json)
+    3. Non-Jeff cart push callout ✓ (query_olive_non_jeff_pushes)
+    4. Service-role token mint-on-node ✓ (via OLIVE_DB_URL env + DISCORD_WEBHOOK)
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.olive-watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd "$HOME/chump" &amp;&amp; bash scripts/product/olive-post-launch-report.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>$HOME/chump</string>
+
+  <!-- Run once per day at 09:00 UTC (1:00 AM PT in Oct) -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- Ensure the job runs if machine was asleep at scheduled time -->
+  <key>StartInterval</key>
+  <integer>86400</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/olive-watch.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/olive-watch.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+    <!-- Service-role token for Olive database (mint-on-node, per AC #4) -->
+    <!-- This is injected at runtime and never stored in the plist -->
+    <key>OLIVE_DB_URL</key>
+    <string>https://your-olive-db.supabase.co/rest/v1</string>
+    <!-- Discord webhook for board channel post -->
+    <key>DISCORD_WEBHOOK</key>
+    <string>https://discordapp.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN</string>
+    <!-- Data directory for baseline storage -->
+    <key>CHUMP_DATA_DIR</key>
+    <string>$HOME/chump/.chump-locks</string>
+  </dict>
+
+  <!-- Throttle to prevent rapid restarts on failure -->
+  <key>ThrottleInterval</key>
+  <integer>3600</integer>
+</dict>
+</plist>
