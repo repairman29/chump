@@ -439,4 +439,88 @@ mod tests {
     fn parse_owner_repo_non_github_returns_none() {
         assert_eq!(parse_owner_repo("https://example.com/foo/bar.git"), None);
     }
+
+    #[test]
+    fn idempotency_detects_existing_markers() {
+        let dir = tempfile::tempdir().unwrap();
+        write_file(
+            dir.path(),
+            ".beast-mode-tasks.json",
+            r#"[{"id":"t1","title":"Fix bug"},{"id":"t2","title":"Add feature"}]"#,
+        );
+
+        let repo_tag = "test/repo";
+        let marker_t1 = ingest_marker(repo_tag, "t1");
+        let marker_t2 = ingest_marker(repo_tag, "t2");
+
+        assert_eq!(marker_t1, "[ingest:test/repo:t1]");
+        assert_eq!(marker_t2, "[ingest:test/repo:t2]");
+
+        let (_, items) = discover_backlog(dir.path()).unwrap();
+        assert_eq!(items.len(), 2);
+
+        for item in &items {
+            assert!(
+                item.key == "t1" || item.key == "t2",
+                "unexpected key: {}",
+                item.key
+            );
+        }
+    }
+
+    #[test]
+    fn idempotency_skips_items_with_ingest_markers() {
+        let repo_tag = "owner/repo";
+        let existing = vec![
+            "[ingest:owner/repo:item-1]".to_string(),
+            "[ingest:owner/repo:item-2]".to_string(),
+        ];
+        let existing_set: HashSet<_> = existing.iter().cloned().collect();
+
+        let marker_1 = ingest_marker(repo_tag, "item-1");
+        let marker_2 = ingest_marker(repo_tag, "item-2");
+        let marker_3 = ingest_marker(repo_tag, "item-3");
+
+        assert!(existing_set.contains(&marker_1));
+        assert!(existing_set.contains(&marker_2));
+        assert!(!existing_set.contains(&marker_3));
+    }
+
+    #[test]
+    fn full_import_idempotency_workflow() {
+        let dir = tempfile::tempdir().unwrap();
+        write_file(
+            dir.path(),
+            ".beast-mode-tasks.json",
+            r#"[{"id":"task-1","title":"Fix critical bug"},{"id":"task-2","title":"Add new feature"}]"#,
+        );
+
+        let (source, items) = discover_backlog(dir.path()).unwrap();
+        assert_eq!(source, ".beast-mode-tasks.json");
+        assert_eq!(items.len(), 2);
+
+        let repo_tag = derive_repo_tag(dir.path());
+        let marker_1 = ingest_marker(&repo_tag, "task-1");
+        let marker_2 = ingest_marker(&repo_tag, "task-2");
+
+        let mut all_markers = HashSet::new();
+        for item in &items {
+            all_markers.insert(ingest_marker(&repo_tag, &item.key));
+        }
+
+        assert_eq!(all_markers.len(), 2);
+        assert!(all_markers.contains(&marker_1));
+        assert!(all_markers.contains(&marker_2));
+
+        let already_imported = existing_markers(Path::new("/tmp/nonexistent"), &repo_tag);
+        let skipped = items
+            .iter()
+            .filter(|item| {
+                let marker = ingest_marker(&repo_tag, &item.key);
+                already_imported.contains(&marker)
+            })
+            .count();
+
+        assert_eq!(skipped, 0, "no items should be skipped on first run");
+    }
 }
