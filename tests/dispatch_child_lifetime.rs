@@ -6,7 +6,7 @@
 //! running with PPID 1 for 25+ minutes past the 1800s budget).
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
@@ -153,7 +153,7 @@ fn pid_alive(pid: u32) -> bool {
     unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
-fn prepend_path(bin_dir: &PathBuf) -> String {
+fn prepend_path(bin_dir: &Path) -> String {
     format!(
         "{}:{}",
         bin_dir.display(),
