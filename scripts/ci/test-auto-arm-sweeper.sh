@@ -77,8 +77,9 @@ chmod +x "$T/bin/gh" "$T/armer"
 export PATH="$T/bin:$PATH" FAKE_PRS="$T/prs.json" ARM_LOG="$T/arm.log" \
        CHUMP_AUTOARM_ARMER="$T/armer" CHUMP_AUTOARM_STATE="$T/state.tsv"
 : > "$ARM_LOG"
-pr_json() { # <labels-json> <autoMerge-json> <sha>
-  echo "[{\"number\":7,\"title\":\"x\",\"isDraft\":false,\"mergeStateStatus\":\"CLEAN\",\"autoMergeRequest\":$2,\"labels\":$1,\"headRefOid\":\"$3\"}]" > "$FAKE_PRS"
+pr_json() { # <labels-json> <autoMerge-json> <sha> [statusCheckRollup-json]
+  local rollup="${4:-[]}"
+  echo "[{\"number\":7,\"title\":\"x\",\"isDraft\":false,\"mergeStateStatus\":\"CLEAN\",\"autoMergeRequest\":$2,\"labels\":$1,\"headRefOid\":\"$3\",\"statusCheckRollup\":$rollup}]" > "$FAKE_PRS"
 }
 
 # held PR: two ticks, never armed
@@ -107,6 +108,30 @@ bash "$SWEEPER" >/dev/null 2>&1
 : > "$ARM_LOG"; pr_json '[{"name":"do-not-merge"}]' null ccc
 bash "$SWEEPER" >/dev/null 2>&1
 [[ ! -s "$ARM_LOG" ]] && pass "do-not-merge label blocks re-arm" || fail "do-not-merge ignored"
+
+# RESILIENT-WRITE-WAR: red head (a required check is FAILURE on the current
+# sha) must NOT be armed — this is the write-side fix for the arm/disarm war
+# (PR #5414: timer re-armed a head GitHub had just auto-disabled, looping
+# every sweep). Also asserts the refusal is observable via ambient.jsonl.
+export CHUMP_AUTOARM_AMBIENT="$T/ambient.jsonl"
+: > "$ARM_LOG"; : > "$CHUMP_AUTOARM_AMBIENT"
+pr_json '[]' null red1 '[{"name":"ci","conclusion":"FAILURE"}]'
+bash "$SWEEPER" >/dev/null 2>&1
+[[ ! -s "$ARM_LOG" ]] && pass "red head (FAILURE check) is not armed" \
+                      || fail "red head (FAILURE check) was armed"
+grep -q '"kind":"auto_merge_arm_skipped"' "$CHUMP_AUTOARM_AMBIENT" \
+    && grep -q '"reason":"required_check_failing"' "$CHUMP_AUTOARM_AMBIENT" \
+    && pass "red head refusal emits auto_merge_arm_skipped(required_check_failing)" \
+    || fail "red head refusal did not emit the expected ambient event"
+
+# pending head (no FAILURE conclusion yet, e.g. a check still queued) is
+# still arm-eligible — this guard must not block green-or-pending heads.
+: > "$ARM_LOG"; : > "$CHUMP_AUTOARM_AMBIENT"
+pr_json '[]' null pend1 '[{"name":"ci","conclusion":null,"status":"IN_PROGRESS"}]'
+bash "$SWEEPER" >/dev/null 2>&1
+[[ "$(cat "$ARM_LOG")" == "7" ]] && pass "pending head (no FAILURE) is armed" \
+                                  || fail "pending head was not armed"
+unset CHUMP_AUTOARM_AMBIENT
 
 echo ""
 echo "Passed: $PASS  Failed: $FAIL"

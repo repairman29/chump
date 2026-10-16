@@ -13,6 +13,16 @@
 #   - Only arms PRs whose title doesn't contain WIP/wip/[skip]/[hold]
 #   - Skips PRs that are MERGEABLE=CONFLICTING (DIRTY) — those need rebase
 #     first, not arming
+#   - RESILIENT-WRITE-WAR: skips PRs where any check in statusCheckRollup on
+#     the CURRENT head has conclusion==FAILURE. Without this, the sweeper
+#     re-armed a head GitHub had just auto-disabled for a failed required
+#     check, GitHub immediately disabled it again, and the pair repeated
+#     every sweep (PR #5414, 2026-10-15: 11:25/11:30, 14:10/14:15/14:20,
+#     15:40/15:45/15:50, 16:20Z) — burning API budget and manufacturing a
+#     stream of auto_merge_disabled-by-repairman29 events that read like a
+#     real incident. Pending/queued/neutral/success checks are still
+#     arm-eligible; only a verified FAILURE on the current sha blocks.
+#     Emits kind=auto_merge_arm_skipped (reason=required_check_failing).
 #   - INFRA-8047: skips PRs labelled `hold` or `do-not-merge` (the one
 #     documented way to hold a PR — see docs/process/OPERATOR_RUNBOOK.md)
 #   - INFRA-8047: respects a human disarm. The sweeper remembers each PR it
@@ -41,6 +51,13 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # shellcheck source=/dev/null
 source "${REPO_ROOT}/scripts/coord/lib/github.sh" 2>/dev/null || true
 command -v chump_gh >/dev/null 2>&1 || chump_gh() { gh "$@"; }
+
+# RESILIENT-WRITE-WAR: flock-safe ambient append for the arm-refusal event.
+# shellcheck source=scripts/coord/lib/ambient-write.sh
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/coord/lib/ambient-write.sh" 2>/dev/null || true
+command -v _ambient_write >/dev/null 2>&1 || _ambient_write() { printf '%s\n' "$2" >> "$1" 2>/dev/null || true; }
+AMBIENT_LOG="${CHUMP_AUTOARM_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 
 DRY=0
 [[ "${1:-}" == "--dry-run" ]] && DRY=1
@@ -89,12 +106,12 @@ log "scanning open PRs authored by $ME"
 # us whether to act.
 PR_JSON="$(gh pr list \
     --author "$ME" --state open --limit 50 \
-    --json number,title,isDraft,mergeStateStatus,autoMergeRequest,labels,headRefOid \
+    --json number,title,isDraft,mergeStateStatus,autoMergeRequest,labels,headRefOid,statusCheckRollup \
     2>/dev/null || echo '[]')"
 
-armed=0; skipped_wip=0; skipped_dirty=0; skipped_armed=0; skipped_draft=0; skipped_hold=0; skipped_disarmed=0; errors=0
+armed=0; skipped_wip=0; skipped_dirty=0; skipped_armed=0; skipped_draft=0; skipped_hold=0; skipped_disarmed=0; skipped_failing_check=0; errors=0
 
-while IFS=$'\t' read -r num title is_draft merge_st has_auto labels sha; do
+while IFS=$'\t' read -r num title is_draft merge_st has_auto labels sha has_failing_check; do
     [[ -z "$num" ]] && continue
     if [[ "$is_draft" == "true" ]]; then
         skipped_draft=$((skipped_draft + 1))
@@ -141,6 +158,17 @@ while IFS=$'\t' read -r num title is_draft merge_st has_auto labels sha; do
         skipped_dirty=$((skipped_dirty + 1))
         continue
     fi
+    # RESILIENT-WRITE-WAR: a verified FAILURE check on the CURRENT head means
+    # GitHub will (or just did) auto-disable any arm we attempt. Arming here
+    # is the write-side half of the arm/disarm war — refuse instead of
+    # re-feeding it. Pending/queued/success/neutral checks still arm fine.
+    if [[ "$has_failing_check" == "true" ]]; then
+        skipped_failing_check=$((skipped_failing_check + 1))
+        log "  PR#$num has a FAILURE required check on head $sha — refusing to arm"
+        _ambient_write "$AMBIENT_LOG" \
+            "{\"ts\":\"$(ts)\",\"kind\":\"auto_merge_arm_skipped\",\"pr\":$num,\"reason\":\"required_check_failing\"}"
+        continue
+    fi
 
     # Eligible: open, not draft, not WIP, no autoMerge yet, not DIRTY.
     if [[ "$DRY" -eq 1 ]]; then
@@ -164,6 +192,8 @@ while IFS=$'\t' read -r num title is_draft merge_st has_auto labels sha; do
 done < <(printf '%s' "$PR_JSON" | python3 -c "
 import sys, json
 for pr in json.load(sys.stdin):
+    checks = pr.get('statusCheckRollup') or []
+    has_failing = any((c.get('conclusion') or '').upper() == 'FAILURE' for c in checks)
     print('\t'.join([
         str(pr.get('number','')),
         (pr.get('title','') or '').replace('\t',' '),
@@ -172,10 +202,11 @@ for pr in json.load(sys.stdin):
         'true' if pr.get('autoMergeRequest') else 'false',
         ' '.join(l.get('name','').replace(' ','_') for l in (pr.get('labels') or [])) or '-',
         pr.get('headRefOid','') or '-',
+        'true' if has_failing else 'false',
     ]))
 ")
 
 echo
-log "summary: armed=$armed skipped(armed=$skipped_armed wip=$skipped_wip draft=$skipped_draft dirty=$skipped_dirty hold=$skipped_hold disarmed=$skipped_disarmed) errors=$errors"
+log "summary: armed=$armed skipped(armed=$skipped_armed wip=$skipped_wip draft=$skipped_draft dirty=$skipped_dirty hold=$skipped_hold disarmed=$skipped_disarmed failing_check=$skipped_failing_check) errors=$errors"
 [[ "$DRY" -eq 1 ]] && log "(dry-run — no arms applied)"
 exit 0
