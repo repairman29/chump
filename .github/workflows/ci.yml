@@ -1111,6 +1111,13 @@ jobs:
       - name: decompose re-slice guard — parent sliced at most once (RESILIENT-1437)
         run: bash scripts/ci/test-gap-decompose-reslice-guard.sh
 
+      - name: single-source status=done enforcement (CREDIBLE-1499)
+        # Enforces that UPDATE status='done' only flows through the canonical
+        # ship() function in crates/chump-gap-store/src/lib.rs, not through
+        # stray writers scattered across the codebase. Prevents silent status
+        # flips that bypass idempotency checks and receipt validation.
+        run: bash scripts/ci/test-gap-ship-single-source.sh
+
       - name: chump subcommand --help regression gate (INFRA-1246)
         # Prevents "claim --help exits non-zero" / "ship --help falls through to LLM" regressions.
         # See INFRA-1238 for the original fix; this is the CI guard so it never regresses.
