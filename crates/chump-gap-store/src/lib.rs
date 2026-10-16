@@ -14,8 +14,10 @@ pub mod maintenance;
 pub mod sync;
 
 use anyhow::{bail, Context, Result};
+use chump_ship::ship::LandingReceipt;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -2834,7 +2836,24 @@ impl GapStore {
     /// is what the INFRA-107 closed_pr integrity guard requires for any
     /// status:done flip in YAML, so passing it here keeps the canonical
     /// state.db and the YAML mirror in agreement (INFRA-156).
+    ///
+    /// CREDIBLE-1495: Refactored to validate receipt and enforce idempotency.
+    /// Constructs LandingReceipt from gap_id and closed_pr, validates it,
+    /// and emits exactly one ship_landed event on first transition. Calling
+    /// twice returns Ok with no event emitted the second time.
     pub fn ship(&self, gap_id: &str, session_id: &str, closed_pr: Option<i64>) -> Result<()> {
+        // CREDIBLE-1495: construct and validate LandingReceipt.
+        // If closed_pr is None, we cannot create a valid receipt.
+        if closed_pr.is_none() {
+            bail!(
+                "ship() requires a closed_pr to construct a valid LandingReceipt \
+                 for gap {}",
+                gap_id
+            );
+        }
+        let closed_pr = closed_pr.unwrap();
+        let receipt = LandingReceipt::new(gap_id, closed_pr);
+        receipt.validate().map_err(|e| anyhow::anyhow!(e))?;
         // INFRA-1392 PROOF-OF-MERGE: refuse to flip status=done unless we
         // can verify the work actually landed. Pattern observed
         // 2026-05-22: sibling claim flipped INFRA-1368 / INFRA-1363 to
@@ -3046,26 +3065,6 @@ impl GapStore {
             }
         }
 
-        if !verify_proof_of_merge(&self.repo_root, gap_id, closed_pr) {
-            bail!(
-                "INFRA-1392 PROOF-OF-MERGE: refusing to flip {gap_id} to status=done — \
-                 no commit on origin/main (or local main if no origin remote) carries \
-                 this gap ID. Either (a) wait for the actual merge to land on main, or \
-                 (b) ensure the merge commit subject mentions {gap_id}. Auto-fetch from \
-                 origin/main already ran (RESILIENT-1512: checked regardless of which \
-                 branch this checkout currently has checked out); if the commit is not \
-                 yet on main, wait for the merge to land and retry."
-            );
-        }
-
-        // RESILIENT-1110: merged is a proxy, not the definition. Kill it at
-        // the root — refuse status=done if the merge deploys an organ unit
-        // that the target node's own verifier (RESILIENT-1108) currently
-        // reports FAILED.
-        if let Err(msg) = verify_running_and_effective(&self.repo_root, gap_id, closed_pr) {
-            bail!(msg);
-        }
-
         // RESILIENT-469: run `cargo hakari generate` to keep the workspace-hack
         // dedup crate in sync before the gap flips to status=done. Best-effort
         // and non-fatal (missing `cargo-hakari` binary or a hakari-less
@@ -3081,8 +3080,80 @@ impl GapStore {
                 .status();
         }
 
+        // CREDIBLE-1495: verify_proof_of_merge and verify_running_and_effective
+        // expect Option<i64>, so wrap closed_pr.
+        if !verify_proof_of_merge(&self.repo_root, gap_id, Some(closed_pr)) {
+            bail!(
+                "INFRA-1392 PROOF-OF-MERGE: refusing to flip {gap_id} to status=done — \
+                 no commit on origin/main (or local main if no origin remote) carries \
+                 this gap ID. Either (a) wait for the actual merge to land on main, or \
+                 (b) ensure the merge commit subject mentions {gap_id}. Auto-fetch from \
+                 origin/main already ran (RESILIENT-1512: checked regardless of which \
+                 branch this checkout currently has checked out); if the commit is not \
+                 yet on main, wait for the merge to land and retry."
+            );
+        }
+
+        // RESILIENT-1110: merged is a proxy, not the definition. Kill it at
+        // the root — refuse status=done if the merge deploys an organ unit
+        // that the target node's own verifier (RESILIENT-1108) currently
+        // reports FAILED.
+        if let Err(msg) = verify_running_and_effective(&self.repo_root, gap_id, Some(closed_pr)) {
+            bail!(msg);
+        }
+
         let now = unix_now();
         let iso = unix_to_iso_date(now);
+
+        // CREDIBLE-1495: check current status to detect idempotency.
+        // If already done, return Ok without emitting ship_landed event.
+        let current_status: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT status FROM gaps WHERE id=?1",
+                params![gap_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        match current_status {
+            Some(ref s) if s == "done" => {
+                // Idempotency: gap is already shipped. Release lease silently
+                // and return Ok without emitting ship_landed.
+                let _ = self.conn.execute(
+                    "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
+                    params![session_id, gap_id],
+                );
+                return Ok(());
+            }
+            Some(ref s)
+                if matches!(
+                    s.as_str(),
+                    "superseded"
+                        | "wontfix"
+                        | "wont_fix"
+                        | "closed"
+                        | "closed_not_a_bug"
+                        | "already_satisfied"
+                ) =>
+            {
+                // Gap is in a deliberate terminal status — reject.
+                bail!(
+                    "gap {} is in deliberate terminal status '{}' \
+                     (superseded/wontfix/closed)",
+                    gap_id,
+                    s
+                );
+            }
+            None => {
+                // Gap not found.
+                bail!("gap {} not found", gap_id);
+            }
+            _ => {
+                // Gap exists and is not in terminal status. Proceed with update.
+            }
+        }
+
         // CREDIBLE-218: reconcile ANY non-terminal status, not just 'open'. A gap
         // that merged while in an intermediate status (ready_to_ship / in_review /
         // in_flight / claimed / blocked) was previously un-reconcilable here — the
@@ -3090,21 +3161,15 @@ impl GapStore {
         // (merged on main, still shown open). We exclude only the DELIBERATE terminal
         // statuses (already done, or an operator's superseded/wontfix/closed decision)
         // so a real terminal choice is never silently flipped to done.
-        let changed = if let Some(pr) = closed_pr {
-            self.conn.execute(
-                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=?3
-                 WHERE id=?4 AND status NOT IN
-                   ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
-                params![now, iso, pr, gap_id],
-            )?
-        } else {
-            self.conn.execute(
-                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
-                 WHERE id=?3 AND status NOT IN
-                   ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
-                params![now, iso, gap_id],
-            )?
-        };
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=?3, shipped_in=?4
+             WHERE id=?5 AND status NOT IN
+               ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
+            params![now, iso, closed_pr,
+                    serde_json::to_string(&receipt)?,
+                    gap_id],
+        )?;
+
         if changed == 0 {
             bail!(
                 "gap {} not found, already done, or in a deliberate terminal status \
@@ -3112,10 +3177,31 @@ impl GapStore {
                 gap_id
             );
         }
+
         let _ = self.conn.execute(
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
             params![session_id, gap_id],
         );
+
+        // CREDIBLE-1495: emit ship_landed ambient event on first transition.
+        {
+            let ts = unix_to_iso_full(now);
+            let pr_str = closed_pr.to_string();
+            let line = format!(
+                "{{\"ts\":\"{ts}\",\"kind\":\"ship_landed\",\
+                 \"gap_id\":\"{gap_id}\",\"closed_pr\":{pr_str},\
+                 \"receipt\":{}}}\n",
+                serde_json::to_string(&receipt)?
+            );
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
 
         // META-555 (advisory MVP): now that the gap has flipped to done,
         // evaluate whether its acceptance criterion was EFFECT-verified and
@@ -6999,7 +7085,7 @@ mod auto_fetch_tests {
         git(repo, &["fetch", "origin", "--quiet"]);
 
         // ship(): behind=0, proof passes, no dirty-tree check triggered.
-        let result = store.ship(&gap_id, "test-session", None);
+        let result = store.ship(&gap_id, "test-session", Some(42));
         assert!(
             result.is_ok(),
             "Scenario C: expected Ok on up-to-date clean repo; got: {result:?}"
@@ -7071,7 +7157,7 @@ mod auto_fetch_tests {
         unsafe {
             std::env::set_var(&deleted_bypass_var, "1");
         }
-        let result = store.ship(&gap_id, "test-session", None);
+        let result = store.ship(&gap_id, "test-session", Some(42));
         unsafe {
             std::env::remove_var(&deleted_bypass_var);
         }
@@ -7127,7 +7213,7 @@ mod auto_fetch_tests {
         git(scratch_dir.path(), &["push", "--quiet", "origin", "main"]);
 
         // Local is clean and behind — ship() should auto-pull then succeed.
-        let result = store.ship(&gap_id, "test-session", None);
+        let result = store.ship(&gap_id, "test-session", Some(42));
         assert!(
             result.is_ok(),
             "Scenario A: expected Ok after auto-pull on clean+behind; got: {result:?}"
@@ -8785,7 +8871,7 @@ mod tests {
         store
             .claim(&id, "session-xyz", "/worktrees/test", 3600)
             .unwrap();
-        store.ship(&id, "session-xyz", None).unwrap();
+        store.ship(&id, "session-xyz", Some(42)).unwrap();
 
         match store.preflight(&id).unwrap() {
             PreflightResult::Done => {}
@@ -8928,7 +9014,7 @@ mod tests {
             )
             .unwrap();
         assert!(
-            store.ship(&id, "sess", None).is_err(),
+            store.ship(&id, "sess", Some(42)).is_err(),
             "ship() must refuse to reconcile a deliberate terminal status"
         );
     }
@@ -8939,7 +9025,7 @@ mod tests {
         store.reserve("COG", "open gap", "P1", "s").unwrap();
         let id2 = store.reserve("COG", "to close", "P1", "s").unwrap();
         store.claim(&id2, "s", "/wt", 3600).unwrap();
-        store.ship(&id2, "s", None).unwrap();
+        store.ship(&id2, "s", Some(42)).unwrap();
 
         let open = store.list(Some("open")).unwrap();
         assert_eq!(open.len(), 1);
@@ -8992,7 +9078,7 @@ mod tests {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "x", "P1", "s").unwrap();
         store.claim(&id, "s", "/wt", 3600).unwrap();
-        store.ship(&id, "s", None).unwrap();
+        store.ship(&id, "s", Some(42)).unwrap();
         let row = store.get(&id).unwrap().expect("row exists");
         assert_eq!(row.status, "done");
         // ISO YYYY-MM-DD, 10 chars, dashes at positions 4 and 7.
@@ -9874,6 +9960,7 @@ meta:
 
     #[test]
     fn test_ship_with_closed_pr_stamps_pr_number() {
+        // CREDIBLE-1495: ship() now requires closed_pr to construct LandingReceipt.
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "y", "P1", "s").unwrap();
         store.claim(&id, "s", "/wt", 3600).unwrap();
@@ -9883,13 +9970,13 @@ meta:
         let row = store.get(&id).unwrap().expect("row");
         assert_eq!(row.status, "done");
         assert_eq!(row.closed_pr, Some(631));
-        // ship() without a closed_pr (legacy callers) must leave it None.
+        // CREDIBLE-1495: ship() now always requires a closed_pr.
         let id2 = store.reserve("INFRA", "z", "P1", "s").unwrap();
         store.claim(&id2, "s", "/wt", 3600).unwrap();
-        store.ship(&id2, "s", None).unwrap();
+        store.ship(&id2, "s", Some(999)).unwrap();
         let row2 = store.get(&id2).unwrap().expect("row");
         assert_eq!(row2.status, "done");
-        assert_eq!(row2.closed_pr, None);
+        assert_eq!(row2.closed_pr, Some(999));
     }
 
     // ── RESILIENT-119: triage-close ─────────────────────────────────────
@@ -10046,7 +10133,7 @@ meta:
             .unwrap();
         store.claim(&id, "s", "/wt", 3600).unwrap();
         // ship without closed_pr — simulates a pre-INFRA-156 closure.
-        store.ship(&id, "s", None).unwrap();
+        store.ship(&id, "s", Some(42)).unwrap();
         let row = store.get(&id).unwrap().expect("row");
         assert_eq!(row.closed_pr, None, "pre-condition: closed_pr must be NULL");
 
@@ -11148,7 +11235,7 @@ meta:
             other => panic!("expected EffectUnverified, got {other:?}"),
         }
         // End-to-end through ship(): closure SUCCEEDS (never blocked) ...
-        store.ship(&id, "s", None).unwrap();
+        store.ship(&id, "s", Some(42)).unwrap();
         let g = store.get(&id).unwrap().expect("gap exists");
         assert_eq!(g.status, "done", "advisory MVP must NOT block the close");
         // ... but the gap is visibly FLAGGED, not clean-done.
@@ -11165,7 +11252,7 @@ meta:
         // exactly as before — done, and NOT flagged.
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "ordinary", "P2", "s").unwrap();
-        store.ship(&id, "s", None).unwrap();
+        store.ship(&id, "s", Some(42)).unwrap();
         let g = store.get(&id).unwrap().expect("gap exists");
         assert_eq!(g.status, "done");
         assert!(
@@ -11188,7 +11275,7 @@ meta:
     #[test]
     fn ship_nonexistent_gap_returns_err() {
         let (store, _dir) = test_store();
-        let result = store.ship("INFRA-999", "session-x", None);
+        let result = store.ship("INFRA-999", "session-x", Some(42));
         assert!(result.is_err(), "ship on unknown gap should fail, got Ok");
         let msg = format!("{:#}", result.unwrap_err());
         assert!(
@@ -11198,19 +11285,16 @@ meta:
     }
 
     #[test]
-    fn ship_already_done_gap_returns_err() {
+    fn ship_already_done_gap_is_idempotent() {
+        // CREDIBLE-1495: ship() is now idempotent. Calling it twice on the same
+        // gap returns Ok the second time without emitting ship_landed event.
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "done-candidate", "P2", "s").unwrap();
-        store.ship(&id, "session-a", None).unwrap();
-        let second_ship = store.ship(&id, "session-b", None);
+        store.ship(&id, "session-a", Some(42)).unwrap();
+        let second_ship = store.ship(&id, "session-b", Some(42));
         assert!(
-            second_ship.is_err(),
-            "shipping an already-done gap should fail"
-        );
-        let msg = format!("{:#}", second_ship.unwrap_err());
-        assert!(
-            msg.contains("not found") || msg.contains("already done"),
-            "unexpected error: {msg}"
+            second_ship.is_ok(),
+            "shipping an already-done gap should succeed (idempotent)"
         );
     }
 
@@ -11230,7 +11314,7 @@ meta:
     fn claim_done_gap_returns_err() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "done-target", "P2", "s").unwrap();
-        store.ship(&id, "session-x", None).unwrap();
+        store.ship(&id, "session-x", Some(42)).unwrap();
         let result = store.claim(&id, "session-y", "/tmp/wt", 3600);
         assert!(result.is_err(), "claiming a done gap should fail");
         let msg = format!("{:#}", result.unwrap_err());
@@ -11275,7 +11359,7 @@ meta:
     fn preflight_done_gap_returns_done() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "will-be-done", "P2", "s").unwrap();
-        store.ship(&id, "session-x", None).unwrap();
+        store.ship(&id, "session-x", Some(42)).unwrap();
         let result = store.preflight(&id).unwrap();
         assert!(
             matches!(result, PreflightResult::Done),
@@ -11336,7 +11420,7 @@ meta:
     fn set_recycled_id_guard_rejects_reopening_done_gap() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "done-gap", "P2", "s").unwrap();
-        store.ship(&id, "session-x", None).unwrap();
+        store.ship(&id, "session-x", Some(42)).unwrap();
         let result = store.set_fields(
             &id,
             GapFieldUpdate {
@@ -11546,7 +11630,7 @@ meta:
     fn list_with_status_filter_excludes_done_gaps() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "will-be-done", "P2", "s").unwrap();
-        store.ship(&id, "session-x", None).unwrap();
+        store.ship(&id, "session-x", Some(42)).unwrap();
         let open_gaps = store.list(Some("open")).unwrap();
         assert!(
             !open_gaps.iter().any(|g| g.id == id),
@@ -11598,7 +11682,7 @@ meta:
             )
             .unwrap();
 
-        store.ship(&shipped, "session-x", None).unwrap();
+        store.ship(&shipped, "session-x", Some(42)).unwrap();
 
         let report = store
             .queue_hygiene_check_on_ship(&shipped, "fix the flaky queue drain", "ZERO-WASTE", 0.5)
@@ -11628,7 +11712,7 @@ meta:
         let shipped = store
             .reserve("ZERO-WASTE", "a perfectly unique ship", "P2", "s")
             .unwrap();
-        store.ship(&shipped, "session-x", None).unwrap();
+        store.ship(&shipped, "session-x", Some(42)).unwrap();
         let report = store
             .queue_hygiene_check_on_ship(&shipped, "a perfectly unique ship", "ZERO-WASTE", 0.5)
             .unwrap();
@@ -11750,7 +11834,7 @@ meta:
         let id_done = store.reserve("INFRA", "done gap title", "P1", "s").unwrap();
 
         // Ship the done gap
-        store.ship(&id_done, "test-session", None).unwrap();
+        store.ship(&id_done, "test-session", Some(42)).unwrap();
 
         // Query with 30-day lookback should find both
         let candidates_30 = store

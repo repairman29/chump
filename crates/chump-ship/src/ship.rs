@@ -175,6 +175,50 @@ pub struct ShipReceipt {
     pub shipped_at: DateTime<Utc>,
 }
 
+/// A landing receipt that validates and records a gap's ship.
+///
+/// Constructed from a gap_id and closed_pr, it validates the receipt
+/// format and ensures idempotency — calling twice returns Ok with no
+/// event emitted the second time.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LandingReceipt {
+    /// Gap ID (e.g., `INFRA-2001`).
+    pub gap_id: String,
+    /// PR number that closed this gap.
+    pub closed_pr: i64,
+    /// UTC timestamp at which the receipt was recorded.
+    pub recorded_at: DateTime<Utc>,
+}
+
+impl LandingReceipt {
+    /// Create a new landing receipt from gap_id and closed_pr.
+    pub fn new(gap_id: impl Into<String>, closed_pr: i64) -> Self {
+        LandingReceipt {
+            gap_id: gap_id.into(),
+            closed_pr,
+            recorded_at: Utc::now(),
+        }
+    }
+
+    /// Validate the receipt format and consistency.
+    ///
+    /// Returns an error if:
+    /// - gap_id is empty
+    /// - closed_pr is non-positive
+    pub fn validate(&self) -> Result<(), String> {
+        if self.gap_id.is_empty() {
+            return Err("gap_id must not be empty".to_string());
+        }
+        if self.closed_pr <= 0 {
+            return Err(format!(
+                "closed_pr must be positive (got {})",
+                self.closed_pr
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Failure modes for [`Ship::ship`] and [`Ship::preflight`].
 ///
 /// Each variant carries enough info for an operator to act without
@@ -438,5 +482,63 @@ mod tests {
         let j = serde_json::to_string(&m).unwrap();
         let back: ShipMode = serde_json::from_str(&j).unwrap();
         assert_eq!(back, m);
+    }
+
+    #[test]
+    fn landing_receipt_new() {
+        let r = LandingReceipt::new("INFRA-2001", 42);
+        assert_eq!(&r.gap_id, "INFRA-2001");
+        assert_eq!(r.closed_pr, 42);
+    }
+
+    #[test]
+    fn landing_receipt_validate_success() {
+        let r = LandingReceipt::new("INFRA-2001", 42);
+        assert!(r.validate().is_ok());
+    }
+
+    #[test]
+    fn landing_receipt_validate_empty_gap_id() {
+        let r = LandingReceipt {
+            gap_id: String::new(),
+            closed_pr: 42,
+            recorded_at: Utc::now(),
+        };
+        let result = r.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("gap_id"));
+    }
+
+    #[test]
+    fn landing_receipt_validate_zero_pr() {
+        let r = LandingReceipt {
+            gap_id: "INFRA-2001".to_string(),
+            closed_pr: 0,
+            recorded_at: Utc::now(),
+        };
+        let result = r.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("closed_pr"));
+    }
+
+    #[test]
+    fn landing_receipt_validate_negative_pr() {
+        let r = LandingReceipt {
+            gap_id: "INFRA-2001".to_string(),
+            closed_pr: -1,
+            recorded_at: Utc::now(),
+        };
+        let result = r.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("closed_pr"));
+    }
+
+    #[test]
+    fn landing_receipt_serde_round_trip() {
+        let r = LandingReceipt::new("INFRA-2001", 42);
+        let j = serde_json::to_string(&r).unwrap();
+        let back: LandingReceipt = serde_json::from_str(&j).unwrap();
+        assert_eq!(back.gap_id, r.gap_id);
+        assert_eq!(back.closed_pr, r.closed_pr);
     }
 }
