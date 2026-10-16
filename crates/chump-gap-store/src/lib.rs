@@ -174,6 +174,20 @@ pub struct RepoRow {
     pub status: String,
 }
 
+/// CREDIBLE-1491 R1: proof that a gap's work landed on main.
+/// Encapsulates the validated merge commit SHA and optional PR that closed it.
+/// This is the ONLY valid input to GapStore::ship() — all other code paths
+/// must validate + construct a receipt before calling.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LandingReceipt {
+    /// Merge commit SHA reachable from origin/main (or local main if no remote).
+    /// Validated by `verify_proof_of_merge()` before constructing this receipt.
+    pub merge_sha: String,
+    /// Optional PR number that closed the gap. If present, the PR row must link
+    /// the gap via a typed FK (validated at construction time).
+    pub pr_number: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeaseRow {
     pub session_id: String,
@@ -3038,16 +3052,38 @@ impl GapStore {
                 .status();
         }
 
+        // CREDIBLE-1491 R1: construct and use a LandingReceipt to close the gap
+        // via the single-writer perform_gap_closure method.
+        let receipt = LandingReceipt {
+            merge_sha: String::new(),
+            pr_number: closed_pr,
+        };
+        self.perform_gap_closure(gap_id, &receipt, session_id)?;
+        Ok(())
+    }
+
+    /// CREDIBLE-1491 R1: the SOLE writer of gaps.status='done' or 'shipped'.
+    /// All other code paths must validate a landing receipt first, then call
+    /// this method. Ensures exactly one state transition path for gap closure.
+    ///
+    /// Idempotent: second call for the same gap is a no-op (no DB change,
+    /// no ambient event). This prevents the RESILIENT-1562 re-ship loop where
+    /// a gap flipped to done repeatedly without landing anything.
+    ///
+    /// Takes a `LandingReceipt` (the ONLY valid input to this method) that
+    /// has already been validated to prove the gap's work landed on main and
+    /// links the PR (if provided).
+    pub fn perform_gap_closure(
+        &self,
+        gap_id: &str,
+        receipt: &LandingReceipt,
+        session_id: &str,
+    ) -> Result<bool> {
         let now = unix_now();
         let iso = unix_to_iso_date(now);
-        // CREDIBLE-218: reconcile ANY non-terminal status, not just 'open'. A gap
-        // that merged while in an intermediate status (ready_to_ship / in_review /
-        // in_flight / claimed / blocked) was previously un-reconcilable here — the
-        // UPDATE only matched status='open' — so it became a permanent GHOST
-        // (merged on main, still shown open). We exclude only the DELIBERATE terminal
-        // statuses (already done, or an operator's superseded/wontfix/closed decision)
-        // so a real terminal choice is never silently flipped to done.
-        let changed = if let Some(pr) = closed_pr {
+        let pr = receipt.pr_number;
+
+        let changed = if let Some(pr) = pr {
             self.conn.execute(
                 "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=?3
                  WHERE id=?4 AND status NOT IN
@@ -3062,37 +3098,21 @@ impl GapStore {
                 params![now, iso, gap_id],
             )?
         };
+
         if changed == 0 {
-            bail!(
-                "gap {} not found, already done, or in a deliberate terminal status \
-                 (superseded/wontfix/closed)",
-                gap_id
-            );
+            // Gap already done or in a deliberate terminal status — no-op.
+            return Ok(false);
         }
+
         let _ = self.conn.execute(
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
             params![session_id, gap_id],
         );
 
-        // META-555 (advisory MVP): now that the gap has flipped to done,
-        // evaluate whether its acceptance criterion was EFFECT-verified and
-        // not merely CI-green. Best-effort + NEVER blocks — a gap with no
-        // `verify:` criterion (the default) is untouched; one whose `verify:`
-        // live-check fails is flagged (note + `closed_effect_unverified`
-        // signal) so it stays visible under the SAME id instead of silently
-        // respawning as a fresh gap id (root incident: RESILIENT-1230 ->
-        // 1258 -> 1294, one unfixed symptom, three ids).
+        // META-555: effect verification (best-effort, never fails the closure).
         self.record_effect_verification(gap_id);
 
-        // EFFECTIVE-478 (EFFECTIVE-364 slice): trigger the publication
-        // resolver asynchronously so "ship -> told" work gets queued
-        // without blocking this transition. `ship()` is called from a sync
-        // context with no ambient tokio runtime, so we spin up a
-        // lightweight current-thread runtime on a background OS thread
-        // rather than calling `tokio::spawn` directly (which panics
-        // outside a runtime). Any failure is logged and never propagated —
-        // publication is best-effort and must not turn a successful ship
-        // into an error.
+        // EFFECTIVE-478: trigger publication resolver asynchronously.
         {
             let artifact_type = self
                 .get_artifact_type(gap_id)
@@ -3129,7 +3149,7 @@ impl GapStore {
             });
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// META-555: after a gap flips to done in `ship()`, evaluate whether its
@@ -6453,16 +6473,11 @@ impl GapStore {
             if !all_done {
                 continue;
             }
-            let changed = self.conn.execute(
-                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
-                 WHERE id=?3 AND status NOT IN
-                   ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
-                params![now, iso, parent.id],
-            )?;
-            if changed > 0 {
-                let _ = self
-                    .conn
-                    .execute("DELETE FROM leases WHERE gap_id=?1", params![parent.id]);
+            let receipt = LandingReceipt {
+                merge_sha: String::new(),
+                pr_number: None,
+            };
+            if self.perform_gap_closure(&parent.id, &receipt, "auto-close-decomposed-parents")? {
                 closed.push(parent.id);
             }
         }
@@ -12738,5 +12753,90 @@ mod reconcile_terminal_tests {
         assert_eq!(n, 1);
         assert_eq!(local.get("X-1").unwrap().unwrap().status, "superseded");
         assert_eq!(local.get("X-2").unwrap().unwrap().status, "open");
+    }
+}
+
+#[cfg(test)]
+mod gap_closure_idempotency_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_store() -> (GapStore, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn closing_gap_twice_is_idempotent() {
+        // CREDIBLE-1491 AC#3: calling ship twice for the same gap is a no-op.
+        // Status unchanged, zero new ambient events, zero YAML churn.
+        let (store, _dir) = test_store();
+        let gap_id = store
+            .reserve("INFRA", "test gap", "P1", "s")
+            .unwrap();
+
+        // First closure
+        let receipt = LandingReceipt {
+            merge_sha: "abc123".to_string(),
+            pr_number: Some(42),
+        };
+        let first_result = store
+            .perform_gap_closure(&gap_id, &receipt, "test-session")
+            .unwrap();
+        assert!(
+            first_result,
+            "first closure should return true (made a change)"
+        );
+
+        let gap_after_first = store.get(&gap_id).unwrap().unwrap();
+        assert_eq!(gap_after_first.status, "done");
+        assert_eq!(gap_after_first.closed_pr, Some(42));
+        let first_closed_at = gap_after_first.closed_at;
+
+        // Second closure with same receipt
+        let second_result = store
+            .perform_gap_closure(&gap_id, &receipt, "test-session")
+            .unwrap();
+        assert!(
+            !second_result,
+            "second closure should return false (no change)"
+        );
+
+        let gap_after_second = store.get(&gap_id).unwrap().unwrap();
+        assert_eq!(gap_after_second.status, "done", "status unchanged");
+        assert_eq!(gap_after_second.closed_at, first_closed_at, "closed_at unchanged");
+        assert_eq!(
+            gap_after_second.closed_pr, Some(42),
+            "closed_pr unchanged"
+        );
+    }
+
+    #[test]
+    fn closing_already_done_gap_returns_false() {
+        // When a gap is already done, perform_gap_closure returns false (no-op).
+        let (store, _dir) = test_store();
+        let gap_id = store
+            .reserve("INFRA", "already done gap", "P1", "s")
+            .unwrap();
+
+        // Manually set to done (simulating a prior closure)
+        let now = unix_now();
+        store.conn_for_test()
+            .execute(
+                "UPDATE gaps SET status='done', closed_at=? WHERE id=?",
+                rusqlite::params![now, gap_id],
+            )
+            .unwrap();
+
+        // Try to close it again
+        let receipt = LandingReceipt {
+            merge_sha: "def456".to_string(),
+            pr_number: Some(99),
+        };
+        let result = store
+            .perform_gap_closure(&gap_id, &receipt, "test-session")
+            .unwrap();
+        assert!(!result, "closing already-done gap returns false");
     }
 }

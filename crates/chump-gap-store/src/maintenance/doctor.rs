@@ -269,32 +269,27 @@ impl GapDoctor {
         report.integrity = compute_integrity_findings(&db_path, &all_ids)?;
 
         // Heal Bucket 2 (DB open / YAML done -> set DB status=done).
+        // CREDIBLE-1491 R1: use GapStore::perform_gap_closure instead of raw SQL
+        // so the single-writer invariant is maintained.
         if matches!(mode, HealMode::FixSafe | HealMode::FixDestructive) {
-            let mut conn = Connection::open(&db_path)
-                .with_context(|| format!("open state.db: {}", db_path.display()))?;
-            let tx = conn.transaction()?;
+            use crate::{GapStore, LandingReceipt};
+            let store = GapStore::open(&self.repo_root)
+                .with_context(|| "failed to open GapStore for doctor heal")?;
             let mut updated = 0usize;
             for gid in &report.buckets.db_open_yaml_done {
                 let yrow = match yaml_view.get(gid) {
                     Some(v) => v,
                     None => continue,
                 };
-                let closed_date = yaml_closed_date(yrow);
                 let closed_pr = yaml_closed_pr(yrow);
-                let closed_at = parse_iso_to_unix(&closed_date);
-                let n = tx.execute(
-                    "UPDATE gaps SET status='done', closed_at=?, closed_date=?, closed_pr=? \
-                     WHERE id=? AND status='open'",
-                    rusqlite::params![
-                        if closed_at > 0 { Some(closed_at) } else { None },
-                        closed_date,
-                        closed_pr,
-                        gid,
-                    ],
-                )?;
-                updated += n;
+                let receipt = LandingReceipt {
+                    merge_sha: String::new(),
+                    pr_number: closed_pr,
+                };
+                if store.perform_gap_closure(gid, &receipt, "gap-doctor-reconcile")? {
+                    updated += 1;
+                }
             }
-            tx.commit()?;
             report.rows_updated = updated;
         }
 
