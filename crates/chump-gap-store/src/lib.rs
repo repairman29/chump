@@ -1507,6 +1507,17 @@ impl GapStore {
     /// field unchanged. Used by `chump gap set` so agents can author
     /// description / acceptance / notes without hand-editing YAML.
     pub fn set_fields(&self, gap_id: &str, fields: GapFieldUpdate) -> Result<()> {
+        // CREDIBLE-1491 R1: Guard set_fields() rejecting status=done updates.
+        // The canonical path to mark a gap done is chump gap ship, not set_fields.
+        // This guard ensures all done transitions go through the proper ceremony.
+        if let Some(s) = fields.status.as_deref() {
+            if s == "done" {
+                bail!(
+                    "CREDIBLE-1491 R1 cannot set status=done directly; use chump gap ship instead"
+                );
+            }
+        }
+
         // INFRA-402: lift the INFRA-107 closed_pr-integrity guard out of
         // the pre-commit YAML-diff layer and into the canonical write
         // path. The pre-commit guard catches `status: done` without a
@@ -9137,7 +9148,7 @@ mod tests {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "guard test", "P1", "s").unwrap();
 
-        // Attempt to flip status=done WITHOUT --closed-pr → must error.
+        // Attempt to flip status=done → must error with CREDIBLE-1491 R1.
         let err = store
             .set_fields(
                 &id,
@@ -9148,8 +9159,8 @@ mod tests {
             )
             .unwrap_err();
         assert!(
-            err.to_string().contains("INFRA-402"),
-            "error must reference INFRA-402, got: {err}"
+            err.to_string().contains("CREDIBLE-1491"),
+            "error must reference CREDIBLE-1491, got: {err}"
         );
 
         // DB row should still be 'open' — write was rejected.
@@ -9165,7 +9176,7 @@ mod tests {
     fn set_fields_status_done_with_closed_pr_succeeds() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "happy path", "P1", "s").unwrap();
-        store
+        let err = store
             .set_fields(
                 &id,
                 GapFieldUpdate {
@@ -9174,23 +9185,17 @@ mod tests {
                     ..Default::default()
                 },
             )
-            .unwrap();
-        let (status, closed_pr): (String, Option<i64>) = store
-            .conn
-            .query_row(
-                "SELECT status, closed_pr FROM gaps WHERE id=?",
-                [&id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(status, "done");
-        assert_eq!(closed_pr, Some(1234));
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("CREDIBLE-1491"),
+            "set_fields must reject status=done even with closed_pr, got: {err}"
+        );
     }
 
     #[test]
     fn set_fields_status_done_with_existing_closed_pr_succeeds() {
-        // If a prior set already wrote closed_pr, a later --status done
-        // (without re-passing --closed-pr) must succeed.
+        // set_fields must reject status=done even if closed_pr is already set.
+        // The canonical path to mark a gap done is chump gap ship.
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "two-step close", "P1", "s").unwrap();
         store
@@ -9202,7 +9207,7 @@ mod tests {
                 },
             )
             .unwrap();
-        store
+        let err = store
             .set_fields(
                 &id,
                 GapFieldUpdate {
@@ -9210,7 +9215,11 @@ mod tests {
                     ..Default::default()
                 },
             )
-            .expect("status=done with already-set closed_pr should succeed");
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("CREDIBLE-1491"),
+            "set_fields must reject status=done, got: {err}"
+        );
     }
 
     #[test]
