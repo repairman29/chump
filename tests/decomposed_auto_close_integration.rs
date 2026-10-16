@@ -62,7 +62,10 @@ impl TestFixture {
         cmd.current_dir(self.temp_dir.path())
             .env("CHUMP_REPO", self.temp_dir.path())
             .env("CHUMP_HOME", self.temp_dir.path())
-            .env("CHUMP_WORKTREE_ROOT", self.temp_dir.path());
+            .env("CHUMP_WORKTREE_ROOT", self.temp_dir.path())
+            // CI has no Almanac and no gh; the reserve-time similarity/Almanac
+            // dedupe gate (ZERO-WASTE-045) is policy, not what this test proves.
+            .env("CHUMP_GAP_RESERVE_NO_SIMILARITY", "1");
         cmd
     }
 
