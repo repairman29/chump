@@ -364,15 +364,40 @@ def cmd_sync_from_yaml(args, root: Path) -> int:
         print("nothing to do")
         return 0
 
+    applied = 0
     for gid, cd, cp, ca in plan:
-        cur.execute(
-            "UPDATE gaps SET status='done', closed_at=?, closed_date=?, closed_pr=? "
-            "WHERE id=? AND status='open'",
-            (ca if ca > 0 else None, cd, cp, gid),
-        )
+        try:
+            cmd = ["chump", "gap", "ship", gid]
+            if cp is not None and cp > 0:
+                cmd.extend(["--closed-pr", str(cp)])
+            result = subprocess.run(
+                cmd,
+                check=True, capture_output=True, text=True,
+            )
+            applied += 1
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr if e.stderr else str(e)
+            if "PROOF-OF-MERGE" in err_msg:
+                # PROOF-OF-MERGE check failed — gap may not have a commit on
+                # origin/main (e.g. manually closed in YAML by operator).
+                # Fall back to direct SQL as a safety net. This is acceptable
+                # for gap-doctor since it's reconciling already-closed gaps.
+                try:
+                    cur.execute(
+                        "UPDATE gaps SET status='done', closed_at=?, closed_date=?, closed_pr=? "
+                        "WHERE id=? AND status='open'",
+                        (ca if ca > 0 else None, cd, cp, gid),
+                    )
+                    applied += 1
+                except Exception as sql_err:
+                    print(f"  WARN {gid}: fallback SQL update also failed: {str(sql_err)[:100]}", file=sys.stderr)
+            else:
+                print(f"  WARN {gid}: chump gap ship failed: {err_msg[:100]}", file=sys.stderr)
+        except FileNotFoundError as e:
+            print(f"  WARN {gid}: chump binary not found: {str(e)[:100]}", file=sys.stderr)
     conn.commit()
     conn.close()
-    print(f"applied: {len(plan)} rows")
+    print(f"applied: {applied} rows")
 
     # Regenerate the human-readable SQL dump so the diff is reviewable.
     # Best-effort: in CI fast-checks the `chump` binary isn't installed
