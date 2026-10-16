@@ -44,6 +44,21 @@ impl ShipQueueHygieneReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LandingReceipt {
+    pub gap_id: String,
+    pub closed_pr: Option<i64>,
+}
+
+impl LandingReceipt {
+    pub fn validate(&self) -> Result<()> {
+        if self.gap_id.is_empty() {
+            bail!("LandingReceipt: gap_id must not be empty");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GapRow {
     pub id: String,
     pub domain: String,
@@ -627,6 +642,11 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN waiting_since INTEGER", []);
+        // CREDIBLE-1495: landing_receipt_json — serialized LandingReceipt struct
+        // recording gap_id and closed_pr for receipt validation on ship.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN landing_receipt_json TEXT", []);
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -2834,7 +2854,17 @@ impl GapStore {
     /// is what the INFRA-107 closed_pr integrity guard requires for any
     /// status:done flip in YAML, so passing it here keeps the canonical
     /// state.db and the YAML mirror in agreement (INFRA-156).
+    ///
+    /// CREDIBLE-1495: Refactored to construct and validate LandingReceipt
+    /// early. Idempotent: calling twice on an already-done gap returns Ok
+    /// with no event emitted. Emits exactly one ship_landed ambient event
+    /// on first transition (not on idempotent re-calls).
     pub fn ship(&self, gap_id: &str, session_id: &str, closed_pr: Option<i64>) -> Result<()> {
+        let receipt = LandingReceipt {
+            gap_id: gap_id.to_string(),
+            closed_pr,
+        };
+        receipt.validate()?;
         // INFRA-1392 PROOF-OF-MERGE: refuse to flip status=done unless we
         // can verify the work actually landed. Pattern observed
         // 2026-05-22: sibling claim flipped INFRA-1368 / INFRA-1363 to
@@ -3083,6 +3113,21 @@ impl GapStore {
 
         let now = unix_now();
         let iso = unix_to_iso_date(now);
+
+        let current_status: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT status FROM gaps WHERE id = ?1",
+                params![gap_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let is_already_done = current_status.as_deref() == Some("done");
+        if is_already_done {
+            return Ok(());
+        }
+
         // CREDIBLE-218: reconcile ANY non-terminal status, not just 'open'. A gap
         // that merged while in an intermediate status (ready_to_ship / in_review /
         // in_flight / claimed / blocked) was previously un-reconcilable here — the
@@ -3112,10 +3157,37 @@ impl GapStore {
                 gap_id
             );
         }
+
+        let receipt_json = serde_json::to_string(&receipt).unwrap_or_else(|_| "{}".to_string());
+        self.conn
+            .execute(
+                "UPDATE gaps SET landing_receipt_json = ?1 WHERE id = ?2",
+                params![receipt_json, gap_id],
+            )
+            .ok();
         let _ = self.conn.execute(
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
             params![session_id, gap_id],
         );
+
+        {
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(now);
+            let receipt_escaped = receipt_json.replace('"', "'");
+            let line = format!(
+                "{{\"ts\":\"{ts}\",\"kind\":\"ship_landed\",\
+                 \"gap_id\":\"{gap_id}\",\"closed_pr\":{},\"landing_receipt_json\":\"{receipt_escaped}\"}}\n",
+                closed_pr.map(|p| p.to_string()).unwrap_or_else(|| "null".to_string())
+            );
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
 
         // META-555 (advisory MVP): now that the gap has flipped to done,
         // evaluate whether its acceptance criterion was EFFECT-verified and
