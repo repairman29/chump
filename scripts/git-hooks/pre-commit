@@ -176,6 +176,7 @@ if [ "${CHUMP_LEASE_CHECK:-1}" != "0" ]; then
         if [ -n "$STAGED_FILES" ] && [ -n "$MY_SESSION_ID" ]; then
             now_epoch=$(date -u +%s)
             conflict=""
+            skipped_expired=""
 
             for lease_file in "$LOCKS_DIR"/*.json; do
                 [ -f "$lease_file" ] || continue
@@ -196,6 +197,12 @@ if [ "${CHUMP_LEASE_CHECK:-1}" != "0" ]; then
                     fi
                 fi
                 if [ -n "$exp_epoch" ] && [ "$exp_epoch" -le "$now_epoch" ]; then
+                    # INFRA-8201: expired leases are treated as free — say so,
+                    # rather than silently skipping. A conflicting holder that
+                    # turns out to be a DEAD (expired) session must already be
+                    # free, never a block.
+                    skipped_expired="$skipped_expired$holder ($lease_file)
+"
                     continue  # expired
                 fi
 
@@ -260,6 +267,20 @@ $STAGED_FILES
 EOF_STAGED
                 done
             done
+
+            if [ -n "$skipped_expired" ]; then
+                old_ifs="$IFS"
+                IFS='
+'
+                for skipped in $skipped_expired; do
+                    [ -n "$skipped" ] || continue
+                    holder_part="${skipped%% (*}"
+                    file_part="${skipped#* (}"
+                    file_part="${file_part%)}"
+                    echo "[pre-commit] lease held by expired session $holder_part treated as free ($file_part)" >&2
+                done
+                IFS="$old_ifs"
+            fi
 
             if [ -n "$conflict" ]; then
                 echo "[pre-commit] LEASE CONFLICT — another agent claims files you're committing:" >&2
