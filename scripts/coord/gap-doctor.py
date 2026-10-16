@@ -365,14 +365,16 @@ def cmd_sync_from_yaml(args, root: Path) -> int:
         return 0
 
     for gid, cd, cp, ca in plan:
-        cur.execute(
-            "UPDATE gaps SET status='done', closed_at=?, closed_date=?, closed_pr=? "
-            "WHERE id=? AND status='open'",
-            (ca if ca > 0 else None, cd, cp, gid),
-        )
-    conn.commit()
-    conn.close()
+        cmd = ["chump", "gap", "ship", gid]
+        if cp:
+            cmd.extend(["--closed-pr", str(cp)])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            print(f"  {gid}: shipped via chump gap ship")
+        except subprocess.CalledProcessError as e:
+            print(f"  WARN {gid}: chump gap ship failed: {e.stderr.strip()[:80]}", file=sys.stderr)
     print(f"applied: {len(plan)} rows")
+    conn.close()
 
     # Regenerate the human-readable SQL dump so the diff is reviewable.
     # Best-effort: in CI fast-checks the `chump` binary isn't installed
