@@ -272,26 +272,17 @@ def check_closure_drift(db: dict, ambient_path: Path, dry_run: bool) -> int:
                 f.write(json.dumps(ev, separators=(",", ":")) + "\n")
             # INFRA-303 backstop: don't just DETECT the drift, RESOLVE it. GitHub is
             # the ground truth here — the PR merged, so the gap IS done. Close it via
-            # the canonical path (records closed_pr + syncs yaml via ZERO-WASTE-056).
+            # the canonical path (chump gap ship records closed_pr + syncs yaml).
             # This is the safety net for the fragile bot-merge auto-close step
             # (CREDIBLE-295), which silently skips and leaves OPEN-BUT-LANDED ghosts.
             # Best-effort: a failure just re-tries next cycle (idempotent).
-            # Write the canonical store directly (state.db) — a bookkeeping close of
-            # an already-merged PR must not go through the ship-workflow CLI (which
-            # guards on current-main). This reconciler IS the state.db owner. The
-            # sibling field-reconcile pass keeps the YAML mirror in sync.
             try:
-                import os as _os
-                _sdb = _os.environ.get("CHUMP_STATE_DB") or _os.path.join(
-                    _os.environ.get("CHUMP_REPO_ROOT", "."), ".chump", "state.db")
-                _con = sqlite3.connect(_sdb)
-                _con.execute(
-                    "UPDATE gaps SET status='done', closed_pr=?, closed_date=? "
-                    "WHERE id=? AND status!='done'",
-                    (pr_num, merged_at[:10], gid))
-                _con.commit(); _con.close()
+                subprocess.run(
+                    ["chump", "gap", "ship", gid, "--closed-pr", str(pr_num)],
+                    check=True, capture_output=True, text=True,
+                )
                 print(f"  CLOSED {gid} (PR #{pr_num} merged {merged_at[:10]}) — drift resolved")
-            except Exception as _e:
+            except (subprocess.CalledProcessError, FileNotFoundError) as _e:
                 print(f"  WARN could not close {gid}: {_e}")
 
     if dry_run:
@@ -506,21 +497,11 @@ def check_already_satisfied(state_db: Path, ambient_path: Path, dry_run: bool) -
                 f"shipped in PR #{cov_pr} (merged {merged_at[:10]})"
             )
             if not dry_run:
-                evidence = (
-                    f"already-satisfied backstop (INFRA-3826): worker cycle log "
-                    f"{log.name} reports the work already shipped in PR #{cov_pr} "
-                    f"(merged {merged_at[:10]}); worktree had no diff to ship. "
-                    f"Auto-closed by gap-doctor-reconcile --check-already-satisfied."
-                )
                 try:
-                    con = sqlite3.connect(state_db)
-                    con.execute(
-                        "UPDATE gaps SET status='already_satisfied', closed_pr=?, "
-                        "closed_date=?, evidence=? WHERE id=? AND status='open'",
-                        (int(cov_pr), merged_at[:10], evidence, gid),
+                    subprocess.run(
+                        ["chump", "gap", "ship", gid, "--closed-pr", str(cov_pr)],
+                        check=True, capture_output=True, text=True,
                     )
-                    con.commit()
-                    con.close()
                     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     _emit(ambient_path, {
                         "ts": ts, "kind": "gap_already_satisfied_closed",
@@ -529,7 +510,7 @@ def check_already_satisfied(state_db: Path, ambient_path: Path, dry_run: bool) -
                     })
                     closed += 1
                     print(f"  CLOSED {gid} already_satisfied (covered by PR #{cov_pr})")
-                except Exception as e:
+                except (subprocess.CalledProcessError, FileNotFoundError) as e:
                     print(f"  WARN could not close {gid}: {e}", file=sys.stderr)
             else:
                 closed += 1
@@ -686,20 +667,11 @@ def check_closed_pr_titles(state_db: Path, ambient_path: Path, dry_run: bool,
         if dry_run:
             closed += 1
             continue
-        evidence = (
-            f"merged-pr-title closure (EFFECTIVE-1543): PR #{pr_num} titled "
-            f"'{gid}: ...' merged {cd}; canonical gap was left open (closed_pr "
-            f"NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles."
-        )
         try:
-            con = sqlite3.connect(state_db)
-            con.execute(
-                "UPDATE gaps SET status='done', closed_pr=?, closed_date=?, "
-                "evidence=? WHERE id=? AND status='open'",
-                (int(pr_num), cd, evidence, gid),
+            subprocess.run(
+                ["chump", "gap", "ship", gid, "--closed-pr", str(pr_num)],
+                check=True, capture_output=True, text=True,
             )
-            con.commit()
-            con.close()
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             _emit(ambient_path, {
                 "ts": ts, "kind": "gap_closed_from_merged_pr",
@@ -708,7 +680,7 @@ def check_closed_pr_titles(state_db: Path, ambient_path: Path, dry_run: bool,
             })
             closed += 1
             print(f"  CLOSED {gid} done (PR #{pr_num} merged {cd}) — drift resolved")
-        except Exception as e:
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
             print(f"  WARN could not close {gid}: {e}", file=sys.stderr)
     if dry_run:
         print(f"  (dry-run — {closed} would close; no writes)")
