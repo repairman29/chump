@@ -2704,6 +2704,88 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-pick-and-claim-lockdir.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-1513: picker tests that were red on main and unwired in CI.
+        steps.push(step(
+            "inbox-first-picker",
+            &["bash", "scripts/ci/test-inbox-first-picker.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-and-claim-atomic",
+            &["bash", "scripts/ci/test-pick-and-claim-atomic.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-and-claim-dep-resolution",
+            &["bash", "scripts/ci/test-pick-and-claim-dep-resolution.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-and-claim-exclusion-reasons",
+            &[
+                "bash",
+                "scripts/ci/test-pick-and-claim-exclusion-reasons.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-gap-cooldown",
+            &["bash", "scripts/ci/test-pick-gap-cooldown.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-gap-open-only",
+            &["bash", "scripts/ci/test-pick-gap-open-only.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-gap-skips-linked-pr",
+            &["bash", "scripts/ci/test-pick-gap-skips-linked-pr.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-gap-skips-merged",
+            &["bash", "scripts/ci/test-pick-gap-skips-merged.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-gap-skips-shipped",
+            &["bash", "scripts/ci/test-pick-gap-skips-shipped.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-gap-sync-overhead",
+            &["bash", "scripts/ci/test-pick-gap-sync-overhead.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-gap-worker-stagger",
+            &["bash", "scripts/ci/test-pick-gap-worker-stagger.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "picker-p0-mission-effort-bypass",
+            &["bash", "scripts/ci/test-picker-p0-mission-effort-bypass.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "picker-pillar-starved-junk-filter",
+            &[
+                "bash",
+                "scripts/ci/test-picker-pillar-starved-junk-filter.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "picker-pivot-lock-cleanup",
+            &["bash", "scripts/ci/test-picker-pivot-lock-cleanup.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "r1-inflight-no-repick",
+            &["python3", "-I", "scripts/ci/test-r1-inflight-no-repick.py"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "meta-011-git-stomp",
             &["bash", "scripts/ci/test-meta-011-git-stomp.sh"],

@@ -1677,6 +1677,51 @@ jobs:
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
+      - name: picker test INFRA-1254 inbox-first picker (CREDIBLE-1513)
+        run: bash scripts/ci/test-inbox-first-picker.sh
+
+      - name: picker test atomic picker+claimer (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-and-claim-atomic.sh
+
+      - name: picker test dep-resolution picker+claimer (RESILIENT-1114) (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-and-claim-dep-resolution.sh
+
+      - name: picker test claimer exclusion-reason dump (RESILIENT-1509) (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-and-claim-exclusion-reasons.sh
+
+      - name: picker test rc=1 cooldown (INFRA-361) (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-gap-cooldown.sh
+
+      - name: picker test open-only filter (INFRA-397) (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-gap-open-only.sh
+
+      - name: picker test skips linked-PR gaps (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-gap-skips-linked-pr.sh
+
+      - name: picker test skips merged gaps (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-gap-skips-merged.sh
+
+      - name: picker test skips shipped gaps (EFFECTIVE-1543) (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-gap-skips-shipped.sh
+
+      - name: picker test sync-overhead guard (CREDIBLE-167) (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-gap-sync-overhead.sh
+
+      - name: picker test worker stagger (INFRA-340) (CREDIBLE-1513)
+        run: bash scripts/ci/test-pick-gap-worker-stagger.sh
+
+      - name: picker test P0-MISSION effort-gate bypass (MISSION-047) (CREDIBLE-1513)
+        run: bash scripts/ci/test-picker-p0-mission-effort-bypass.sh
+
+      - name: picker test pillar-starved junk filter (RESILIENT-272) (CREDIBLE-1513)
+        run: bash scripts/ci/test-picker-pillar-starved-junk-filter.sh
+
+      - name: picker test pivot-lock cleanup (CREDIBLE-1513)
+        run: bash scripts/ci/test-picker-pivot-lock-cleanup.sh
+
+      - name: picker test R1 in-flight no-repick (CREDIBLE-1513)
+        run: python3 -I scripts/ci/test-r1-inflight-no-repick.py
+
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 
