@@ -1725,6 +1725,9 @@ jobs:
       - name: test-stale-worktree-reaper-stash (CREDIBLE-1511)
         run: bash scripts/ci/test-stale-worktree-reaper-stash.sh
 
+      - name: merge-driver union smoke (INFRA-8223)
+        run: bash scripts/ci/test-merge-driver-union.sh
+
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 

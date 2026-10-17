@@ -2593,6 +2593,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "merge-driver-union-smoke",
+            &["bash", "scripts/ci/test-merge-driver-union.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "grep-c-echo0-guard-smoke",
             &["bash", "scripts/ci/test-grep-c-echo0-guard.sh"],
             GateKind::Scripts,
