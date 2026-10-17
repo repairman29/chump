@@ -60,14 +60,6 @@ MANIFEST="$REPO_ROOT/scripts/ops/organ-manifest.txt"
 
 log() { printf '[%s] organ-deploy: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
-# RESILIENT-1614: emit helper for organ_skipped_paused.
-_emit_organ_skipped_paused() {
-    local ts
-    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    local event="{\"ts\":\"$ts\",\"kind\":\"organ_skipped_paused\"}"
-    [[ -d "$(dirname "$REPO_ROOT/.chump-locks/ambient.jsonl")" ]] && printf '%s\n' "$event" >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
-}
-
 # RESILIENT-1534: the post-deploy audit, as a function so `--audit-only` can run it
 # on its own (no root, no installer). It no longer counts an organ the manifest
 # scopes OFF this node (platforms=launchd on a systemd hub) or whose requires= is
@@ -107,18 +99,6 @@ fi
 if [[ "$(id -u)" != "0" && "${CHUMP_ORGAN_DEPLOY_ALLOW_NONROOT:-0}" != "1" ]]; then
   log "not root — the privileged system-unit deploy needs root; nothing to do (non-fatal). This organ's unit runs User=root."
   exit 0
-fi
-
-# RESILIENT-1614: check if the node is paused. If so, exit gracefully without deploying.
-_pause_lib="$SCRIPT_DIR/lib/node-pause-check.sh"
-if [[ -f "$_pause_lib" ]]; then
-    # shellcheck disable=SC1090
-    source "$_pause_lib"
-    if _node_pause_check_is_paused; then
-        log "SKIP: node is paused (CHUMP_NODE_MODE=paused); exiting without deploying"
-        _emit_organ_skipped_paused
-        exit 0
-    fi
 fi
 
 if [[ ! -f "$INSTALLER" ]]; then

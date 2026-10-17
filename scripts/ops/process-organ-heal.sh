@@ -93,17 +93,6 @@ done
 
 mkdir -p "$(dirname "$AMBIENT_LOG")" "$LOG_DIR" 2>/dev/null || true
 
-# RESILIENT-1614: check if the node is paused. If so, exit gracefully without healing.
-_pause_lib="$SCRIPT_DIR/lib/node-pause-check.sh"
-if [[ -f "$_pause_lib" ]]; then
-    # shellcheck disable=SC1090
-    source "$_pause_lib"
-    if _node_pause_check_is_paused; then
-        [[ "$CHECK" != "1" ]] && emit organ_skipped_paused
-        exit 0
-    fi
-fi
-
 emit() {  # kind, extra-json (no leading/trailing comma)
     local kind="$1" extra="${2:-}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -213,18 +213,6 @@ if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT/.git" ]]; then
 fi
 cd "$REPO_ROOT" || { log "FATAL: cannot cd $REPO_ROOT"; emit node_converge_failed "\"reason\":\"cwd_failed\""; exit 1; }
 
-# RESILIENT-1614: check if the node is paused. If so, exit gracefully without converging.
-_pause_lib="$SCRIPT_DIR/lib/node-pause-check.sh"
-if [[ -f "$_pause_lib" ]]; then
-    # shellcheck disable=SC1090
-    source "$_pause_lib"
-    if _node_pause_check_is_paused; then
-        log "SKIP: node is paused (CHUMP_NODE_MODE=paused); exiting without converging"
-        _node_pause_emit_skipped
-        exit 0
-    fi
-fi
-
 # DEFER if the main checkout is mid-operation. Resolve the state paths through
 # `git rev-parse --git-path` so this is correct whether $REPO_ROOT is the main
 # checkout or (defensively) a linked worktree. Never reset a tree an operator or
