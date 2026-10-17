@@ -111,9 +111,23 @@ organ_unit_host_rewrite() {
   # host literal at all — __HOME__ / __REPO_ROOT__ / __BIN_DIR__ / __NODE_ENV__
   # and no User= line — and this stage resolves them exactly as the typed
   # renderer does (`chump node render-unit`, crates/chump-provision::render;
-  # same four tokens, same values). These -e rules run LAST so the legacy
+  # same tokens, same values; __BREW_PREFIX__ joined them in slice 2). These -e rules run LAST so the legacy
   # source-home rewrites above can never touch an already-resolved path. User=
   # for a template comes from the injection block below (system scope only).
+  # INFRA-8194 slice 2: __BREW_PREFIX__ resolves through the shared host-path
+  # mirror (scripts/lib/host-paths.sh, same rule as chump_provision::brew_prefix:
+  # the Apple Silicon prefix only on a Mac that has it, /usr/local elsewhere).
+  # A copy of this lib sourced on its own (synthetic tests) falls back to the
+  # non-Darwin answer, which is what every systemd host gets anyway.
+  local brew_prefix="/usr/local"
+  if ! declare -F chump_brew_prefix >/dev/null 2>&1; then
+    # shellcheck source=../../lib/host-paths.sh
+    . "$(dirname "${BASH_SOURCE[0]}")/../../lib/host-paths.sh" 2>/dev/null || true
+  fi
+  if declare -F chump_brew_prefix >/dev/null 2>&1; then
+    brew_prefix="$(chump_brew_prefix)"
+  fi
+
   sed -e "s#${src_home%/}/Projects/chump#${repo_on_host}#g" \
       -e "s#${src_home%/}/#${run_home%/}/#g" \
       -e "s#=${src_home%/}\$#=${run_home%/}#" \
@@ -121,6 +135,7 @@ organ_unit_host_rewrite() {
       -e "s#__REPO_ROOT__#${repo_on_host}#g" \
       -e "s#__BIN_DIR__#${run_home%/}/.cargo/bin#g" \
       -e "s#__NODE_ENV__#${run_home%/}/.chump/node.env#g" \
+      -e "s#__BREW_PREFIX__#${brew_prefix}#g" \
       -e "s#__HOME__#${run_home%/}#g" "$src" > "$dest"
 
   # Uniform host-agnostic runtime context for EVERY generated organ (one

@@ -19,7 +19,14 @@
 #   root-literal      /root/
 #   homebrew-literal  /opt/homebrew
 #
-# Write placeholders instead (__HOME__ __REPO_ROOT__ __BIN_DIR__ __NODE_ENV__)
+# A comment line (first non-blank char `#`, but NOT a `#!` shebang) is skipped:
+# it executes nothing, and incident receipts ("the old unit ran ~root's
+# checkout") live there (INFRA-8194 slice 2, mirrored in find_host_literals).
+# Quoted text in code is never skipped: a quoted string is usually a live path.
+# Write documentation examples as /home/<user>, ~root/, "the Homebrew prefix".
+#
+# Write placeholders instead (__HOME__ __REPO_ROOT__ __BIN_DIR__ __NODE_ENV__
+# __BREW_PREFIX__)
 # and render through the typed Host enum (`chump node render-unit`, or the shell
 # mirror organ_unit_host_rewrite). User= is injected by the renderer for a
 # system-scope install only.
@@ -47,14 +54,25 @@ ALLOWLIST_REL="scripts/ci/provision-host-literal-allowlist.txt"
 SCAN_DIRS=(scripts/dispatch launchd scripts/plists scripts/setup)
 PATTERN='(^|[^A-Za-z0-9_])User=[A-Za-z_]|/home/[a-z_]|/root/|/opt/homebrew'
 
-# offenders <root> -> repo-relative paths of files carrying a host literal, sorted.
+# COMMENT: a grep -n line whose text is a comment (not a shebang).
+COMMENT='^[0-9]+:[[:space:]]*#([^!]|$)'
+
+# literal_lines <file> -> "N:text" for each NON-comment line carrying a literal.
+literal_lines() {
+  grep -nIE "$PATTERN" "$1" 2>/dev/null | grep -vE "$COMMENT"
+}
+
+# offenders <root> -> repo-relative paths of files carrying a host literal
+# outside a comment, sorted.
 offenders() {
-  local root="$1" d
+  local root="$1" d f
   (
     cd "$root" || exit 0
     for d in "${SCAN_DIRS[@]}"; do
       [ -d "$d" ] || continue
       grep -rlIE "$PATTERN" "$d" 2>/dev/null
+    done | while IFS= read -r f; do
+      [ -n "$(literal_lines "$f")" ] && printf '%s\n' "$f"
     done
   ) | LC_ALL=C sort -u
 }
@@ -74,10 +92,10 @@ check() {
   new="$(LC_ALL=C comm -23 <(printf '%s\n' "$found" | sed '/^$/d') <(printf '%s\n' "$allowed" | sed '/^$/d'))"
   if [ -n "$new" ]; then
     rc=1
-    echo "FAIL: new host literal(s); use __HOME__/__REPO_ROOT__/__BIN_DIR__/__NODE_ENV__ and render via the Host enum (chump node render-unit):"
+    echo "FAIL: new host literal(s); use __HOME__/__REPO_ROOT__/__BIN_DIR__/__NODE_ENV__/__BREW_PREFIX__ and render via the Host enum (chump node render-unit):"
     while IFS= read -r f; do
       [ -n "$f" ] || continue
-      grep -nIE "$PATTERN" "$root/$f" 2>/dev/null | head -5 | sed "s|^|  $f:|"
+      literal_lines "$root/$f" | head -5 | sed "s|^|  $f:|"
     done <<< "$new"
   fi
 
@@ -120,6 +138,8 @@ self_test() {
   printf '[Service]\nUser=jeff\n' > "$t/scripts/dispatch/user.service"
   printf '<string>/opt/homebrew/bin/chump</string>\n' > "$t/launchd/brew.plist"
   printf 'cd /home/ubuntu/chump\nsource /root/.chump/providers.env\n' > "$t/scripts/setup/paths.sh"
+  # Comment-only literals are documentation, not host assumptions (slice 2).
+  printf '#!/usr/bin/env bash\n# the old unit ran /root/Projects/chump as User=root\n  # PATH began with /opt/homebrew/bin\necho ok\n' > "$t/scripts/setup/comments.sh"
 
   local listed="$t/allow.txt"
   { echo "# baseline-count: 3"; echo "launchd/brew.plist"; echo "scripts/dispatch/user.service"; echo "scripts/setup/paths.sh"; } > "$listed"
@@ -141,7 +161,17 @@ self_test() {
   { check "$t" "$listed" 0 || true; } | grep -q "baseline-count: N' header" \
     || { echo "  self-test FAIL: missing baseline header not reported"; return 1; }
 
-  echo "  ok self-test: clean placeholders pass; User=<name>, /home/<name>, /root/, /opt/homebrew caught; stale + over-baseline + headerless lists fail"
+  { echo "# baseline-count: 3"; echo "launchd/brew.plist"; echo "scripts/dispatch/user.service"; echo "scripts/setup/paths.sh"; } > "$listed"
+  printf '#!/opt/homebrew/bin/bash\necho hi\n' > "$t/scripts/setup/shebang.sh"
+  { check "$t" "$listed" 0 || true; } | grep -q 'scripts/setup/shebang.sh:1:#!/opt/homebrew/bin/bash' \
+    || { echo "  self-test FAIL: a #! shebang is not a comment and must be flagged"; return 1; }
+  { check "$t" "$listed" 0 || true; } | grep -q 'comments.sh' \
+    && { echo "  self-test FAIL: comment-only literals must not be flagged"; return 1; }
+  printf 'X=1 # see /root/\necho "/opt/homebrew/bin/chump"\n' > "$t/scripts/setup/shebang.sh"
+  { check "$t" "$listed" 0 || true; } | grep -q 'shebang.sh:2:echo "/opt/homebrew/bin/chump"' \
+    || { echo "  self-test FAIL: quoted text in code must still be flagged"; return 1; }
+
+  echo "  ok self-test: clean placeholders pass; comment lines skipped, shebangs and quoted code still caught; User=<name>, /home/<name>, /root/, /opt/homebrew caught; stale + over-baseline + headerless lists fail"
   return 0
 }
 
