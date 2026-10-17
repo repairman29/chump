@@ -1121,6 +1121,17 @@ PY
         # back to the empty set (Layers A+C still hold the anti-spin guarantee).
         _stale_branch_hours="${CHUMP_STALE_BRANCH_HOURS:-6}"
         in_progress_gaps=""
+        # INFRA-8176: keep the github cache's pr_state table present and fresh
+        # on nodes without the webhook receiver. The open-PR anti-spin (here
+        # and in _pick_and_claim_gap.py) reads it; when it was ABSENT the check
+        # failed open and RESILIENT-1427 was re-picked in cycles 24/27/28 while
+        # PR #5456 was open. One REST refill at most every
+        # CHUMP_PR_STATE_MAX_AGE_S (default 600s); best-effort, never fatal.
+        if ! ( REPO_ROOT="$REPO_ROOT" CHUMP_CACHE_DB="$REPO_ROOT/.chump/github_cache.db" \
+                bash -c 'source "$1/scripts/coord/lib/github_cache.sh" && cache_ensure_pr_state_fresh' _ "$REPO_ROOT" ) \
+                >/dev/null 2>&1; then
+            log "INFRA-8176: pr_state refresh failed (offline/gh down); picker will use the gh fallback or fail open"
+        fi
         if git -C "$REPO_ROOT" fetch origin --prune --quiet \
                 'refs/heads/chump/*:refs/remotes/origin/chump/*' 2>/dev/null; then
             _branch_rows="$(
@@ -1198,6 +1209,8 @@ PY
                 WORKER_ID="$AGENT_ID" \
                 COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
                 FLEET_REQUIRE_TITLE_SUBSTR="${FLEET_REQUIRE_TITLE_SUBSTR:-}" \
+                REPO_ROOT="$REPO_ROOT" \
+                CHUMP_PICKER_OPEN_PR_FALLBACK=1 \
                 python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>"$_pick_stderr_file" || true)"
         rm -f "$gap_json_file"
         _pick_stderr="$(cat "$_pick_stderr_file" 2>/dev/null || true)"

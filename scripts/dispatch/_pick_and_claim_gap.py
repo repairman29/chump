@@ -57,6 +57,19 @@ Environment (same as _pick_gap.py plus):
                         into origin/main recently (computed by worker.sh from
                         commit subjects) — never re-offered even if the
                         gap-store status hasn't flipped to done yet
+  WORKER_SKILLS_HARD    INFRA-8176: "1" restores the HARD skill filter (a gap
+                        whose skills_required is not a subset of WORKER_SKILLS
+                        is excluded). Default (unset/0): skills are a SOFT
+                        affinity: matching gaps sort first within their
+                        priority band, non-matching gaps are still offered.
+  CHUMP_PICKER_OPEN_PR_FALLBACK  INFRA-8176: "1" (worker.sh sets it) enables
+                        the gh fallback for the open-PR anti-spin when the
+                        github_cache.db pr_state table is absent. Unset in unit
+                        tests so they never touch the network.
+  CHUMP_OPEN_PR_LOOKUP_TTL_S  INFRA-8176: on-disk TTL (s) of the per-gap gh
+                        open-PR lookup cache (default 600).
+  CHUMP_PICKER_OPEN_PR_GH_MAX  INFRA-8176: max gh fallback lookups per cycle
+                        (default 8); cached answers do not count.
 """
 
 from __future__ import annotations
@@ -80,6 +93,9 @@ from _dep_resolution import (  # noqa: E402
 )
 
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
+# INFRA-8176: wedge_rank penalty for a soft skill mismatch; larger than any
+# reachable affinity_score + rebalance_boost so mismatches sort last in-band.
+SOFT_SKILL_PENALTY = 1000
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 
 # EFFECTIVE-1543: pickable = genuinely-open work ONLY.
@@ -97,6 +113,64 @@ EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 # resolver all share ONE definition and cannot drift (RESILIENT-1114).
 
 
+def _pr_row_is_open(raw: object) -> bool:
+    """INFRA-8176: a pr_state row with merged_at NULL is only in flight while
+    the PR is still OPEN. The webhook receiver stores the whole event payload
+    (state under .pull_request.state) and the REST refill stores the PR object
+    (state at top level); a closed-unmerged PR keeps merged_at NULL forever, so
+    without this check its gap would stay excluded (a permanent wedge). A row
+    with no parseable state is treated as open (the old behaviour)."""
+    if not raw:
+        return True
+    try:
+        d = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return True
+    if not isinstance(d, dict):
+        return True
+    st = d.get("state")
+    if st is None and isinstance(d.get("pull_request"), dict):
+        st = d["pull_request"].get("state")
+    return st in (None, "open")
+
+
+def _inflight_pr_gaps_or_none(repo_root: str):
+    """INFRA-8176: like _inflight_pr_gaps, but returns None (not an empty set)
+    when the cache DB or its pr_state table is ABSENT or unreadable, so the
+    caller can tell "no open PRs" apart from "no data" and fall back to gh.
+    RESILIENT-1427 was re-picked in worker cycles 24/27/28 (~708s of claude
+    each) while PR #5456 sat open, because the table was missing and this
+    check silently failed open."""
+    cache = os.path.join(repo_root, ".chump", "github_cache.db")
+    if not os.path.exists(cache):
+        return None
+    out: set = set()
+    try:
+        import sqlite3
+        pat = re.compile(r"^([A-Z][A-Z0-9]*-\d+):")
+        con = sqlite3.connect(f"file:{cache}?mode=ro", uri=True)
+        try:
+            cols = {r[1] for r in con.execute("PRAGMA table_info(pr_state)").fetchall()}
+            if "title" not in cols or "merged_at" not in cols:
+                return None
+            raw_col = "raw_payload_json" if "raw_payload_json" in cols else "NULL"
+            rows = con.execute(
+                f"SELECT title, {raw_col} FROM pr_state "
+                "WHERE merged_at IS NULL AND title IS NOT NULL"
+            ).fetchall()
+        finally:
+            con.close()
+        for title, raw in rows:
+            if not _pr_row_is_open(raw):
+                continue
+            m = pat.match((title or "").lstrip())
+            if m:
+                out.add(m.group(1))
+    except Exception:
+        return None
+    return out
+
+
 def _inflight_pr_gaps(repo_root: str) -> set:
     """R1 (RESILIENT-1592) — gap-ids that already have an OPEN, un-merged PR.
 
@@ -109,31 +183,71 @@ def _inflight_pr_gaps(repo_root: str) -> set:
     Keyed on the bare "<GAP-ID>:" ship-title convention — identical to
     check-gap-status-flip.sh:34 and gap-doctor-reconcile.py:576 — so a
     `fix(X:)` *reference* PR (which does not implement the gap) never counts.
-    The webhook cache drops old closed PRs, so `merged_at IS NULL` ~= an active
-    open PR (blocked/dirty merge states). Fail-open (empty set) on ANY cache
-    error so a missing or locked cache never wedges the picker.
+    Returns an empty set when the cache is missing; main() uses
+    _inflight_pr_gaps_or_none() so a missing table triggers the gh fallback
+    (INFRA-8176) instead of failing open.
     """
-    cache = os.path.join(repo_root, ".chump", "github_cache.db")
-    if not os.path.exists(cache):
-        return set()
-    out: set = set()
+    got = _inflight_pr_gaps_or_none(repo_root)
+    return got if got is not None else set()
+
+
+_GAP_ID_SAFE = re.compile(r"^[A-Z][A-Z0-9]*-\d+$")
+
+
+def _gh_open_pr_lookup(repo_root: str, gap_id: str):
+    """INFRA-8176: the open-PR fallback when pr_state is absent. Calls
+    cache_gap_open_prs in scripts/coord/lib/github_cache.sh (which wraps
+    `gh pr list --state open --search "<GAP-ID> in:title"` behind a 10-minute
+    on-disk cache). Returns True (open PR exists), False (known: none), or
+    None (lookup failed: unknown)."""
+    if not _GAP_ID_SAFE.match(gap_id or ""):
+        return None
+    lib = os.path.join(repo_root, "scripts", "coord", "lib", "github_cache.sh")
+    if not os.path.exists(lib):
+        lib = str(Path(__file__).resolve().parent.parent / "coord" / "lib" / "github_cache.sh")
+    env = dict(os.environ)
+    env.setdefault("REPO_ROOT", repo_root)
     try:
-        import sqlite3
-        pat = re.compile(r"^([A-Z][A-Z0-9]*-\d+):")
-        con = sqlite3.connect(f"file:{cache}?mode=ro", uri=True)
-        try:
-            rows = con.execute(
-                "SELECT title FROM pr_state WHERE merged_at IS NULL AND title IS NOT NULL"
-            ).fetchall()
-        finally:
-            con.close()
-        for (title,) in rows:
-            m = pat.match((title or "").lstrip())
-            if m:
-                out.add(m.group(1))
+        r = subprocess.run(
+            ["bash", "-c", 'source "$1" && cache_gap_open_prs "$2"', "_", lib, gap_id],
+            cwd=repo_root if os.path.isdir(repo_root) else None,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=int(os.environ.get("CHUMP_PICKER_OPEN_PR_GH_TIMEOUT_S", "20")),
+        )
     except Exception:
-        return set()
-    return out
+        return None
+    if r.returncode != 0:
+        return None
+    return bool(r.stdout.strip())
+
+
+def _emit_ambient(event: dict) -> None:
+    """Best-effort append of one event to AMBIENT_JSONL (never raises)."""
+    path = os.environ.get("AMBIENT_JSONL", ".chump-locks/ambient.jsonl")
+    event.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps(event, separators=(",", ":")) + "\n")
+    except Exception:
+        pass
+
+
+def _emit_skipped_open_pr(gaps: list, source: str) -> None:
+    """INFRA-8176: one event per cycle naming every gap skipped because it
+    already has an open un-merged PR, so re-pick churn is measurable."""
+    if not gaps:
+        return
+    _emit_ambient(
+        {"kind":"picker_skipped_open_pr",  # literal kind at the emit site (EVENT_REGISTRY scanner)
+            "event": "picker_skipped_open_pr",
+            "gaps": sorted(set(gaps)),
+            "count": len(set(gaps)),
+            "source": source,
+            "worker": os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
+        }
+    )
 
 
 def _is_pickable_open(g: dict) -> bool:
@@ -702,7 +816,20 @@ def main() -> int:
     # the loop-breaker. Unconditional (no opt-out bypass, per INFRA-2429); the
     # helper already fails-open to an empty set on any cache error, so a missing
     # or locked cache degrades to prior behaviour without a kill-switch.
-    inflight = _inflight_pr_gaps(os.environ.get("REPO_ROOT", "."))
+    repo_root = os.environ.get("REPO_ROOT", ".")
+    inflight_or_none = _inflight_pr_gaps_or_none(repo_root)
+    inflight = inflight_or_none if inflight_or_none is not None else set()
+    # INFRA-8176: when pr_state is absent, the per-candidate gh fallback runs
+    # at claim time (only for gaps we are about to offer, capped per cycle).
+    gh_fallback = (
+        inflight_or_none is None
+        and os.environ.get("CHUMP_PICKER_OPEN_PR_FALLBACK", "0") == "1"
+    )
+    try:
+        gh_fallback_max = int(os.environ.get("CHUMP_PICKER_OPEN_PR_GH_MAX", "8"))
+    except ValueError:
+        gh_fallback_max = 8
+    skipped_open_pr: list = []
     cooled = cooled_down_gaps(
         os.environ.get("COOLDOWN_DIR", ""),
         worker_id=os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
@@ -716,6 +843,13 @@ def main() -> int:
         for s in os.environ.get("WORKER_SKILLS", "").split(",")
         if s.strip()
     ) if affinity_enabled else set()
+    # INFRA-8176: skills_required is a SOFT affinity by default. The old hard
+    # subset filter starved node1 (WORKER_SKILLS=rust,docs,shell,scripts,md):
+    # INFRA-8174 (rust,bash,vercel) and whole tag classes (vercel/nats/systemd/
+    # bash/ci/coord) were excluded forever and their priority never evaluated.
+    # Specialized nodes opt back into hard filtering with WORKER_SKILLS_HARD=1.
+    skills_hard = os.environ.get("WORKER_SKILLS_HARD", "0") == "1"
+    soft_demoted: dict = {}
 
     # FLEET-046: pillar/domain rebalancing.
     rebalance_enabled = os.environ.get("CHUMP_REBALANCE", "1") != "0"
@@ -769,6 +903,7 @@ def main() -> int:
             # R1 (RESILIENT-1592): an open un-merged PR already exists for this
             # gap — wait for it to land or be closed; do not spawn a duplicate.
             reasons["inflight_pr"] += 1
+            skipped_open_pr.append(gid)
             continue
         if gid in cooled:
             reasons["cooled_down"] += 1
@@ -879,10 +1014,16 @@ def main() -> int:
             preferred_backend = (g.get("preferred_backend") or "").lower()
             preferred_machine = (g.get("preferred_machine") or "").lower()
 
-            # Hard filter: if gap requires skills, worker must have all of them.
-            if skills_required and not skills_required.issubset(worker_skills):
+            # INFRA-8176: hard filter only when the worker opts in
+            # (WORKER_SKILLS_HARD=1). Otherwise a non-matching gap stays a
+            # candidate but sorts after every matching gap in its priority band
+            # (SOFT_SKILL_PENALTY in wedge_rank below).
+            skill_mismatch = bool(skills_required) and not skills_required.issubset(worker_skills)
+            if skill_mismatch and skills_hard:
                 reasons["skills_mismatch"] += 1
                 continue
+            if skill_mismatch:
+                soft_demoted[gid] = sorted(skills_required - worker_skills)
 
             # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
             worker_backend = os.environ.get("WORKER_BACKEND", "").lower()
@@ -930,6 +1071,13 @@ def main() -> int:
         # across tiers. This preserves the wedge/topology "ship order" heuristic
         # (SHIP_ORDER_VISION) as a tiebreaker while priority stays authoritative.
         wedge_rank = -(affinity_score + rebalance_boost)
+        # INFRA-8176: soft skill filter. A skill-mismatched gap gets a penalty
+        # larger than any affinity+rebalance score, so within its priority
+        # band it sorts after every matching gap, but it never drops below a
+        # lower priority tier (prio_rank and mission_rank stay authoritative;
+        # the tuple layout is unchanged).
+        if gid in soft_demoted:
+            wedge_rank += SOFT_SKILL_PENALTY
 
         # Canonical sort order matches _pick_gap.py:
         #   (prio_rank, mission_rank, wedge_rank, age, effort_rank, id)
@@ -957,6 +1105,20 @@ def main() -> int:
         # Start from staggered offset (same logic as _pick_gap.py).
         offset = (max(worker_idx, 1) - 1) % len(candidates)
 
+        # INFRA-8176: events for the gap actually offered this cycle.
+        def _emit_pick_events(gap_id: str) -> None:
+            _emit_skipped_open_pr(skipped_open_pr, "gh" if gh_fallback else "pr_state")
+            if gap_id in soft_demoted:
+                _emit_ambient(
+                    {"kind":"picker_soft_skill_demoted",  # literal kind at the emit site (EVENT_REGISTRY scanner)
+                        "event": "picker_soft_skill_demoted",
+                        "picked": gap_id,
+                        "missing_skills": soft_demoted[gap_id],
+                        "worker_skills": sorted(worker_skills),
+                        "worker": os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
+                    }
+                )
+
         # INFRA-569: dry-run mode — pick without claiming (no lease written).
         dry_run = os.environ.get("CHUMP_FLEET_DRY_RUN", "0") == "1"
 
@@ -964,7 +1126,24 @@ def main() -> int:
         for i in range(len(candidates)):
             idx = (offset + i) % len(candidates)
             gap_id = candidates[idx][5]  # Index [5]: (prio_rank, mission_rank, wedge_rank, effort, age, gid)
+            # INFRA-8176: pr_state absent -> ask gh (via the cache helper's
+            # 10-minute on-disk cache) before offering. A gap with an open
+            # un-merged PR is never offered; an unknown answer (gh down or
+            # lookup budget spent) fails open so an offline node never wedges.
+            if gh_fallback:
+                if gh_fallback_max > 0:
+                    gh_fallback_max -= 1
+                    has_pr = _gh_open_pr_lookup(repo_root, gap_id)
+                else:
+                    has_pr = None
+                if has_pr:
+                    reasons["inflight_pr"] += 1
+                    skipped_open_pr.append(gap_id)
+                    continue
+                if has_pr is None:
+                    reasons["open_pr_lookup_unknown"] += 1
             if dry_run:
+                _emit_pick_events(gap_id)
                 print(gap_id)
                 return 0
             if not try_claim_gap(gap_id, session_id, lock_dir):
@@ -976,6 +1155,7 @@ def main() -> int:
                 # candidates to begin with.
                 reasons["claim_race_lost"] += 1
                 continue
+            _emit_pick_events(gap_id)
             # FLEET-046 + INFRA-720: log when rebalancing influenced the pick.
             if rebalance_enabled and (monopoly_domain or starved_pillars or under_represented_pillars):
                 ambient_path = os.environ.get(
@@ -1018,6 +1198,7 @@ def main() -> int:
             except Exception:
                 pass
 
+    _emit_skipped_open_pr(skipped_open_pr, "gh" if gh_fallback else "pr_state")
     # RESILIENT-1509: reaching here means no gap was returned this cycle.
     # Dump the per-reason exclusion counts to stderr so worker.sh (which no
     # longer redirects this to /dev/null) can log WHY instead of a bare

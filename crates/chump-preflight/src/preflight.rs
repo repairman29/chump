@@ -2704,6 +2704,14 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-pick-and-claim-lockdir.sh"],
             GateKind::Scripts,
         ));
+        // INFRA-8176: soft skill filter + open-PR anti-spin (pr_state honoured,
+        // gh fallback through github_cache.sh with a stubbed gh). Pure
+        // bash/python fixtures, no network.
+        steps.push(step(
+            "picker-soft-skill-open-pr",
+            &["bash", "scripts/ci/test-picker-soft-skill-open-pr.sh"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "meta-011-git-stomp",
             &["bash", "scripts/ci/test-meta-011-git-stomp.sh"],

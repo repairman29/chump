@@ -4063,6 +4063,24 @@ events:
     trigger: worker has skill constraints but no matching gaps
     consumers: [fleet-brief]
 
+  - kind: picker_skipped_open_pr
+    effect_metric: self
+    emitter: scripts/dispatch/_pick_and_claim_gap.py (INFRA-8176)
+    trigger: one or more gaps were not offered this cycle because each already has an open un-merged PR (source=pr_state from github_cache.db, or source=gh from the cache_gap_open_prs fallback when pr_state is absent)
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, gaps, count, source]
+    docs: |
+      Measures duplicate-PR re-pick churn that the anti-spin prevented
+      (RESILIENT-1427 was re-picked in cycles 24/27/28 while PR #5456 was
+      open). Emitted at most once per picker cycle.
+
+  - kind: picker_soft_skill_demoted
+    effect_metric: self
+    emitter: scripts/dispatch/_pick_and_claim_gap.py (INFRA-8176)
+    trigger: the picker offered a gap whose skills_required is not a subset of WORKER_SKILLS (soft skill filter; ranked after matching gaps in its priority band)
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, picked, missing_skills, worker_skills]
+
   # ── Activation telemetry (chump-init) ─────────────────────────────────────
   - kind: ftue_init_smoke_passed
     effect_metric: self
