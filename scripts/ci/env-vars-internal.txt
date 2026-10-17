@@ -3641,3 +3641,6 @@ CHUMP_CARGO_TARGET_ANNOUNCED
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_CLIPPY_MIN_DISK_KB
+# ZERO-WASTE-133: per-tool-call timeout for headless dispatch agents (seconds;
+# default 300, 0 disables the timeout env and the stalled-call watchdog)
+CHUMP_DISPATCH_TOOL_CALL_TIMEOUT_SECS
