@@ -270,7 +270,9 @@ mod tests {
     fn seeds() { conn.execute("UPDATE gaps SET status='done' WHERE id=?1", []).unwrap(); }
 }
 RS
+    # shellcheck disable=SC2016  # literal fixture text
     echo 'sqlite3 "$db" "SELECT COUNT(*) FROM gaps WHERE status='"'"'done'"'"'"' > "$d/scripts/coord/reader.sh"
+    # shellcheck disable=SC2016  # literal fixture text
     echo 'sqlite3 "$db" "UPDATE gaps SET status='"'"'done'"'"' WHERE id=1"' > "$d/scripts/ci/test-fixture.sh"
 }
 
@@ -296,6 +298,7 @@ else
 fi
 
 mk_good "$FIX/sh2"
+# shellcheck disable=SC2016  # literal fixture text
 echo 'sqlite3 "$db" "UPDATE gaps SET status='"'"'shipped'"'"' WHERE id='"'"'X'"'"'"' > "$FIX/sh2/scripts/coord/closer.sh"
 if out=$("$PY" "$SCANNER" "$FIX/sh2" 2>&1); then
     ko "self-test: a shell writer must fail: $out"
