@@ -104,13 +104,19 @@ for alias_name in cargo-toml-append js-append rust-main-append; do
   fi
 done
 
-# ── Register generic 'union' driver (INFRA-1419) ─────────────────────────────
-# Line-level union merge via `git merge-file`, for paths where a custom
-# append-only/YAML-aware driver isn't warranted. No script file needed — the
-# driver command is the literal `git merge-file` invocation.
+# ── Register generic 'union' driver (INFRA-1419, rewritten INFRA-8223) ────────
+# `merge=union` in .gitattributes resolves to THIS registration, not git's
+# built-in (a config entry named `union` shadows the built-in). The original
+# INFRA-1419 command was `git merge-file -p ... %A %O %B > %A`: the shell
+# truncated %A before git read it and -p wrote conflict markers instead of a
+# union, so every rebase of EVENT_REGISTRY.yaml / env-vars-internal.txt came out
+# wrapped in LEFT/RIGHT markers with the upstream side gone (PRs #5536 #5529
+# #5527, 2026-10-17). The script reads %O %A %B into temp files first and moves
+# the result into place; it is list-item aware for EVENT_REGISTRY.yaml.
 DRIVER_NAME="union"
-git config "merge.${DRIVER_NAME}.name" "Line-level union merge via git merge-file (INFRA-1419)"
-git config "merge.${DRIVER_NAME}.driver" "git merge-file -p -L LEFT -L BASE -L RIGHT %A %O %B > %A"
+UNION_DRIVER_SCRIPT_REL="scripts/git/merge-driver-union.sh"
+git config "merge.${DRIVER_NAME}.name" "Union merge: both sides kept, no in-place truncation (INFRA-1419/INFRA-8223)"
+git config "merge.${DRIVER_NAME}.driver" "${UNION_DRIVER_SCRIPT_REL} %O %A %B %L %P"
 echo "[install-merge-drivers] OK: ${DRIVER_NAME} registered"
 
 # Verify .gitattributes wiring

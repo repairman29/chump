@@ -1677,6 +1677,9 @@ jobs:
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
+      - name: merge-driver union smoke (INFRA-8223)
+        run: bash scripts/ci/test-merge-driver-union.sh
+
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 
