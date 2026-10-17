@@ -38,12 +38,12 @@ for f in scripts/coord/chump-commit.sh scripts/coord/bot-merge.sh \
 done
 
 # Resolver precedence, run in a clean env.
-run() { env -i HOME="/home/u" PATH="$PATH" "$@" bash -c \
+run() { env -i HOME="/u" PATH="$PATH" "$@" bash -c \
   "source '$RESOLVER'; chump_cargo_target_dir"; }
 chk() { # desc expected actual
   if [[ "$2" == "$3" ]]; then ok "$1 -> $3"; else fail "$1: expected $2 got $3"; fi
 }
-chk "default" "/home/u/.cargo/chump-shared-target" "$(run)"
+chk "default" "/u/.cargo/chump-shared-target" "$(run)"
 chk "CHUMP_SHARED_CARGO_TARGET alias" "/a" "$(run CHUMP_SHARED_CARGO_TARGET=/a)"
 chk "CHUMP_CARGO_TARGET beats alias" "/b" "$(run CHUMP_SHARED_CARGO_TARGET=/a CHUMP_CARGO_TARGET=/b)"
 chk "CARGO_TARGET_DIR beats all" "/c" "$(run CHUMP_CARGO_TARGET=/b CARGO_TARGET_DIR=/c)"
