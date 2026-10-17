@@ -618,6 +618,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          # --timeout-s 120 is INTENTIONALLY shorter than the script default
+          # (600s): it is a short grace window, not a wait-for-audit. A real
+          # audit run takes 15-40 min on starved runners, so no fixed poll window
+          # can outlast it — holding a runner for 600s would still time out and
+          # just waste a slot. Two mechanisms make the short window correct:
+          #   (1) RESILIENT-1617 lane-seen rule — a still-running audit (shards
+          #       in_progress / audit.yml run not completed) reports in_progress
+          #       => verified classifies PENDING, NOT FAIL, on the first pass; and
+          #   (2) RESILIENT-1562 — .github/workflows/verified-recompute.yml
+          #       re-runs this `verified` job on the Audit/integrations
+          #       workflow_run=completed event, so the final verdict reflects the
+          #       audit/ACP terminal state regardless of this poll window.
           bash scripts/ci/poll-cross-workflow-checks.sh \
             --sha "$sha" \
             --check "audit" \
@@ -1118,6 +1130,15 @@ jobs:
         # in the tree, or a missing receipt pair. Pure local, ~1s.
         run: bash scripts/ci/test-self-reports-registry.sh
 
+      - name: observability registry YAML-parse gate (CREDIBLE-1516)
+        # Parses EVENT_REGISTRY.yaml + SELF_REPORTS.yaml with yaml.safe_load so
+        # an illegal scalar (e.g. the backtick-led scalar that sat on main from
+        # #3472 and broke the INFRA-8223 union merge driver) fails fast instead
+        # of only the grep-by-`kind:` gates passing it. The script installs
+        # PyYAML if the runner lacks it; mirrored in `chump preflight`
+        # (discover_test_scripts) and the pre-commit registry hook.
+        run: bash scripts/ci/test-event-registry-yaml-parse.sh
+
       - name: capabilities registry gate (CREDIBLE-240)
         # docs/CAPABILITIES_REGISTRY.json is indexed by almanac, so a stale or
         # broken catalog gets served to agents with a file:line receipt. This
@@ -1299,6 +1320,9 @@ jobs:
 
       - name: dispatch child lifetime (INFRA-8198)
         run: bash scripts/ci/test-dispatch-child-lifetime.sh
+
+      - name: dispatch agent search guard + tool-call timeout env (ZERO-WASTE-133)
+        run: bash scripts/ci/test-dispatch-agent-search-guard.sh
 
       - name: farmer dispatch orphan reaper (INFRA-8198)
         run: bash scripts/ci/test-farmer-dispatch-orphan-reaper.sh

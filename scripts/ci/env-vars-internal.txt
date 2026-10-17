@@ -3640,3 +3640,6 @@ CHUMP_CARGO_TARGET_ANNOUNCED
 # INFRA-8203: where chump dispatch saves <GAP>.stranded.patch when a work
 # child exits with uncommitted work (default $HOME/.chump/dispatch-logs)
 CHUMP_DISPATCH_LOGS_DIR
+# ZERO-WASTE-133: per-tool-call timeout for headless dispatch agents (seconds;
+# default 300, 0 disables the timeout env and the stalled-call watchdog)
+CHUMP_DISPATCH_TOOL_CALL_TIMEOUT_SECS
