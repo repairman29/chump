@@ -338,7 +338,7 @@ echo "--- Assertion 4: gap ship marks status done ---"
             CHUMP_SHIP_NO_AUTOSTAGE=1 \
             CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
             CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
-            "$CHUMP" gap ship "$GAP_ID" --update-yaml --closed-pr 9999 2>&1
+            "$CHUMP" gap ship "$GAP_ID" --update-yaml 2>&1
         ) || SHIP_RC=$?
         SHIP_RC="${SHIP_RC:-0}"
 
@@ -422,7 +422,7 @@ echo "--- Assertion 5: Idempotent re-ship (ship twice, count events) ---"
             CHUMP_SHIP_NO_AUTOSTAGE=1 \
             CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
             CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
-            "$CHUMP" gap ship "$GAP_ID" --update-yaml --closed-pr 9998 2>&1
+            "$CHUMP" gap ship "$GAP_ID" --update-yaml 2>&1
         ) || SHIP2_RC=$?
         SHIP2_RC="${SHIP2_RC:-0}"
 
