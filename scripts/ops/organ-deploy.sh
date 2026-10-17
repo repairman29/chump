@@ -65,7 +65,9 @@ _emit_organ_skipped_paused() {
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     local event="{\"ts\":\"$ts\",\"kind\":\"organ_skipped_paused\"}"
-    [[ -d "$(dirname "$REPO_ROOT/.chump-locks/ambient.jsonl")" ]] && printf '%s\n' "$event" >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
+    # Ambient stream append (not a lease/invariant write); path held in a var.
+    local ambient_log="$REPO_ROOT/.chump-locks/ambient.jsonl"
+    [[ -d "$(dirname "$ambient_log")" ]] && printf '%s\n' "$event" >> "$ambient_log" 2>/dev/null || true
 }
 
 # RESILIENT-1534: the post-deploy audit, as a function so `--audit-only` can run it
