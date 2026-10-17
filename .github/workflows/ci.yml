@@ -1108,6 +1108,16 @@ jobs:
       - name: gap-preflight AC gate + picker AC filter (INFRA-1259)
         run: bash scripts/ci/test-gap-preflight-ac-gate.sh
 
+      - name: invariant boundary gate (INFRA-8218 R6.1)
+        # Prevents direct mutations of state.db, lease files, or gap status from
+        # scripts outside the allowlist. Shadow mode prints violations; enforce
+        # mode fails on new violations. The allowlist can only shrink.
+        run: bash scripts/ci/test-invariant-boundary.sh
+
+      - name: invariant boundary fixture test (INFRA-8218)
+        # Proves pattern detection and allowlist enforcement work correctly.
+        run: bash scripts/ci/test-invariant-boundary-fixture.sh
+
       - name: decompose re-slice guard — parent sliced at most once (RESILIENT-1437)
         run: bash scripts/ci/test-gap-decompose-reslice-guard.sh
 

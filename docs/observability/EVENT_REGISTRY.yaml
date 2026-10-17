@@ -4976,6 +4976,20 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, inv]
 
+  # ── INFRA-8218 R6.1: invariant boundary gate ──────────────────────────────────
+  - kind: invariant_boundary_violation
+    effect_metric: self
+    emitter: scripts/ci/test-invariant-boundary.sh (INFRA-8218)
+    trigger: preflight/CI detects direct mutations of state.db, lease files, or gap
+      status in scripts/ outside the allowed baseline; counts total/allowed/new violations
+    consumers: [kpi-report, fleet-brief]
+    fields_required: [ts, kind, mode, total, allowed, new]
+    docs: |
+      mode: "shadow" (informational) or "enforce" (blocking on new violations)
+      total: count of all detected violations (both allowed and new)
+      allowed: count of violations in scripts/ci/invariant-boundary-allowlist.txt
+      new: count of violations NOT in allowlist (enforce mode fails if new > 0)
+
   - kind: model_selected
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (INFRA-843)

@@ -1,0 +1,39 @@
+# INFRA-8218 — Invariant Boundary Gate allowlist
+#
+# Baseline 2026-10-17: These scripts are permitted to directly mutate state.db,
+# write lease files, or assign status outside of chump gap calls. This allowlist
+# can ONLY shrink — new violators are rejected in enforce mode and must use the
+# canonical chump gap mutation paths instead.
+#
+# Scripts allowed to mutate state.db / leases / status (baseline 9 + found lease writers):
+
+scripts/coord/bot-merge.sh:4069
+scripts/coord/chump-pr-triage.sh:119
+scripts/coord/close-superseded-prs.sh:124
+scripts/coord/close-superseded-prs.sh:126
+scripts/coord/fleet-doctor-strict.sh:208
+scripts/coord/fleet-doctor-strict.sh:229
+scripts/coord/fleet-doctor-strict.sh:352
+scripts/coord/gap-doctor-reconcile.py:214
+scripts/coord/gap-doctor-reconcile.py:263
+scripts/coord/gap-doctor-reconcile.py:571
+scripts/coord/gap-doctor-reconcile.py:646
+scripts/coord/gap-doctor.py:563
+scripts/coord/ghost-gap-reaper.sh:183
+scripts/coord/ghost-gap-reaper.sh:271
+scripts/coord/ghost-pr-closer.sh:177
+scripts/coord/ghost-pr-closer.sh:201
+scripts/coord/orphan-pr-closer.sh:186
+scripts/coord/orphan-pr-closer.sh:187
+scripts/coord/orphan-pr-closer.sh:191
+scripts/coord/orphan-pr-closer.sh:234
+scripts/coord/pr-shepherd-daemon.sh:359
+scripts/dispatch/_dep_resolution.py:8
+scripts/dispatch/_pick_gap.py:281
+scripts/ops/gap-run-now.sh:82
+scripts/ops/github-webhook-receiver.py:299
+scripts/ops/github-webhook-receiver.py:356
+scripts/ops/rollback-gap.sh:67
+scripts/ops/stale-pr-reaper.sh:346
+scripts/ops/stale-worktree-reaper.sh:659
+scripts/ops/stuck-pr-filer.sh:185

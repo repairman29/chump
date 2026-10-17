@@ -1791,6 +1791,16 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+
+        // INFRA-8218 R6.1: invariant boundary gate. Scans scripts/ for direct
+        // mutations of state.db, lease files, or gap status outside the allowlist.
+        // Runs in shadow mode (informational) with script changes.
+        steps.push(step(
+            "invariant-boundary",
+            &["bash", "scripts/ci/test-invariant-boundary.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-1831: gaps-integrity local gate (META-070). Validates that
         // every docs/gaps/*.yaml parses as YAML, has a non-empty id, and
         // ids are unique across the registry. Would have caught both
