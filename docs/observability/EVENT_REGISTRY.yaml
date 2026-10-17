@@ -14064,3 +14064,17 @@ events:
     trigger: node-wide admission ceiling hit — a `claude -p` or cargo/rustc spawn was deferred because the live count was >= CHUMP_MAX_CONCURRENT_CLAUDE / CHUMP_MAX_CONCURRENT_CARGO_JOBS (outcome=deferred on entry, outcome=timeout when the bounded wait fails open)
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, resource, active, ceiling, waited_s, outcome]
+  - kind: self_report_calibration
+    status: active
+    effect_metric: credible
+    emitter: src/commands/calibrate.rs (`chump calibrate`, CREDIBLE-1493 Phase R R7)
+    emitter_paths: [src/commands/calibrate.rs]
+    trigger: >
+      One event per `chump calibrate` run (nightly via chump-self-calibrate.timer).
+      Every self-report in docs/observability/SELF_REPORTS.yaml was run next to
+      its ground-truth probe and compared. agree/disagree/unprobed count pairs;
+      score = agree / total (unprobed pairs stay in the denominator, never count
+      as agree). instruments carries per-pair id, verdict, self_value,
+      probe_value, reason and receipt.
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, source, host, agree, disagree, unprobed, total, score, instruments]

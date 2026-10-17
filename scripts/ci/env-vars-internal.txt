@@ -3537,3 +3537,20 @@ CHUMP_STORE_PATH_PARITY_BIN
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_BOUNDARY_GATE
+# CREDIBLE-1493: chump calibrate (self-report calibration). Tunables + the env
+# it exports to the SELF_REPORTS.yaml commands.
+CHUMP_CALIBRATE_REGISTRY
+CHUMP_CALIBRATE_TIMEOUT_SECS
+CHUMP_CALIBRATE_GH_REPO
+CHUMP_CALIBRATE_ORGAN_BIN
+CHUMP_CALIBRATE_REPO_ROOT
+CHUMP_CALIBRATE_LOCKS_DIR
+CHUMP_CALIBRATE_NOW_EPOCH
+CHUMP_CALIBRATE_SINCE_1H
+CHUMP_CALIBRATE_SINCE_24H
+CHUMP_CALIBRATE_SINCE_7D
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_RE

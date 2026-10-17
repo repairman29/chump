@@ -286,8 +286,28 @@ if [ "${#stalls_4h[@]}" -gt "0" ]; then
     suggestions+=("triage stalls: ${stalls_4h[*]}")
 fi
 
+# ── CREDIBLE-1493 (Phase R R7): calibration score from the last
+# kind=self_report_calibration event (written by `chump calibrate`). Reads the
+# tail of the live ambient log, then the first rotated slot. Never guesses: no
+# event prints "never run".
+_calibration_line() {
+    local f line=""
+    for f in "$AMBIENT_LOG" "$AMBIENT_LOG.1"; do
+        [[ -f "$f" ]] || continue
+        line="$(tail -c 33554432 "$f" 2>/dev/null | grep '"kind":"self_report_calibration"' | tail -1)"
+        [[ -n "$line" ]] && break
+    done
+    if [[ -z "$line" ]]; then
+        echo "calibration: never run (chump calibrate)"
+        return
+    fi
+    printf '%s' "$line" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print("calibration: %d/%d instruments agree (last run %s)" % (d.get("agree",0), d.get("total",0), d.get("ts","?")))' 2>/dev/null \
+        || echo "calibration: last event unreadable"
+}
+
 # ── Render ───────────────────────────────────────────────────────────────
 echo "═══ Fleet brief (last 24h) ═══"
+_calibration_line
 # INFRA-2013: show 1h ships as leading indicator alongside 24h rolling average
 echo "Ships: $ships_24h (≈${rate_per_hr}/hr) | last 6h: $ships_6h | last 1h: $ships_1h"
 # INFRA-2040: silent-fleet-death banner — takes priority over STALLED (more severe)
