@@ -89,6 +89,9 @@ CHUMP_INCLUDE_COS_WEEKLY
 CHUMP_COS_WEEKLY_MAX_CHARS
 
 # ── Tier 3: test / CI / eval only ─────────────────────────────────────────
+# INFRA-8211: gap-guard perf test knobs (gap count + wall-clock budget).
+CHUMP_PERF_TEST_GAPS
+CHUMP_PERF_TEST_BUDGET_S
 CHUMP_BATTLE_BENCHMARK
 CHUMP_BATTLE_LABEL
 CHUMP_BATTLE_PRINT_METRICS
