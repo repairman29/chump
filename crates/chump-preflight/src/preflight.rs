@@ -2668,6 +2668,17 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-workflow-concurrency-groups.sh"],
             GateKind::Scripts,
         ));
+        // RESILIENT-1606/1607 + RESILIENT-1611: wired by the 2026-10-17 Phase R train.
+        steps.push(step(
+            "pr-cut-honored",
+            &["bash", "scripts/ci/test-pr-cut-honored.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "load-aware-deadman",
+            &["bash", "scripts/ci/test-load-aware-deadman.sh"],
+            GateKind::Scripts,
+        ));
         // INFRA-8193: docs/gaps/*.yaml is an export-only mirror of state.db;
         // fail when a new script or Rust path writes it outside the export.
         steps.push(step(

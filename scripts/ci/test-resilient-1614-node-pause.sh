@@ -17,7 +17,7 @@ mkdir -p "$STATE_DIR/.chump-locks"
 
 # Helper to run the node command with the test state dir.
 chump_node() {
-    CHUMP_STATE_DIR="$STATE_DIR" "$REPO_ROOT/target/debug/chump" node "$@" 2>&1 || true
+    CHUMP_STATE_DIR="$STATE_DIR" "${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}" node "$@" 2>&1 || true
 }
 
 # Helper to check if paused.
