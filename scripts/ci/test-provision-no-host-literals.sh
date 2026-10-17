@@ -92,7 +92,7 @@ check() {
   new="$(LC_ALL=C comm -23 <(printf '%s\n' "$found" | sed '/^$/d') <(printf '%s\n' "$allowed" | sed '/^$/d'))"
   if [ -n "$new" ]; then
     rc=1
-    echo "FAIL: new host literal(s); use __HOME__/__REPO_ROOT__/__BIN_DIR__/__NODE_ENV__ and render via the Host enum (chump node render-unit):"
+    echo "FAIL: new host literal(s); use __HOME__/__REPO_ROOT__/__BIN_DIR__/__NODE_ENV__/__BREW_PREFIX__ and render via the Host enum (chump node render-unit):"
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       literal_lines "$root/$f" | head -5 | sed "s|^|  $f:|"

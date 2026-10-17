@@ -531,9 +531,11 @@ ENVEOF
       log "wrote $CHUMPD_ENV template (CHUMP_REPO=$CHUMPD_PROVISION_DIR) — fill in TODO_ secrets before starting chumpd"
     fi
     run "mkdir -p $UNIT_DIR" mkdir -p "$UNIT_DIR"
-    sed -e "s|__REPO_ROOT__|$CHUMPD_PROVISION_DIR|g" -e "s|__HOME__|$HOME|g" \
-      -e "s|__RUN_USER__|$(id -un)|g" \
-      "$TEMPLATE" > "$UNIT_DST"
+    # INFRA-8194 (R5 slice 2): render through the typed host renderer (user
+    # manager: never a User= line, RESILIENT-1571), sed mirror as fallback.
+    # shellcheck source=../lib/host-paths.sh
+    source "$CHUMPD_PROVISION_DIR/scripts/lib/host-paths.sh"
+    chump_render_template "$TEMPLATE" "$UNIT_DST" "$CHUMPD_PROVISION_DIR" linux-systemd-user
     log "wrote $UNIT_DST"
     # RESILIENT-191: workers spawned by the --user service inherit a minimal PATH
     # that lacks ~/.local/bin (chump, claude) and ~/.cargo/bin. Drop in a PATH so

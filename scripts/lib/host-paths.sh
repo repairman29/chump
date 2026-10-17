@@ -14,12 +14,14 @@
 #       meaningless on Linux: the INFRA-8112 brew-only-bootstrap class).
 #       `chump node host --field brew-prefix` answers the same question.
 #
-#   chump_render_template <template> <dest> [repo_root]
+#   chump_render_template <template> <dest> [repo_root] [host]
 #       Render a placeholder template (__HOME__ __REPO_ROOT__ __BIN_DIR__
 #       __NODE_ENV__ __BREW_PREFIX__) for this host into <dest>: the typed
 #       renderer (`chump node render-unit`) first, this sed mirror when no
 #       binary is on PATH yet. Used by every launchd installer that places a
-#       tracked plist (they used to `cp` a file baked for one Mac).
+#       tracked plist (they used to `cp` a file baked for one Mac). [host] pins
+#       the variant (e.g. linux-systemd-user for a ~/.config/systemd/user unit);
+#       omitted, the binary detects it. The sed mirror never writes User=.
 #
 # The placeholder values match organ_unit_host_rewrite
 # (scripts/ops/lib/organ-unit-install-lib.sh) and chump_provision::render.
@@ -42,7 +44,7 @@ chump_brew_prefix() {
 }
 
 chump_render_template() {
-  local src="$1" dest="$2" repo_root="${3:-}"
+  local src="$1" dest="$2" repo_root="${3:-}" host="${4:-}"
   [ -f "$src" ] || { echo "chump_render_template: missing template $src" >&2; return 1; }
   if [ -z "$repo_root" ]; then
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd -P)"
@@ -52,7 +54,9 @@ chump_render_template() {
   # Trust the binary only when it rendered every token (an older build without
   # __BREW_PREFIX__ support refuses the template, and one without render-unit
   # at all exits non-zero; both fall through to the sed mirror).
-  if [ -n "$chump_bin" ] && "$chump_bin" node render-unit "$src" \
+  local host_args=()
+  [ -n "$host" ] && host_args=(--host "$host")
+  if [ -n "$chump_bin" ] && "$chump_bin" node render-unit "$src" ${host_args[@]+"${host_args[@]}"} \
         --repo-root "$repo_root" --out "$dest" 2>/dev/null \
      && [ -s "$dest" ] && ! grep -qE '__(HOME|REPO_ROOT|BIN_DIR|NODE_ENV|BREW_PREFIX)__' "$dest"; then
     return 0
