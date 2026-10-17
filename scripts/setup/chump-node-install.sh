@@ -1064,6 +1064,12 @@ common_organs() {
   # (cuphead+mugman running with zero drift protection and no alarm) was a
   # per-node one, so it must land on every owned node, not be a hand-op.
   echo "fleet-health-sentinel|$ORGAN_DIR/fleet-health-sentinel.sh"
+  # RESILIENT-1611 (PHASE-R R6): the node-level dead-man watchdog — monitors
+  # load and memory, kills the newest claude -p and cargo tree procs when
+  # sustained above threshold, and triggers a watchdog reboot if sshd becomes
+  # unresponsive. Protects against admission-ceiling wedges (closetjunky,
+  # 2026-10-17T02:10Z incident). Lands on every owned node.
+  echo "node-deadman|$ORGAN_DIR/node-deadman-monitor.sh"
 }
 # RESILIENT-746: maps --role to the organ-manifest.txt role= tags that node
 # should carry. brain = coordination/registry/reporting (everything the
@@ -1338,6 +1344,30 @@ WK"
   chmod +x "$ORGAN_DIR/worker.sh"
   ok "rendered worker launcher (agent_id=$agent_id machine=$machine skills=${skills:-any} domain=${domain:-any} model=$model effort=$effort)"
 }
+# RESILIENT-1611 (PHASE-R R6): enable Tailscale SSH on this node so a
+# wedged sshd can be bypassed. Runs `tailscale set --ssh` to enable the
+# Tailscale SSH listener on port 3478.
+enable_tailscale_ssh() {
+  # Only run if tailscale is available
+  if ! command -v tailscale >/dev/null 2>&1; then
+    info TAILSCALE "tailscale not installed — skipping SSH enablement"
+    return 0
+  fi
+
+  # Check if tailscale is running
+  if ! pgrep -x tailscaled >/dev/null 2>&1; then
+    info TAILSCALE "tailscaled not running — skipping SSH enablement"
+    return 0
+  fi
+
+  # Enable Tailscale SSH
+  if run tailscale set --ssh 2>/dev/null; then
+    ok "tailscale SSH enabled"
+  else
+    no "tailscale set --ssh failed (may already be enabled)"
+  fi
+}
+
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
@@ -1388,6 +1418,22 @@ while true; do
 done
 FHS"
   run "chmod +x '$ORGAN_DIR/fleet-health-sentinel.sh'"
+  # RESILIENT-1611 (PHASE-R R6): the node-level dead-man watchdog — monitors
+  # load and memory, kills the newest claude -p and cargo tree procs when
+  # sustained above threshold, and triggers a watchdog reboot if sshd becomes
+  # unresponsive. This protects against admission-ceiling wedges like the
+  # closetjunky incident (2026-10-17T02:10Z).
+  run "cat > '$ORGAN_DIR/node-deadman-monitor.sh' <<'DMM'
+#!/usr/bin/env bash
+STATE=\"\${CHUMP_STATE_DIR:-\$HOME/.chump}\"
+REPO=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
+while true; do
+  bash \"\$REPO/scripts/ops/node-deadman-monitor.sh\" >> \"$LOG_DIR/node-deadman-monitor.log\" 2>&1 || true
+  sleep \"\${CHUMP_DEADMAN_INTERVAL_S:-60}\"
+done
+DMM"
+  run "chmod +x '$ORGAN_DIR/node-deadman-monitor.sh'"
+
   # RESILIENT-1016 (b): muscle_organs() has always declared a "worker" organ,
   # but nothing ever materialized $ORGAN_DIR/worker.sh — svc_install wired a
   # systemd unit whose ExecStart pointed at a script that never existed, so
@@ -1887,6 +1933,7 @@ detect_host
 if [ "$RECONCILE_ORGANS_ONLY" = 1 ]; then
   run "mkdir -p '$ORGAN_DIR' '$LOG_DIR' '$STATE_DIR'"
   install_organs
+enable_tailscale_ssh
   echo
   ok "organs reconciled (role=$ROLE, reconcile-organs-only — clone/creds/binary/substrate/eyes untouched)"
   exit 0
@@ -1906,6 +1953,7 @@ write_node_env
 ensure_binary || info BINARY "install a binary, then re-run"
 ensure_seed
 install_organs
+enable_tailscale_ssh
 ensure_substrate
 ensure_eyes
 install_supervise || { no "SUPERVISE phase failed — fix the binary refresh timer and re-run"; exit 1; }
