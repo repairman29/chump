@@ -424,6 +424,17 @@ fi
 
 MODE="${1:---apply}"
 
+# RESILIENT-1614: check if the node is paused. If so, exit gracefully without reconciling.
+_pause_lib="$SCRIPT_DIR/lib/node-pause-check.sh"
+if [[ -f "$_pause_lib" ]]; then
+    # shellcheck disable=SC1090
+    source "$_pause_lib"
+    if _node_pause_check_is_paused; then
+        emit organ_skipped_paused
+        exit 0
+    fi
+fi
+
 # ── --check-process-organs mode: read-only pgrep audit of organ-registry.txt
 # (INFRA-7838). Independent of --check/--apply below (those drive systemd
 # units only); exits 1 if any registered process-organ is DETECTED-DEAD, 2 if
