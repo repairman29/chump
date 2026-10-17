@@ -20,9 +20,10 @@
 #                     4. YAML-only IDs        — gaps in YAML with no DB row
 #                                                (skipped on import)
 #
-#   sync-from-yaml  For bucket 2 (DB open / YAML done): UPDATE state.db
-#                   rows to match YAML's status='done', pulling closed_at,
-#                   closed_date, closed_pr from the YAML entry. Idempotent.
+#   sync-from-yaml  For bucket 2 (DB open / YAML done): close the DB row
+#                   through `chump gap ship` (the single receipt-gated
+#                   writer, PHASE-R R1), passing the YAML closed_pr. A
+#                   refused ship is reported and left open. Idempotent.
 #
 #   sync-from-db    For bucket 1 (DB done / YAML open): rewrite per-file YAML
 #                   rows from the DB. Implemented by calling `chump gap dump
@@ -364,6 +365,7 @@ def cmd_sync_from_yaml(args, root: Path) -> int:
         print("nothing to do")
         return 0
 
+    failed = 0
     for gid, cd, cp, ca in plan:
         try:
             cmd = ["chump", "gap", "ship", gid]
@@ -374,15 +376,14 @@ def cmd_sync_from_yaml(args, root: Path) -> int:
                 check=True, capture_output=True, text=True
             )
         except (FileNotFoundError, subprocess.CalledProcessError) as e:
-            print(f"  WARN {gid}: chump gap ship failed, falling back to direct DB update: {str(e)[:60]}", file=sys.stderr)
-            cur.execute(
-                "UPDATE gaps SET status='done', closed_at=?, closed_date=?, closed_pr=? "
-                "WHERE id=? AND status='open'",
-                (ca if ca > 0 else None, cd, cp, gid),
-            )
+            # PHASE-R R1 (CREDIBLE-1491): no direct-DB fallback. `chump gap ship`
+            # is the only path to status=done; a refused ship stays open and is
+            # reported, never written around.
+            failed += 1
+            print(f"  WARN {gid}: chump gap ship refused or failed; left open: {str(e)[:60]}", file=sys.stderr)
     conn.commit()
     conn.close()
-    print(f"applied: {len(plan)} rows")
+    print(f"applied: {len(plan) - failed} rows, refused: {failed}")
 
     # INFRA-8193: .chump/state.sql left git; no dump is regenerated here.
     return 0
