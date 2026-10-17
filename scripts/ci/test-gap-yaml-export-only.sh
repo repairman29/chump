@@ -67,10 +67,15 @@ detect_writers() {
                 | grep -v '/tests/' \
                 | while IFS= read -r f; do
                     grep -qxF "$f" <<<"$EXPORT_PATH_FILES" && continue
-                    if grep -E "$RUST_RE" "$f" 2>/dev/null \
+                    # Consume the whole stream (no trailing grep -q): under
+                    # pipefail a -q early exit SIGPIPEs the upstream grep and
+                    # GNU grep then fails the pipeline, hiding real writers
+                    # (CI run 39062228524 missed scripts/coord/gap-doctor.py).
+                    local hits
+                    hits="$(grep -E "$RUST_RE" "$f" 2>/dev/null \
                         | grep -Ev "$SKIP_LINE_RE" \
-                        | grep -Ev "$RUST_DEF_RE" \
-                        | grep -q .; then
+                        | grep -Ev "$RUST_DEF_RE" || :)"
+                    if [[ -n "$hits" ]]; then
                         echo "$f"
                     fi
                 done
@@ -79,17 +84,18 @@ detect_writers() {
                 | while IFS= read -r f; do
                     [[ "$f" == "$SELF_REL" ]] && continue
                     [[ "$(basename "$f")" == test-* ]] && continue
-                    if grep -E "$SCRIPT_RE" "$f" 2>/dev/null \
-                        | grep -Ev "$SKIP_LINE_RE" \
-                        | grep -q .; then
+                    local hits
+                    hits="$(grep -E "$SCRIPT_RE" "$f" 2>/dev/null \
+                        | grep -Ev "$SKIP_LINE_RE" || :)"
+                    if [[ -n "$hits" ]]; then
                         echo "$f"
                         continue
                     fi
                     # Python builds paths in variables, so add a file-level
                     # heuristic: a per-gap YAML path AND a YAML/text write.
                     if [[ "$f" == *.py ]] \
-                        && grep -Ev "$SKIP_LINE_RE" "$f" | grep -qE "$PY_GAP_PATH_RE" \
-                        && grep -Ev "$SKIP_LINE_RE" "$f" | grep -qE "$PY_YAML_WRITE_RE"; then
+                        && [[ -n "$(grep -Ev "$SKIP_LINE_RE" "$f" | grep -E "$PY_GAP_PATH_RE" || :)" ]] \
+                        && [[ -n "$(grep -Ev "$SKIP_LINE_RE" "$f" | grep -E "$PY_YAML_WRITE_RE" || :)" ]]; then
                         echo "$f"
                     fi
                 done
