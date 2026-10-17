@@ -1011,6 +1011,9 @@ jobs:
         with:
           args: -color -shellcheck=
 
+      - name: workflow concurrency guard (ZERO-WASTE-135)
+        run: bash scripts/ci/test-workflow-concurrency.sh
+
       # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
       # the runner's plist PATH resolves every CLI the workflow needs. Skips
       # cleanly on ubuntu-latest. Catches "exit 127 / command not found" before

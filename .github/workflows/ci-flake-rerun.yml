@@ -32,7 +32,7 @@ on:
 # One rerun pass at a time — concurrent invocations would double-rerun.
 concurrency:
   group: ci-flake-rerun
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   actions: write        # gh run rerun

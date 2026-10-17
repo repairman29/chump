@@ -66,6 +66,15 @@ host). R7 is how we know the first six are true without a human reading logs.
 and `strict` on with a baseline and drift gate (#5479), and at 06:20Z the first gap filed, built,
 merged and closed by the fleet with no human terminal (INFRA-8204, #5481). Zero admin merges.
 
+**Receipt 2026-10-17 14:25Z (R3 sub-slice ZERO-WASTE-135).** At 14:25Z, 14 queued
+`verified-recompute` runs on main starved other PRs during a hosted-runner stall (0 jobs running,
+47 non-completed runs in queue). Each queued recompute was a duplicate of the previous SHA's
+result. Fix: added concurrency groups with `cancel-in-progress: true` to three workflow_run-triggered
+workflows (`verified-recompute`, `pr-triage-bot`, `ci-flake-rerun`) and wrote a CI check
+(`test-workflow-concurrency.sh`) that fails on any new `workflow_run` or `schedule` trigger
+without a concurrency block, wired into `fast-checks` with preflight mirror. Ensures at most
+one queued instance per workflow_run trigger, preventing the starve pattern.
+
 **The honest metric for the whole program.** One gap filed, dispatched, built, merged
 and flipped to shipped by the fleet with zero admin merges and zero human terminal.
 Until that happens once, the factory is not running. R1 plus R3 is the gate to it.

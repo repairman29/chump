@@ -2060,6 +2060,15 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // ZERO-WASTE-135: workflow concurrency group guard. Ensures all
+        // workflow_run and schedule-triggered workflows declare a concurrency
+        // group to prevent duplicate queued runs starving other jobs.
+        steps.push(step(
+            "workflow-concurrency",
+            &["bash", "scripts/ci/test-workflow-concurrency.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-2350 (META-269 sub-1): mirror three CI gates that today's
         // session demonstrated are NOT caught locally — pipefail-race-sweep
         // (INFRA-1658), path-filter-coverage (INFRA-682), and install-mapping
