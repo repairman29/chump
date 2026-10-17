@@ -10089,6 +10089,26 @@ events:
     consumers: [ops-audit, fleet-doctor, infra-watcher]
     fields_required: [ts, kind, crate, suggested_fix]
 
+  # ── RESILIENT-1604: node-wide admission ceiling ────────────────────────────
+  - kind: admission_deferred
+    effect_metric: resilient
+    emitter: scripts/coord/lib/admission-gate.sh (RESILIENT-1604)
+    trigger: >
+      Emitted when a spawn site (chump dispatch, worker.sh, or a curator
+      organ) asks to start a `claude -p` process or a cargo/rustc build job
+      and the live process count on this node is already at or above the
+      configured concurrency ceiling (CHUMP_MAX_CONCURRENT_CLAUDE /
+      CHUMP_MAX_CONCURRENT_CARGO_JOBS, default max(1, nproc/2)). Emitted once
+      when the wait begins, and again with outcome=fail_open_timeout if the
+      bounded wait (CHUMP_ADMISSION_WAIT_TIMEOUT_S, default 300s) exhausts
+      without the count dropping — the gate fails open rather than hanging
+      forever. Reproduces the cuphead incident (4 cores, 5-8 concurrent
+      `claude -p` + up to 9 cargo jobs at load 12-18 on 2026-10-16) where
+      uncoordinated spawn sites budget-killed agents that had already
+      finished their work.
+    consumers: [fleet-doctor, ops-audit, infra-watcher]
+    fields_required: [ts, kind, resource, active, ceiling, waited_s, outcome]
+
   - kind: auto_merge_policy_bypassed
     effect_metric: resilient
     emitter: scripts/coord/bot-merge.sh (INFRA-2155)

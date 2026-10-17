@@ -855,6 +855,12 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     // exact gap this whole gap closes: a `claude -p` headless child that
     // outlived its 1800s budget with no lease, ship phase, or supervisor.
     configure_child_lifetime(&mut cmd);
+    // RESILIENT-1604: node-wide admission ceiling — bounded wait before
+    // spawning so `chump dispatch` can't pile onto a node already saturated
+    // by workers/other dispatches/curator organs.
+    let _ = crate::admission_check::wait_for_claude_admission(
+        &opts.repo_root.join(".chump-locks/ambient.jsonl"),
+    );
     let mut child = cmd
         .spawn()
         .context("spawn `claude -p` (is the claude CLI on PATH?)")?;

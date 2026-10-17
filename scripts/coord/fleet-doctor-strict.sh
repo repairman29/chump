@@ -95,6 +95,11 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 AMBIENT_EMIT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
 CHUMP_BIN="${CHUMP_BIN:-chump}"
+# RESILIENT-1604: node-wide admission ceiling — shared ceiling/count helpers
+# with scripts/coord/lib/admission-gate.sh so the doctor's RED threshold
+# always matches what the spawn sites are actually gating on.
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/coord/lib/admission-gate.sh"
 
 # ── Thresholds ─────────────────────────────────────────────────────────────────
 LEASE_STALE_HOURS="${LEASE_STALE_HOURS:-2}"
@@ -1453,6 +1458,40 @@ print("; ".join(parts))
 #      Tracks a marker file recording (branch, first-seen-ts) so a checkout
 #      that's merely mid-rebase for a few minutes doesn't page, but one
 #      parked off main for over CHECKOUT_PARKED_STALE_S does.
+# ── Check 18: admission-ceiling breach (RESILIENT-1604) ─────────────────────
+# Live claude -p / cargo+rustc process counts on this node vs. the
+# configured ceiling (CHUMP_MAX_CONCURRENT_CLAUDE / CHUMP_MAX_CONCURRENT_
+# CARGO_JOBS, default max(1, nproc/2)). A breach here means admission-gate.sh
+# deferrals are failing open faster than the node can drain them — the exact
+# cuphead-incident shape (5-8 concurrent claude -p + up to 9 cargo jobs on 4
+# cores, 2026-10-16).
+check_admission_ceiling() {
+    local claude_active claude_ceiling cargo_active cargo_ceiling
+    claude_active="$(chump_admission_count_claude)"
+    claude_ceiling="$(chump_admission_ceiling_claude)"
+    cargo_active="$(chump_admission_count_cargo)"
+    cargo_ceiling="$(chump_admission_ceiling_cargo)"
+
+    local over=0 detail=""
+    if [[ "$claude_active" -gt "$claude_ceiling" ]]; then
+        over=1
+        detail+="claude: ${claude_active} active > ceiling ${claude_ceiling}. "
+    fi
+    if [[ "$cargo_active" -gt "$cargo_ceiling" ]]; then
+        over=1
+        detail+="cargo: ${cargo_active} active > ceiling ${cargo_ceiling}. "
+    fi
+
+    if [[ "$over" == "1" ]]; then
+        register_check "admission-ceiling" "fail" \
+            "$detail(node-wide ceiling exceeded — spawn sites are not deferring)" \
+            "pgrep -fa 'claude -p'; pgrep -fa 'cargo|rustc' — identify + reap the excess, then check admission-gate.sh is sourced at every spawn site"
+    else
+        register_check "admission-ceiling" "pass" \
+            "claude: ${claude_active}/${claude_ceiling}, cargo: ${cargo_active}/${cargo_ceiling}" ""
+    fi
+}
+
 check_checkout_parked_off_main() {
     if [[ ! -d "$REPO_ROOT/.git" ]]; then
         register_check "checkout-parked-off-main" "skip" "no .git under REPO_ROOT" ""
@@ -1527,6 +1566,7 @@ check_auth_probe
 check_self_healer_heartbeat
 check_tracked_config_drift
 check_checkout_parked_off_main
+check_admission_ceiling
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

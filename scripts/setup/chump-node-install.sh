@@ -593,6 +593,18 @@ write_node_env() {
       # RESILIENT-1083: persist this node's role OUTSIDE the repo so the recurring
       # organ-reconcile can self-scope to it (and survive `git reset --hard`).
       printf 'export CHUMP_NODE_ROLE=%s\n' "$ROLE"
+      # RESILIENT-1604: node-wide admission ceiling for claude -p + cargo/rustc
+      # jobs — max(1, nproc/2) for each, so uncoordinated spawn sites
+      # (dispatch, worker.sh, curator organs) can't collectively overrun this
+      # node's cores the way cuphead (4 cores, 5-8 concurrent claude -p + up
+      # to 9 cargo jobs at load 12-18, 2026-10-16) did. scripts/coord/lib/
+      # admission-gate.sh and src/admission_check.rs read these.
+      local _admission_cores _admission_half
+      _admission_cores="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"
+      _admission_half=$(( _admission_cores / 2 ))
+      [ "$_admission_half" -ge 1 ] 2>/dev/null || _admission_half=1
+      printf 'export CHUMP_MAX_CONCURRENT_CLAUDE=%s\n' "$_admission_half"
+      printf 'export CHUMP_MAX_CONCURRENT_CARGO_JOBS=%s\n' "$_admission_half"
       # RESILIENT-320: factory nodes size their own worker cap — no hand-placed
       # caps. clamp(1, cores-1), minus 1 when this node also serves embeds.
       if [ "$ROLE" = factory ]; then
@@ -614,7 +626,7 @@ write_node_env() {
   # Source now so subsequent phases inherit the canonical settings.
   # shellcheck disable=SC1090
   . "$node_env"
-  export CHUMP_STATE_DIR CHUMP_STATE_DB CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE CHUMP_NODE_WORK_ENABLED CHUMP_NODE_MODE CHUMP_RUN_USER CHUMP_GAP_SERVER
+  export CHUMP_STATE_DIR CHUMP_STATE_DB CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE CHUMP_NODE_WORK_ENABLED CHUMP_NODE_MODE CHUMP_RUN_USER CHUMP_GAP_SERVER CHUMP_MAX_CONCURRENT_CLAUDE CHUMP_MAX_CONCURRENT_CARGO_JOBS
   ok "node.env written + sourced: $node_env (mode=$CHUMP_NODE_MODE, run-user=$CHUMP_RUN_USER)"
   install_shell_hook "$node_env"
 }

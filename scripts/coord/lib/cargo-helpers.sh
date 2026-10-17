@@ -24,6 +24,12 @@ if [ -n "${_CHUMP_CARGO_HELPERS_LOADED:-}" ]; then
 fi
 _CHUMP_CARGO_HELPERS_LOADED=1
 
+# RESILIENT-1604: node-wide admission ceiling — bounded wait before spawning
+# a cargo build, so this caller can't pile onto a node already saturated by
+# other workers/dispatches/curator organs running cargo/rustc concurrently.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/admission-gate.sh"
+
 # Locate repo root + ambient log path.
 _chump_cargo_repo_root() {
     git rev-parse --show-toplevel 2>/dev/null || pwd
@@ -98,6 +104,7 @@ chump_cargo_build() {
     # Run cargo build with timeout. Capture stderr always (even with -q upstream).
     # Use --message-format=short to keep output manageable.
     local _rc
+    chump_admission_wait_cargo
     if command -v timeout >/dev/null 2>&1; then
         ( cd "$_repo_root" && timeout "$_timeout" cargo build $_flags --package "$_pkg" --message-format=short 2>"$_stderr_log" )
         _rc=$?

@@ -131,6 +131,13 @@ if [ -r "$REPO_ROOT/scripts/dispatch/lib/worker-timeout.sh" ]; then
     # shellcheck source=lib/worker-timeout.sh
     source "$REPO_ROOT/scripts/dispatch/lib/worker-timeout.sh"
 fi
+# RESILIENT-1604: node-wide admission ceiling — bounded wait before spawning
+# `claude -p`, so this worker can't pile onto a node already saturated by
+# dispatch/other workers/curator organs.
+if [ -r "$REPO_ROOT/scripts/coord/lib/admission-gate.sh" ]; then
+    # shellcheck source=../coord/lib/admission-gate.sh
+    source "$REPO_ROOT/scripts/coord/lib/admission-gate.sh"
+fi
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
@@ -1948,6 +1955,8 @@ Operator or sibling worker can rescue this branch via:
                 # whether claude produced any commit before FLEET_TIMEOUT_S fired.
                 _pre_cycle_sha="$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")"
                 : > "$cycle_log"
+                # RESILIENT-1604: bounded wait for a node-wide claude-p admission slot.
+                command -v chump_admission_wait_claude >/dev/null 2>&1 && chump_admission_wait_claude
                 (
                     cd "$wt_path" || exit 99
                     # Same surface as src/dispatch.rs WorkBackend::Headless.
@@ -2679,6 +2688,8 @@ Operator or sibling worker can rescue this branch via:
                 FLEET_MODEL="${FLEET_MODEL-sonnet}"
                 _model_arg=()
                 [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
+                # RESILIENT-1604: bounded wait for a node-wide claude-p admission slot.
+                command -v chump_admission_wait_claude >/dev/null 2>&1 && chump_admission_wait_claude
                 (
                     cd "$wt_path" || exit 99
                     # shellcheck disable=SC2086
