@@ -1121,6 +1121,9 @@ fn print_help() {
         "  kpi report --debt-index  crown gauge (live_pct/debt/top-5 dormant) + NBA feed (CREDIBLE-357)"
     );
     println!(
+        "  kpi report --shell-invariant-writers  R6.4 gauge: invariant-boundary gate violator count (CREDIBLE-1509)"
+    );
+    println!(
         "  kpi report --integration  integration-cycle dashboard: ship velocity, CI efficiency, quality, external costs (INFRA-2143)"
     );
     println!("  kpi report --integration --window 24h|7d|30d  window override (default 7d)");
@@ -18348,8 +18351,21 @@ async fn main() -> Result<()> {
         let want_integration = args.iter().any(|a| a == "--integration");
         let want_mission_binary = args.iter().any(|a| a == "--mission-binary");
         let want_debt_index = args.iter().any(|a| a == "--debt-index");
+        let want_shell_invariant_writers = args.iter().any(|a| a == "--shell-invariant-writers");
 
         let repo_root = repo_path::repo_root();
+
+        // CREDIBLE-1509: --shell-invariant-writers shows the R6.4 gauge only —
+        // the invariant-boundary gate's violator file count + reading date.
+        if want_shell_invariant_writers {
+            let section = kpi_report::build_shell_invariant_writers_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
 
         // MISSION-066: --mission-binary shows ① THE BINARY repeatability —
         // the current/longest zero-touch-BEAST-merge streak recorded by

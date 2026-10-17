@@ -111,6 +111,19 @@ shell dispatches landed. Agents take the shortest path to green. So R6 now force
    `backfill-opened-dates.sh`, both stale reapers, a demo, a CI fixture lib), about 12 write lease
    files, 2 set status by raw SQL.
 
+   **Gauge (CREDIBLE-1509, R6.4):** `chump kpi report` carries a
+   `shell_invariant_writers` section, also shown alone by `chump kpi report
+   --shell-invariant-writers` and in the `fleet-brief` banner. It prints the
+   gate's violator file count (`count` on the `kind=invariant_boundary_violation`
+   line that `scripts/ci/test-invariant-boundary.sh` prints and records in
+   ambient) plus the reading date. A reading under 24h old is reused; otherwise
+   the report runs the gate (~20s); the banner never runs it.
+   **Baseline 2026-10-17:** 9 store-writing files (enumerated above). The gate
+   itself, run in shadow mode on `main` at 40ba8db02 the same day, flags **39
+   files**: the store writers plus lease-file and status writers and some
+   broad-pattern hits (installers). The gauge reports the gate's number, so 39
+   is its starting reading; target 0 for seven days.
+
 ## Explicitly not in Phase R
 
 - The AI layer (ladder, cascade, local inference, the sovereignty of the mind). The

@@ -14064,3 +14064,16 @@ events:
     trigger: node-wide admission ceiling hit — a `claude -p` or cargo/rustc spawn was deferred because the live count was >= CHUMP_MAX_CONCURRENT_CLAUDE / CHUMP_MAX_CONCURRENT_CARGO_JOBS (outcome=deferred on entry, outcome=timeout when the bounded wait fails open)
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, resource, active, ceiling, waited_s, outcome]
+  # ── INFRA-8218 / CREDIBLE-1509: invariant-boundary gate reading (Phase R R6) ──
+  - kind: invariant_boundary_violation
+    status: active
+    effect_metric: credible
+    emitter: scripts/ci/test-invariant-boundary.sh (INFRA-8218 R6.1)
+    emitter_paths: [scripts/ci/test-invariant-boundary.sh]
+    trigger: every gate run, shadow or enforce; prints the line as its last stdout
+      line and appends it to .chump-locks/ambient.jsonl. `count` is the number of
+      scripts/ files flagged for writing state.db, a .chump-locks/*.json lease, or
+      a gap status directly. Enforce mode adds `status` (ok|violation) and, on
+      violation, `unapproved` (flagged files missing from the allowlist).
+    consumers: [kpi-report, fleet-brief]
+    fields_required: [ts, kind, count, mode]
