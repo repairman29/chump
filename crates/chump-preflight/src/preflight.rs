@@ -2563,6 +2563,36 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "auto-merge-armer-credible-1511",
+            &["bash", "scripts/ci/test-auto-merge-armer.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-rest-direct-credible-1511",
+            &["bash", "scripts/ci/test-bot-merge-rest-direct.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-portability-credible-1511",
+            &["bash", "scripts/ci/test-bot-merge-portability.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "event-registry-effect-metric-credible-1511",
+            &["bash", "scripts/ci/test-event-registry-effect-metric.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "lease-lib-credible-1511",
+            &["bash", "scripts/ci/test-lease-lib.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "stale-worktree-reaper-stash-credible-1511",
+            &["bash", "scripts/ci/test-stale-worktree-reaper-stash.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "grep-c-echo0-guard-smoke",
             &["bash", "scripts/ci/test-grep-c-echo0-guard.sh"],
             GateKind::Scripts,
