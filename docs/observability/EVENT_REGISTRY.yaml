@@ -1564,8 +1564,9 @@ events:
       RED→GREEN recovery (consumed from the trunk-sentinel's trunk_recovered /
       trunk_state_change→GREEN events), the reviver found a PR that was reaped as
       a victim of the just-ended trunk-red window — closed-not-merged inside the
-      window, reaper-marked (rot-reaped label / pr_reaped event), and
-      green-underneath NOW (classify-blocked-pr.py verdict not hard_fail/
+      window, reaper-marked (a kind=pr_reaped event for the PR; the rot-reaped
+      label alone is not proof, and a pr-cut label is never revived,
+      RESILIENT-1607), and green-underneath NOW (classify-blocked-pr.py verdict not hard_fail/
       conflict) — and reopened it (method=reopen), or on GitHub reopen-limbo
       opened a fresh PR for the same branch (method=fresh_pr), then re-armed
       auto-merge. method=failed = neither path worked (branch likely gone),
