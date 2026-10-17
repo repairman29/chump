@@ -467,14 +467,14 @@ if [[ -x "$_chump" ]]; then
     # (shell/Python files under scripts/ still writing an invariant directly;
     # target 0). Source: `chump kpi report --shell-invariant-writers`, reading
     # the last invariant_boundary_violation event recorded by
-    # scripts/ci/test-invariant-boundary.sh (INFRA-8218). NO_GATE keeps the
+    # scripts/ci/test-invariant-boundary.sh (INFRA-8218). --no-gate keeps the
     # brief fast: the ~20s gate never runs from here; the date shows staleness.
     # An older binary without the flag would fall through to the full (slow)
     # kpi report, so only ask a binary whose help lists it.
     _siw_json=""
     _siw_help="$("$_chump" --help 2>/dev/null || true)"
     if [[ "$_siw_help" == *--shell-invariant-writers* ]]; then
-        _siw_json="$(CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE=1 "$_chump" kpi report --shell-invariant-writers --json 2>/dev/null || true)"
+        _siw_json="$("$_chump" kpi report --shell-invariant-writers --no-gate --json 2>/dev/null || true)"
     fi
     _siw_count=$(echo "$_siw_json" | grep -o '"shell_invariant_writers":[0-9]*' | head -1 | cut -d: -f2)
     _siw_source=$(echo "$_siw_json" | grep -o '"source":"[^"]*"' | head -1 | cut -d'"' -f4)

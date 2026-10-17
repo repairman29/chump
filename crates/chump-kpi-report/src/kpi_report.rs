@@ -1188,9 +1188,20 @@ const SHELL_INVARIANT_WRITERS_FRESH_SECS: i64 = 24 * 3600;
 /// stream if it is under 24h old; (2) a live run of the gate in shadow mode
 /// (it records a fresh reading as a side effect); (3) the latest recorded
 /// reading of any age (its date shows the staleness); (4) unavailable.
-/// `CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE=1` skips step 2, for callers that
-/// must stay fast (the fleet-brief banner).
+/// `run_gate = false` skips step 2, for callers that must stay fast (the
+/// fleet-brief banner, via `kpi report --shell-invariant-writers --no-gate`).
+/// A CLI flag, not an env var: the R6 gauge must not ship a bypass var of its
+/// own (INFRA-2429 debt ceiling).
 pub fn build_shell_invariant_writers_section(repo_root: &Path) -> ShellInvariantWritersSection {
+    build_shell_invariant_writers_section_with(repo_root, true)
+}
+
+/// [`build_shell_invariant_writers_section`] with the live gate run made
+/// explicit (`run_gate`).
+pub fn build_shell_invariant_writers_section_with(
+    repo_root: &Path,
+    run_gate: bool,
+) -> ShellInvariantWritersSection {
     let ambient = repo_root.join(".chump-locks/ambient.jsonl");
     let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
     let latest = contents
@@ -1213,9 +1224,8 @@ pub fn build_shell_invariant_writers_section(repo_root: &Path) -> ShellInvariant
         }
     }
 
-    let no_gate = std::env::var("CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE").as_deref() == Ok("1");
     let script = repo_root.join("scripts/ci/test-invariant-boundary.sh");
-    if !no_gate && script.is_file() {
+    if run_gate && script.is_file() {
         if let Ok(out) = std::process::Command::new("bash")
             .arg(&script)
             .env("CHUMP_BOUNDARY_GATE", "shadow")
@@ -4130,7 +4140,6 @@ mod tests {
 
     #[test]
     fn credible1509_shell_invariant_writers_runs_gate_when_reading_stale() {
-        // Only this test touches CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE.
         let tmp = tempdir();
         write_ambient(
             &tmp,
@@ -4144,10 +4153,8 @@ mod tests {
         assert_eq!(section.source, "gate");
         assert!(section.reading_date.is_some());
 
-        // NO_GATE: the stale recorded reading is used instead of the gate.
-        std::env::set_var("CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE", "1");
-        let cached = build_shell_invariant_writers_section(&tmp);
-        std::env::remove_var("CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE");
+        // --no-gate: the stale recorded reading is used instead of the gate.
+        let cached = build_shell_invariant_writers_section_with(&tmp, false);
         assert_eq!(cached.file_count, Some(99));
         assert_eq!(cached.source, "ambient");
         let _ = std::fs::remove_dir_all(&tmp);

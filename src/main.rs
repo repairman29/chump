@@ -1125,7 +1125,7 @@ fn print_help() {
         "  kpi report --debt-index  crown gauge (live_pct/debt/top-5 dormant) + NBA feed (CREDIBLE-357)"
     );
     println!(
-        "  kpi report --shell-invariant-writers  R6.4 gauge: invariant-boundary gate violator count (CREDIBLE-1509)"
+        "  kpi report --shell-invariant-writers [--no-gate]  R6.4 gauge: invariant-boundary gate violator count (CREDIBLE-1509)"
     );
     println!(
         "  kpi report --integration  integration-cycle dashboard: ship velocity, CI efficiency, quality, external costs (INFRA-2143)"
@@ -18423,14 +18423,17 @@ async fn main() -> Result<()> {
         let want_mission_binary = args.iter().any(|a| a == "--mission-binary");
         let want_debt_index = args.iter().any(|a| a == "--debt-index");
         let want_shell_invariant_writers = args.iter().any(|a| a == "--shell-invariant-writers");
+        let no_gate = args.iter().any(|a| a == "--no-gate");
         let want_ci_pickup = args.iter().any(|a| a == "--ci-pickup");
 
         let repo_root = repo_path::repo_root();
 
         // CREDIBLE-1509: --shell-invariant-writers shows the R6.4 gauge only —
         // the invariant-boundary gate's violator file count + reading date.
+        // --no-gate never runs the ~20s gate (fast callers such as fleet-brief).
         if want_shell_invariant_writers {
-            let section = kpi_report::build_shell_invariant_writers_section(&repo_root);
+            let section =
+                kpi_report::build_shell_invariant_writers_section_with(&repo_root, !no_gate);
             if want_json {
                 println!("{}", section.render_json());
             } else {
