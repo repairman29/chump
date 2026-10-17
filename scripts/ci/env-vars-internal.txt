@@ -3575,3 +3575,6 @@ CHUMP_MERGE_SERIALIZER_TRUNK_GATE
 CHUMP_PR_MERGE_METHOD
 # detected in: (standard input)
 CHUMP_WATCHDOG_REOPEN
+# CREDIBLE-1509: chump kpi report R6.4 gauge — =1 reuses the last recorded
+# invariant-boundary reading instead of running the ~20s gate (fleet-brief banner).
+CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE

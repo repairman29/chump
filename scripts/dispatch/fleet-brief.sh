@@ -442,5 +442,27 @@ if [[ -x "$_chump" ]]; then
         fi
     fi
     unset _slo_json _slo_breaches _slo_ids
+
+    # CREDIBLE-1509: R6.4 gauge — invariant-boundary gate violator count
+    # (shell/Python files under scripts/ still writing an invariant directly;
+    # target 0). Source: `chump kpi report --shell-invariant-writers`, reading
+    # the last invariant_boundary_violation event recorded by
+    # scripts/ci/test-invariant-boundary.sh (INFRA-8218). NO_GATE keeps the
+    # brief fast: the ~20s gate never runs from here; the date shows staleness.
+    # An older binary without the flag would fall through to the full (slow)
+    # kpi report, so only ask a binary whose help lists it.
+    _siw_json=""
+    _siw_help="$("$_chump" --help 2>/dev/null || true)"
+    if [[ "$_siw_help" == *--shell-invariant-writers* ]]; then
+        _siw_json="$(CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE=1 "$_chump" kpi report --shell-invariant-writers --json 2>/dev/null || true)"
+    fi
+    _siw_count=$(echo "$_siw_json" | grep -o '"shell_invariant_writers":[0-9]*' | head -1 | cut -d: -f2)
+    _siw_source=$(echo "$_siw_json" | grep -o '"source":"[^"]*"' | head -1 | cut -d'"' -f4)
+    _siw_date=$(echo "$_siw_json" | grep -o '"reading_date":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -n "$_siw_count" ]]; then
+        echo ""
+        echo "Shell invariant writers (R6.4): ${_siw_count} (target 0) — read ${_siw_date:-?} from ${_siw_source:-?}"
+    fi
+    unset _siw_json _siw_help _siw_count _siw_source _siw_date
 fi
 unset _chump
