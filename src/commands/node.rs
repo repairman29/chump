@@ -98,7 +98,7 @@ fn pause_cmd(args: &[String]) -> i32 {
     // Emit the event.
     emit_event("node_paused", &reason);
 
-    println!("Node paused: {}", state_dir);
+    println!("Node paused: {}", &state_dir);
     println!("  mode: CHUMP_NODE_MODE=paused");
     println!("  work: CHUMP_NODE_WORK_ENABLED=0");
     println!("  sentinel: {}", sentinel_path.display());
@@ -147,7 +147,7 @@ fn resume_cmd(_args: &[String]) -> i32 {
     // Emit the event.
     emit_event("node_resumed", "");
 
-    println!("Node resumed: {}", state_dir);
+    println!("Node resumed: {}", &state_dir);
     println!("  mode: CHUMP_NODE_MODE=work-ready");
     println!("  work: CHUMP_NODE_WORK_ENABLED=1");
     0
