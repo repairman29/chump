@@ -13,7 +13,7 @@
 # follow-up slices. Adding a line, or raising baseline-count, fails the gate.
 #
 # baseline-count is the ceiling; lower it in the same commit that deletes lines.
-# baseline-count: 188
+# baseline-count: 163
 launchd/com.chump.almanac-summarize-watchdog.plist
 launchd/com.chump.api-cost-digest.plist
 launchd/com.chump.audit-done-sweep.plist
@@ -47,29 +47,6 @@ launchd/com.chump.synthesis-pass.plist
 launchd/dev.chump.farmer.plist
 launchd/dev.chump.premature-closure-watch.plist
 launchd/dev.chump.system-invariants-monitor.plist
-scripts/dispatch/chump-apex-watchdog.service
-scripts/dispatch/chump-digest.service
-scripts/dispatch/chump-discord-gateway.service
-scripts/dispatch/chump-effect-verifier.service
-scripts/dispatch/chump-faculty-collector.service
-scripts/dispatch/chump-farmer-run.sh
-scripts/dispatch/chump-fleet-autoscale-launchd.sh
-scripts/dispatch/chump-fleet-server.service
-scripts/dispatch/chump-gap-closure-reconcile.service
-scripts/dispatch/chump-gap-drain.service
-scripts/dispatch/chump-gap-store-single-source-check.service
-scripts/dispatch/chump-jeff-bus-ingest.service
-scripts/dispatch/chump-merge-serializer.service
-scripts/dispatch/chump-nba-dispatch.service
-scripts/dispatch/chump-next-best-action.service
-scripts/dispatch/chump-organ-deploy.service
-scripts/dispatch/chump-organ-success-verifier.service
-scripts/dispatch/chump-outcome-verify-heal-consumer.service
-scripts/dispatch/chump-pr-book-settle.service
-scripts/dispatch/chump-process-organ-heal.service
-scripts/dispatch/chump-trunk-recovery-reviver.service
-scripts/dispatch/discord-gateway-beat.sh
-scripts/dispatch/test-node-registry-refresh.sh
 scripts/plists/com.chump.autonomy-cron.plist.example
 scripts/plists/com.chump.battle-qa.plist
 scripts/plists/com.chump.external-repo-loop.plist.template
@@ -96,7 +73,6 @@ scripts/plists/sentinel.plist.example
 scripts/plists/shed-load.plist.example
 scripts/setup/bootstrap-manifest.yaml
 scripts/setup/build-android.sh
-scripts/setup/chump-node-install.sh
 scripts/setup/chumpd.service
 scripts/setup/claude-proot-guest.sh
 scripts/setup/com.chump.coord-assign.plist
@@ -143,7 +119,6 @@ scripts/setup/install-fleet-autopilot-launchd.sh
 scripts/setup/install-fleet-health-launchd.sh
 scripts/setup/install-fleet-pool-keeper.sh
 scripts/setup/install-gap-doctor-cron-launchd.sh
-scripts/setup/install-gh-shim.sh
 scripts/setup/install-gh-token-rotate-launchd.sh
 scripts/setup/install-ghost-gap-reaper-launchd.sh
 scripts/setup/install-ghost-pr-closer.sh

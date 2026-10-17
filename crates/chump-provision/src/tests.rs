@@ -275,6 +275,100 @@ fn literal_rules_ignore_variables_and_placeholders() {
     }
 }
 
+#[test]
+fn literal_rules_skip_comment_lines_but_not_shebangs() {
+    // INFRA-8194 slice 2: a comment executes nothing (incident receipts live
+    // there), so it is not a host assumption. A shebang pins the interpreter.
+    for comment in [
+        "# the old unit ran /root/Projects/chump as User=root",
+        "    # PATH used to start with /opt/homebrew/bin",
+        "#/home/jeff",
+        "#",
+    ] {
+        assert!(
+            find_host_literals(comment).is_empty(),
+            "comment flagged: {comment:?}"
+        );
+    }
+    let rules = |t: &str| -> Vec<&'static str> {
+        find_host_literals(t).into_iter().map(|f| f.rule).collect()
+    };
+    assert_eq!(rules("#!/opt/homebrew/bin/bash"), vec!["homebrew-literal"]);
+    // Quoted text in code is a live path, never skipped.
+    assert_eq!(
+        rules(r#"echo "installed /opt/homebrew/bin/chump""#),
+        vec!["homebrew-literal"]
+    );
+    // A trailing comment on a code line does not hide the code.
+    assert_eq!(rules("cd /root/chump # helsinki"), vec!["root-literal"]);
+    // Line numbers still count the skipped comment lines.
+    let f = find_host_literals("# /root/\nUser=jeff\n");
+    assert_eq!(f.len(), 1);
+    assert_eq!(f[0].line, 2);
+    assert!(is_comment_line("  # x") && !is_comment_line("#!/bin/sh") && !is_comment_line("x # y"));
+}
+
+// ── brew prefix ────────────────────────────────────────────────────────────
+
+#[test]
+fn brew_prefix_is_apple_silicon_only_on_a_mac_that_has_it() {
+    let mut mac = Probe {
+        os: "Darwin".into(),
+        user: Some("pat".into()),
+        home: Some("/Users/pat".into()),
+        has_opt_homebrew: true,
+        ..Probe::default()
+    };
+    assert_eq!(
+        brew_prefix(Host::MacLaunchd, &mac),
+        PathBuf::from(APPLE_SILICON_BREW_PREFIX)
+    );
+    assert_eq!(
+        paths(Host::MacLaunchd, &mac).unwrap().brew_prefix,
+        PathBuf::from(APPLE_SILICON_BREW_PREFIX)
+    );
+    // Intel Mac: brew lives under /usr/local.
+    mac.has_opt_homebrew = false;
+    assert_eq!(
+        brew_prefix(Host::MacLaunchd, &mac),
+        PathBuf::from(DEFAULT_BREW_PREFIX)
+    );
+    // Linux never gets the Apple Silicon prefix, even if a stray dir exists.
+    let mut lin = linux(1000, "ubuntu", "/home/ubuntu");
+    lin.has_opt_homebrew = true;
+    for host in [
+        Host::LinuxSystemdUser,
+        Host::LinuxSystemdSystem,
+        Host::Termux,
+    ] {
+        assert_eq!(brew_prefix(host, &lin), PathBuf::from(DEFAULT_BREW_PREFIX));
+    }
+}
+
+#[test]
+fn render_resolves_brew_prefix() {
+    let tpl = "<plist><string>/usr/local/bin:__BREW_PREFIX__/bin:__BREW_PREFIX__/sbin:/usr/bin:/bin</string></plist>\n";
+    let mut ctx = RenderCtx {
+        home: "/Users/pat".into(),
+        repo_root: "/Users/pat/Projects/Chump".into(),
+        bin_dir: "/Users/pat/.cargo/bin".into(),
+        user: "pat".into(),
+        brew_prefix: APPLE_SILICON_BREW_PREFIX.into(),
+    };
+    let out = render("x.plist", tpl, Host::MacLaunchd, &ctx).unwrap();
+    assert_eq!(
+        out,
+        "<plist><string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin</string></plist>\n"
+    );
+    ctx.brew_prefix = DEFAULT_BREW_PREFIX.into();
+    let out = render("x.plist", tpl, Host::MacLaunchd, &ctx).unwrap();
+    assert!(
+        out.contains("/usr/local/bin:/usr/local/bin:/usr/local/sbin"),
+        "{out}"
+    );
+    assert!(PLACEHOLDERS.contains(&"__BREW_PREFIX__"));
+}
+
 // ── render ─────────────────────────────────────────────────────────────────
 
 fn ubuntu_ctx() -> RenderCtx {
@@ -283,6 +377,7 @@ fn ubuntu_ctx() -> RenderCtx {
         repo_root: "/home/ubuntu/chump".into(),
         bin_dir: "/home/ubuntu/.cargo/bin".into(),
         user: "ubuntu".into(),
+        brew_prefix: DEFAULT_BREW_PREFIX.into(),
     }
 }
 
@@ -362,10 +457,11 @@ fn migrated_templates_render_clean_for_every_systemd_variant() {
 #[test]
 fn every_non_allowlisted_dispatch_unit_renders_for_both_systemd_scopes() {
     let allow = repo_file("scripts/ci/provision-host-literal-allowlist.txt");
+    // Entries may carry a trailing `# reason` (the named-host (c) set).
     let allowed: std::collections::HashSet<&str> = allow
         .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
         .collect();
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/dispatch");
     let mut rendered = 0;
@@ -389,6 +485,64 @@ fn every_non_allowlisted_dispatch_unit_renders_for_both_systemd_scopes() {
     assert!(
         rendered >= 40,
         "only {rendered} dispatch units rendered; expected the migrated set"
+    );
+}
+
+/// The launchd twin of the dispatch sweep (INFRA-8194 slice 2): every tracked
+/// plist under launchd/, scripts/plists/ and scripts/setup/ that is NOT on the
+/// allowlist must render on a Mac, leaving no placeholder and no host literal.
+#[test]
+fn every_non_allowlisted_plist_renders_on_mac() {
+    let allow = repo_file("scripts/ci/provision-host-literal-allowlist.txt");
+    let allowed: std::collections::HashSet<&str> = allow
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    let ctx = RenderCtx {
+        home: "/Users/pat".into(),
+        repo_root: "/Users/pat/Projects/Chump".into(),
+        bin_dir: "/Users/pat/.cargo/bin".into(),
+        user: "pat".into(),
+        brew_prefix: APPLE_SILICON_BREW_PREFIX.into(),
+    };
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut rendered = 0;
+    for dir in [
+        "launchd",
+        "scripts/plists",
+        "scripts/setup",
+        "scripts/setup/launchd",
+    ] {
+        let Ok(rd) = std::fs::read_dir(root.join(dir)) else {
+            continue;
+        };
+        for entry in rd {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            if !name.contains(".plist") {
+                continue;
+            }
+            let rel = format!("{dir}/{name}");
+            if allowed.contains(rel.as_str()) {
+                continue;
+            }
+            let tpl = std::fs::read_to_string(&path).unwrap();
+            // Classify by the .plist part so `.plist.example` / `.plist.template` count.
+            let out = render("x.plist", &tpl, Host::MacLaunchd, &ctx)
+                .unwrap_or_else(|e| panic!("{rel} does not render on mac: {e}"));
+            assert!(
+                find_host_literals(&out)
+                    .iter()
+                    .all(|f| f.rule == "homebrew-literal"),
+                "{rel} rendered with a non-brew host literal"
+            );
+            rendered += 1;
+        }
+    }
+    assert!(
+        rendered >= 10,
+        "only {rendered} plists rendered; expected the migrated launchd set"
     );
 }
 
@@ -451,6 +605,7 @@ fn render_launchd_plist_on_mac_only() {
         repo_root: "/Users/pat/Projects/chump".into(),
         bin_dir: "/Users/pat/.cargo/bin".into(),
         user: "pat".into(),
+        brew_prefix: APPLE_SILICON_BREW_PREFIX.into(),
     };
     let out = render("com.chump.x.plist.tmpl", tpl, Host::MacLaunchd, &ctx).unwrap();
     assert!(out.contains("<string>/Users/pat/.cargo/bin/chump</string>"));
@@ -466,6 +621,25 @@ fn render_launchd_plist_on_mac_only() {
         render("README.md", tpl, Host::MacLaunchd, &ctx),
         Err(RenderError::UnknownKind(_))
     ));
+}
+
+#[test]
+fn keep_root_units_render_user_root_at_system_scope_only() {
+    let rel = "scripts/dispatch/chump-organ-deploy.service";
+    let tpl = repo_file(rel);
+    assert!(
+        !tpl.lines().any(|l| l.starts_with("User=")),
+        "{rel} must not bake User= (the renderer owns it)"
+    );
+    assert!(is_keep_root_unit(rel) && !is_keep_root_unit("chump-organ-watchdog.service"));
+    let sys = render(rel, &tpl, Host::LinuxSystemdSystem, &ubuntu_ctx()).unwrap();
+    let users: Vec<&str> = sys.lines().filter(|l| l.starts_with("User=")).collect();
+    assert_eq!(users, vec!["User=root"], "{sys}");
+    // Paths still resolve to the run user's home, not root's.
+    assert!(sys.contains("Environment=HOME=/home/ubuntu"), "{sys}");
+    assert!(sys.contains("CHUMP_REPO_ROOT=/home/ubuntu/chump"), "{sys}");
+    let user = render(rel, &tpl, Host::LinuxSystemdUser, &ubuntu_ctx()).unwrap();
+    assert!(!user.lines().any(|l| l.starts_with("User=")), "{user}");
 }
 
 #[test]

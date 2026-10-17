@@ -7,12 +7,12 @@ use std::path::PathBuf;
 
 const USAGE: &str = "\
 Usage:
-  chump node host [--json] [--field host|platform|run-scope|unit-dir|bin-dir|home|user]
+  chump node host [--json] [--field host|platform|run-scope|unit-dir|bin-dir|home|user|brew-prefix]
       Print the detected host variant and the paths it implies.
   chump node render-unit <template> [--host <variant>] [--repo-root <dir>]
                                     [--user <name>] [--home <dir>] [--out <file>]
       Render a placeholder unit/plist template for this (or the named) host.
-      Placeholders: __HOME__ __REPO_ROOT__ __BIN_DIR__ __NODE_ENV__.
+      Placeholders: __HOME__ __REPO_ROOT__ __BIN_DIR__ __NODE_ENV__ __BREW_PREFIX__.
       A template carrying User=<name>, /home/<name>, /root/ or /opt/homebrew
       is refused; User= is injected only for linux-systemd-system.
 
@@ -45,6 +45,7 @@ fn host_json(p: &HostPaths) -> serde_json::Value {
         "bin_dir": p.bin_dir.to_string_lossy(),
         "home": p.home.to_string_lossy(),
         "user": p.user,
+        "brew_prefix": p.brew_prefix.to_string_lossy(),
     })
 }
 
@@ -57,6 +58,7 @@ fn field(p: &HostPaths, name: &str) -> Option<String> {
         "bin-dir" | "bin_dir" => p.bin_dir.to_string_lossy().into_owned(),
         "home" => p.home.to_string_lossy().into_owned(),
         "user" => p.user.clone(),
+        "brew-prefix" | "brew_prefix" => p.brew_prefix.to_string_lossy().into_owned(),
         _ => return None,
     })
 }
@@ -122,6 +124,7 @@ pub fn run_host(args: &[String], probe: &Probe) -> i32 {
         println!("bin-dir:    {}", p.bin_dir.display());
         println!("home:       {}", p.home.display());
         println!("user:       {}", p.user);
+        println!("brew-prefix: {}", p.brew_prefix.display());
     }
     0
 }
@@ -217,6 +220,7 @@ pub fn run_render(args: &[String], probe: &Probe) -> i32 {
             bin_dir: h.join(".cargo/bin"),
             home: h.clone(),
             user: u.clone(),
+            brew_prefix: crate::brew_prefix(host, &probe),
         },
         (Err(e), _, _) => {
             eprintln!("chump node render-unit: {e}");

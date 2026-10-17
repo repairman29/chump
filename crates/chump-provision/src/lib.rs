@@ -25,7 +25,8 @@
 //!   so every branch is unit-tested on faked inputs.
 //! * [`paths`] derives what that host implies (unit dir, bin dir, home, user).
 //! * [`render`] turns a placeholder template (`__HOME__`, `__REPO_ROOT__`,
-//!   `__BIN_DIR__`, `__NODE_ENV__`) into a concrete unit for one host. It
+//!   `__BIN_DIR__`, `__NODE_ENV__`, `__BREW_PREFIX__`) into a concrete unit for
+//!   one host. It
 //!   REFUSES a template that carries a host literal (`User=<name>`,
 //!   `/home/<name>`, `/root/`, `/opt/homebrew`), refuses a unit kind the host
 //!   cannot run (a systemd unit on launchd), refuses `%h` in a system-scope
@@ -204,6 +205,10 @@ pub struct Probe {
     /// `CHUMP_PROVISION_HOST`: explicit override (tests, or a node that wants
     /// to pin its variant).
     pub host_override: Option<String>,
+    /// Does the Apple Silicon Homebrew prefix exist (`<prefix>/bin` is a dir)?
+    /// Decides what `__BREW_PREFIX__` renders to on [`Host::MacLaunchd`]; see
+    /// [`brew_prefix`]. INFRA-8194 slice 2.
+    pub has_opt_homebrew: bool,
 }
 
 impl Probe {
@@ -241,7 +246,35 @@ impl Probe {
             repo_owner_uid,
             passwd: std::fs::read_to_string("/etc/passwd").ok(),
             host_override: env("CHUMP_PROVISION_HOST"),
+            has_opt_homebrew: Path::new(APPLE_SILICON_BREW_PREFIX).join("bin").is_dir(),
         }
+    }
+}
+
+/// Where Homebrew lives on Apple Silicon. The ONLY copy of this path the
+/// provisioning layer keeps: templates write `__BREW_PREFIX__` and installers
+/// ask [`brew_prefix`] (or its shell mirror `chump_brew_prefix` in
+/// scripts/lib/host-paths.sh) instead of baking it in.
+pub const APPLE_SILICON_BREW_PREFIX: &str = "/opt/homebrew";
+
+/// Where Homebrew lives on Intel macOS, and the conventional local prefix
+/// everywhere else (already on every default PATH, so a template that names
+/// `__BREW_PREFIX__/bin` stays harmless on a host without brew).
+pub const DEFAULT_BREW_PREFIX: &str = "/usr/local";
+
+/// The Homebrew prefix `__BREW_PREFIX__` renders to on `host`.
+///
+/// INFRA-8194 slice 2: ~150 launchd plists and installers baked the Apple
+/// Silicon prefix into their PATH, which is wrong on an Intel Mac and
+/// meaningless on Linux (the INFRA-8112 brew-only-bootstrap class). The rule:
+/// macOS with the Apple Silicon prefix present -> that prefix; anything else
+/// -> [`DEFAULT_BREW_PREFIX`]. The shell mirror (`chump_brew_prefix`) applies
+/// the same rule, so a pre-binary installer renders the same bytes.
+pub fn brew_prefix(host: Host, p: &Probe) -> PathBuf {
+    if host == Host::MacLaunchd && p.has_opt_homebrew {
+        PathBuf::from(APPLE_SILICON_BREW_PREFIX)
+    } else {
+        PathBuf::from(DEFAULT_BREW_PREFIX)
     }
 }
 
@@ -349,6 +382,8 @@ pub struct HostPaths {
     pub home: PathBuf,
     /// The user organs run as.
     pub user: String,
+    /// The Homebrew prefix (what `__BREW_PREFIX__` renders to), see [`brew_prefix`].
+    pub brew_prefix: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -450,6 +485,7 @@ pub fn paths(host: Host, p: &Probe) -> Result<HostPaths, DetectError> {
         bin_dir,
         home,
         user,
+        brew_prefix: brew_prefix(host, p),
     })
 }
 
@@ -464,6 +500,13 @@ pub struct Finding {
     pub text: String,
 }
 
+/// A line whose first non-blank character is `#`, other than a `#!` shebang.
+/// The same rule the gate script applies (`grep -vE '^[[:space:]]*#([^!]|$)'`).
+pub fn is_comment_line(line: &str) -> bool {
+    let t = line.trim_start();
+    t.starts_with('#') && !t.starts_with("#!")
+}
+
 fn is_ident_start(c: char) -> bool {
     c.is_ascii_alphabetic() || c == '_'
 }
@@ -476,10 +519,21 @@ fn is_ident_start(c: char) -> bool {
 /// * `home-literal`: `/home/<name>`.
 /// * `root-literal`: `/root/`.
 /// * `homebrew-literal`: `/opt/homebrew`.
+///
+/// A comment line (first non-blank character `#`) is skipped: it executes
+/// nothing, in a shell script, a systemd unit or YAML alike (INFRA-8194 slice
+/// 2; incident receipts such as "the old unit ran ~root's checkout" live in
+/// comments and are not host assumptions). A `#!` shebang is NOT a comment:
+/// `#!/opt/homebrew/bin/bash` pins the interpreter to one machine, so it is
+/// still flagged. Quoted text inside code is never skipped, because a quoted
+/// string is usually a live path.
 pub fn find_host_literals(text: &str) -> Vec<Finding> {
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
         let n = i + 1;
+        if is_comment_line(line) {
+            continue;
+        }
         let mut push = |rule: &'static str| {
             out.push(Finding {
                 line: n,
@@ -528,6 +582,8 @@ pub struct RenderCtx {
     pub bin_dir: PathBuf,
     /// Who a system-scope unit runs as (written as `User=`).
     pub user: String,
+    /// The Homebrew prefix (`__BREW_PREFIX__`), see [`brew_prefix`].
+    pub brew_prefix: PathBuf,
 }
 
 impl RenderCtx {
@@ -537,13 +593,20 @@ impl RenderCtx {
             repo_root: repo_root.into(),
             bin_dir: p.bin_dir.clone(),
             user: p.user.clone(),
+            brew_prefix: p.brew_prefix.clone(),
         }
     }
 }
 
 /// The placeholders a template may use. Same tokens the shell mirror
 /// (`organ_unit_host_rewrite`) substitutes.
-pub const PLACEHOLDERS: [&str; 4] = ["__HOME__", "__REPO_ROOT__", "__BIN_DIR__", "__NODE_ENV__"];
+pub const PLACEHOLDERS: [&str; 5] = [
+    "__HOME__",
+    "__REPO_ROOT__",
+    "__BIN_DIR__",
+    "__NODE_ENV__",
+    "__BREW_PREFIX__",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderError {
@@ -574,7 +637,7 @@ impl fmt::Display for RenderError {
                 kind.as_str()
             ),
             RenderError::HostLiterals(found) => {
-                write!(f, "template carries host literals (use __HOME__/__REPO_ROOT__/__BIN_DIR__/__NODE_ENV__; User= is injected by the renderer):")?;
+                write!(f, "template carries host literals (use __HOME__/__REPO_ROOT__/__BIN_DIR__/__NODE_ENV__/__BREW_PREFIX__; User= is injected by the renderer):")?;
                 for x in found {
                     write!(f, "\n  line {}: [{}] {}", x.line, x.rule, x.text)?;
                 }
@@ -621,6 +684,30 @@ fn unresolved_placeholders(text: &str) -> Vec<String> {
     out
 }
 
+/// Units whose JOB needs root at system scope (RESILIENT-374: the deploy organ
+/// writes /etc/systemd/system). The renderer writes `User=root` for these
+/// instead of the run user; their paths still resolve to the run user's home.
+/// Same set as `_KEEP_ROOT_ORGANS` in install-helsinki-atc.sh (the system-scope
+/// placer, which passes keep_root=1 to the shell mirror; the reconcile organ
+/// joined it so it can enforce the manifest). Kept by name so the template
+/// itself carries no `User=` literal (INFRA-8194). A user-scope install never
+/// gets `User=` at all, root or otherwise.
+pub const KEEP_ROOT_UNITS: [&str; 4] = [
+    "chump-organ-deploy.service",
+    "chump-organ-deploy.timer",
+    "chump-organ-reconcile.service",
+    "chump-organ-reconcile.timer",
+];
+
+/// Is `name` (a path or file name) one of [`KEEP_ROOT_UNITS`]?
+pub fn is_keep_root_unit(name: &str) -> bool {
+    let base = Path::new(name)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(name);
+    KEEP_ROOT_UNITS.contains(&base)
+}
+
 /// Render `template` (named `name`, used to classify its kind) for `host`.
 pub fn render(
     name: &str,
@@ -657,12 +744,18 @@ pub fn render(
         .to_string_lossy()
         .trim_end_matches('/')
         .to_string();
+    let brew = ctx
+        .brew_prefix
+        .to_string_lossy()
+        .trim_end_matches('/')
+        .to_string();
     let node_env = format!("{home}/.chump/node.env");
     let mut out = template
         .replace("__HOME__", &home)
         .replace("__REPO_ROOT__", &repo)
         .replace("__BIN_DIR__", &bin)
-        .replace("__NODE_ENV__", &node_env);
+        .replace("__NODE_ENV__", &node_env)
+        .replace("__BREW_PREFIX__", &brew);
 
     let left = unresolved_placeholders(&out);
     if !left.is_empty() {
@@ -674,7 +767,12 @@ pub fn render(
     if host == Host::LinuxSystemdSystem && kind == UnitKind::Systemd {
         let mut lines: Vec<String> = out.lines().map(str::to_string).collect();
         if let Some(pos) = lines.iter().position(|l| l.trim() == "[Service]") {
-            lines.insert(pos + 1, format!("User={}", ctx.user));
+            let user = if is_keep_root_unit(name) {
+                "root"
+            } else {
+                ctx.user.as_str()
+            };
+            lines.insert(pos + 1, format!("User={user}"));
             let trailing_newline = out.ends_with('\n');
             out = lines.join("\n");
             if trailing_newline {
