@@ -1482,6 +1482,9 @@ jobs:
       - name: pick-and-claim lock-dir resolves to main repo from linked worktree (INFRA-466/467)
         run: bash scripts/ci/test-pick-and-claim-lockdir.sh
 
+      - name: picker soft skill filter + open-PR anti-spin fallback (INFRA-8176)
+        run: bash scripts/ci/test-picker-soft-skill-open-pr.sh
+
       - name: corrective-keyword waste-SLO-pause exception (META-937/META-823)
         run: bash scripts/ci/test-corrective-keyword-exception.sh
 
