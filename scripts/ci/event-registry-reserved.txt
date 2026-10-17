@@ -913,3 +913,4 @@ operator_decision_needed  # reason: INFRA-1563 — GET /api/decisions (src/route
 
 # ── CREDIBLE-1495 R4 / CREDIBLE-1505 repair ───────────────────────────────
 ship_landed  # reason: CREDIBLE-1495 R4 — emitted by crates/chump-gap-store/src/lib.rs ship() via a format! string using Rust-escaped \"kind\":\"ship_landed\" quoting, which the `chump verify` event-registry rule's unescaped-quote needle (src/verify/rules/event_registry.rs) cannot see even though the CI coverage gate (scripts/ci/test-event-registry-coverage.sh Pattern 3) does. Reserved here to satisfy the register-without-emit direction; drop this line if the rule's needle gains escaped-quote support.
+invariant_boundary_violation  # reason: INFRA-8218 emitted by test-invariant-boundary.sh during CI (scripts/ci/ path), registers pre-CI testing gate
