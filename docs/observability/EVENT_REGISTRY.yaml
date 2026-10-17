@@ -14102,3 +14102,15 @@ events:
     trigger: node-wide admission ceiling hit — a `claude -p` or cargo/rustc spawn was deferred because the live count was >= CHUMP_MAX_CONCURRENT_CLAUDE / CHUMP_MAX_CONCURRENT_CARGO_JOBS (outcome=deferred on entry, outcome=timeout when the bounded wait fails open)
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, resource, active, ceiling, waited_s, outcome]
+  - kind: organ_install_scope_skipped
+    effect_metric: self
+    emitter: scripts/setup/chump-node-install.sh place_role_unit_files (INFRA-8194)
+    trigger: a role-matched manifest organ declares run-scope=user|system that
+      does not match the manager scope the placer installs into (the --user
+      manager), so the unit is NOT placed; e.g. the root-only
+      chump-organ-deploy.timer (run-scope=system) on a user-scope bring-up.
+      The host scope comes from the typed Host enum (`chump node host`,
+      crates/chump-provision). Phase R R5.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, run_scope, install_scope, host]
+

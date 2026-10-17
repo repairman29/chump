@@ -2534,6 +2534,19 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-capabilities-registry.sh"],
             GateKind::Scripts,
         ));
+        // INFRA-8194 (Phase R R5): no new host literal (User=<name>,
+        // /home/<name>, /root/, /opt/homebrew) in provisioning dirs; shrink-only
+        // allowlist. Hermetic, <2s, mirrors the ci.yml fast-checks step.
+        steps.push(step(
+            "provision-no-host-literals",
+            &["bash", "scripts/ci/test-provision-no-host-literals.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "organ-manifest-run-scope",
+            &["bash", "scripts/ci/test-organ-manifest-run-scope.sh"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "no-verify-audit",
             &["bash", "scripts/ci/test-no-verify-audit.sh"],

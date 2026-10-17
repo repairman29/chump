@@ -1169,14 +1169,43 @@ place_role_unit_files() {
     ln -sf "$BIN" "$run_home/.cargo/bin/chump" 2>/dev/null || true
   fi
 
-  local PAGING_OFF=() ENABLED=(); declare -A ORGAN_ROLE ORGAN_REQUIRES
-  organ_manifest_parse "$manifest" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES || { no "manifest parse failed — skipping placement"; return 0; }
+  local PAGING_OFF=() ENABLED=(); declare -A ORGAN_ROLE ORGAN_REQUIRES ORGAN_PLATFORMS ORGAN_NODE ORGAN_RUN_SCOPE
+  organ_manifest_parse "$manifest" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES ORGAN_PLATFORMS ORGAN_NODE ORGAN_RUN_SCOPE || { no "manifest parse failed — skipping placement"; return 0; }
+
+  # INFRA-8194 (Phase R R5): ask the typed Host enum what this host is, and
+  # install only what it allows. This placer always writes into the --user
+  # manager, so the install scope is `user` and the platform is systemd; a unit
+  # whose manifest platforms=/run-scope= rules that out is skipped with a logged
+  # reason (+ organ_install_scope_skipped) instead of being placed where it can
+  # only fail (e.g. the root-only chump-organ-deploy in a user manager).
+  local install_scope="user" install_platform="systemd" detected_host=""
+  if [ -x "$BIN" ]; then
+    detected_host="$("$BIN" node host --field host 2>/dev/null </dev/null || true)"
+  fi
+  if [ "$detected_host" = "linux-systemd-system" ]; then
+    # INFRA-8049 class: a root run places units into /root's own --user manager
+    # (the abandoned /root/.chumpnode second install). Say so loudly.
+    no "host enum says linux-systemd-system (running as root): unit files will land in root's --user manager, not the repo owner's — re-run as the repo-owning user (INFRA-8049)"
+  fi
+  info ORGANS "host=${detected_host:-unknown (binary predates chump node host)} install-scope=$install_scope platform=$install_platform"
 
   local rf; rf="$(organ_role_filter)"
   declare -A _want_base    # base-unit-name -> 1 for role-matched units
   local ua; ua="$(organ_role_units)"
   local unit role tok in_role
+  local scope_skipped=()
   for unit in "${ENABLED[@]}"; do
+    if ! organ_platform_matches "${ORGAN_PLATFORMS[$unit]:-}" "$install_platform"; then
+      continue   # a launchd/runit-only organ: not this supervisor at all (INFRA-7764)
+    fi
+    if ! organ_run_scope_matches "${ORGAN_RUN_SCOPE[$unit]:-any}" "$install_scope"; then
+      scope_skipped+=("$unit")
+      info ORGANS "skip $unit: run-scope=${ORGAN_RUN_SCOPE[$unit]} but this placer installs into the $install_scope manager (INFRA-8194)"
+      # scanner-anchor: "kind":"organ_install_scope_skipped" (INFRA-8194)
+      emit_ambient organ_install_scope_skipped \
+        "\"unit\":\"$unit\",\"run_scope\":\"${ORGAN_RUN_SCOPE[$unit]}\",\"install_scope\":\"$install_scope\",\"host\":\"${detected_host:-unknown}\""
+      continue
+    fi
     role="${ORGAN_ROLE[$unit]:-brain}"
     in_role=0
     if [ -z "$rf" ]; then in_role=1
@@ -1197,6 +1226,11 @@ place_role_unit_files() {
   # (self-exclusion), so add it explicitly for EVERY role.
   _want_base["chump-organ-reconcile"]=1
 
+  # Never place the paired sibling of a scope-skipped organ either.
+  for unit in "${scope_skipped[@]}"; do
+    base="${unit%.service}"; base="${base%.timer}"
+    unset "_want_base[$base]"
+  done
   declare -A _KEEP_ROOT=( [chump-organ-deploy.service]=1 [chump-organ-deploy.timer]=1 )
   local placed=() skipped_nofile=() base f keep suffix
   for base in "${!_want_base[@]}"; do
