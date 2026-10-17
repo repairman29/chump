@@ -8,8 +8,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-Environment=HOME=/root
-ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/olive-post-launch-monitor.sh'
+Environment=HOME=__HOME__
+ExecStart=/bin/bash -lc 'set -a; source __HOME__/.chump/providers.env 2>/dev/null; set +a; exec __REPO_ROOT__/scripts/ops/olive-post-launch-monitor.sh'
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=olive-monitor
