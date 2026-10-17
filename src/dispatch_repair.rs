@@ -26,6 +26,16 @@
 //!    `chump gap decompose <ID> --dry-run` and STOP: filing sub-gaps is the
 //!    operator's or the decompose curator's call, not a dispatched agent's.
 //!
+//! INFRA-332 (`subagent-shipping-epilogue`): the ordinary work prompt is
+//! built by [`crate::execute_gap::build_execute_gap_prompt`], which injects
+//! `scripts/dispatch/subagent-shipping-epilogue.md` verbatim, so that path
+//! carries the canonical bot-merge / final-report contract. The repair brief
+//! and the decompose-review brief deliberately do NOT inject it: the epilogue
+//! tells the agent to open a PR and run bot-merge, while a repair pushes to
+//! the existing PR's branch ("do not open a new PR") and a decompose review
+//! makes no commits at all. Injecting it there would hand the agent two
+//! contradictory shipping contracts.
+//!
 //! The pure pieces (matching, parsing, prompt builders) are unit-tested
 //! below; the thin `chump dispatch` arm in `main.rs` only calls
 //! [`open_pr_gate`] and [`build_auto_prompt`].
