@@ -45,6 +45,7 @@ _notify() {
     [[ -x "$bin" ]] || bin="$(_repo_root)/target/debug/chump"
     [[ -x "$bin" ]] || { echo "[olive-monitor] chump binary not found" >&2; return 1; }
     echo "$msg" | "$bin" --notify 2>/dev/null || {
+        # scanner-anchor: "kind":"olive_monitor_notify_failed"
         _emit "olive_monitor_notify_failed" "\"error\":\"chump --notify failed\""
         return 0
     }
@@ -144,11 +145,13 @@ main() {
     local days_left
     days_left="$(_days_remaining)"
     if [[ "$days_left" == "unknown" ]] || [[ "$days_left" -gt 14 ]]; then
+        # scanner-anchor: "kind":"olive_monitor_launch_not_started"
         _emit "olive_monitor_launch_not_started" "\"msg\":\"Launch date not yet or parsing failed\""
         echo "[olive-monitor] Launch window not active or could not parse launch date. Exiting." >&2
         return 0
     fi
     if (( days_left == 0 )); then
+        # scanner-anchor: "kind":"olive_monitor_window_closed"
         _emit "olive_monitor_window_closed" "\"day\":14"
         echo "[olive-monitor] 14-day watch window closed. Exiting." >&2
         return 0
@@ -178,6 +181,7 @@ main() {
         stores_base="$stores_now"
         pushes_base="$pushes_now"
         feedback_base="$feedback_now"
+        # scanner-anchor: "kind":"olive_monitor_baseline_initialized"
         _emit "olive_monitor_baseline_initialized" \
             "\"users\":${users_now},\"stores\":${stores_now},\"pushes\":${pushes_now},\"feedback\":${feedback_now}"
     fi
@@ -202,9 +206,11 @@ main() {
     # Report (dry-run or actual)
     if [[ "${CHUMP_OLIVE_DRY_RUN:-0}" == "1" ]]; then
         echo "[olive-monitor DRY_RUN] Would send to board: ${report}"
+        # scanner-anchor: "kind":"olive_monitor_report_dryrun"
         _emit "olive_monitor_report_dryrun" "\"msg\":\"${report}\",\"days_left\":${days_left}"
     else
         _notify "$report" || true
+        # scanner-anchor: "kind":"olive_monitor_report_posted"
         _emit "olive_monitor_report_posted" \
             "\"users_delta\":${users_delta},\"stores_delta\":${stores_delta},\"pushes_delta\":${pushes_delta},\"feedback_delta\":${feedback_delta},\"non_jeff_pushers\":\"${non_jeff_pushers}\",\"days_left\":${days_left}"
     fi

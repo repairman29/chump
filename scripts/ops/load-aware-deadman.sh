@@ -114,10 +114,12 @@ kill_newest_process() {
     newest_cmd=$(ps -o cmd= -p "$newest_pid" 2>/dev/null || echo "unknown")
     if [[ "$DRY_RUN" == "1" ]]; then
         log "DRY-RUN: would kill PID $newest_pid ($newest_cmd) — $reason"
+        # scanner-anchor: "kind":"deadman_process_kill_dry_run"
         emit_ambient "deadman_process_kill_dry_run" "killed_pid=$newest_pid pattern=$pattern reason=$reason"
         return 0
     fi
     log "KILLING PID $newest_pid ($newest_cmd) — $reason"
+    # scanner-anchor: "kind":"deadman_process_killed"
     emit_ambient "deadman_process_killed" "killed_pid=$newest_pid pattern=$pattern reason=$reason"
     kill -9 "$newest_pid" 2>/dev/null || true
 }
@@ -182,6 +184,7 @@ else
         duration=$(( now - first_unresponsive ))
         if [[ "$duration" -ge "$SSH_UNRESPONSIVE_DUR_SECS" ]]; then
             log "CRITICAL: SSH unresponsive for ${duration}s — systemd watchdog will reboot"
+            # scanner-anchor: "kind":"deadman_ssh_unresponsive_critical"
             emit_ambient "deadman_ssh_unresponsive_critical" "duration_secs=$duration"
             # Explicitly kick systemd watchdog so it knows we're alive (and intentionally not resetting it)
             # This allows systemd to proceed with reboot.
@@ -192,6 +195,7 @@ else
     else
         echo "$now" > "$SSH_STATE"
         log "WARN: SSH unresponsive — monitoring..."
+        # scanner-anchor: "kind":"deadman_ssh_unresponsive_detected"
         emit_ambient "deadman_ssh_unresponsive_detected" "duration_secs=0"
     fi
 fi

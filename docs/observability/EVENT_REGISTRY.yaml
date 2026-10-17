@@ -14242,3 +14242,92 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, source, refspec]
 
+  - kind: deadman_process_kill_dry_run
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/load-aware-deadman.sh (RESILIENT-1611)
+    emitter_paths: [scripts/ops/load-aware-deadman.sh]
+    trigger: the node-level load-aware dead-man found a runaway process over the load ceiling but ran in dry-run mode; message names the PID, pattern and reason it would have killed
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, message]
+
+  - kind: deadman_process_killed
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/load-aware-deadman.sh (RESILIENT-1611)
+    emitter_paths: [scripts/ops/load-aware-deadman.sh]
+    trigger: the node-level load-aware dead-man killed the newest process matching a runaway pattern because the node was over its load ceiling; message names the PID, pattern and reason
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, message]
+
+  - kind: deadman_ssh_unresponsive_detected
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/load-aware-deadman.sh (RESILIENT-1611)
+    emitter_paths: [scripts/ops/load-aware-deadman.sh]
+    trigger: the load-aware dead-man first saw sshd stop answering on the node (start of an unresponsive window, duration 0)
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, message]
+
+  - kind: deadman_ssh_unresponsive_critical
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/load-aware-deadman.sh (RESILIENT-1611)
+    emitter_paths: [scripts/ops/load-aware-deadman.sh]
+    trigger: sshd has stayed unresponsive past the dead-man critical threshold; message carries duration_secs
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, message]
+
+  - kind: olive_monitor_baseline_initialized
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/olive-post-launch-monitor.sh (PRODUCT-382)
+    emitter_paths: [scripts/ops/olive-post-launch-monitor.sh]
+    trigger: first run of the Olive post-launch monitor recorded the baseline counts (sign-ups, stores, cart pushes, feedback) that later daily reports diff against
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind]
+
+  - kind: olive_monitor_launch_not_started
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/olive-post-launch-monitor.sh (PRODUCT-382)
+    emitter_paths: [scripts/ops/olive-post-launch-monitor.sh]
+    trigger: the Olive post-launch monitor ran before the launch date (or could not parse it) and did nothing
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, msg]
+
+  - kind: olive_monitor_window_closed
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/olive-post-launch-monitor.sh (PRODUCT-382)
+    emitter_paths: [scripts/ops/olive-post-launch-monitor.sh]
+    trigger: the 14-day Olive post-launch reporting window is over; the monitor exits without reporting
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, day]
+
+  - kind: olive_monitor_report_dryrun
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/olive-post-launch-monitor.sh (PRODUCT-382)
+    emitter_paths: [scripts/ops/olive-post-launch-monitor.sh]
+    trigger: the Olive post-launch monitor built its daily report in dry-run mode and did not post it
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, msg, days_left]
+
+  - kind: olive_monitor_report_posted
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/olive-post-launch-monitor.sh (PRODUCT-382)
+    emitter_paths: [scripts/ops/olive-post-launch-monitor.sh]
+    trigger: the Olive post-launch monitor posted its daily sign-up/store/cart/feedback report to the board
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind]
+
+  - kind: olive_monitor_notify_failed
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/olive-post-launch-monitor.sh (PRODUCT-382)
+    emitter_paths: [scripts/ops/olive-post-launch-monitor.sh]
+    trigger: the Olive post-launch monitor could not deliver its report (chump --notify failed)
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, error]
