@@ -258,7 +258,6 @@ test-orchestrate-session-summary.sh  # reason: audit-job test script requiring a
 test-fleet-brief.sh  # reason: audit-job test script requiring a compiled CHUMP_BIN + cargo build; exceeds preflight's <60s fast-feedback budget; corresponding step-name entry (with per-gate reason) is allowlisted below under "Multi-line run: block steps"
 test-fleet-brief-ship-count-unavailable.sh  # reason: audit-job test script requiring a compiled CHUMP_BIN + cargo build; exceeds preflight's <60s fast-feedback budget; corresponding step-name entry (with per-gate reason) is allowlisted below under "Multi-line run: block steps"
 test-dispatch-open-pr-repair.sh  # reason: INFRA-8199 fast-checks test script requiring a compiled CHUMP_BIN + cargo build; exceeds preflight's <60s fast-feedback budget; step-name entry allowlisted below under "Multi-line run: block steps"
-test-resilient-1614-node-pause.sh  # reason: RESILIENT-1614 fast-checks test requiring a compiled CHUMP_BIN + cargo build; exceeds preflight's <60s fast-feedback budget; step-name entry allowlisted below
 
 # ── Standalone build steps (not a test gate) ─────────────────────────────────
 apalis-poc                 # reason: standalone example workspace build; not a functional gate
@@ -273,7 +272,6 @@ fleet brief subcommand                  # reason: needs cargo build + CHUMP_BIN;
 fleet brief ship-count unavailable      # reason: needs cargo build + CHUMP_BIN; test-fleet-brief-ship-count-unavailable.sh allowlisted above
 orchestrate session-summary             # reason: needs cargo build + CHUMP_BIN; test-orchestrate-session-summary.sh above
 dispatch open-PR refuse/repair          # reason: needs cargo build + CHUMP_BIN; test-dispatch-open-pr-repair.sh allowlisted above
-chump node pause/resume invariant      # reason: needs cargo build + CHUMP_BIN; test-resilient-1614-node-pause.sh allowlisted above
 bot-merge auto-close handshake          # reason: needs CHUMP_BIN env var; test-bot-merge-auto-close.sh above
 CLI fleet + health + coord              # reason: needs CHUMP_BIN env var; test-cli-fleet-coord.sh above
 chump gap list domain summary           # reason: needs cargo build + CHUMP_BIN; test-gap-list-domain-summary.sh above

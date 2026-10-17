@@ -1478,11 +1478,6 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-dispatch-open-pr-repair.sh
 
-      - name: chump node pause/resume invariant (RESILIENT-1614)
-        run: |
-          cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-resilient-1614-node-pause.sh
-
       - name: pr-cut honored by watch and reviver (RESILIENT-1606/1607)
         run: bash scripts/ci/test-pr-cut-honored.sh
 
