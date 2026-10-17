@@ -49,10 +49,10 @@ jobs:
           for _ in $(seq 1 40); do
             row="$(gh api "repos/${GH_REPO}/actions/runs/${ci_run}/jobs" --paginate -q '.jobs[] | select(.name=="verified") | "\(.id) \(.status) \(.conclusion)"' | tail -1)"
             [ -z "$row" ] && { echo "no verified job yet"; exit 0; }
-            set -- $row
-            if [ "$2" = "completed" ]; then
-              if [ "$3" = "success" ]; then echo "verified already green"; exit 0; fi
-              gh api -X POST "repos/${GH_REPO}/actions/jobs/$1/rerun" && echo "re-ran verified job $1 (run ${ci_run})"
+            read -r job_id job_status job_conclusion <<<"$row"
+            if [ "$job_status" = "completed" ]; then
+              if [ "$job_conclusion" = "success" ]; then echo "verified already green"; exit 0; fi
+              gh api -X POST "repos/${GH_REPO}/actions/jobs/${job_id}/rerun" && echo "re-ran verified job ${job_id} (run ${ci_run})"
               exit 0
             fi
             sleep 15
