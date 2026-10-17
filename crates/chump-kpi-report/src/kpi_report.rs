@@ -1251,6 +1251,73 @@ pub fn build_shell_invariant_writers_section(repo_root: &Path) -> ShellInvariant
     }
 }
 
+// ── CI Test Census (CREDIBLE-1514) ──────────────────────────────────────────
+
+/// `ci_tests_unwired` / `ci_tests_red` from docs/observability/ci-test-census.json,
+/// written by scripts/ci/census.sh (nightly via ci-test-census.yml). `None`
+/// when the census file is absent or unreadable.
+#[derive(Debug, Default, Clone)]
+pub struct CiCensusSection {
+    pub unwired: Option<u64>,
+    pub red: Option<u64>,
+    pub total: Option<u64>,
+    pub run_date: String,
+    pub mode: String,
+}
+
+impl CiCensusSection {
+    pub fn render_text(&self) -> String {
+        match (self.unwired, self.red) {
+            (Some(u), Some(r)) => format!(
+                "═══ CI Test Census (CREDIBLE-1514) ═══\n  ci_tests_unwired: {u}\n  ci_tests_red: {r}\n  of {} scripts/ci tests; census {} ({})\n",
+                self.total.unwrap_or(0),
+                self.run_date,
+                self.mode,
+            ),
+            _ => "═══ CI Test Census (CREDIBLE-1514) ═══\n  No docs/observability/ci-test-census.json (run scripts/ci/census.sh).\n".to_string(),
+        }
+    }
+
+    pub fn render_json(&self) -> String {
+        let n = |v: Option<u64>| v.map_or("null".to_string(), |x| x.to_string());
+        format!(
+            r#"{{"ci_tests_unwired":{},"ci_tests_red":{},"ci_tests_total":{},"run_date":"{}"}}"#,
+            n(self.unwired),
+            n(self.red),
+            n(self.total),
+            json_escape(&self.run_date),
+        )
+    }
+}
+
+pub fn build_ci_census_section(repo_root: &Path) -> CiCensusSection {
+    let path = repo_root.join("docs/observability/ci-test-census.json");
+    let Some(json) = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+    else {
+        return CiCensusSection::default();
+    };
+    let count = |k: &str| {
+        json.get("counts")
+            .and_then(|c| c.get(k))
+            .and_then(|v| v.as_u64())
+    };
+    let text = |k: &str| {
+        json.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    CiCensusSection {
+        unwired: count("unwired"),
+        red: count("red"),
+        total: count("total"),
+        run_date: text("run_date"),
+        mode: text("mode"),
+    }
+}
+
 // ── Combined KPI Report ──────────────────────────────────────────────────────
 
 /// Full KPI report wrapping all sections.
@@ -1269,6 +1336,7 @@ pub struct KpiReport {
     pub shell_invariant_writers: ShellInvariantWritersSection,
     /// CREDIBLE-1512: CI runner pickup-latency (p50/p95 per hour) + queued count.
     pub ci_pickup: crate::ci_pickup::CiPickupReport,
+    pub ci_census: CiCensusSection,
 }
 
 impl KpiReport {
@@ -1300,12 +1368,14 @@ impl KpiReport {
         out.push_str(&self.shell_invariant_writers.render_text());
         out.push('\n');
         out.push_str(&self.ci_pickup.render_text());
+        out.push('\n');
+        out.push_str(&self.ci_census.render_text());
         out
     }
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"green_first_try":{},"time_to_land":{},"gate_false_positive":{},"shell_invariant_writers":{},"ci_pickup":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"green_first_try":{},"time_to_land":{},"gate_false_positive":{},"shell_invariant_writers":{},"ci_pickup":{},"ci_census":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
@@ -1318,6 +1388,7 @@ impl KpiReport {
             self.gate_false_positive.render_json(),
             self.shell_invariant_writers.render_json(),
             self.ci_pickup.render_json(),
+            self.ci_census.render_json(),
         )
     }
 }
@@ -1562,6 +1633,7 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         shell_invariant_writers: build_shell_invariant_writers_section(repo_root),
         // CREDIBLE-1512: default 24h window for the embedded CI-pickup section.
         ci_pickup: crate::ci_pickup::build_ci_pickup_report(repo_root, 24),
+        ci_census: build_ci_census_section(repo_root),
     }
 }
 
@@ -3962,6 +4034,29 @@ mod tests {
         assert!(section
             .render_json()
             .contains(r#""total_signals":3,"false_positives":1"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1514_ci_census_reads_counts() {
+        let tmp = tempdir();
+        let dir = tmp.join("docs/observability");
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(build_ci_census_section(&tmp)
+            .render_text()
+            .contains("No docs/observability"));
+        std::fs::write(
+            dir.join("ci-test-census.json"),
+            r#"{"run_date":"2026-10-17","mode":"no-run","counts":{"total":1611,"unwired":1231,"red":12},"tests":[]}"#,
+        )
+        .unwrap();
+        let section = build_ci_census_section(&tmp);
+        assert_eq!(section.unwired, Some(1231));
+        assert_eq!(section.red, Some(12));
+        assert!(section.render_text().contains("ci_tests_unwired: 1231"));
+        assert!(section
+            .render_json()
+            .contains(r#""ci_tests_unwired":1231,"ci_tests_red":12"#));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

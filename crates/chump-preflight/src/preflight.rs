@@ -2555,6 +2555,14 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-no-verify-audit.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-1514: scripts/ci census shrink-only gate. A new test is
+        // wired or deleted; red/unwired census counts only shrink. Hermetic
+        // fixture self-test + a classification-only compare (<1s).
+        steps.push(step(
+            "census-shrink-only",
+            &["bash", "scripts/ci/test-census-shrink-only.sh"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "css-token-discipline-smoke",
             &["bash", "scripts/ci/test-css-token-discipline.sh"],
