@@ -53,10 +53,6 @@ use std::time::Duration;
 // about all stay consistent. See [`create_dispatch_worktree`].
 use chump_orchestrator::dispatch::dispatch_paths;
 
-/// INFRA-8203: stranded-work detector (dirty worktree, no commit).
-#[path = "dispatch_stranded.rs"]
-mod stranded;
-
 /// How the actual work between claim and ship gets done.
 #[derive(Debug, Clone)]
 pub enum WorkBackend {
@@ -1859,6 +1855,39 @@ fn emit_hang_alert(
     }
 }
 
+/// RESILIENT-1612: emit `kind=dispatch_hang_detector_blind` when the hang
+/// detector has no readable activity source for a dispatch and therefore
+/// stays off (rather than firing at start+timeout on a child it cannot see).
+fn emit_hang_detector_blind(process_name: &str, gap_id: &str, timeout_secs: u64, reason: &str) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let reason = reason.replace('\\', "\\\\").replace('"', "\\\"");
+    // scanner anchor: "kind":"dispatch_hang_detector_blind"
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"dispatch_hang_detector_blind\",\
+         \"process\":\"{process_name}\",\"gap\":\"{gap_id}\",\"timeout_secs\":{timeout_secs},\
+         \"reason\":\"{reason}\"}}"
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+}
+
+/// INFRA-8203: stranded-work detector (dirty worktree, no commit).
+#[path = "dispatch_stranded.rs"]
+mod stranded;
+
 /// INFRA-8203: run the stranded-work check for a dispatch that owns a fresh
 /// worktree (never for Interactive, which works in the caller's checkout,
 /// and never in review-only mode, which ships nothing). Emits
@@ -1922,35 +1951,6 @@ fn emit_dispatch_work_stranded(gap_id: &str, s: &stranded::Stranded) {
         "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"dispatch_work_stranded\",\
          \"gap\":\"{gap_id}\",\"files\":{},\"diffstat\":{stat},\"patch\":{patch}}}",
         s.files
-    );
-    use std::io::Write as _;
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&ambient_path)
-    {
-        let _ = writeln!(f, "{}", line);
-    }
-}
-
-/// RESILIENT-1612: emit `kind=dispatch_hang_detector_blind` when the hang
-/// detector has no readable activity source for a dispatch and therefore
-/// stays off (rather than firing at start+timeout on a child it cannot see).
-fn emit_hang_detector_blind(process_name: &str, gap_id: &str, timeout_secs: u64, reason: &str) {
-    let repo_root = crate::repo_path::runtime_base();
-    let lock_dir = repo_root.join(".chump-locks");
-    let _ = std::fs::create_dir_all(&lock_dir);
-    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
-    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
-    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let reason = reason.replace('\\', "\\\\").replace('"', "\\\"");
-    // scanner anchor: "kind":"dispatch_hang_detector_blind"
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"dispatch_hang_detector_blind\",\
-         \"process\":\"{process_name}\",\"gap\":\"{gap_id}\",\"timeout_secs\":{timeout_secs},\
-         \"reason\":\"{reason}\"}}"
     );
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
