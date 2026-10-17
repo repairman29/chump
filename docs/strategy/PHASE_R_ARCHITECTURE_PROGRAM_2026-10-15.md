@@ -47,7 +47,7 @@ to live.
 | **R6** | The invariant boundary. Rust owns invariants (store, leases, gap status, the ship transition, admission); shell owns glue and may stay shell. A CI gate fails any shell that writes an invariant directly; `chump` verbs are the shortest path; agent matched to layer. Metric: shell files that write invariants, target zero. | Picker sprawl (MISSION-028); 9 scripts writing the store and a dozen writing leases on main (2026-10-17 baseline); Rust-first honored by a bypass trailer | INFRA-8195 (slices R6.1 gate, R6.2 `chump admit`, R6.3 layer-aware dispatch, R6.4 gauge) | P1 |
 | **R4** | One canonical store. `state.sql` and `gap_store.db` leave git; the YAML mirror is export-only; the swamp is archived, never deleted. | Split-brain drift; the 9,223-file swamp; `sync --push` blast radius | INFRA-8193; INFRA-8190 landed: one resolver (`crates/chump-store-path` + `scripts/coord/lib/state-store.sh`: `CHUMP_STATE_DB` > main checkout's `.chump/state.db` > root), hard single-source gate (`gap-store-single-source-check.sh` check C); INFRA-8222: `chump store reconcile` merges a node's stale home store into the live one before the pin flips (newest-wins, terminal-status guard) | P2 |
 | **R5** | Host provisioning is a typed enum; units are rendered from it; no `User=`, `/home`, `/root`, `/opt/homebrew` literals ship. | 217/USER failures, HOME=/root, the abandoned second install, brew-only bootstrap | INFRA-8194 (slice 1 landed: `Host` enum + detector + `chump node host`/`render-unit` in crates/chump-provision; 39 dispatch units incl. gap-close-decomposed and organ-watchdog are placeholder templates with no `User=`; manifest `run-scope=`; no-host-literal CI gate with a dated shrink-only allowlist of 188 files. Remains: those 188 files (23 dispatch units, 57 plists, 108 setup scripts), retiring the legacy host-rewrite sed path in converge once nothing needs it, and run-scope tags beyond organ-deploy) | P2 |
-| **R7** | The eval harness points inward. Every self-report has a ground-truth probe and a calibration score; chronic liars auto-file a gap. | Dashboards off by 6x to 100x; "healthy" while organs fail for days | CREDIBLE-1493 | P2 |
+| **R7** | The eval harness points inward. Every self-report has a ground-truth probe and a calibration score; chronic liars auto-file a gap. **Slice 1 landed (2026-10-17):** `docs/observability/SELF_REPORTS.yaml` (16 pairs), `chump calibrate` (`src/commands/calibrate.rs`, emits `kind=self_report_calibration`), the score line in `fleet brief` and `kpi report`, nightly `chump-self-calibrate.timer` (role=trust). **Slice 2:** auto-file a CREDIBLE gap after 3 consecutive nights of disagreement on one pair; replay the 2026-10-15 cases as fixtures. | Dashboards off by 6x to 100x; "healthy" while organs fail for days | CREDIBLE-1493 | P2 |
 
 **Why this order (revised 2026-10-16).** R1 and R3 first because until a merge means
 "tested and landed," nothing else the fleet reports can be trusted, and nothing it builds can
@@ -68,6 +68,21 @@ merged and closed by the fleet with no human terminal (INFRA-8204, #5481). Zero 
 **The honest metric for the whole program.** One gap filed, dispatched, built, merged
 and flipped to shipped by the fleet with zero admin merges and zero human terminal.
 Until that happens once, the factory is not running. R1 plus R3 is the gate to it.
+
+## R7 slice 1: what the first calibration said (2026-10-17, Mac observer)
+
+`chump calibrate` on the operator's Mac: **12/16 agree, 2 disagree, 2 unprobed** (score 0.75).
+The two disagreements were real on that host: fleet-doctor's `dirty-prs` reads the
+`github_cache.db` mirror and said pass while GitHub had DIRTY PRs older than 24h, and the kpi
+ship gauge read 0 ships in 1d against 31 merges (the Mac's store is stale). The run also found
+`chump kpi report --json` emitting invalid JSON (unescaped `depends_on` arrays in the dependency-count
+section), fixed in the same PR. The two unprobed pairs need systemd (organ failures); they run
+on the Linux nodes. Unprobed pairs stay in the denominator and never count as agreement.
+
+Slice 2 (not landed): a pair that disagrees three nights running files a CREDIBLE gap naming the
+instrument and its receipt; the 2026-10-15 cases (floor-temp admin merges vs #5466, the
+stale-root-binary deploy reading, fleet-brief healthy over failed organs) replay as fixtures so
+the calibration itself is regression-tested against the incidents that motivated it.
 
 ## Rules while Phase R runs
 

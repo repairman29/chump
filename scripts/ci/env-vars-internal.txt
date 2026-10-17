@@ -3551,6 +3551,18 @@ CHUMP_POST_PUSH_WATCH_AUTOMATION_LOGINS
 # the manifest run-scope= filter (tests, or an installer that knows its scope).
 CHUMP_PROVISION_HOST
 CHUMP_ORGAN_MANIFEST_RUN_SCOPE
+# CREDIBLE-1493: chump calibrate (self-report calibration). Tunables + the env
+# it exports to the SELF_REPORTS.yaml commands.
+CHUMP_CALIBRATE_REGISTRY
+CHUMP_CALIBRATE_TIMEOUT_SECS
+CHUMP_CALIBRATE_GH_REPO
+CHUMP_CALIBRATE_ORGAN_BIN
+CHUMP_CALIBRATE_REPO_ROOT
+CHUMP_CALIBRATE_LOCKS_DIR
+CHUMP_CALIBRATE_NOW_EPOCH
+CHUMP_CALIBRATE_SINCE_1H
+CHUMP_CALIBRATE_SINCE_24H
+CHUMP_CALIBRATE_SINCE_7D
 
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
@@ -3578,3 +3590,4 @@ CHUMP_WATCHDOG_REOPEN
 # CREDIBLE-1509: chump kpi report R6.4 gauge — =1 reuses the last recorded
 # invariant-boundary reading instead of running the ~20s gate (fleet-brief banner).
 CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE
+CHUMP_RE

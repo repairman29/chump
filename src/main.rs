@@ -1530,10 +1530,9 @@ async fn main() -> Result<()> {
     }
 
     // INFRA-5754 (INFRA-1748 pilot slice): self-registered subcommands take
-    // priority over the legacy if/else dispatch chain below. Nothing is
-    // registered via `inventory::submit! { CommandEntry::new(...) }` yet —
-    // this is a no-op until the first subcommand migrates per
-    // docs/refactor/MAIN_RS_DECOMPOSITION.md.
+    // priority over the legacy if/else dispatch chain below. Registered via
+    // `inventory::submit! { CommandEntry::new(...) }`; first user is
+    // `calibrate` (CREDIBLE-1493, src/commands/calibrate.rs).
     if let Some(name) = args.get(1) {
         if let Some(result) = commands::registry::dispatch(name, &args) {
             return result;
@@ -7652,11 +7651,16 @@ async fn main() -> Result<()> {
                             "total_pickable": total_pickable,
                         },
                         "suggestions": suggestions,
+                        // CREDIBLE-1493: last self-report calibration score.
+                        "calibration": commands::calibrate::banner_line(),
                     });
                     println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
                 } else {
                     let window_h = window_secs / 3600;
                     println!("═══ Fleet brief (last {window_h}h) ═══");
+                    // CREDIBLE-1493 (Phase R R7): how many of the instruments
+                    // below agree with ground truth, from the last calibration.
+                    println!("{}", commands::calibrate::banner_line());
                     // INFRA-2013: show 1h ships alongside rolling average.
                     // CREDIBLE-129: a failed git measurement prints
                     // "unavailable", never a bare 0 that reads as real data.
@@ -18506,7 +18510,13 @@ async fn main() -> Result<()> {
             let output = if want_json {
                 report.render_json()
             } else {
-                report.render_text()
+                // CREDIBLE-1493 (Phase R R7): the gauges below carry their
+                // calibration score on top.
+                format!(
+                    "{}\n{}",
+                    commands::calibrate::banner_line(),
+                    report.render_text()
+                )
             };
 
             if want_pdf {

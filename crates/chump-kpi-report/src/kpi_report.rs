@@ -618,7 +618,11 @@ impl LeverageSection {
             .map(|e| {
                 format!(
                     r#"{{"gap_id":"{}","depended_by_count":{}}}"#,
-                    e.gap_id, e.depended_by_count
+                    // CREDIBLE-1493: depends_on can hold a JSON array string
+                    // (`["META-086"]`); unescaped it broke `kpi report --json`
+                    // for every consumer (found by the first calibration run).
+                    json_escape(&e.gap_id),
+                    e.depended_by_count
                 )
             })
             .collect();

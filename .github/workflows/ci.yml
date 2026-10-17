@@ -1077,6 +1077,13 @@ jobs:
         # `Auto-merge: hold`); mirrored in chump preflight (arm-policy-native).
         run: bash scripts/ci/test-arm-policy-native.sh
 
+      - name: self-reports registry gate (CREDIBLE-1493)
+        # Phase R R7: docs/observability/SELF_REPORTS.yaml pairs every fleet
+        # self-report with a ground-truth probe for `chump calibrate`. Fails on
+        # a malformed registry, a self-report whose source or command is not
+        # in the tree, or a missing receipt pair. Pure local, ~1s.
+        run: bash scripts/ci/test-self-reports-registry.sh
+
       - name: capabilities registry gate (CREDIBLE-240)
         # docs/CAPABILITIES_REGISTRY.json is indexed by almanac, so a stale or
         # broken catalog gets served to agents with a file:line receipt. This
