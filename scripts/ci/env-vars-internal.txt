@@ -3636,3 +3636,7 @@ CHUMP_REAPER_ACTIVE_LEASE_MIN
 CHUMP_REAPER_INDEX_MMIN
 CHUMP_TARGET_REAPER_SCAN_GLOB
 CHUMP_CARGO_TARGET_ANNOUNCED
+
+# INFRA-8203: where chump dispatch saves <GAP>.stranded.patch when a work
+# child exits with uncommitted work (default $HOME/.chump/dispatch-logs)
+CHUMP_DISPATCH_LOGS_DIR

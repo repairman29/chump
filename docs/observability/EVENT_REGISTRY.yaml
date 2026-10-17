@@ -711,6 +711,20 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, session, kind, process, gap, timeout_secs, reason]
 
+  - kind: dispatch_work_stranded
+    status: active
+    effect_metric: self
+    emitter: src/dispatch.rs (chump dispatch run, after the work child exits, INFRA-8203)
+    emitter_paths: [src/dispatch.rs]
+    trigger: >-
+      the dispatch work child exited (or was killed) leaving uncommitted
+      changes in its worktree and zero commits above origin/main (the PR head
+      for a repair dispatch). The diff, untracked files included, is saved to
+      <dispatch-logs>/<GAP>.stranded.patch and the ship step is skipped
+      instead of letting bot-merge auto-commit a dirty tree.
+    consumers: [fleet-brief, watchdog]
+    fields_required: [ts, session, kind, gap, files, diffstat, patch]
+
   - kind: claim_aborted_disk_full
     effect_metric: self
     emitter: scripts/lib/disk-check.sh via gap-claim.sh (INFRA-975)
