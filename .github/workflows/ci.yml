@@ -880,6 +880,14 @@ jobs:
       - name: Single-branch refspec repair gate (INFRA-8210)
         run: bash scripts/ci/test-infra-8210-single-branch-refspec-repair.sh
 
+      # RESILIENT-1604: node admission ceiling. The installer + node-converge
+      # pin CHUMP_MAX_CONCURRENT_CLAUDE / CHUMP_MAX_CONCURRENT_CARGO_JOBS
+      # (max(1, nproc/2)) into node.env only when absent, and fleet-doctor goes
+      # RED when live claude -p or cargo/rustc exceed it. Stubbed nproc/pgrep,
+      # throwaway HOME; mirrored in chump preflight.
+      - name: Node admission ceiling gate (RESILIENT-1604)
+        run: bash scripts/ci/test-node-admission-ceiling.sh
+
       # INFRA-1808: bootstrap-auto-install smoke — the hourly launchd job
       # (install-bootstrap-auto-launchd.sh) that self-runs
       # chump-fleet-bootstrap.sh --install must generate a valid plist and
@@ -1526,6 +1534,13 @@ jobs:
       - name: node pause invariant (RESILIENT-1614)
         run: bash scripts/ci/test-resilient-1614-node-pause-invariant.sh
 
+      - name: subagent pre-exit check armed/unarmed (CREDIBLE-1518)
+        run: bash scripts/ci/test-subagent-pre-exit-check.sh
+
+      # The script builds ${CARGO_TARGET_DIR:-target}/debug/chump when absent.
+      - name: two-scope enumeration + install refusal (RESILIENT-1615)
+        run: bash scripts/ci/test-resilient-1615-two-scope-refuse.sh
+
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
 
@@ -1885,6 +1900,9 @@ jobs:
 
       - name: bot-merge recovery push passes pre-push Guard 4 smoke (INFRA-8208)
         run: bash scripts/ci/test-bot-merge-recovery-in-progress.sh
+
+      - name: bot-merge recovery push runs no clippy; clippy timeout != lint failure; derived budget (RESILIENT-1608)
+        run: bash scripts/ci/test-bot-merge-recovery-no-clippy.sh
 
       - name: bot-merge recovery mode opens a missing PR smoke (INFRA-8209)
         run: bash scripts/ci/test-bot-merge-recovery-pr-create.sh
