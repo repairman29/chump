@@ -395,6 +395,25 @@ Never apply `rot-reaped` by hand: it is a claim that the janitor closed the PR, 
 **Also covered (RESILIENT-1606).** `post-push-integrity-watch.sh` additionally leaves a close alone when a non-bot actor commented within 60s of the close (tunable: `CHUMP_POST_PUSH_WATCH_COMMENT_S`, `CHUMP_POST_PUSH_WATCH_AUTOMATION_LOGINS`). GitHub's stale-push auto-close posts no comment, so the original INFRA-2026 incident (a close right after a force-push, no comment) is still reopened.
 
 **Receipt.** 2026-10-16: the architect's deliberate duplicate cuts of #5478 and #5483 were reopened by the watch within 15s of each close (ambient `post_push_auto_close_recovered` 13:35:12Z and 13:35:15Z; also 05:59Z and 10:41Z), then revived by the reviver at 14:31Z after being labeled `rot-reaped` by hand at 14:02Z. Four reopens, two PRs, one verb missing. Test: `scripts/ci/test-pr-cut-honored.sh` and `scripts/ci/test-trunk-recovery-reviver.sh`.
+**Clippy must use the pinned toolchain, not Homebrew's rust (INFRA-8225).** `rust-toolchain.toml`
+pins the compiler to a single patch (today `channel = "1.96.0"`) so local and CI agree on the lint
+set. A **Homebrew `rust`** (`brew install rust`) is a stand-alone toolchain, *not* a rustup proxy — it
+ignores `rust-toolchain.toml` and lints with whatever version Homebrew shipped. When that is newer than
+the pin it emits lints the pin and CI never see (precedent: a brew rust 1.97 failed three pushes on
+`src/routes/settings_repo.rs:204` `manual_filter`, a lint 1.96 + CI do not have). Fix: **install rustup**
+so the pin is honoured —
+```bash
+brew uninstall rust            # remove the stand-alone brew toolchain (optional but avoids PATH ambiguity)
+brew install rustup            # or: curl https://sh.rustup.rs -sSf | sh
+rustup toolchain install 1.96.0   # match rust-toolchain.toml channel; cargo auto-installs on first use anyway
+```
+The pre-push clippy gate (Guard 0c in `scripts/git-hooks/pre-push`, via
+`scripts/git-hooks/lib/clippy-toolchain.sh`) now resolves the toolchain for you: with **rustup present**
+it runs `rustup run <pin> cargo clippy` so the gate always matches the pin; with **rustup absent and the
+local clippy newer than the pin** it runs clippy for signal but **defers the gate to CI** (CI is
+authoritative, INFRA-3524) with one loud line + a `clippy_toolchain_deferred` ambient event — never a
+silent pass, and never a false block on a newer-clippy-only lint. Opt out with `CHUMP_CLIPPY_PIN=0`
+(legacy raw-PATH clippy).
 
 ## Maintenance
 
