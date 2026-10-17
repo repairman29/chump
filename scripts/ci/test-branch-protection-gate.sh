@@ -13,6 +13,23 @@
 #      required_status_checks.strict, and contexts == ["verified"].
 #   2. Live check (skipped if gh/network unavailable): runs
 #      scripts/ops/branch-protection-drift.sh --dry-run and fails on drift.
+#   3. CREDIBLE-1510 merge-queue ruleset payload (pure-file, no network):
+#      docs/baselines/ruleset-main-merge-queue.json is the exact body the
+#      operator POSTs to /rulesets (docs/process/MERGE_QUEUE_FLIP.md). This
+#      asserts its shape so the runbook can't rot: merge_queue rule with the
+#      agreed parameters, targeting refs/heads/main, plus required check
+#      `verified`.
+#
+# Rulesets are OUT OF SCOPE for the live drift check (part 2), on purpose:
+# a GitHub merge queue is configured as a repository RULESET (rule type
+# merge_queue), which layers on top of the classic branch-protection object
+# and does not change it. GET branches/main/protection — the only thing
+# branch-protection-drift.sh reads — is therefore identical before and after
+# the merge-queue flip, so this gate tolerates the queue configuration with no
+# baseline change. Live ruleset state is verified by the one-line check in
+# docs/process/MERGE_QUEUE_FLIP.md, not by this gate (a live ruleset audit
+# would page on every pre-flip run while the ruleset legitimately does not
+# exist yet).
 
 set -uo pipefail
 
@@ -60,6 +77,32 @@ if [[ "$contexts" == '["verified"]' ]]; then
     ok "baseline: required_status_checks.contexts == [\"verified\"]"
 else
     bad "baseline: required_status_checks.contexts == '$contexts' (expected [\"verified\"])"
+fi
+
+# ── 3. merge-queue ruleset payload (CREDIBLE-1510, pure-file) ────────────
+RULESET="$REPO_ROOT/docs/baselines/ruleset-main-merge-queue.json"
+if [[ ! -f "$RULESET" ]]; then
+    bad "ruleset payload missing: $RULESET"
+elif ! jq -e . "$RULESET" >/dev/null 2>&1; then
+    bad "ruleset payload is not valid JSON: $RULESET"
+else
+    rs_check() {  # $1 = jq filter that must be true, $2 = label
+        if jq -e "$1" "$RULESET" >/dev/null 2>&1; then ok "ruleset: $2"; else bad "ruleset: $2"; fi
+    }
+    rs_check '.target == "branch" and .enforcement == "active"' 'branch target, enforcement active'
+    rs_check '.conditions.ref_name.include == ["refs/heads/main"]' 'targets refs/heads/main only'
+    rs_check '[.rules[] | select(.type == "merge_queue")] | length == 1' 'exactly one merge_queue rule'
+    rs_check '.rules[] | select(.type == "merge_queue") | .parameters
+        | .merge_method == "SQUASH"
+          and .grouping_strategy == "ALLGREEN"
+          and .check_response_timeout_minutes == 60
+          and .max_entries_to_build == 5
+          and .min_entries_to_merge == 1
+          and .max_entries_to_merge == 5
+          and .min_entries_to_merge_wait_minutes == 2' 'merge_queue parameters match the agreed config'
+    rs_check '.rules[] | select(.type == "required_status_checks") | .parameters
+        | .strict_required_status_checks_policy == true
+          and ([.required_status_checks[].context] == ["verified"])' 'required_status_checks == [verified], strict'
 fi
 
 # ── 2. live drift check (skipped without gh + network) ───────────────────

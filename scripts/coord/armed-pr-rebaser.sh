@@ -38,6 +38,15 @@ command -v gh >/dev/null 2>&1 || exit 0
 # organ can never race another merge-mutation organ on the same branch.
 # shellcheck source=scripts/coord/lib/merge-pipeline-lock.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/merge-pipeline-lock.sh"
+# CREDIBLE-1510: never force-push a PR that is already in main's merge queue —
+# the queue rebases its own merge_group commit and a push to the PR head evicts
+# the entry. Unknown queue state (lookup failed) fails closed: skip this cycle.
+# shellcheck source=scripts/coord/lib/merge_queue.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/merge_queue.sh"
+if ! QUEUED="$(merge_queue_numbers "$REPO" main)"; then
+    echo "[armed-pr-rebaser] merge-queue-skip: queue state unknown (lookup failed) — skipping this cycle (CREDIBLE-1510)"
+    exit 0
+fi
 git fetch origin main --quiet 2>/dev/null || true
 
 prs="$(gh pr list --repo "$REPO" --state open \
@@ -61,6 +70,10 @@ for p in json.load(sys.stdin):
 
 while read -r num br mode; do
     [ -z "$num" ] && continue
+    if merge_queue_contains "$QUEUED" "$num"; then
+        echo "[armed-pr-rebaser] #$num: merge-queue-skip: in the main merge queue — not rebasing/force-pushing (CREDIBLE-1510)"
+        continue
+    fi
     git fetch origin "$br" --quiet 2>/dev/null || continue
     wt="/tmp/armed-rebaser-$num"
     git worktree remove "$wt" --force 2>/dev/null || true

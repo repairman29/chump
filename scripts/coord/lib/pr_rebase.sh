@@ -18,10 +18,33 @@
 #   CHUMP_PR_REBASE_CACHE_DIR   — cache dir (default: <repo>/.chump-locks/branch-protection-cache)
 #   CHUMP_PR_REBASE_CACHE_TTL_S — cache TTL seconds (default: 60)
 #   CHUMP_PR_REBASE_GH          — gh binary override (default: gh; tests/stubs)
+#
+# CREDIBLE-1510: both entry points refuse to update-branch a PR that is
+# already in main's merge queue (the queue rebases its own merge_group commit;
+# an external update-branch evicts the entry). A failed queue lookup fails
+# closed (skip, exit 0) — the caller's next tick retries. Skips print a line
+# containing "merge-queue-skip" so callers can classify them.
 
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then set -euo pipefail; fi
 
 _PR_REBASE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/coord/lib/merge_queue.sh
+source "$_PR_REBASE_LIB_DIR/merge_queue.sh"
+
+# _pr_rebase_queue_guard <pr-number> <owner/repo> [base-branch]
+# exit 0 = safe to rebase; exit 1 = skip (queued, or queue state unknown).
+_pr_rebase_queue_guard() {
+    local pr="$1" repo="$2" base="${3:-main}" queued
+    if ! queued="$(merge_queue_numbers "$repo" "$base" "${CHUMP_PR_REBASE_GH:-gh}")"; then
+        echo "[pr_rebase] merge-queue-skip: queue state for ${repo}@${base} unknown (lookup failed) — not rebasing PR #${pr} this cycle (CREDIBLE-1510)"
+        return 1
+    fi
+    if merge_queue_contains "$queued" "$pr"; then
+        echo "[pr_rebase] merge-queue-skip: PR #${pr} is in the ${base} merge queue — the queue rebases it; update-branch would evict it (CREDIBLE-1510)"
+        return 1
+    fi
+    return 0
+}
 
 # branch_protection_strict <owner/repo> <base-branch>
 # stdout: "true" or "false"
@@ -73,6 +96,7 @@ branch_protection_strict() {
 pr_rebase_now() {
     local pr="${1:?pr_rebase_now <pr-number> <owner/repo>}"
     local repo="${2:?pr_rebase_now <pr-number> <owner/repo>}"
+    _pr_rebase_queue_guard "$pr" "$repo" main || return 0
     CHUMP_GH_CALL_CRITICALITY=background "${CHUMP_PR_REBASE_GH:-gh}" pr update-branch "$pr" --rebase --repo "$repo"
 }
 
@@ -86,6 +110,7 @@ pr_rebase_if_strict() {
     strict=$(branch_protection_strict "$repo" "$base")
 
     if [ "$strict" = "true" ]; then
+        _pr_rebase_queue_guard "$pr" "$repo" "$base" || return 0
         echo "[pr_rebase] strict=true for ${repo}@${base} — rebasing PR #${pr}"
         "${CHUMP_PR_REBASE_GH:-gh}" pr update-branch "$pr" --rebase --repo "$repo"
     else

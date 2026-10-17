@@ -1360,7 +1360,14 @@ for p in prs:
           rebase_exit=0
           rebase_out=$(bash "$REPO_ROOT/scripts/coord/lib/pr_rebase.sh" --now "$pr_num" "$REPO" 2>&1) || rebase_exit=$?
 
-          if [ "$rebase_exit" -eq 0 ]; then
+          if [ "$rebase_exit" -eq 0 ] && echo "$rebase_out" | grep -q "merge-queue-skip"; then
+            # CREDIBLE-1510: PR is already in main's merge queue (or the queue
+            # lookup failed, fail-closed). The queue rebases its own merge_group
+            # commit; an update-branch here would evict the entry. Not a rebase,
+            # so it does not consume the per-tick rebase budget.
+            echo "[pr-shepherd-daemon] PR #${pr_num} in merge queue — not rebasing" >&2
+            _emit_pr_action_taken "$pr_num" "rebase_skipped" "merge_queue" "$gap_id"
+          elif [ "$rebase_exit" -eq 0 ]; then
             _emit_pr_action_taken "$pr_num" "rebase" "" "$gap_id"
             rebase_count=$((rebase_count + 1))
             echo "[pr-shepherd-daemon] rebase OK: PR #${pr_num}" >&2

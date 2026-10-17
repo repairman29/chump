@@ -87,6 +87,36 @@ Until that happens once, the factory is not running. R1 plus R3 is the gate to i
 7. **Measure on the node.** The Mac is an observer. Scoreboard, store and organ facts
    come from cuphead.
 
+## R3 throughput: the merge queue (2026-10-17, CREDIBLE-1510)
+
+**Measured before.** 02:30-03:20Z 2026-10-17, six armed PRs, `strict=true` + `enforce_admins`.
+Merges landed at 02:33:52Z (#5521) and 03:17:14Z (#5522), 44 minutes apart. Each merge put
+every other armed PR BEHIND; each then needed `update-branch` and a fresh ~30 minute CI run
+before it could land. `strict=true` alone serializes landings at one CI cycle per merge, a
+ceiling of about two per hour no matter how many PRs are green.
+
+**Decision.** Keep `strict` semantics (tested against the real tip of `main`) but pay for them
+once per batch, not once per PR: a GitHub merge queue (ruleset rule `merge_queue`, SQUASH,
+ALLGREEN, build up to 5 entries, merge 1-5 per group, 2 minute batching wait, 60 minute check
+timeout) runs `ci.yml` once on the `merge_group` ref and lands the batch.
+
+**Repo-side readiness (landed with CREDIBLE-1510).** `verified` and every lane under it run on
+`merge_group` with lane narrowing disabled; the two per-PR shape gates skip the batch ref; the
+`verified` cross-workflow poll waits for audit/ACP to finish on a `merge_group` ref (a failed
+required check ejects the batch, there is no re-run); every rebaser path skips PRs already in
+the queue (`scripts/coord/lib/merge_queue.sh`, proved by `scripts/ci/test-merge-queue-rebase-skip.sh`);
+the ruleset body is checked in (`docs/baselines/ruleset-main-merge-queue.json`) and shape-gated.
+Operator flip: `docs/process/MERGE_QUEUE_FLIP.md`.
+
+**Known blocker, not yet re-tested.** `repairman29/chump` is owned by a personal account, and
+`docs/process/MERGE_QUEUE_SETUP.md` records a `422 Invalid rule 'merge_queue'` from the rulesets
+API on 2026-04-19, re-confirmed unavailable 2026-08-22. If the flip returns that 422 again, R3
+throughput needs an owner decision (move the repo under an organization, or choose a different
+landing model) before this can be measured.
+
+**Measured after.** _(to fill after the flip: landings per hour and median armed-to-merged time
+over a comparable window of 6+ armed PRs; source `gh pr list --state merged --json mergedAt`.)_
+
 ## R6 redefined (2026-10-17): force the boundary, not the language
 
 The first day proved that "Rust-first" as a blanket rule loses to pressure: 414k lines of shell

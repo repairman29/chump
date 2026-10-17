@@ -2602,6 +2602,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "merge-queue-rebase-skip",
+            &["bash", "scripts/ci/test-merge-queue-rebase-skip.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "dispatch-ship-session-id",
             &["bash", "scripts/ci/test-dispatch-ship-session-id.sh"],
             GateKind::Scripts,

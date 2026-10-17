@@ -275,6 +275,21 @@ jobs:
           docs="${{ steps.filter.outputs.docs }}"
           ci="${{ steps.filter.outputs.ci_config_raw }}"
 
+          # CREDIBLE-1510: merge_group is the batch-landing gate — the last CI
+          # a change sees before it is on main. Honour the job header's promise
+          # ("every path is considered changed") by refusing every *_only
+          # narrowing there, so no lane skips on a merge_group ref regardless
+          # of what dorny/paths-filter computed for the batch diff.
+          if [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            {
+              echo "docs_only=false"
+              echo "scripts_only=false"
+              echo "ci_config_only=false"
+            } >> "$GITHUB_OUTPUT"
+            echo "merge_group: lane narrowing disabled (full suite)"
+            exit 0
+          fi
+
           # docs_only: docs changed but no rust / web / scripts
           if [[ "$docs" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$ci" != "true" ]]; then
             echo "docs_only=true" >> "$GITHUB_OUTPUT"
@@ -583,7 +598,9 @@ jobs:
     needs: [fast-checks, fast-checks-heavy, clippy, cargo-test, pr-hygiene, test]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # CREDIBLE-1510: 30 (was 15) to fit the longer merge_group poll below.
+    # pull_request runs still poll 120s and finish in well under 15.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Poll cross-workflow lanes (audit, ACP-smoke) — CREDIBLE-269
@@ -593,11 +610,19 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          # CREDIBLE-1510: on a merge_group ref, wait for audit/ACP to reach a
+          # terminal state instead of the 120s PR grace. On a PR, PENDING ->
+          # exit 2 -> verified-recompute.yml re-runs this job later, and
+          # auto-merge simply waits. In the merge queue a FAILED required
+          # check ejects the batch immediately (no waiting for a re-run), so a
+          # merely-slow audit must not be reported as a failure there.
+          timeout_s=120
+          if [ "${{ github.event_name }}" = "merge_group" ]; then timeout_s=1500; fi
           bash scripts/ci/poll-cross-workflow-checks.sh \
             --sha "$sha" \
             --check "audit" \
             --check "ACP protocol smoke test (Zed / JetBrains compatible)" \
-            --timeout-s 120 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+            --timeout-s "$timeout_s" --interval-s 15 > /tmp/cross-workflow-lanes.txt
           cat /tmp/cross-workflow-lanes.txt
           audit_result="$(grep '^audit=' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
           acp_result="$(grep '^ACP protocol smoke test' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
@@ -651,6 +676,12 @@ jobs:
           fetch-depth: 0
 
       - name: PR scope-vs-title divergence detector (CREDIBLE-026)
+        # CREDIBLE-1510: PR-shape gates judge ONE PR's title against ONE PR's
+        # diff. A merge_group ref is a batch of up to 5 squashed PRs (each one
+        # already passed this gate on its own pull_request run, which the
+        # ruleset requires before it can be queued), so the batch diff vs main
+        # would read as a multi-gap bundle and fail Rule C. Skip on merge_group.
+        if: github.event_name != 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
           # INFRA-976: pass current PR title via env so check-pr-scope.sh
@@ -663,6 +694,10 @@ jobs:
         run: bash scripts/ci/check-pr-scope.sh
 
       - name: Mass-deletion / scratch-commit guard (CREDIBLE-027)
+        # CREDIBLE-1510: per-PR shape gate; a merge_group batch sums several
+        # PRs' deletions against a title that belongs to none of them. Each PR
+        # already passed this on its own pull_request run. Skip on merge_group.
+        if: github.event_name != 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/check-mass-deletion.sh
@@ -1174,6 +1209,9 @@ jobs:
 
       - name: branch-protection gate (CREDIBLE-1502)
         run: bash scripts/ci/test-branch-protection-gate.sh
+
+      - name: merge-queue rebase-skip (CREDIBLE-1510)
+        run: bash scripts/ci/test-merge-queue-rebase-skip.sh
 
       - name: dispatch ship-phase session id (INFRA-8204)
         run: bash scripts/ci/test-dispatch-ship-session-id.sh
