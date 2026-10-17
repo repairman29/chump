@@ -291,9 +291,9 @@ mod tests {
 
     #[test]
     fn env_override_expands_tilde_and_ignores_blank() {
-        let home = Path::new("/home/op");
+        let home = Path::new("/fixture-home/op");
         let r = resolve_with(Path::new("/nowhere"), Some("~/s/state.db"), Some(home));
-        assert_eq!(r.path, PathBuf::from("/home/op/s/state.db"));
+        assert_eq!(r.path, PathBuf::from("/fixture-home/op/s/state.db"));
         let d = tempfile::tempdir().unwrap();
         let r = resolve_with(d.path(), Some("   "), None);
         assert_ne!(r.source, StoreSource::Env, "blank CHUMP_STATE_DB is unset");
