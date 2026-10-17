@@ -148,7 +148,7 @@ refuse_second_scope() {
   if ! "$chump" node scopes --install-guard; then
     printf '\033[41m REFUSING INSTALL \033[0m a chump install already exists in another supervisor scope.\n' >&2
     printf 'A converged node must have exactly ONE install in ONE scope (the cuphead two-fleet defect,\n' >&2
-    printf 'RESILIENT-1615). Retire the other install — its ~/.chumpnode or /root/.chumpnode and its\n' >&2
+    printf 'RESILIENT-1615). Retire the other install — its .chumpnode tree in the other scope home and its\n' >&2
     printf 'enabled chump-* units — then re-run. Inspect with: chump node scopes\n' >&2
     exit 2
   fi
