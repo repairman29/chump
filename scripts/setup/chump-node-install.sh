@@ -625,7 +625,7 @@ write_node_env() {
   # the rewrite so the ceiling keys are only ever written when absent.
   local _ceiling_lines=""
   if [ -f "$node_env" ]; then
-    _ceiling_lines="$(grep -E '^(export )?CHUMP_MAX_CONCURRENT_(CLAUDE|CARGO_JOBS)=' "$node_env" 2>/dev/null || true)"
+    _ceiling_lines="$(grep -E '^(export )?(CHUMP_MAX_CONCURRENT_CLAUDE|CHUMP_MAX_CONCURRENT_CARGO_JOBS)=' "$node_env" 2>/dev/null || true)"
   fi
   ( umask 077
     {
