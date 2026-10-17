@@ -1646,6 +1646,13 @@ async fn main() -> Result<()> {
         ));
     }
 
+    // INFRA-8194 (Phase R R5): `chump node host` / `chump node render-unit` —
+    // the typed host provisioning enum (crates/chump-provision). Thin arm only.
+    if args.get(1).map(String::as_str) == Some("node") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(chump_provision::cli::run_cli(&sub_args));
+    }
+
     // RESILIENT-069: `chump farmer status [--json] [--quiet]` — the
     // readiness gate for scripts/coord/farmer.sh (RESILIENT-068). Pure
     // local-state read (<100ms, pause-immune): exits 0 (GREEN) when

@@ -107,10 +107,21 @@ organ_unit_host_rewrite() {
   # s#=$SRC_HOME$#...#  -> a BARE $SRC_HOME as the WHOLE value of an assignment
   #                       (chiefly `Environment=HOME=/root`, no trailing slash).
   # s#^User=$SRC_USER$# -> the User= line itself.
+  # INFRA-8194 (Phase R R5): placeholder templates. A migrated unit carries NO
+  # host literal at all — __HOME__ / __REPO_ROOT__ / __BIN_DIR__ / __NODE_ENV__
+  # and no User= line — and this stage resolves them exactly as the typed
+  # renderer does (`chump node render-unit`, crates/chump-provision::render;
+  # same four tokens, same values). These -e rules run LAST so the legacy
+  # source-home rewrites above can never touch an already-resolved path. User=
+  # for a template comes from the injection block below (system scope only).
   sed -e "s#${src_home%/}/Projects/chump#${repo_on_host}#g" \
       -e "s#${src_home%/}/#${run_home%/}/#g" \
       -e "s#=${src_home%/}\$#=${run_home%/}#" \
-      -e "s#^User=${src_user}\$#User=${run_user}#" "$src" > "$dest"
+      -e "s#^User=${src_user}\$#User=${run_user}#" \
+      -e "s#__REPO_ROOT__#${repo_on_host}#g" \
+      -e "s#__BIN_DIR__#${run_home%/}/.cargo/bin#g" \
+      -e "s#__NODE_ENV__#${run_home%/}/.chump/node.env#g" \
+      -e "s#__HOME__#${run_home%/}#g" "$src" > "$dest"
 
   # Uniform host-agnostic runtime context for EVERY generated organ (one
   # pattern, not per-service): run as the repo-owning user (git/ssh/cargo), that

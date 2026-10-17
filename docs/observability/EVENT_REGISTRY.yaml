@@ -7512,6 +7512,18 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit, role, reason]
 
+  - kind: organ_install_scope_skipped
+    effect_metric: self
+    emitter: scripts/setup/chump-node-install.sh place_role_unit_files (INFRA-8194)
+    trigger: a role-matched manifest organ declares run-scope=user|system that
+      does not match the manager scope the placer installs into (the --user
+      manager), so the unit is NOT placed; e.g. the root-only
+      chump-organ-deploy.timer (run-scope=system) on a user-scope bring-up.
+      The host scope comes from the typed Host enum (`chump node host`,
+      crates/chump-provision). Phase R R5.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, run_scope, install_scope, host]
+
   - kind: organ_reconcile_exec_missing
     effect_metric: self
     emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1513)

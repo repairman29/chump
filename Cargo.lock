@@ -1429,6 +1429,7 @@ dependencies = [
  "chump-perception",
  "chump-planner",
  "chump-preflight",
+ "chump-provision",
  "chump-ship",
  "chump-team",
  "chump-tool-macro",
@@ -2082,6 +2083,13 @@ dependencies = [
  "chump-ambient-cli",
  "chump-atomic-claim",
  "tempfile",
+]
+
+[[package]]
+name = "chump-provision"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

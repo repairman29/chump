@@ -3537,3 +3537,12 @@ CHUMP_STORE_PATH_PARITY_BIN
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_BOUNDARY_GATE
+
+# INFRA-8194 (Phase R R5, typed host provisioning, crates/chump-provision):
+# CHUMP_PROVISION_HOST pins the Host enum variant (mac-launchd |
+# linux-systemd-user | linux-systemd-system | termux) instead of detecting it;
+# CHUMP_ORGAN_MANIFEST_RUN_SCOPE overrides the manager scope (user|system)
+# organ-manifest-lib.sh's organ_current_run_scope / organ-reconcile.sh use for
+# the manifest run-scope= filter (tests, or an installer that knows its scope).
+CHUMP_PROVISION_HOST
+CHUMP_ORGAN_MANIFEST_RUN_SCOPE

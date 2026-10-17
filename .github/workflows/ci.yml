@@ -1077,6 +1077,22 @@ jobs:
         # regenerator in capabilities-registry.yml is what fixes that on main.
         run: bash scripts/ci/test-capabilities-registry.sh
 
+      - name: no host literals in provisioning (INFRA-8194, Phase R R5)
+        # Every host-assumption incident is one bug: a shipped unit hardcodes
+        # one machine (User=jeff on cuphead -> 217/USER, RESILIENT-1601;
+        # HOME=/root on an owned node, INFRA-3647). Fails on a NEW User=<name>,
+        # /home/<name>, /root/ or /opt/homebrew under scripts/dispatch,
+        # launchd, scripts/plists, scripts/setup; today's offenders sit in a
+        # dated, shrink-only allowlist. Hermetic, <2s, mirrored in preflight.
+        run: bash scripts/ci/test-provision-no-host-literals.sh
+
+      - name: organ manifest run-scope filter (INFRA-8194, Phase R R5)
+        # run-scope=user|system|any: installers place only what the typed Host
+        # enum's manager scope allows (root-only organ-deploy is skipped by a
+        # --user bring-up; organ-reconcile skips user-only organs). Hermetic
+        # stub-systemctl test, <2s, mirrored in preflight.
+        run: bash scripts/ci/test-organ-manifest-run-scope.sh
+
       - name: capabilities freshness report (CREDIBLE-240, advisory)
         # Says the catalog's age out loud in the CI log. Advisory for the same
         # reason as the release-staleness gate (INFRA-2475): a wall-clock check
