@@ -220,7 +220,12 @@ CHUMP_STAND_DOWN_THRESHOLD="${CHUMP_STAND_DOWN_THRESHOLD:-5}"
 # instead of each creating its own 5-11 GB target/ tree. Callers may override
 # by setting CARGO_TARGET_DIR before sourcing this file.
 if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
-    export CARGO_TARGET_DIR="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
+    # ZERO-WASTE-134: the one shared resolver (honors CHUMP_CARGO_TARGET and the
+    # legacy CHUMP_SHARED_CARGO_TARGET alias; default ~/.cargo/chump-shared-target).
+    # shellcheck source=../ci/lib/resolve-cargo-target-dir.sh
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/scripts/ci/lib/resolve-cargo-target-dir.sh"
+    export CARGO_TARGET_DIR="$(chump_cargo_target_dir)"
     mkdir -p "$CARGO_TARGET_DIR" 2>/dev/null || true
     printf '{"ts":"%s","kind":"cargo_target_dir_shared","source":"worker.sh","target_dir":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CARGO_TARGET_DIR" \

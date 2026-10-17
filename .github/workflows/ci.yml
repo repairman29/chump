@@ -1677,6 +1677,9 @@ jobs:
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
+      - name: Cargo target dir - no worktree-local default (ZERO-WASTE-134)
+        run: bash scripts/ci/test-cargo-target-no-worktree-default.sh
+
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 

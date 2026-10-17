@@ -3537,3 +3537,12 @@ CHUMP_STORE_PATH_PARITY_BIN
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_BOUNDARY_GATE
+
+# ZERO-WASTE-134: per-user override of the shared default cargo target dir
+# (scripts/ci/lib/resolve-cargo-target-dir.sh); default ~/.cargo/chump-shared-target
+CHUMP_CARGO_TARGET
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CARGO_TARGET_ANNOUNCED

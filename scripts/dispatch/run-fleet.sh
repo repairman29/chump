@@ -482,7 +482,12 @@ FLEET_START_EPOCH="${FLEET_START_EPOCH:-$(date +%s)}"
 # (the 2026-07-26 disk-100% incident). Converge on worker.sh's exact canonical
 # value so launcher, workers, and interactive builds all share one target dir.
 if [ -z "${CARGO_TARGET_DIR:-}" ]; then
-    export CARGO_TARGET_DIR="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
+    # ZERO-WASTE-134: the one shared resolver (CHUMP_CARGO_TARGET, legacy
+    # CHUMP_SHARED_CARGO_TARGET alias, default ~/.cargo/chump-shared-target).
+    # shellcheck source=../ci/lib/resolve-cargo-target-dir.sh
+    # shellcheck disable=SC1091
+    . "$REPO_ROOT/scripts/ci/lib/resolve-cargo-target-dir.sh"
+    export CARGO_TARGET_DIR="$(chump_cargo_target_dir)"
 fi
 
 # INFRA-3662: one CARGO_TARGET_DIR shared by every worker means the cargo

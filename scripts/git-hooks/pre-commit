@@ -106,15 +106,17 @@ set -e
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
-# INFRA-1374: pin cargo build artifacts to a per-worktree hidden directory so
-# parallel git commit runs across /tmp/chump-* worktrees do NOT contend on the
-# same cargo file lock. Without this, cargo clippy in the smoke script (step 9)
-# and cargo fmt (step 0) both resolve to the global target-dir from
-# .cargo/config.toml (install-sccache.sh, INFRA-481), serializing parallel
-# fleet commits behind a single mutex (observed: 6-min stall at 4-way parallelism).
-# Only set if caller has not already pinned it (e.g. bot-merge.sh sets it first).
-if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
-    export CARGO_TARGET_DIR="${REPO_ROOT}/.cargo-build-target"
+# ZERO-WASTE-134: ONE cargo target resolver, never a path inside the worktree.
+# Supersedes the INFRA-1374 per-worktree .cargo-build-target default, which grew
+# a private 2.4-3 GB build dir in every worktree (the hook does not inherit the
+# agent's shell). $CARGO_TARGET_DIR > $CHUMP_CARGO_TARGET > ~/.cargo/chump-shared-target.
+# If the resolver file is missing (old checkout) CARGO_TARGET_DIR stays unset and
+# cargo falls back to .cargo/config.toml.
+if [[ -f "$REPO_ROOT/scripts/ci/lib/resolve-cargo-target-dir.sh" ]]; then
+    # shellcheck source=../ci/lib/resolve-cargo-target-dir.sh
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/scripts/ci/lib/resolve-cargo-target-dir.sh"
+    chump_export_cargo_target_dir
 fi
 
 # ------------------------------------------------------------------

@@ -2536,6 +2536,14 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "cargo-target-no-worktree-default",
+            &[
+                "bash",
+                "scripts/ci/test-cargo-target-no-worktree-default.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "grep-c-echo0-guard-smoke",
             &["bash", "scripts/ci/test-grep-c-echo0-guard.sh"],
             GateKind::Scripts,
