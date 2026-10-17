@@ -14217,3 +14217,13 @@ events:
     fields_required: [ts, kind, session, gap_id, pr_number, head_branch,
       failing_checks, checks_source]
 
+  - kind: ci_runner_starved
+    effect_metric: self
+    emitter: crates/chump-kpi-report/src/ci_pickup.rs (CREDIBLE-1512; via `chump kpi report --ci-pickup --emit-if-starved`)
+    trigger: the trailing-30-min p50 CI runner pickup latency (job started_at -
+      created_at, from scripts/ci/ci-pickup-collect.sh samples) exceeds 10 min
+      over >= 3 samples — hosted-runner starvation that landings gate on while
+      GitHub status reads clean
+    consumers: [observability, operator-recall]
+    fields_required: [ts, kind, p50_pickup_s, runs_queued, window_min, sample_count]
+
