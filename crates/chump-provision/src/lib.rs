@@ -85,8 +85,9 @@ pub enum UnitKind {
 }
 
 impl UnitKind {
-    /// Classify a template by file name. A trailing `.tmpl` / `.template` is
-    /// ignored so `foo.service.tmpl` is a systemd unit.
+    /// Classify a template by file name. A trailing `.tmpl` / `.template` /
+    /// `.example` is ignored so `foo.service.tmpl` is a systemd unit and
+    /// `foo.plist.example` a launchd plist.
     pub fn from_name(name: &str) -> Option<UnitKind> {
         let base = Path::new(name)
             .file_name()
@@ -95,6 +96,7 @@ impl UnitKind {
         let base = base
             .strip_suffix(".tmpl")
             .or_else(|| base.strip_suffix(".template"))
+            .or_else(|| base.strip_suffix(".example"))
             .unwrap_or(base);
         const SYSTEMD: [&str; 6] = [".service", ".timer", ".socket", ".path", ".target", ".conf"];
         if SYSTEMD.iter().any(|ext| base.ends_with(ext)) {
@@ -276,6 +278,16 @@ pub fn brew_prefix(host: Host, p: &Probe) -> PathBuf {
     } else {
         PathBuf::from(DEFAULT_BREW_PREFIX)
     }
+}
+
+/// [`brew_prefix`] for a launchd plist rendered on THIS machine (callers that
+/// only ever write macOS LaunchAgents, e.g. `chump onboard --schedule`).
+pub fn local_mac_brew_prefix() -> PathBuf {
+    let probe = Probe {
+        has_opt_homebrew: Path::new(APPLE_SILICON_BREW_PREFIX).join("bin").is_dir(),
+        ..Probe::default()
+    };
+    brew_prefix(Host::MacLaunchd, &probe)
 }
 
 fn on_path(prog: &str) -> bool {

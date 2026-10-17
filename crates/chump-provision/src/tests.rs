@@ -528,8 +528,7 @@ fn every_non_allowlisted_plist_renders_on_mac() {
                 continue;
             }
             let tpl = std::fs::read_to_string(&path).unwrap();
-            // Classify by the .plist part so `.plist.example` / `.plist.template` count.
-            let out = render("x.plist", &tpl, Host::MacLaunchd, &ctx)
+            let out = render(&rel, &tpl, Host::MacLaunchd, &ctx)
                 .unwrap_or_else(|e| panic!("{rel} does not render on mac: {e}"));
             assert!(
                 find_host_literals(&out)
@@ -541,7 +540,7 @@ fn every_non_allowlisted_plist_renders_on_mac() {
         }
     }
     assert!(
-        rendered >= 10,
+        rendered >= 60,
         "only {rendered} plists rendered; expected the migrated launchd set"
     );
 }
@@ -617,6 +616,9 @@ fn render_launchd_plist_on_mac_only() {
             ..
         })
     ));
+    for name in ["x.plist.example", "x.plist.template", "x.plist.tmpl"] {
+        assert_eq!(UnitKind::from_name(name), Some(UnitKind::Launchd), "{name}");
+    }
     assert!(matches!(
         render("README.md", tpl, Host::MacLaunchd, &ctx),
         Err(RenderError::UnknownKind(_))
