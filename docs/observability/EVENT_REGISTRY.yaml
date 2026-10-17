@@ -6326,6 +6326,7 @@ events:
 
   # ── INFRA-1372: pre-push HEAD-drift detection ─────────────────────────────
   - kind: prepush_head_drift
+    effect_metric: resilient
     emitter: scripts/git-hooks/pre-push (INFRA-1372)
     trigger: HEAD moved during cargo test run (Rust test leaked a git commit via GIT_DIR inheritance)
     consumers: [fleet-brief, curator]
@@ -8294,6 +8295,7 @@ events:
 
   # ── INFRA-1441: bot-merge bypass audit trail ─────────────────────────────
   - kind: bot_merge_bypassed
+    effect_metric: credible
     emitter: scripts/git-hooks/pre-push (INFRA-1441)
     trigger: >
       Operator pushed a chump/<gap-id> branch with CHUMP_BYPASS_BOT_MERGE=1
@@ -8306,6 +8308,7 @@ events:
     fields_required: [ts, kind, branch, gap, reason]
   # ── PRODUCT-078: PWA Daily Brief ─────────────────────────────────────────
   - kind: pwa_brief_loaded
+    effect_metric: effective
     emitter: web/v2/daily-brief.js ChumpViewBrief._load (PRODUCT-078)
     trigger: operator opens the Daily Brief tab or returns to a tab after absence;
       sendBeacon POST /api/ambient/emit fires after the /api/brief response is
@@ -8474,6 +8477,7 @@ events:
     fields_required: [ts, kind, source, budget, recent, pending]
   # ── PRODUCT-081: PWA Outcome Dashboard ───────────────────────────────────
   - kind: pwa_impact_viewed
+    effect_metric: effective
     emitter: web/v2/impact.js ChumpViewImpact._load (PRODUCT-081)
     trigger: operator opens the Impact tab or switches time window;
       sendBeacon POST /api/ambient/emit fires after /api/impact renders,
@@ -8482,6 +8486,7 @@ events:
     fields_required: [ts, kind, source, window, prs_merged, gaps_closed, operator_hours_saved]
   # ── INFRA-1600: PR auto-rescue daemon ─────────────────────────────────────
   - kind: pr_auto_rescue_invoked
+    effect_metric: resilient
     emitter: scripts/coord/pr-failure-auto-rescue.sh (INFRA-1600)
     trigger: >
       The auto-rescue daemon matched a known CI-failure pattern on an open
@@ -8505,6 +8510,7 @@ events:
 
   # ── INFRA-1490: ci.yml merge driver mid-file fallback ────────────────────
   - kind: ci_yml_row_add_merged
+    effect_metric: resilient
     emitter: scripts/git/merge-driver-ci-yml-add-row.sh (INFRA-1490)
     trigger: >
       Custom merge driver was unable to use the original pure-append path
@@ -8515,6 +8521,7 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, ours, theirs, mode, adds]
   - kind: pre_commit_ac_test_missing
+    effect_metric: credible
     emitter: scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401)
     trigger: A commit referencing a gap ID has acceptance_criteria that name a
       scripts/ci|coord|ops/*.sh file but that file is neither staged nor present
@@ -8524,6 +8531,7 @@ events:
     fields_required: [ts, kind, gaps, missing_files]
   # ── PRODUCT-102: PWA gap list browser ────────────────────────────────────
   - kind: pwa_gap_list_filtered
+    effect_metric: effective
     emitter: web/v2/gap-list.js ChumpViewGaps._applyFilters (PRODUCT-102)
     trigger: operator applies status/priority/domain/pillar filters or a search
       query in the PWA gap list browser; sent via navigator.sendBeacon to

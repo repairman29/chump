@@ -1677,6 +1677,24 @@ jobs:
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
+      - name: test-auto-merge-armer (CREDIBLE-1511)
+        run: bash scripts/ci/test-auto-merge-armer.sh
+
+      - name: test-bot-merge-rest-direct (CREDIBLE-1511)
+        run: bash scripts/ci/test-bot-merge-rest-direct.sh
+
+      - name: test-bot-merge-portability (CREDIBLE-1511)
+        run: bash scripts/ci/test-bot-merge-portability.sh
+
+      - name: test-event-registry-effect-metric (CREDIBLE-1511)
+        run: bash scripts/ci/test-event-registry-effect-metric.sh
+
+      - name: test-lease-lib (CREDIBLE-1511)
+        run: bash scripts/ci/test-lease-lib.sh
+
+      - name: test-stale-worktree-reaper-stash (CREDIBLE-1511)
+        run: bash scripts/ci/test-stale-worktree-reaper-stash.sh
+
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 
