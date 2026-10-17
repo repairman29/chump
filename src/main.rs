@@ -2497,6 +2497,13 @@ async fn main() -> Result<()> {
         std::process::exit(commands::source_resolve::run(&sub_args));
     }
 
+    // RESILIENT-1614: `chump node pause|resume [--reason REASON]` — enforce
+    // fleet pause as an invariant. Pause disables all work organs and writes
+    // CHUMP_NODE_MODE=paused to node.env. Resume re-enables them.
+    if args.get(1).map(String::as_str) == Some("node") {
+        std::process::exit(commands::node::run_cli(&args[1..]));
+    }
+
     // `chump intervention-watchdog [--window H] [--apply] [--json]` (COTG-2.1/INFRA-3489) —
     // detect human touches in the fleet, class each as an autonomy_defect, file self-heal gaps.
     if args.get(1).map(String::as_str) == Some("intervention-watchdog") {

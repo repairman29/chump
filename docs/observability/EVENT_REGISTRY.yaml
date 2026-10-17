@@ -14055,3 +14055,30 @@ events:
     trigger: post-build sccache stats (compile requests, cache hits/misses) were captured for trending
     consumers: [ambient]
     fields_required: [ts, kind, compile_requests, cache_hits, cache_misses]
+
+  - kind: node_paused
+    status: active
+    effect_metric: self
+    emitter: src/commands/node.rs (RESILIENT-1614)
+    emitter_paths: [src/commands/node.rs]
+    trigger: fleet operator ran `chump node pause --reason MESSAGE` to disable all work organs on this node
+    consumers: [ambient, fleet-brief, fleet-doctor]
+    fields_required: [ts, kind, reason]
+
+  - kind: node_resumed
+    status: active
+    effect_metric: self
+    emitter: src/commands/node.rs (RESILIENT-1614)
+    emitter_paths: [src/commands/node.rs]
+    trigger: fleet operator ran `chump node resume` to re-enable work organs on this node after a pause
+    consumers: [ambient, fleet-brief, fleet-doctor]
+    fields_required: [ts, kind]
+
+  - kind: organ_skipped_paused
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/node-converge.sh, scripts/ops/organ-reconcile.sh, scripts/ops/organ-deploy.sh, scripts/ops/paramedic.sh, scripts/ops/process-organ-heal.sh, scripts/ops/self-doctor.sh, scripts/dispatch/worker.sh (RESILIENT-1614)
+    emitter_paths: [scripts/ops/node-converge.sh, scripts/ops/organ-reconcile.sh, scripts/ops/organ-deploy.sh, scripts/ops/paramedic.sh, scripts/ops/process-organ-heal.sh, scripts/ops/self-doctor.sh, scripts/dispatch/worker.sh]
+    trigger: a work organ checked CHUMP_NODE_MODE=paused before installing/enabling/restarting anything and exited gracefully without work
+    consumers: [ambient]
+    fields_required: [ts, kind]

@@ -854,6 +854,19 @@ while :; do
 
     _check_worker_head_reexec
 
+    # RESILIENT-1614: check if the node is paused. If so, exit gracefully without picking work.
+    _pause_lib="$REPO_ROOT/scripts/ops/lib/node-pause-check.sh"
+    if [[ -f "$_pause_lib" ]]; then
+        # shellcheck disable=SC1090
+        source "$_pause_lib"
+        if _node_pause_check_is_paused; then
+            log "SKIP: node is paused (CHUMP_NODE_MODE=paused); exiting worker loop"
+            _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            _node_pause_emit_skipped
+            exit 0
+        fi
+    fi
+
     # ── RESILIENT-073: fleet kill switch — AUTONOMY_LEVEL check ─────────────
     # Pure file read: ~/.chump/AUTONOMY_LEVEL must be >= 1 to proceed.
     # Fail-closed: missing / unreadable / non-numeric / 0 → skip cycle (STOP).
