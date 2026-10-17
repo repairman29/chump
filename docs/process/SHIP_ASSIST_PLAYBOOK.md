@@ -90,6 +90,7 @@ Today's evidence: 3 occurrences (cycle 5, 6, 13 of today's loop). Trailer `Bot-M
 | `gh pr merge N --auto --squash` | Manual auto-merge arm | Fallback when bot-merge wedges (Class 4) |
 | `scripts/coord/auto-merge-armer.sh` | Bulk arm auto-merge across queue | When multiple PRs need re-arming after rebase |
 | `rm -f .chump-locks/claim-<gap>-*.json` | Manual lease release | When bot-merge didn't release; cleaner than `chump --release` for orphaned leases |
+| `bash scripts/coord/pr-cut.sh N --reason "..."` (RESILIENT-1607) | Close a fleet PR on purpose; the `chump pr cut` verb in shell form | The ONLY sanctioned way to cut a duplicate or superseded fleet PR (see "Closing a fleet PR on purpose") |
 
 ### Tier 2 — Wedge response (you'll use these when something is stuck)
 | Tool | Wedge class | Today's evidence |
@@ -365,6 +366,25 @@ to hide them. Real reds as of `origin/main` eef8a96c3:
 | `test-stale-worktree-reaper-stash.sh` | `run_reaper` (test lines ~126-139) does not set `CHUMP_REAPER_NEW_WORKTREE_GRACE_MIN=0`, so the reaper's 240-minute new-worktree grace (`scripts/ops/stale-worktree-reaper.sh:103`, applied at :619) skips every fixture. With that env var set the suite is 24/24. |
 
 Treat these as known-red until their owning lane fixes them; do not let them gate a Mac push.
+
+## Closing a fleet PR on purpose — `pr-cut`
+
+**The rule.** The only sanctioned way to close a fleet PR on purpose is `bash scripts/coord/pr-cut.sh <N> --reason "<text>"` (the shell form of `chump pr cut`; the Rust arm follows under Phase R R6). A bare `gh pr close`, or `gh pr close` plus a hand-applied `rot-reaped` label, is not sanctioned: two organs police closed fleet PRs and both will fight it.
+
+**What the verb does, in order.** Creates the `pr-cut` label if missing, adds it BEFORE closing (so an organ polling the close window already sees it), closes with a comment carrying your reason, emits `kind=pr_cut`, and appends a note to the PR's gap (if the gap store is not reachable it prints the `chump gap set ... --notes` command instead of failing). It refuses a merged PR and a missing `--reason`; `--dry-run` shows the plan.
+
+**The two labels, one meaning each.**
+
+| Label | Meaning | Who sets it | Organs' behavior |
+|---|---|---|---|
+| `rot-reaped` | The no-abandon janitor closed it: a reaper VICTIM. Revivable. | `scripts/ops/rot-reaper.sh` only (with a `kind=pr_reaped` ambient event) | `post-push-integrity-watch.sh` leaves it closed; `trunk-recovery-reviver.sh` may revive it, but only when a `kind=pr_reaped` event exists for that PR (the label alone is not proof) and it is green-underneath after a trunk recovery |
+| `pr-cut` | Closed DELIBERATELY by a human or architect. TERMINAL. | `scripts/coord/pr-cut.sh` only | Nothing reopens or revives it: the watch skips it, the reviver skips it even if it also carries `rot-reaped` or a `pr_reaped` event |
+
+Never apply `rot-reaped` by hand: it is a claim that the janitor closed the PR, and the reviver will take you at your word.
+
+**Also covered (RESILIENT-1606).** `post-push-integrity-watch.sh` additionally leaves a close alone when a non-bot actor commented within 60s of the close (tunable: `CHUMP_POST_PUSH_WATCH_COMMENT_S`, `CHUMP_POST_PUSH_WATCH_AUTOMATION_LOGINS`). GitHub's stale-push auto-close posts no comment, so the original INFRA-2026 incident (a close right after a force-push, no comment) is still reopened.
+
+**Receipt.** 2026-10-16: the architect's deliberate duplicate cuts of #5478 and #5483 were reopened by the watch within 15s of each close (ambient `post_push_auto_close_recovered` 13:35:12Z and 13:35:15Z; also 05:59Z and 10:41Z), then revived by the reviver at 14:31Z after being labeled `rot-reaped` by hand at 14:02Z. Four reopens, two PRs, one verb missing. Test: `scripts/ci/test-pr-cut-honored.sh` and `scripts/ci/test-trunk-recovery-reviver.sh`.
 
 ## Maintenance
 
