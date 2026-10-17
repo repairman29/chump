@@ -93,6 +93,7 @@ mod discord_intent;
 mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (META-128/C7)
 mod dispatch;
 mod dispatch_model_defaults; // INFRA-8220: layer-aware default model/budget when --model omitted
+mod dispatch_repair; // INFRA-8199: dispatch open-PR gate + repair brief; auto-prompt never decomposes
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
 mod ego_tool;
@@ -6296,7 +6297,7 @@ async fn main() -> Result<()> {
             Some(g) if !g.starts_with('-') => g.clone(),
             _ => {
                 eprintln!(
-                    "Usage: chump dispatch <GAP-ID> [--auto-merge] [--skip-tests] [--paths X,Y] [--backend BACKEND] [--model M] [--prompt P]"
+                    "Usage: chump dispatch <GAP-ID> [--auto-merge] [--skip-tests] [--paths X,Y] [--backend BACKEND] [--model M] [--prompt P] [--print-prompt]"
                 );
                 std::process::exit(2);
             }
@@ -6329,6 +6330,40 @@ async fn main() -> Result<()> {
             .unwrap_or_default();
 
         let repo_root = repo_path::repo_root();
+
+        // INFRA-8199: run the INFRA-1982 open-PR check BEFORE spawning any
+        // work backend. An open PR refuses (PR number + head branch printed)
+        // unless CHUMP_CLAIM_ALLOW_DUPLICATE_PR=1, which turns the cycle into
+        // a repair on the PR head branch. Logic lives in dispatch_repair.
+        // `--print-prompt` prints the resolved mode + prompt and exits 0
+        // without spawning anything (operator preview; CI fixture surface).
+        let print_prompt = args.iter().any(|a| a == "--print-prompt");
+        let spawns_work = backend != "interactive" && backend != "claude";
+        let open_pr = if spawns_work {
+            match dispatch_repair::open_pr_gate(&repo_root, &gap_id) {
+                Ok(pr) => pr,
+                Err(refusal) => {
+                    eprintln!("{refusal}");
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            None
+        };
+        let mut mode = match &open_pr {
+            Some(pr) => {
+                eprintln!(
+                    "[dispatch] {}=1 and open PR #{} exists: repairing on {}",
+                    dispatch_repair::ALLOW_DUP_ENV,
+                    pr.number,
+                    pr.head_branch
+                );
+                dispatch::DispatchMode::Repair {
+                    head_branch: pr.head_branch.clone(),
+                }
+            }
+            None => dispatch::DispatchMode::Work,
+        };
 
         // INFRA-8220: layer-aware default model/budget when --model is omitted.
         // Inspect the gap's footprint (--paths lease scope + description path
@@ -6402,16 +6437,35 @@ async fn main() -> Result<()> {
                     eprintln!(
                         "[dispatch] no --prompt given; auto-building the work prompt from gap {gap_id}"
                     );
-                    execute_gap::build_execute_gap_prompt(&gap_id, &repo_root)
+                    // INFRA-8199: repair brief when a PR is open; decompose
+                    // --dry-run + stop when the description asks for it;
+                    // never self-directed decomposition.
+                    let (kind, built) =
+                        dispatch_repair::build_auto_prompt(&gap_id, &repo_root, open_pr.as_ref());
+                    if kind == dispatch_repair::AutoPromptKind::DecomposeReview {
+                        mode = dispatch::DispatchMode::ReviewOnly;
+                    }
+                    eprintln!("[dispatch] auto-prompt kind={kind:?}");
+                    built
                 } else {
                     prompt.clone()
                 };
+                if print_prompt {
+                    println!("[dispatch] mode={mode:?}\n{work_prompt}");
+                    return Ok(());
+                }
                 dispatch::WorkBackend::Headless {
                     model: model.clone(),
                     prompt: work_prompt,
                 }
             }
-            "exec-gap" | "chump-local" /* alias */ => dispatch::WorkBackend::ExecGap,
+            "exec-gap" | "chump-local" /* alias */ => {
+                if print_prompt {
+                    println!("[dispatch] mode={mode:?} (exec-gap builds its own prompt)");
+                    return Ok(());
+                }
+                dispatch::WorkBackend::ExecGap
+            }
             other => {
                 eprintln!(
                     "chump dispatch: unknown --backend {other:?}; expected one of: interactive, claude, headless, exec-gap"
@@ -6426,6 +6480,7 @@ async fn main() -> Result<()> {
             skip_tests,
             paths: paths.as_deref(),
             repo_root,
+            mode,
         };
 
         match dispatch::run(opts) {
