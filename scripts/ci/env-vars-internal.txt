@@ -3537,3 +3537,15 @@ CHUMP_STORE_PATH_PARITY_BIN
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_BOUNDARY_GATE
+
+# RESILIENT-1609: worktree reapers spare a worktree with a live bot-merge ship
+# (grace in minutes for a fresh bot-merge-*.steps file; lsof cwd-scan cache seconds)
+CHUMP_REAPER_BOT_MERGE_GRACE_MIN
+CHUMP_WT_CWD_CACHE_S
+# RESILIENT-1609 / INFRA-8208: knobs the new fixture tests set or read
+# (reaper lease/index freshness, target-reaper scan glob, pre-push test fixtures)
+CHUMP_ALLOW_UNREGISTERED_GAP
+CHUMP_OPERATOR_RECOVERY
+CHUMP_REAPER_ACTIVE_LEASE_MIN
+CHUMP_REAPER_INDEX_MMIN
+CHUMP_TARGET_REAPER_SCAN_GLOB

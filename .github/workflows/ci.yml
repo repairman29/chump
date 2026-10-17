@@ -1677,6 +1677,15 @@ jobs:
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
+      - name: reaper spares live bot-merge ship smoke (RESILIENT-1609)
+        run: bash scripts/ci/test-reaper-bot-merge-live.sh
+
+      - name: bot-merge recovery push passes pre-push Guard 4 smoke (INFRA-8208)
+        run: bash scripts/ci/test-bot-merge-recovery-in-progress.sh
+
+      - name: bot-merge recovery mode opens a missing PR smoke (INFRA-8209)
+        run: bash scripts/ci/test-bot-merge-recovery-pr-create.sh
+
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 

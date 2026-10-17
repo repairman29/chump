@@ -6119,6 +6119,8 @@ events:
       uncommitted_changes (git status --porcelain non-empty, tracked files) — INFRA-1347;
       untracked_unignored (new files not yet `git add`'d, non-gitignored) — INFRA-1347;
       unpushed_commits (HEAD ahead of origin/<branch>) — INFRA-1347.
+      bot_merge_live (a fresh .chump-locks/bot-merge-*.steps names the worktree, or a live
+      process has it as its cwd — a recovery-mode ship holds no lease) — RESILIENT-1609.
       Reaping in any of these states would destroy work — protection is mandatory.
     effect_metric: self
     emitter: scripts/ops/stale-worktree-reaper.sh (_emit_reaper_skipped, INFRA-1074)
