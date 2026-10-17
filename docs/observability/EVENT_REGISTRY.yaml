@@ -134,7 +134,7 @@ events:
   - kind: over_claim_suspected
     effect_metric: self
     emitter: src/done_auditor.rs (INFRA-3495 anti-over-claim watchdog)
-    trigger: `chump gap audit-done` finds a DONE gap whose closed PR left acceptance bullets uncovered + unwaived (umbrella-done != actually-done) — pr_ac_coverage re-run after the fact
+    trigger: chump gap audit-done finds a DONE gap whose closed PR left acceptance bullets uncovered + unwaived (umbrella-done != actually-done) — pr_ac_coverage re-run after the fact
     consumers: [gap-registry-health (future), observability]
     fields_required: [ts, kind, gap_id, closed_pr, uncovered_bullets, total_bullets]
   - kind: audit_done_sweep_completed

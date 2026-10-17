@@ -57,8 +57,8 @@ else fail "negative control: old driver did not reproduce the bug (fixture insen
 
 # 2. New driver: two-sided append on both files.
 new_fixture "$W/new" "$DRV"
-if ( two_sided "$W/new" && git rebase main >/dev/null 2>&1 ); then ok "rebase onto main exits 0"
-else fail "rebase onto main did not complete"; fi
+if ( two_sided "$W/new" && git rebase main >"$W/rebase.log" 2>&1 ); then ok "rebase onto main exits 0"
+else fail "rebase onto main did not complete"; echo "  --- git rebase output:"; tail -20 "$W/rebase.log" | sed 's/^/  | /'; ( cd "$W/new" && git status --short | sed 's/^/  | status: /'; git rebase --abort >/dev/null 2>&1 || true ); fi
 cd "$W/new" || exit 1
 for f in $REG $ENV; do
   if grep -qE '^(<{7}|>{7}|={7})' "$f"; then fail "$f has conflict markers"; else ok "$f has no conflict markers"; fi
