@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: coverage-nightly
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 

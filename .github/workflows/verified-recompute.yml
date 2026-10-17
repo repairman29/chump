@@ -17,8 +17,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: false
+  group: verified-recompute-main
+  cancel-in-progress: true
 
 jobs:
   rerun-verified:

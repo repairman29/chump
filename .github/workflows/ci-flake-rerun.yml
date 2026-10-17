@@ -29,10 +29,10 @@ on:
         type: string
         default: ""
 
-# One rerun pass at a time — concurrent invocations would double-rerun.
+# One rerun pass at a time — concurrent invocations would double-rerun (ZERO-WASTE-135).
 concurrency:
   group: ci-flake-rerun
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   actions: write        # gh run rerun

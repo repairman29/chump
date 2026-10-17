@@ -775,6 +775,13 @@ jobs:
         # smoke itself is pure awk so it works anywhere.
         run: bash scripts/ci/test-workflow-linux-guard.sh
 
+      - name: Workflow concurrency on workflow_run/schedule triggers (ZERO-WASTE-135)
+        # Ensures every workflow triggered by workflow_run or schedule declares
+        # a concurrency group to prevent queue starvation from duplicate runs.
+        # Fixes ZERO-WASTE-135: verified-recompute, pr-triage-bot, ci-flake-rerun
+        # all had duplicates queued during hosted-runner stalls.
+        run: bash scripts/ci/test-workflow-concurrency-triggers.sh
+
       # INFRA-3836: guard against re-breaking the aarch64 cross-build of
       # openssl-sys, which put build-fleet-binaries.yml red 2026-08-24 to
       # 2026-08-27 and starved the green-main pin for every fleet node.

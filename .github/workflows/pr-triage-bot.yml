@@ -36,9 +36,10 @@ permissions:
   contents: write
   pull-requests: write
 
-# INFRA-1378: per-PR group, cancel-in-progress so redundant triage attempts dedupe.
+# INFRA-1378 + ZERO-WASTE-135: per-PR/main group, cancel-in-progress so redundant triage attempts dedupe.
+# For workflow_run on main (no PR), group is pr-triage-bot-main; for PRs, group is pr-triage-bot-<PR#>.
 concurrency:
-  group: pr-triage-bot-${{ github.event.workflow_run.pull_requests[0].number || github.event.pull_request.number || github.ref }}
+  group: pr-triage-bot-${{ github.event.workflow_run.pull_requests[0].number || github.event.pull_request.number || (github.event_name == 'workflow_run' && 'main') || github.ref }}
   cancel-in-progress: true
 
 jobs:
