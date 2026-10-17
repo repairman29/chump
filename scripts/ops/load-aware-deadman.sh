@@ -83,7 +83,7 @@ get_nproc() {
 }
 
 get_load() {
-    cat /proc/loadavg 2>/dev/null | awk '{print $1}' || echo "0"
+    awk '{print $1}' /proc/loadavg 2>/dev/null || echo "0"
 }
 
 get_mem_pressure() {
