@@ -75,7 +75,7 @@ Until that happens once, the factory is not running. R1 plus R3 is the gate to i
 The two disagreements were real on that host: fleet-doctor's `dirty-prs` reads the
 `github_cache.db` mirror and said pass while GitHub had DIRTY PRs older than 24h, and the kpi
 ship gauge read 0 ships in 1d against 31 merges (the Mac's store is stale). The run also found
-`chump kpi report --json` emitting invalid JSON (unescaped `depends_on` arrays in the leverage
+`chump kpi report --json` emitting invalid JSON (unescaped `depends_on` arrays in the dependency-count
 section), fixed in the same PR. The two unprobed pairs need systemd (organ failures); they run
 on the Linux nodes. Unprobed pairs stay in the denominator and never count as agreement.
 
