@@ -2225,6 +2225,14 @@ pub fn run(argv: &[String]) -> i32 {
             ],
             GateKind::Scripts,
         ));
+        // RESILIENT-1604: node admission ceiling written to node.env when absent
+        // (installer + node-converge) and the fleet-doctor RED check. Stubbed
+        // nproc/pgrep, throwaway HOME; fast (<5s).
+        steps.push(step(
+            "node-admission-ceiling",
+            &["bash", "scripts/ci/test-node-admission-ceiling.sh"],
+            GateKind::Scripts,
+        ));
 
         // INFRA-1808: bootstrap-auto-install smoke. install-bootstrap-auto-
         // launchd.sh (the hourly self-install job for chump-fleet-bootstrap.sh)
@@ -2719,6 +2727,13 @@ pub fn run(argv: &[String]) -> i32 {
                 "bash",
                 "scripts/ci/test-resilient-1614-node-pause-invariant.sh",
             ],
+            GateKind::Scripts,
+        ));
+        // CREDIBLE-1518: subagent pre-exit check reads autoMergeRequest, not
+        // the REST-only merge_method field; stubbed gh, armed + unarmed fixtures.
+        steps.push(step(
+            "subagent-pre-exit-check",
+            &["bash", "scripts/ci/test-subagent-pre-exit-check.sh"],
             GateKind::Scripts,
         ));
         // INFRA-8193: docs/gaps/*.yaml is an export-only mirror of state.db;
