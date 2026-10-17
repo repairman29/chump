@@ -3596,3 +3596,15 @@ CHUMP_RE
 # docs/process/CHUMP_DISPATCH_RULES.md, which src/dispatch_repair.rs reads as
 # the rules preamble for the repair / decompose-review prompts.
 CHUMP_DISPATCH_RULES
+
+# RESILIENT-1609: worktree reapers spare a worktree with a live bot-merge ship
+# (grace in minutes for a fresh bot-merge-*.steps file; lsof cwd-scan cache seconds)
+CHUMP_REAPER_BOT_MERGE_GRACE_MIN
+CHUMP_WT_CWD_CACHE_S
+# RESILIENT-1609 / INFRA-8208: knobs the new fixture tests set or read
+# (reaper lease/index freshness, target-reaper scan glob, pre-push test fixtures)
+CHUMP_ALLOW_UNREGISTERED_GAP
+CHUMP_OPERATOR_RECOVERY
+CHUMP_REAPER_ACTIVE_LEASE_MIN
+CHUMP_REAPER_INDEX_MMIN
+CHUMP_TARGET_REAPER_SCAN_GLOB

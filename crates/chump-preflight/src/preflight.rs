@@ -2609,6 +2609,21 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "reaper-bot-merge-live-smoke",
+            &["bash", "scripts/ci/test-reaper-bot-merge-live.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-recovery-in-progress-smoke",
+            &["bash", "scripts/ci/test-bot-merge-recovery-in-progress.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-recovery-pr-create-smoke",
+            &["bash", "scripts/ci/test-bot-merge-recovery-pr-create.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "grep-c-echo0-guard-smoke",
             &["bash", "scripts/ci/test-grep-c-echo0-guard.sh"],
             GateKind::Scripts,
