@@ -1662,13 +1662,7 @@ async fn main() -> Result<()> {
 
     // INFRA-8194 (Phase R R5): `chump node host` / `chump node render-unit` —
     // the typed host provisioning enum (crates/chump-provision). Thin arm only.
-    // `chump node pause|resume` (RESILIENT-1614) falls through to its own arm below.
-    if args.get(1).map(String::as_str) == Some("node")
-        && !matches!(
-            args.get(2).map(String::as_str),
-            Some("pause") | Some("resume")
-        )
-    {
+    if args.get(1).map(String::as_str) == Some("node") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(chump_provision::cli::run_cli(&sub_args));
     }
