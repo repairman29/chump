@@ -1439,6 +1439,11 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-orchestrate-session-summary.sh
 
+      - name: dispatch open-PR refuse/repair (INFRA-8199)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-dispatch-open-pr-repair.sh
+
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
 

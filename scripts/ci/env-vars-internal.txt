@@ -3591,3 +3591,8 @@ CHUMP_WATCHDOG_REOPEN
 # invariant-boundary reading instead of running the ~20s gate (fleet-brief banner).
 CHUMP_SHELL_INVARIANT_WRITERS_NO_GATE
 CHUMP_RE
+
+# INFRA-8199: not an env var. The INFRA-1853 scanner matched the filename
+# docs/process/CHUMP_DISPATCH_RULES.md, which src/dispatch_repair.rs reads as
+# the rules preamble for the repair / decompose-review prompts.
+CHUMP_DISPATCH_RULES

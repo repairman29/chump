@@ -14201,3 +14201,17 @@ events:
       probe_value, reason and receipt.
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, source, host, agree, disagree, unprobed, total, score, instruments]
+  - kind: dispatch_repair_brief_built
+    effect_metric: self
+    emitter: src/dispatch_repair.rs (chump dispatch — INFRA-8199)
+    trigger: a `chump dispatch <GAP> --backend headless` with no `--prompt`
+      finds an open PR for the gap (INFRA-1982 check) while
+      CHUMP_CLAIM_ALLOW_DUPLICATE_PR=1 is set, and auto-builds a REPAIR brief
+      (PR number, head branch, failing check names from the local github
+      cache or `gh pr checks`, fix-and-push, no decomposition) on a worktree
+      based at the PR head branch instead of origin/main. One event per
+      repair brief; without the override the dispatch refuses and emits none.
+    consumers: [fleet-brief, dispatch-hygiene]
+    fields_required: [ts, kind, session, gap_id, pr_number, head_branch,
+      failing_checks, checks_source]
+
