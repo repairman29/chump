@@ -2702,6 +2702,17 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-load-aware-deadman.sh"],
             GateKind::Scripts,
         ));
+        // RESILIENT-1614 / CREDIBLE-1517: chump node pause|resume invariant.
+        // The script resolves ${CARGO_TARGET_DIR:-target}/debug/chump and
+        // builds it when absent, so it runs the same here as in fast-checks.
+        steps.push(step(
+            "node-pause-invariant",
+            &[
+                "bash",
+                "scripts/ci/test-resilient-1614-node-pause-invariant.sh",
+            ],
+            GateKind::Scripts,
+        ));
         // INFRA-8193: docs/gaps/*.yaml is an export-only mirror of state.db;
         // fail when a new script or Rust path writes it outside the export.
         steps.push(step(
@@ -2777,6 +2788,11 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "dispatch-ship-session-id",
             &["bash", "scripts/ci/test-dispatch-ship-session-id.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "dispatch-armed-exit-zero",
+            &["bash", "scripts/ci/test-dispatch-armed-exit-zero.sh"],
             GateKind::Scripts,
         ));
         steps.push(step(

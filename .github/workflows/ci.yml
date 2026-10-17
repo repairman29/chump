@@ -1279,6 +1279,9 @@ jobs:
       - name: dispatch ship-phase session id (INFRA-8204)
         run: bash scripts/ci/test-dispatch-ship-session-id.sh
 
+      - name: dispatch armed-ship exit 0 (CREDIBLE-1506)
+        run: bash scripts/ci/test-dispatch-armed-exit-zero.sh
+
       - name: ci.yml merge driver smoke (INFRA-310)
         run: bash scripts/ci/test-merge-driver-ci-yml.sh
 
@@ -1500,6 +1503,10 @@ jobs:
 
       - name: load-aware dead-man smoke (RESILIENT-1611)
         run: bash scripts/ci/test-load-aware-deadman.sh
+
+      # The script builds ${CARGO_TARGET_DIR:-target}/debug/chump when absent.
+      - name: node pause invariant (RESILIENT-1614)
+        run: bash scripts/ci/test-resilient-1614-node-pause-invariant.sh
 
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
