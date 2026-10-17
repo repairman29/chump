@@ -26,8 +26,16 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/cooldown"
 
-# (a) Static: both pickers bypass the deepseek-tier effort gates for P0-MISSION gaps.
-for f in "$PICK" "$PICK_CLAIM"; do
+# (a) Static: the canonical picker bypasses the deepseek-tier effort gates for
+# P0-MISSION gaps. INFRA-8224 made _pick_gap.py a thin shim that execs the
+# canonical picker with --dry-run, so the shim is checked for the exec, not for
+# a copy of the gate (one picker, one gate).
+if grep -q '_pick_and_claim_gap.py' "$PICK" && grep -q 'execv' "$PICK"; then
+  ok "$(basename "$PICK"): shim execs the canonical picker"
+else
+  fail "$(basename "$PICK"): expected a thin shim that execs _pick_and_claim_gap.py"
+fi
+f="$PICK_CLAIM"
   if grep -q 'worker_model == "flash" and e in ("m", "l", "xl") and not _is_p0_mission' "$f"; then
     ok "$(basename "$f"): flash m/l/xl gate bypasses P0-MISSION"
   else
@@ -38,7 +46,6 @@ for f in "$PICK" "$PICK_CLAIM"; do
   else
     fail "$(basename "$f"): pro gate MISSING the _is_p0_mission bypass"
   fi
-done
 
 run_pick() {  # $1=gap_json_file $2=FLEET_MODEL
   GAP_JSON_FILE="$1" \
