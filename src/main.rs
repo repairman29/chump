@@ -91,6 +91,7 @@ mod discord_dm;
 mod discord_intent;
 mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (META-128/C7)
 mod dispatch;
+mod dispatch_model_defaults; // INFRA-8220: layer-aware default model/budget when --model omitted
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
 mod ego_tool;
@@ -6320,6 +6321,56 @@ async fn main() -> Result<()> {
             .unwrap_or_default();
 
         let repo_root = repo_path::repo_root();
+
+        // INFRA-8220: layer-aware default model/budget when --model is omitted.
+        // Inspect the gap's footprint (--paths lease scope + description path
+        // hints): Rust under src/ or crates/ → opus + 3600s; shell/yaml/md only
+        // → sonnet + 1800s. A concrete `model:` on the gap's matched
+        // docs/dispatch/routing.yaml route still overrides. Logic lives in
+        // dispatch_model_defaults; this arm stays thin (resolve → set → log).
+        let model = if model.is_empty() {
+            let canonical_root = repo_path::main_checkout_root();
+            let gap_row = chump_gap_store::GapStore::open(&canonical_root)
+                .ok()
+                .and_then(|store| store.get(&gap_id).ok().flatten());
+            let description = gap_row
+                .as_ref()
+                .map(|r| r.description.clone())
+                .unwrap_or_default();
+            // routing.yaml override: a matched route whose first candidate pins
+            // a concrete `model:` wins over the footprint heuristic.
+            let routing_override = gap_row.as_ref().and_then(|r| {
+                chump_orchestrator::dispatch::select_candidates_for_gap(
+                    &canonical_root,
+                    &gap_id,
+                    &r.priority,
+                    &r.effort,
+                )
+                .into_iter()
+                .find_map(|c| c.model)
+            });
+            match dispatch_model_defaults::select_default_model(
+                paths.as_deref(),
+                &description,
+                routing_override.as_deref(),
+            ) {
+                Some(sel) => {
+                    eprintln!(
+                        "[dispatch] layer-aware default: model={} budget={}s ({})",
+                        sel.model, sel.budget_secs, sel.reason
+                    );
+                    // Honor an operator-set budget; only fill in our default.
+                    if std::env::var_os("CHUMP_SUBAGENT_BUDGET_S").is_none() {
+                        std::env::set_var("CHUMP_SUBAGENT_BUDGET_S", sel.budget_secs.to_string());
+                    }
+                    dispatch_model_defaults::emit_dispatch_model_selected(&gap_id, &sel);
+                    sel.model
+                }
+                None => model,
+            }
+        } else {
+            model
+        };
         let work = match backend.as_str() {
             "interactive" => dispatch::WorkBackend::Interactive,
             // EFFECTIVE: `--backend claude` is a historical alias for `interactive` — it
@@ -9748,7 +9799,7 @@ async fn main() -> Result<()> {
             "curator-status" => {
                 let want_json = args.iter().any(|a| a == "--json");
                 let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
-                let state_db = repo_root.join(".chump/state.db");
+                let state_db = chump_gap_store::store_path::state_db_path(&repo_root); // INFRA-8190
                 let _log_dir = repo_root.join(".chump-locks/autopilot-logs");
 
                 // Supervisor config from env (mirrors crate defaults).
@@ -9994,6 +10045,29 @@ async fn main() -> Result<()> {
         }
 
         let repo_root = repo_path::repo_root();
+        // INFRA-8190 (Phase R R4): print the ONE resolved gap-store path and
+        // why, WITHOUT opening (and so creating) it. Operators and the
+        // gap-store-single-source gate compare this across processes.
+        if subcmd == "store-path" {
+            let r = gap_store::store_path::resolve(&repo_root);
+            if args.iter().any(|a| a == "--json") {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "path": r.path.display().to_string(),
+                        "source": r.source.as_str(),
+                        "reason": r.reason(),
+                        "checkout": r.checkout.as_ref().map(|c| c.display().to_string()),
+                        "repo_root": repo_root.display().to_string(),
+                        "exists": r.path.exists(),
+                    })
+                );
+            } else {
+                println!("{}", r.path.display());
+                eprintln!("source: {} ({})", r.source.as_str(), r.reason());
+            }
+            std::process::exit(0);
+        }
         // INFRA-247: per-file YAML mirrors and the .chump/.last-yaml-op
         // freshness marker are *worktree-local* artifacts — they must land
         // in the operator's branch, not the main checkout's. `repo_root`
