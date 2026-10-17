@@ -171,6 +171,7 @@ mod intent_parser;
 mod interrupt_notify;
 mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an autonomy defect
 mod introspect_tool;
+mod node_cmd; // RESILIENT-1614: chump node pause|resume — make node pause an invariant
 mod scan; // INFRA-1882: chump scan <repo-path> — repo takeover opener (2026 demo #2)
 pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
@@ -2765,6 +2766,71 @@ async fn main() -> Result<()> {
                 println!("  CHUMP_DISK_COST_MODEL_PATH=...      override docs/process/DISK_COST_MODEL.yaml");
                 println!();
                 println!("Exit codes (disk plan): 0=OK, 1=REFUSE, 2=WAIT");
+                2
+            }
+        };
+        std::process::exit(exit_code);
+    }
+
+    // `chump node pause|resume` (RESILIENT-1614) — make node pause an invariant.
+    // node pause: disables work organs and prevents agents from making changes.
+    // node resume: re-enables work organs.
+    if args.get(1).map(String::as_str) == Some("node") {
+        let sub = args.get(2).map(String::as_str);
+        let repo_root = repo_path::repo_root();
+        let exit_code = match sub {
+            Some("pause") => {
+                let reason = if args.len() > 3 {
+                    let mut reason = String::new();
+                    let mut i = 3;
+                    while i < args.len() {
+                        if args[i] == "--reason" && i + 1 < args.len() {
+                            reason = args[i + 1].clone();
+                            break;
+                        }
+                        i += 1;
+                    }
+                    if reason.is_empty() {
+                        eprintln!("chump node pause: --reason is required");
+                        std::process::exit(2);
+                    }
+                    reason
+                } else {
+                    eprintln!("Usage: chump node pause --reason <reason>");
+                    std::process::exit(2);
+                };
+
+                match node_cmd::run(&repo_root, node_cmd::PauseCommand::Pause { reason }) {
+                    Ok(result) => {
+                        println!("node {} (mode={})", result.action, result.mode);
+                        println!("sentinel: {}", result.sentinel_path);
+                        0
+                    }
+                    Err(e) => {
+                        eprintln!("chump node pause: {e:#}");
+                        1
+                    }
+                }
+            }
+            Some("resume") => match node_cmd::run(&repo_root, node_cmd::PauseCommand::Resume) {
+                Ok(result) => {
+                    println!("node {} (mode={})", result.action, result.mode);
+                    0
+                }
+                Err(e) => {
+                    eprintln!("chump node resume: {e:#}");
+                    1
+                }
+            },
+            _ => {
+                println!("Usage: chump node <subcommand> [options]");
+                println!();
+                println!("Subcommands:");
+                println!(
+                    "  pause --reason <reason>    pause node work organs and agent sudo access"
+                );
+                println!("  resume                     resume normal node operations");
+                println!();
                 2
             }
         };

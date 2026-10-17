@@ -14064,3 +14064,30 @@ events:
     trigger: node-wide admission ceiling hit — a `claude -p` or cargo/rustc spawn was deferred because the live count was >= CHUMP_MAX_CONCURRENT_CLAUDE / CHUMP_MAX_CONCURRENT_CARGO_JOBS (outcome=deferred on entry, outcome=timeout when the bounded wait fails open)
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, resource, active, ceiling, waited_s, outcome]
+
+  - kind: node_paused
+    status: active
+    effect_metric: resilient
+    emitter: src/node_cmd.rs (RESILIENT-1614) via `chump node pause`
+    emitter_paths: [src/node_cmd.rs]
+    trigger: operator runs `chump node pause --reason <reason>` to disable work organs and make the node invariantly paused
+    consumers: [fleet-brief, fleet-doctor]
+    fields_required: [ts, kind, mode, reason, actor]
+
+  - kind: node_resumed
+    status: active
+    effect_metric: resilient
+    emitter: src/node_cmd.rs (RESILIENT-1614) via `chump node resume`
+    emitter_paths: [src/node_cmd.rs]
+    trigger: operator runs `chump node resume` to re-enable work organs and restore normal operations
+    consumers: [fleet-brief, fleet-doctor]
+    fields_required: [ts, kind, mode, actor]
+
+  - kind: organ_skipped_paused
+    status: active
+    effect_metric: resilient
+    emitter: scripts/node-converge, scripts/organ-reconcile, scripts/organ-deploy, scripts/paramedic, scripts/process-organ-heal, scripts/self-doctor, worker.sh (RESILIENT-1614)
+    emitter_paths: [scripts/ops/]
+    trigger: a work organ checks CHUMP_NODE_MODE on a paused node and exits 0 without installing, enabling, or restarting anything
+    consumers: [fleet-health, fleet-brief]
+    fields_required: [ts, kind]
