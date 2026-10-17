@@ -309,8 +309,23 @@ echo "--- Assertion 4: gap ship marks status done ---"
         git -C "$SHIP_REPO" add marker.txt
         git -C "$SHIP_REPO" commit -q -m "feat(${GAP_ID}): integration-test ship marker"
         # Copy the real state.db so the gap exists in the isolated store.
+        # Use CHUMP_STATE_DB to point to the correct location (handles worktrees correctly).
         mkdir -p "$SHIP_REPO/.chump"
-        cp "$REPO_ROOT/.chump/state.db" "$SHIP_REPO/.chump/state.db"
+
+        # Resolve the real state.db location (may be in main checkout if we're in a worktree).
+        REAL_STATE_DB="$REPO_ROOT/.chump/state.db"
+        if [[ ! -f "$REAL_STATE_DB" ]]; then
+            # In a worktree, resolve through git --git-common-dir to find the main checkout.
+            _COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo "")"
+            if [[ -n "$_COMMON_DIR" && "$_COMMON_DIR" != ".git" ]]; then
+                REAL_STATE_DB="$(cd "$_COMMON_DIR/.." && pwd)/.chump/state.db"
+            fi
+        fi
+
+        if [[ -f "$REAL_STATE_DB" ]]; then
+            cp "$REAL_STATE_DB" "$SHIP_REPO/.chump/state.db"
+        fi
+
         # Provide docs/gaps/ so --update-yaml has a target directory.
         mkdir -p "$SHIP_REPO/docs/gaps"
         if [[ -f "$REPO_ROOT/docs/gaps/${GAP_ID}.yaml" ]]; then
@@ -377,9 +392,24 @@ echo "--- Assertion 5: Idempotent re-ship (ship twice, count events) ---"
         echo "re-ship test" > "$SHIP_REPO2/marker2.txt"
         git -C "$SHIP_REPO2" add marker2.txt
         git -C "$SHIP_REPO2" commit -q -m "feat(${GAP_ID}): integration-test re-ship marker"
-        # Copy state.db and docs/gaps
+        # Copy state.db and docs/gaps.
+        # Use CHUMP_STATE_DB to point to the correct location (handles worktrees correctly).
         mkdir -p "$SHIP_REPO2/.chump"
-        cp "$REPO_ROOT/.chump/state.db" "$SHIP_REPO2/.chump/state.db"
+
+        # Resolve the real state.db location (may be in main checkout if we're in a worktree).
+        REAL_STATE_DB="$REPO_ROOT/.chump/state.db"
+        if [[ ! -f "$REAL_STATE_DB" ]]; then
+            # In a worktree, resolve through git --git-common-dir to find the main checkout.
+            _COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo "")"
+            if [[ -n "$_COMMON_DIR" && "$_COMMON_DIR" != ".git" ]]; then
+                REAL_STATE_DB="$(cd "$_COMMON_DIR/.." && pwd)/.chump/state.db"
+            fi
+        fi
+
+        if [[ -f "$REAL_STATE_DB" ]]; then
+            cp "$REAL_STATE_DB" "$SHIP_REPO2/.chump/state.db"
+        fi
+
         mkdir -p "$SHIP_REPO2/docs/gaps"
         if [[ -f "$REPO_ROOT/docs/gaps/${GAP_ID}.yaml" ]]; then
             cp "$REPO_ROOT/docs/gaps/${GAP_ID}.yaml" "$SHIP_REPO2/docs/gaps/${GAP_ID}.yaml"
