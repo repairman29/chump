@@ -2668,6 +2668,13 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-workflow-concurrency-groups.sh"],
             GateKind::Scripts,
         ));
+        // INFRA-8193: docs/gaps/*.yaml is an export-only mirror of state.db;
+        // fail when a new script or Rust path writes it outside the export.
+        steps.push(step(
+            "gap-yaml-export-only",
+            &["bash", "scripts/ci/test-gap-yaml-export-only.sh"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "grep-c-echo0-guard-smoke",
             &["bash", "scripts/ci/test-grep-c-echo0-guard.sh"],
@@ -2726,11 +2733,6 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "merge-driver-pre-commit",
             &["bash", "scripts/ci/test-merge-driver-pre-commit.sh"],
-            GateKind::Scripts,
-        ));
-        steps.push(step(
-            "merge-driver-state-sql",
-            &["bash", "scripts/ci/test-merge-driver-state-sql.sh"],
             GateKind::Scripts,
         ));
         steps.push(step(

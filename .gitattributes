@@ -4,12 +4,8 @@
 # That installer is auto-run by scripts/setup/install-hooks.sh, so a fresh
 # checkout / linked worktree gets them after the first hook installation.
 
-# .chump/state.sql is a regenerated artifact of .chump/state.db — chronic
-# textual conflicts after parallel `chump gap reserve` calls (observed
-# 1400/2400-line diffs on PRs #972 #990 on 2026-05-03). On conflict, the
-# driver runs `chump gap dump --out` to produce the canonical dump from
-# the local SQLite store. INFRA-367.
-.chump/state.sql merge=chump-state-sql-regen
+# INFRA-8193: .chump/state.sql is no longer tracked (state.db is the only
+# truth), so the chump-state-sql-regen merge driver (INFRA-310/367) is gone.
 
 # .github/workflows/ci.yml collects append-only step additions. The ci-yml-add-row driver
 # merges concurrent additions by unioning the new steps without requiring manual resolution.
