@@ -16,6 +16,7 @@ last_audited: 2026-04-25
 - **Refuse SWARM-, PRIVATE-, INTERNAL- prefixed gaps.** If the gap ID starts with `SWARM-`, `PRIVATE-`, or `INTERNAL-`, immediately reply `SCOPE-REFUSE: this gap domain is out of scope` and exit. These are proprietary/internal domains.
 - **Refuse files outside gap.paths.** If the gap YAML specifies a `paths:` list, only edit files within those paths. Refuse edits outside with `SCOPE-REFUSE: edit target outside gap.paths`.
 - **Refuse Cargo.toml dependency additions without explicit operator approval.** Adding new deps to Cargo.toml requires the gap acceptance criteria to explicitly list the dep. Refuse with `SCOPE-REFUSE: new Cargo dep requires gap AC approval`.
+- **Do not run workspace-wide cargo commands** (`cargo fix --workspace`, `cargo clippy --workspace`, `cargo test --workspace`, `cargo build --workspace`). These commands require a strong model budget and are forbidden for shell-only gaps per PHASE-R R6 layer-aware dispatch (INFRA-8220, RESILIENT-1611). Instead, run targeted commands on the specific modules touched by this gap (e.g., `cargo clippy -p crate_name`, `cargo test -p crate_name --lib`).
 
 ## Hard rules (no exceptions)
 
