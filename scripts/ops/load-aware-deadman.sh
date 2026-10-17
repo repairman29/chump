@@ -38,11 +38,11 @@
 # shellcheck shell=bash
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${CHUMP_DEADMAN_STATE_DIR:-$HOME/.chump}"
 PROVIDERS_ENV="${CHUMP_PROVIDERS_ENV:-$HOME/.chump/providers.env}"
 
 # Load config from environment or providers.env
+# shellcheck source=/dev/null
 [[ -f "$PROVIDERS_ENV" ]] && { set -a; . "$PROVIDERS_ENV"; set +a; }
 
 # Defaults
@@ -106,6 +106,7 @@ check_ssh_responsive() {
 kill_newest_process() {
     local pattern="$1" reason="$2"
     local newest_pid newest_cmd
+    # shellcheck disable=SC2009  # comm= match keeps pgrep-free portability (macOS + Linux)
     newest_pid=$(ps -Ao pid=,comm= 2>/dev/null | grep "$pattern" | tail -1 | awk '{print $1}')
     if [[ -z "$newest_pid" ]]; then
         log "INFO: no process matching '$pattern' found"
