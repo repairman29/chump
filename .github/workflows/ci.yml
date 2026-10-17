@@ -1674,6 +1674,16 @@ jobs:
         # repairs in-diff detection. Sanctioned INFRA-1869 demotion ceremony.
         continue-on-error: true
 
+      - name: scripts/ci census shrink-only gate (CREDIBLE-1514)
+        # A new scripts/ci test is wired or it is deleted: fails when a test is
+        # unwired that is not on origin/main's docs/observability/ci-test-census.json
+        # unwired list, or when the committed red/unwired counts grew. The nightly
+        # census PR (census/* branch, ci-test-census.yml) publishes the truth, so
+        # count growth there is reported, not failed.
+        env:
+          CHUMP_CENSUS_ALLOW_GROWTH: ${{ startsWith(github.head_ref, 'census/') && '1' || '0' }}
+        run: bash scripts/ci/test-census-shrink-only.sh
+
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
