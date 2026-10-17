@@ -2553,6 +2553,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "workflow-concurrency-groups",
+            &["bash", "scripts/ci/test-workflow-concurrency-groups.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "grep-c-echo0-guard-smoke",
             &["bash", "scripts/ci/test-grep-c-echo0-guard.sh"],
             GateKind::Scripts,

@@ -1686,6 +1686,9 @@ jobs:
       - name: Arm policy honored by every armer (RESILIENT-1613 / INFRA-8221)
         run: bash scripts/ci/test-arm-policy.sh
 
+      - name: workflow_run/schedule concurrency groups are stable (ZERO-WASTE-135)
+        run: bash scripts/ci/test-workflow-concurrency-groups.sh
+
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 

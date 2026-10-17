@@ -65,6 +65,17 @@ host). R7 is how we know the first six are true without a human reading logs.
 and `strict` on with a baseline and drift gate (#5479), and at 06:20Z the first gap filed, built,
 merged and closed by the fleet with no human terminal (INFRA-8204, #5481). Zero admin merges.
 
+**R3 receipt, 2026-10-17 14:25Z (ZERO-WASTE-135).** During a hosted-runner stall (0 jobs running,
+47 non-completed runs) the queue held 14 queued `verified-recompute` runs on main, 3
+`pr-triage-bot` and 2 CI Flake Rerun; the architect cancelled 15 duplicates by hand and the queue
+fell to 33. Of the 19 workflows triggered by `workflow_run` or `schedule`, 18 already declared a
+`concurrency:` block, so the defect was the group key (per-run or per-upstream-sha keys never
+dedupe), not a missing block. Fixed in the same gap: stable keys on `verified-recompute`,
+`pr-triage-bot`, `repo-health`, `ftue-cold-install`, `integrations` (schedule leg), a block on
+`coverage-nightly`, and `scripts/ci/test-workflow-concurrency-groups.sh` (fast-checks and
+`chump preflight`) so a per-run key on any `workflow_run`/`schedule` workflow fails CI. Depth:
+structural only; it checks the key is stable, not that it is the right one.
+
 **The honest metric for the whole program.** One gap filed, dispatched, built, merged
 and flipped to shipped by the fleet with zero admin merges and zero human terminal.
 Until that happens once, the factory is not running. R1 plus R3 is the gate to it.

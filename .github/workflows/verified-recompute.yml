@@ -16,9 +16,18 @@ permissions:
   actions: write
   contents: read
 
+# ZERO-WASTE-135: stable key per upstream event type + branch, NOT per upstream
+# head_sha. A per-sha key never dedupes: every Audit/integrations completion on a
+# fresh sha opened its own group, so a hosted-runner stall queued 14 of these on
+# main (2026-10-17 14:25Z). Keying on event+branch lets a newer completion
+# supersede an older queued/running one for the same branch. Event type is in
+# the key so a `push` completion (the job below skips it) can never cancel a
+# real pull_request/merge_group recompute on the same branch. Safe to cancel:
+# the job only polls and POSTs one idempotent job-rerun; a cancelled half-run
+# leaves no state and the superseding run re-derives the verdict.
 concurrency:
-  group: verified-recompute-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: false
+  group: verified-recompute-${{ github.event.workflow_run.event }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
 
 jobs:
   rerun-verified:
