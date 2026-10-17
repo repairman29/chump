@@ -1008,11 +1008,12 @@ build_binary_from_repo() {
 }
 
 # ---------- 4b. SEED (INFRA-3633: first-boot canonical-store bootstrap) ----------
-# One-shot YAML -> DB sync so a freshly-cloned box boots with the real
-# backlog (docs/gaps/*.yaml) instead of an empty state.db. Reuses
-# `chump gap sync --pull`, which already respects the INFRA-3606
-# terminal-status guard (never reverts a done/superseded/etc row back to
-# open), so this is safe to re-run on every install.
+# One-shot seed so a freshly-cloned box boots with the real backlog
+# (docs/gaps/*.yaml, the exported mirror) instead of an empty state.db.
+# INFRA-8193: `chump gap sync --pull` (YAML overwrites DB) is retired; the
+# seed is the insert-only `chump gap import`, which never touches a row that
+# already exists, so it is safe to re-run on every install. Similarity
+# blocking is off for this bulk seed (CHUMP_GAP_IMPORT_NO_SIMILARITY=1).
 ensure_seed() {
   local gaps_dir="$NODE_DIR/repo/docs/gaps"
   # Only the provenance-verified $BIN the BINARY phase installed — never a
@@ -1028,21 +1029,21 @@ ensure_seed() {
     return 0
   fi
   if [ "$DRY" = 1 ]; then
-    echo "  DRY: '$bin' gap sync --pull --state-db '$STATE_DB' --gaps-dir '$gaps_dir' --json"
+    echo "  DRY: CHUMP_STATE_DB='$STATE_DB' CHUMP_GAP_IMPORT_NO_SIMILARITY=1 '$bin' gap import --yaml '$gaps_dir'"
     return 0
   fi
   local out
-  if out="$(run_timeout "${CHUMP_SEED_TIMEOUT_S:-60}" "$bin" gap sync --pull --state-db "$STATE_DB" --gaps-dir "$gaps_dir" --json 2>&1)"; then
-    # INFRA-7308: concise success message (count, not the raw JSON blob) —
-    # inserted+updated is "gaps loaded" from the docs/gaps YAML mirror this cycle.
+  if out="$(run_timeout "${CHUMP_SEED_TIMEOUT_S:-60}" env CHUMP_STATE_DB="$STATE_DB" CHUMP_GAP_IMPORT_NO_SIMILARITY=1 "$bin" gap import --yaml "$gaps_dir" 2>&1)"; then
+    # INFRA-7308: concise success message (count, not the raw output) —
+    # "N inserted" is the gaps newly loaded from the docs/gaps mirror.
     local loaded
-    loaded="$(printf '%s' "$out" | jq -r '(.inserted // 0) + (.updated // 0)' 2>/dev/null || echo "?")"
-    ok "seed: canonical store synced from docs/gaps ($loaded gap(s) loaded)"
+    loaded="$(printf '%s' "$out" | sed -nE 's/.*import complete: ([0-9]+) inserted.*/\1/p' | tail -1)"
+    ok "seed: canonical store seeded from docs/gaps (${loaded:-?} gap(s) inserted)"
   else
     # AC2: substrate-unreachable (missing state.db dir, locked db, etc.) is a
     # clear warning, not a hard install failure — the node is still usable
     # without a seeded backlog (organs/CREDS/BINARY phases already ran).
-    no "seed: gap sync --pull FAILED — substrate unreachable, continuing without seed"
+    no "seed: gap import FAILED — substrate unreachable, continuing without seed"
     info SEED "$out"
   fi
 }
@@ -1731,7 +1732,7 @@ self_test() {
   else no "binary missing: $BIN"; fail=1; fi
   # INFRA-3633: post-seed sanity — canonical store should have picked up the
   # real backlog from docs/gaps/*.yaml, not sit empty. Compare PICKABLE
-  # (non-terminal) counts on both sides: sync_pull's insert path (a brand
+  # (non-terminal) counts on both sides: the insert-only import (a brand
   # new DB row has nothing to guard) faithfully copies every YAML's status,
   # terminal or not, so a fresh box's total row count equals yaml_total —
   # but the number of rows a picker would ever see (status not in the

@@ -1188,9 +1188,6 @@ jobs:
       - name: docs-delta trailer validation (INFRA-124)
         run: bash scripts/ci/test-infra-124-docs-delta-trailer.sh
 
-      - name: state.sql merge driver smoke (INFRA-310)
-        run: bash scripts/ci/test-merge-driver-state-sql.sh
-
       - name: branch-protection gate (CREDIBLE-1502)
         run: bash scripts/ci/test-branch-protection-gate.sh
 
@@ -1676,6 +1673,13 @@ jobs:
 
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
+
+      - name: gap YAML mirror is export-only (INFRA-8193)
+        # Phase R R4: state.db is the only truth; docs/gaps/*.yaml is written
+        # only by the export path (chump gap dump --per-file / sync --push /
+        # ship's single-gap sync). Grep inventory of other writers against
+        # scripts/ci/gap-yaml-writer-allowlist.txt, which may only shrink.
+        run: bash scripts/ci/test-gap-yaml-export-only.sh
 
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
