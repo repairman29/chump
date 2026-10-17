@@ -1387,6 +1387,9 @@ jobs:
       - name: gap-divergence guard (INFRA-783)
         run: bash scripts/ci/test-gap-divergence-guard.sh
 
+      - name: pre-commit gap-guard perf (INFRA-8211)
+        run: bash scripts/ci/test-pre-commit-gap-guard-perf.sh
+
       - name: flake-autorerun harness fixture (INFRA-764)
         run: bash scripts/ci/test-flake-autorerun.sh
 

@@ -2313,6 +2313,14 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-git-identity-guard.sh"],
             GateKind::Scripts,
         ));
+        // INFRA-8211: proves the pre-commit gap guards batch their reads
+        // (one `git cat-file --batch`, not one `git show` per gap file) and
+        // stay under a 10s budget on a one-line gap edit with 4,000 gaps.
+        steps.push(step(
+            "pre-commit-gap-guard-perf",
+            &["bash", "scripts/ci/test-pre-commit-gap-guard-perf.sh"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "hardcoded-date-guard",
             &["bash", "scripts/ci/test-hardcoded-date-guard.sh"],
