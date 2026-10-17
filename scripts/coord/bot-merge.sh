@@ -3048,30 +3048,21 @@ fi
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)"
 
-# INFRA-1063: per-worktree CARGO_TARGET_DIR to eliminate cargo build-dir lock
-# contention when multiple bot-merge runs execute in parallel across
-# /tmp/chump-*/ worktrees.  Without this, all worktrees resolve to the same
-# shared target/ (either $CARGO_HOME/registry or the root workspace target/),
-# causing "Blocking waiting for file lock on build directory" timeouts (observed:
-# two parallel clippy runs each waited 240 s in 2026-05-13).
-#
-# Strategy: option (a) — per-worktree target dir.
-#   - If CARGO_TARGET_DIR is already set externally (e.g. CI), respect it.
-#   - Otherwise, pin it to <worktree>/target/ so each gap gets its own build
-#     cache.  The dir is under /tmp/ and cleaned up when the worktree is reaped.
-#   - When the wait exceeds 60 s, cargo emits "Blocking waiting for file lock"
-#     to stderr; we capture that and emit kind=cargo_lock_wait to ambient.jsonl.
-if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
-    # INFRA-1374: use a hidden .cargo-build-target dir so the per-worktree
-    # isolation doesn't collide with the workspace `target/` name that cargo
-    # also uses by default (and which .cargo/config.toml may override globally
-    # to the main repo path). Using a distinct name ensures each worktree at
-    # /tmp/chump-* gets its own, unambiguous build cache regardless of any
-    # global config.toml target-dir override from install-sccache.sh (INFRA-481).
-    export CARGO_TARGET_DIR="${REPO_ROOT}/.cargo-build-target"
-    info "INFRA-1374: CARGO_TARGET_DIR pinned to ${CARGO_TARGET_DIR} (per-worktree mutex isolation)"
-else
-    info "INFRA-1063: CARGO_TARGET_DIR already set to ${CARGO_TARGET_DIR} (respecting caller)"
+# INFRA-1063: cargo build-dir lock contention ("Blocking waiting for file lock on
+# build directory") is detected by the wrapper below, which emits
+# kind=cargo_lock_wait to ambient.jsonl when a wait exceeds 60 s.
+# ZERO-WASTE-134: the per-worktree .cargo-build-target default (INFRA-1374) is gone:
+# it grew a private 2.4-3 GB build dir in every worktree. Resolve via the one
+# shared resolver instead ($CARGO_TARGET_DIR > $CHUMP_CARGO_TARGET >
+# ~/.cargo/chump-shared-target). Lock contention is still detected + reported by
+# the cargo_lock_wait wrapper below.
+_BM_RESOLVER="${REPO_ROOT}/scripts/ci/lib/resolve-cargo-target-dir.sh"
+if [[ -f "$_BM_RESOLVER" ]]; then
+    # shellcheck source=../ci/lib/resolve-cargo-target-dir.sh
+    # shellcheck disable=SC1091
+    source "$_BM_RESOLVER"
+    chump_export_cargo_target_dir
+    info "ZERO-WASTE-134: CARGO_TARGET_DIR=${CARGO_TARGET_DIR} (shared resolver)"
 fi
 
 # INFRA-1063 AC #5: wrapper for cargo invocations that detects build-dir lock
