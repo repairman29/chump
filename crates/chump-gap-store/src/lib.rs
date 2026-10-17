@@ -1633,6 +1633,18 @@ impl GapStore {
         // via this path on 2026-05-03 (status=done, closed_pr absent).
         // Bypass: CHUMP_BYPASS_CLOSED_PR_GUARD=1 — for the legitimate
         // import / migration cases where closed_pr is genuinely unknown.
+        //
+        // CREDIBLE-1496 (reconciled with CREDIBLE-1508): the rule is "no
+        // status=done without a receipt", NOT "no status=done via set_fields".
+        // set_fields delegates the done flip to the single receipt-gated
+        // writer (finalize_status_done) below, so a done write here is legal
+        // only when it can carry one of the 1508 receipt variants:
+        //   * a LandingReceipt keyed on a numeric closed_pr (supplied in this
+        //     call or already on the row), or
+        //   * an explicit ImportedReceipt("gap_set_bypass") when the operator
+        //     sets the INFRA-402 bypass env var for a genuine migration.
+        // Anything else (no PR, no bypass) has nothing to key a receipt on
+        // and is refused here, before any field is written.
         if let Some(s) = fields.status.as_deref() {
             if s == "done" && std::env::var("CHUMP_BYPASS_CLOSED_PR_GUARD").as_deref() != Ok("1") {
                 // closed_pr must either be in this update OR already on the row.
@@ -1647,7 +1659,9 @@ impl GapStore {
                         .flatten();
                     if existing_pr.unwrap_or(0) == 0 {
                         bail!(
-                            "INFRA-402: refusing to flip {gap_id} to status=done without a numeric closed_pr. \
+                            "INFRA-402/CREDIBLE-1496: refusing to flip {gap_id} to status=done without a receipt: \
+                             no numeric closed_pr (in this call or on the row) to key a LandingReceipt on. \
+                             Close via `chump gap ship` (a bypass close stamps an ImportedReceipt). \
                              Pass --closed-pr <N>, or set CHUMP_BYPASS_CLOSED_PR_GUARD=1 for genuine migration cases."
                         );
                     }
@@ -1910,12 +1924,31 @@ impl GapStore {
         // this path can no longer produce a done row with no receipt. LeaseCleanup
         // ::All because `chump gap set` carries no claiming-session context.
         if closing_done {
-            let receipt = chump_ship::LandingReceipt::new(gap_id.to_string(), effective_closed_pr);
-            receipt
-                .validate()
-                .map_err(|e| anyhow::anyhow!("CREDIBLE-1508: invalid landing receipt: {e}"))?;
-            let receipt_json = serde_json::to_string(&receipt)
-                .context("CREDIBLE-1508: failed to serialize landing receipt")?;
+            // CREDIBLE-1496: pick the receipt variant that matches what backs
+            // this close. A real PR -> LandingReceipt. No PR (only reachable
+            // through the audited INFRA-402 bypass escape hatch,
+            // the guard at the top refuses it otherwise) -> an explicit
+            // ImportedReceipt("gap_set_bypass"), never a PR-less LandingReceipt
+            // that would read like a landing with the PR field merely missing.
+            let receipt_json = match effective_closed_pr.filter(|pr| *pr > 0) {
+                Some(pr) => {
+                    let receipt = chump_ship::LandingReceipt::new(gap_id.to_string(), Some(pr));
+                    receipt.validate().map_err(|e| {
+                        anyhow::anyhow!("CREDIBLE-1508: invalid landing receipt: {e}")
+                    })?;
+                    serde_json::to_string(&receipt)
+                        .context("CREDIBLE-1508: failed to serialize landing receipt")?
+                }
+                None => {
+                    let receipt =
+                        chump_ship::ImportedReceipt::new(gap_id.to_string(), "gap_set_bypass");
+                    receipt.validate().map_err(|e| {
+                        anyhow::anyhow!("CREDIBLE-1496: invalid imported receipt: {e}")
+                    })?;
+                    serde_json::to_string(&receipt)
+                        .context("CREDIBLE-1496: failed to serialize imported receipt")?
+                }
+            };
             let transitioned = self.finalize_status_done(
                 gap_id,
                 effective_closed_pr,
@@ -9581,6 +9614,13 @@ mod tests {
             err.to_string().contains("INFRA-402"),
             "error must reference INFRA-402, got: {err}"
         );
+        // CREDIBLE-1496: the refusal names the rule it enforces — no done
+        // without a receipt — and the field the receipt would key on.
+        let msg = err.to_string();
+        assert!(
+            msg.contains("CREDIBLE-1496") && msg.contains("receipt") && msg.contains("closed_pr"),
+            "error must reference CREDIBLE-1496 / receipt / closed_pr, got: {err}"
+        );
 
         // DB row should still be 'open' — write was rejected.
         let status: String = store
@@ -9588,6 +9628,50 @@ mod tests {
             .query_row("SELECT status FROM gaps WHERE id=?", [&id], |r| r.get(0))
             .unwrap();
         assert_eq!(status, "open", "DB must not have been mutated");
+    }
+
+    /// CREDIBLE-1496: a refused done write leaves no audit trail claiming a
+    /// done transition — no receipt on the row, no gap_status_done_written.
+    #[test]
+    #[serial_test::serial(closed_pr_guard_env)]
+    fn set_fields_done_without_receipt_writes_no_receipt_or_event() {
+        let (store, dir) = test_store();
+        let id = store.reserve("INFRA", "no receipt", "P1", "s").unwrap();
+        assert!(store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    notes: Some("piggy-backed field must not land either".into()),
+                    ..Default::default()
+                },
+            )
+            .is_err());
+        let (receipt, notes): (Option<String>, String) = store
+            .conn
+            .query_row(
+                "SELECT landing_receipt_json, notes FROM gaps WHERE id=?1",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(
+            receipt.unwrap_or_default().is_empty(),
+            "refused done must not stamp a receipt"
+        );
+        assert!(
+            !notes.contains("piggy-backed"),
+            "refusal must happen before any field is written"
+        );
+        let amb = dir.path().join(".chump-locks").join("ambient.jsonl");
+        let stream = std::fs::read_to_string(&amb).unwrap_or_default();
+        assert!(
+            !stream.lines().any(|l| {
+                l.contains("\"kind\":\"gap_status_done_written\"")
+                    && l.contains(&format!("\"gap_id\":\"{id}\""))
+            }),
+            "refused done must not emit gap_status_done_written"
+        );
     }
 
     #[test]
@@ -9617,6 +9701,8 @@ mod tests {
         assert_eq!(closed_pr, Some(1234));
     }
 
+    /// CREDIBLE-1496 allowed path: set_fields WITH a receipt (closed_pr ->
+    /// LandingReceipt) is the sanctioned non-ship done write.
     /// CREDIBLE-1508: the single done-writer invariant. A `gap set --status
     /// done` (the set_fields path) must now (a) stamp a validated receipt onto
     /// landing_receipt_json and (b) emit exactly one gap_status_done_written
@@ -9732,7 +9818,7 @@ mod tests {
         unsafe {
             std::env::set_var("CHUMP_BYPASS_CLOSED_PR_GUARD", "1");
         }
-        let (store, _dir) = test_store();
+        let (store, dir) = test_store();
         let id = store.reserve("INFRA", "bypass test", "P1", "s").unwrap();
         let result = store.set_fields(
             &id,
@@ -9745,6 +9831,39 @@ mod tests {
             std::env::remove_var("CHUMP_BYPASS_CLOSED_PR_GUARD");
         }
         result.expect("bypass env should allow status=done without closed_pr");
+
+        // CREDIBLE-1496: the bypass close still carries a receipt — an
+        // explicit ImportedReceipt naming the bypass, not a PR-less
+        // LandingReceipt — and still emits gap_status_done_written.
+        let receipt_json: String = store
+            .conn
+            .query_row(
+                "SELECT landing_receipt_json FROM gaps WHERE id=?1",
+                [&id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&receipt_json).unwrap();
+        assert_eq!(
+            v.get("source").and_then(|x| x.as_str()),
+            Some("gap_set_bypass"),
+            "bypass close must stamp ImportedReceipt(gap_set_bypass), got: {receipt_json}"
+        );
+        assert!(
+            v.get("closed_pr").is_none(),
+            "bypass close must not masquerade as a LandingReceipt: {receipt_json}"
+        );
+        let amb = dir.path().join(".chump-locks").join("ambient.jsonl");
+        let stream = std::fs::read_to_string(&amb).unwrap_or_default();
+        assert_eq!(
+            stream
+                .lines()
+                .filter(|l| l.contains("\"kind\":\"gap_status_done_written\"")
+                    && l.contains(&format!("\"gap_id\":\"{id}\"")))
+                .count(),
+            1,
+            "bypass close must emit exactly one gap_status_done_written"
+        );
     }
 
     // ── INFRA-456: recycled-ID + hijack guards at the DB write layer ──────
