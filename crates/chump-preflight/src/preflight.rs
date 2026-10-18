@@ -173,6 +173,11 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
 // `cli-observability-misc` gate.
 const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
     ("acp-real-clients", "scripts/ci/test-acp-real-clients.sh"),
+    // CREDIBLE-1525: admin_merges_7d counter fixture — kpi report + floor_temp
+    // + admin_merge_executed agree over a synthetic github_cache.db. Pure local
+    // (chump binary + sqlite3 + python3, no network). Mirrors the audit.yml
+    // audit-shard step of the same name.
+    ("admin-merges-7d", "scripts/ci/test-admin-merges-7d.sh"),
     // INFRA-8219: `chump admit` node-wide admission ceiling smoke — proves the
     // free/deferred exit codes (0 / 75) + kind=admission_deferred emit. Fast
     // (~2s), pure local (chump binary + sentinel sleeps, no network).
@@ -2839,6 +2844,15 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-workflow-concurrency-groups.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-1522 (PHASE-R R3 / CREDIBLE-1492 AC1): a new ci.yml job with
+        // job-level continue-on-error:true posts an always-green PR check that
+        // carries no information. Mirror the ci.yml fast-checks gate so the drift
+        // fails locally in <1s, not after a push.
+        steps.push(step(
+            "no-coe-pr-reporting",
+            &["bash", "scripts/ci/test-no-coe-pr-reporting.sh"],
+            GateKind::Scripts,
+        ));
         // RESILIENT-1606/1607 + RESILIENT-1611: wired by the 2026-10-17 Phase R train.
         steps.push(step(
             "pr-cut-honored",
@@ -3231,6 +3245,28 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "orphan-branch-sweeper",
             &["bash", "scripts/ci/test-orphan-branch-sweeper.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-8575: `chumpd worker` owns the worker.sh loop control
+        // (cadence, heartbeat, fleet-paused sentinel, per-tick budget). Stub
+        // tick body, no real fleet, no network; builds chumpd when absent and
+        // fails (never SKIPs) on a build error. Mirrors the ci.yml fast-checks
+        // step of the same gap.
+        steps.push(step(
+            "chumpd-worker-loop",
+            &["bash", "scripts/ci/test-chumpd-worker-loop.sh"],
+            GateKind::Scripts,
+        ));
+
+        // CREDIBLE-1524 (PHASE-R R3): admin-merge consensus gate. Grep gate
+        // (every `gh pr merge --admin` call site is guarded) + stubbed-gh
+        // refusal fixtures per call-site shape. Hermetic (tmpdir ambient +
+        // recorder stubs, no network). Mirrors the ci.yml step of the same
+        // name.
+        steps.push(step(
+            "admin-merge-consensus-gate",
+            &["bash", "scripts/ci/test-admin-merge-consensus-gate.sh"],
             GateKind::Scripts,
         ));
 
