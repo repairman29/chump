@@ -31,7 +31,6 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-CHUMP="${CHUMP_BIN:-chump}"
 
 echo "=== INFRA-8573 gap decompose claude -p backend test ==="
 echo
@@ -88,11 +87,13 @@ fi
 
 # ── Runtime checks with stub providers ───────────────────────────────────────
 
-if ! command -v "$CHUMP" &>/dev/null; then
-    echo
-    echo "  SKIP: chump binary not found at '${CHUMP}' — skipping runtime tests"
-    echo "        Set CHUMP_BIN=<path> to enable"
-else
+# Resolve a built chump binary (honors CHUMP_BIN, then the cargo target dir).
+# No binary is a hard failure, never a SKIP-pass (CREDIBLE-1528 class): a
+# runtime gate that silently skips proves nothing.
+# shellcheck source=scripts/ci/lib/discover-chump-bin.sh
+source "$REPO_ROOT/scripts/ci/lib/discover-chump-bin.sh"
+CHUMP="$CHUMP_BIN"
+{
     WORK="$(mktemp -d)"
     trap 'rm -rf "$WORK"' EXIT
     TMPDB="$WORK/state.db"
@@ -182,7 +183,7 @@ EOF
             fail "failure message did not list providers in order; output: $FAIL_OUT"
         fi
     fi
-fi
+}
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 

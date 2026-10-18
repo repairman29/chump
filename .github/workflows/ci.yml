@@ -1251,9 +1251,6 @@ jobs:
       - name: decompose re-slice guard — parent sliced at most once (RESILIENT-1437)
         run: bash scripts/ci/test-gap-decompose-reslice-guard.sh
 
-      - name: decompose claude -p backend fallthrough (INFRA-8573)
-        run: bash scripts/ci/test-gap-decompose-claude-backend.sh
-
       - name: chump subcommand --help regression gate (INFRA-1246)
         # Prevents "claim --help exits non-zero" / "ship --help falls through to LLM" regressions.
         # See INFRA-1238 for the original fix; this is the CI guard so it never regresses.
@@ -1736,6 +1733,12 @@ jobs:
         run: |
           export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-id-lease-uniqueness.sh
+
+      - name: decompose claude -p backend fallthrough (INFRA-8573)
+        # Runs after "Build chump (debug, single bin)" so CHUMP_BIN exists; the
+        # test fails (never SKIPs) when no binary resolves. Mirrored in
+        # crates/chump-preflight/src/preflight.rs.
+        run: CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-decompose-claude-backend.sh
 
       - name: bot-merge auto-close handshake (INFRA-154)
         run: |
