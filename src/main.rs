@@ -13342,6 +13342,55 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // CREDIBLE-1551 (Phase R R2, AC2): reverse of link-pr — print the
+            // gap IDs that a typed gap_prs row links to a PR number, newest
+            // first, one per line. This is the FK-backed replacement for parsing
+            // gap IDs out of a merged PR's title/body: the two legacy title-regex
+            // closers (stale-pr-reaper's INFRA-674 ghost block and
+            // chump-pr-triage's `--apply ship-gap`) now resolve the gap to close
+            // from here instead of a title regex, so the no-title-closer
+            // allowlist empties to true zero.
+            "gaps-for-pr" => {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap gaps-for-pr <PR-NUMBER>\n\n\
+                         Print the gap IDs linked to PR-NUMBER in the gap_prs table\n\
+                         (newest first, one per line). The typed FK replacement for\n\
+                         parsing gap IDs out of a PR title/body when closing a gap."
+                    );
+                    return Ok(());
+                }
+                let pr_number: i64 = args
+                    .get(3)
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .filter(|n| *n > 0)
+                    .unwrap_or_else(|| {
+                        eprintln!(
+                            "chump gap gaps-for-pr: PR-NUMBER must be a positive integer (got {:?})",
+                            args.get(3)
+                        );
+                        std::process::exit(2);
+                    });
+                match store.gaps_for_pr(pr_number) {
+                    Ok(gaps) => {
+                        if json_out {
+                            println!("{}", serde_json::to_string(&gaps)?);
+                        } else {
+                            for g in gaps {
+                                println!("{g}");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap gaps-for-pr: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             // EFFECTIVE-038: A2A L2 task-suspension. `suspend` moves a gap
             // into status=waiting_operator carrying a structured question
             // payload — used when an agent hits auth_required (missing
