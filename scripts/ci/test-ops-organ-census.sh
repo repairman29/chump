@@ -76,8 +76,11 @@ added_with_bypass() {
     local organ="$1"
     git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
     local rel="${organ#"$ROOT"/}"
-    git -C "$ROOT" log --diff-filter=A --format='%B' -- "$rel" 2>/dev/null \
-        | grep -qE '^Rust-First-Bypass:' && return 0
+    # Capture then test — never end a pipefail pipeline in `grep -q` (an early
+    # grep exit can SIGPIPE `git log` and mask a real match).
+    local msgs
+    msgs="$(git -C "$ROOT" log --diff-filter=A --format='%B' -- "$rel" 2>/dev/null)"
+    grep -qE '^Rust-First-Bypass:' <<<"$msgs" && return 0
     return 1
 }
 
@@ -85,7 +88,7 @@ added_with_bypass() {
 in_tier_d() {
     local base="$1"
     [[ -z "$TIERD_BLOCK" ]] && return 1
-    printf '%s\n' "$TIERD_BLOCK" | grep -qF "$base" && return 0
+    grep -qF "$base" <<<"$TIERD_BLOCK" && return 0
     return 1
 }
 
