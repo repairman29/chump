@@ -8914,6 +8914,49 @@ mod tests {
         assert!(store.get_pr_link("INFRA-8192", 1).unwrap().is_none());
     }
 
+    // ── CREDIBLE-1551 (Phase R R2, AC2): reverse lookup + merged transition ──
+
+    #[test]
+    fn gaps_for_pr_returns_every_gap_linked_to_a_pr() {
+        let (store, _dir) = test_store();
+        store.link_pr("CREDIBLE-1551", 5600, "aaa").unwrap();
+        store.link_pr("CREDIBLE-1552", 5600, "bbb").unwrap();
+        store.link_pr("INFRA-9999", 6001, "ccc").unwrap();
+
+        let mut gaps = store.gaps_for_pr(5600).unwrap();
+        gaps.sort();
+        assert_eq!(gaps, vec!["CREDIBLE-1551", "CREDIBLE-1552"]);
+        assert!(
+            store.gaps_for_pr(424242).unwrap().is_empty(),
+            "a PR with no link resolves to no gap (closers close nothing)"
+        );
+    }
+
+    #[test]
+    fn mark_pr_merged_flips_state_and_is_a_noop_when_absent() {
+        let (store, _dir) = test_store();
+        store.link_pr("CREDIBLE-1551", 5600, "aaa").unwrap();
+        assert_eq!(
+            store
+                .get_pr_link("CREDIBLE-1551", 5600)
+                .unwrap()
+                .unwrap()
+                .state,
+            "open"
+        );
+        store.mark_pr_merged("CREDIBLE-1551", 5600).unwrap();
+        assert_eq!(
+            store
+                .get_pr_link("CREDIBLE-1551", 5600)
+                .unwrap()
+                .unwrap()
+                .state,
+            "merged"
+        );
+        // Best-effort: a missing row is a no-op, never an error.
+        store.mark_pr_merged("CREDIBLE-1551", 999999).unwrap();
+    }
+
     // ── EFFECTIVE-679: idea-drop intake tests ──────────────────────────
 
     #[test]

@@ -13129,6 +13129,13 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                 }
+                // CREDIBLE-1551: return so the handled subcommand does not fall
+                // through to main's "unknown subcommand 'gap'" catch-all (which
+                // would exit 2). Pre-existing latent bug — link-pr was only ever
+                // called best-effort (`>/dev/null 2>&1`) by bot-merge, so the
+                // spurious exit 2 was never observed; the manual link-pr paths
+                // added for AC2 call it under `set -e`, so the return matters.
+                return Ok(());
             }
             // CREDIBLE-1551 (Phase R R2, AC2): reverse of link-pr — print the
             // gap IDs that a typed gap_prs row links to a PR number, newest
@@ -13178,6 +13185,10 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                 }
+                // CREDIBLE-1551: return so this subcommand does not fall through
+                // to main's "unknown subcommand 'gap'" catch-all (exit 2) — same
+                // latent bug fixed for link-pr just above.
+                return Ok(());
             }
             // EFFECTIVE-038: A2A L2 task-suspension. `suspend` moves a gap
             // into status=waiting_operator carrying a structured question
