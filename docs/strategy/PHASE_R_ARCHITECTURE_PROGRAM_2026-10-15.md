@@ -124,6 +124,7 @@ it, and the INFRA-308 test was rewritten to assert the refusal), #5573 INFRA-820
 - **Delegated review:** escalated PRs are approved by an independent read-only Opus reviewer (operator, 05:20Z); #5587 was the first.
 - **False closes:** CREDIBLE-1492 (reissued as CREDIBLE-1549) and CREDIBLE-1520 (AC2-4 continue under CREDIBLE-1550) were closed by title match. R1 held, R2 failed (receipts classes 42-43).
 - **Rollup at 16:00Z:** the store reads 85 of 133; the **honest figure is 83 of 133 (62%)**, two fewer for the false closes. The total grew from 76 because findings and the umbrellas' missing-AC slices were filed, including observation slices with start conditions and probes (CREDIBLE-1546..1548, INFRA-8590/8591).
+- **18:15Z:** all five red chain-v11 PRs landed one at a time under strict=true, each repaired by a fleet lane: #5589 CREDIBLE-1522, #5590 CREDIBLE-1524, #5593 CREDIBLE-1525, #5594 CREDIBLE-1523, #5596 INFRA-8575. The reconcile organ shipped CREDIBLE-1522, CREDIBLE-1524, CREDIBLE-1525 and INFRA-8575 itself, with no hand ship, once the node checkout was clean of regenerated lock files (RESILIENT-1637: 212 ship_autofetch_blocked_dirty events across 39 gaps since 2026-10-17T20:13Z). Rollup: store 89 of 136, **honest 87 of 136 (64%)**.
 
 **The honest metric for the whole program.** One gap filed, dispatched, built, merged
 and flipped to shipped by the fleet with zero admin merges and zero human terminal.
