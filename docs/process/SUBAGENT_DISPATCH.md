@@ -264,10 +264,16 @@ CHUMP_GAP_CHECK=0 git push -u origin <your-branch> --force-with-lease
 # 2. Open the PR by hand
 gh pr create --base main --title "<title>" --body "<body>"
 
-# 3. Arm auto-merge
+# 3. Write the typed gap→PR link (CREDIBLE-1550 AC1) right after the PR opens,
+#    exactly as bot-merge.sh does. `chump gap ship` (step 5) REFUSES to close a
+#    PR-backed gap without this gap_prs row (CREDIBLE-1551 AC2), so the manual
+#    path must write it too or the close is rejected. Idempotent.
+chump gap link-pr <GAP-ID> <PR-number> --sha "$(git rev-parse HEAD)"
+
+# 4. Arm auto-merge
 gh pr merge <PR-number> --auto --squash
 
-# 4. Close the gap in the canonical store (if your PR closes it)
+# 5. Close the gap in the canonical store (if your PR closes it)
 chump gap ship <GAP-ID> --closed-pr <PR-number> --update-yaml
 ```
 
@@ -516,6 +522,10 @@ scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge
 If no PR exists yet for the branch:
 ```bash
 gh pr create --head chump/<gap-id>-claim --base main --title "<title>"
+# Write the typed gap→PR link so the reconciler / `chump gap ship` can close
+# the gap from the gap_prs FK (CREDIBLE-1550 AC1; the ship-time gate is
+# CREDIBLE-1551 AC2). Without it the close is refused.
+chump gap link-pr <GAP-ID> <N> --sha "$(git rev-parse HEAD)"
 gh pr merge <N> --auto --squash
 ```
 
