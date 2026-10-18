@@ -32,9 +32,16 @@ ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 
 # Resolve the binary the way the fast-checks steps do (precedent:
-# test-resilient-1614-node-pause-invariant.sh) and build it when absent.
-CHUMP_BIN="${CHUMP_BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
-if ! [ -x "$CHUMP_BIN" ]; then
+# test-resilient-1614-node-pause-invariant.sh). An explicit CHUMP_BIN is honored
+# as-is; otherwise we target the cargo debug binary AND always (re)build it so we
+# exercise THIS branch's chump — never a stale target/debug/chump left over from
+# main. (The cuphead ship-wall: bot-merge's local citest ran a stale binary that
+# predated `farmer status --json`'s `paused`/`green`/`oauth_fresh` fields, and the
+# fixture died with a Python KeyError instead of a clear FAIL. `cargo build` is a
+# cheap no-op when the binary is already up to date with the branch sources.)
+CHUMP_BIN_DEFAULT="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
+CHUMP_BIN="${CHUMP_BIN:-$CHUMP_BIN_DEFAULT}"
+if [ "$CHUMP_BIN" = "$CHUMP_BIN_DEFAULT" ]; then
     ( cd "$REPO_ROOT" && PATH="$HOME/.cargo/bin:$PATH" cargo build --quiet --bin chump ) \
         || fail "cargo build --bin chump failed"
 fi
@@ -81,7 +88,17 @@ run_chump() {
 STATUS_JSON="$(run_chump "$CHUMP_BIN" farmer status --json 2>/dev/null)" || true
 python3 - "$STATUS_JSON" <<'PY' || fail "farmer status did not report PAUSED + oauth_fresh"
 import json,sys
-s=json.loads(sys.argv[1])
+raw=sys.argv[1]
+try:
+    s=json.loads(raw)
+except Exception as e:
+    # Loud failure instead of a bare traceback: an empty/garbage payload means
+    # `farmer status --json` errored or the binary is stale (see the build note).
+    sys.exit(f"farmer status --json did not emit valid JSON ({e!r}); raw payload: {raw!r}")
+for k in ("paused","green","oauth_fresh"):
+    if k not in s:
+        sys.exit(f"farmer status --json is missing key {k!r} — stale chump binary "
+                 f"lacking this field? got: {s}")
 assert s["paused"] is True, f"paused should be True: {s}"
 assert s["green"] is False, f"green should be False (paused is not lights-on): {s}"
 assert s["oauth_fresh"] is True, f"oauth_fresh should be True (valid ~/.claude creds, stale mirror ignored): {s}"
@@ -109,7 +126,7 @@ ok "AC1: dispatch-held gap admitted past the farmer gate (bot-merge reaches push
 
 # ── AC2: the gate is NOT weakened — a NEW claim is still refused ──────────────
 # Same paused farmer, same session, but NO live lease for GAP-NEW-2.
-NEW_OUT="$(run_chump CHUMP_SESSION_ID=sess-A "$CHUMP_BIN" claim GAP-NEW-2 --role worker --skip-doctor --skip-import 2>&1)"; NEW_RC=$?
+NEW_OUT="$(run_chump CHUMP_SESSION_ID=sess-A "$CHUMP_BIN" claim GAP-NEW-2 --role fleet-worker --skip-doctor --skip-import 2>&1)"; NEW_RC=$?
 grep -qi 'no new claims admitted' <<<"$NEW_OUT" \
     || fail "NEW claim should be refused by the farmer gate: $NEW_OUT"
 grep -qi 'PAUSED' <<<"$NEW_OUT" || fail "refusal should name the PAUSED state: $NEW_OUT"
@@ -117,7 +134,7 @@ grep -qi 'PAUSED' <<<"$NEW_OUT" || fail "refusal should name the PAUSED state: $
 ok "AC2: NEW claim still refused under the paused farmer (gate not weakened)"
 
 # A new claim with NO session at all is likewise refused.
-NOSESS_OUT="$(run_chump "$CHUMP_BIN" claim GAP-RE-1 --role worker --skip-doctor --skip-import 2>&1)" || true
+NOSESS_OUT="$(run_chump "$CHUMP_BIN" claim GAP-RE-1 --role fleet-worker --skip-doctor --skip-import 2>&1)" || true
 grep -qi 'no new claims admitted' <<<"$NOSESS_OUT" \
     || fail "claim with no CHUMP_SESSION_ID should be refused: $NOSESS_OUT"
 ok "AC2: claim with no session is refused (no re-entry anchor)"
