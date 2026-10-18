@@ -255,6 +255,18 @@ const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
     ),
     ("pr-cost-telemetry", "scripts/ci/test-pr-cost-telemetry.sh"),
     ("pr-fix-clippy", "scripts/ci/test-pr-fix-clippy.sh"),
+    // RESILIENT-1618: per-entry registry fragments remove the merge-driver
+    // dependency on EVENT_REGISTRY.yaml / env-vars-internal.txt. Both gates are
+    // hermetic + fast (no network); mirror the ci.yml steps for preflight
+    // parity.
+    (
+        "registry-fragments",
+        "scripts/ci/test-registry-fragments.sh",
+    ),
+    (
+        "registry-fragment-no-conflict",
+        "scripts/ci/test-registry-fragment-no-conflict.sh",
+    ),
     (
         "pr-stuck-cluster-observability",
         "scripts/ci/test-pr-stuck-cluster-observability.sh",
@@ -2705,6 +2717,11 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "bot-merge-recovery-pr-create-smoke",
             &["bash", "scripts/ci/test-bot-merge-recovery-pr-create.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "link-pr-at-open-credible-1520",
+            &["bash", "scripts/ci/test-credible-1520-link-pr-at-open.sh"],
             GateKind::Scripts,
         ));
         steps.push(step(
