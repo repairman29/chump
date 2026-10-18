@@ -3234,6 +3234,17 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // INFRA-8575: `chumpd worker` owns the worker.sh loop control
+        // (cadence, heartbeat, fleet-paused sentinel, per-tick budget). Stub
+        // tick body, no real fleet, no network; builds chumpd when absent and
+        // fails (never SKIPs) on a build error. Mirrors the ci.yml fast-checks
+        // step of the same gap.
+        steps.push(step(
+            "chumpd-worker-loop",
+            &["bash", "scripts/ci/test-chumpd-worker-loop.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-5000 (META-070/INFRA-3373 slice): cli_observability_misc
         // gate — mirrors the 41 remaining cli-observability-misc cluster
         // scripts from docs/process/AUDIT_JOB_DECOMPOSITION.md.
