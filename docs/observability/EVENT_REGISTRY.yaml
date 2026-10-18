@@ -5282,16 +5282,28 @@ events:
       adjudication; a wrong auto-close would discard real work.
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, reason, source]
-  # ── EFFECTIVE-1543: merged-PR-title closure (queue-drain backstop) ──────────
+  # ── CREDIBLE-1550: merged-PR-LINK closure (typed gap_prs FK, queue-drain) ───
   - kind: gap_closed_from_merged_pr
     effect_metric: self
-    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-titles (EFFECTIVE-1543)
-    trigger: open gap whose gap-ID leads a MERGED PR title but whose canonical
-      state.db row was never flipped to done (closed_pr NULL) — the async-merge
-      ghost class that --check-closure-drift (needs closed_pr) and
-      --check-already-satisfied (no-op cycle-log signal only) both miss. The
-      picker re-selects these forever; this drains them from GitHub truth.
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-links (CREDIBLE-1550)
+    trigger: open gap that a typed gap_prs row links to a MERGED, non-partial PR
+      but whose canonical state.db row was never flipped to done (closed_pr NULL)
+      — the async-merge ghost class that --check-closure-drift (needs closed_pr)
+      and --check-already-satisfied (no-op cycle-log signal only) both miss.
+      CREDIBLE-1550 (Phase R R2) replaced the former PR-title match with the
+      gap_prs FK as the ONLY closure proof (a title falsely closed CREDIBLE-1492
+      from a docs PR and CREDIBLE-1520 from its AC1-only slice).
     consumers: [fleet-brief, operator-recall, audit-priorities]
+    fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
+  - kind: gap_close_skipped_partial_pr
+    effect_metric: self
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-links (CREDIBLE-1550)
+    trigger: open gap whose newest gap_prs-linked MERGED PR has a body marked as a
+      partial delivery ("AC1 only" / "partial delivery"). The gap is NOT closed —
+      it is flagged so a human/operator can finish the remaining acceptance
+      criteria (AC1(e)); prevents the CREDIBLE-1520 recurrence where an AC1-only
+      slice PR closed the whole gap.
+    consumers: [fleet-brief, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
   # ── INFRA-1040: graphql exhaustion fleet-wide signal ──────────────────────
   - kind: graphql_exhausted

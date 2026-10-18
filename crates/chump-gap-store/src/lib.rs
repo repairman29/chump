@@ -3346,7 +3346,9 @@ impl GapStore {
         }
 
         // CREDIBLE-1495 R1: Construct and validate LandingReceipt before status transition.
-        let receipt = chump_ship::LandingReceipt::new(gap_id.to_string(), closed_pr);
+        // CREDIBLE-1550 AC3: stamp the proof-of-merge SHA onto the receipt.
+        let receipt = chump_ship::LandingReceipt::new(gap_id.to_string(), closed_pr)
+            .with_merge_sha(proof_of_merge_sha(&self.repo_root, gap_id, closed_pr));
         receipt
             .validate()
             .map_err(|e| anyhow::anyhow!("CREDIBLE-1495: invalid landing receipt: {e}"))?;
@@ -5604,6 +5606,65 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
     // Success + a matching commit hash on stdout ⇒ the merge is proven anywhere in
     // main's history. Success + empty ⇒ no commit mentions this gap/PR ⇒ not proven.
     !String::from_utf8_lossy(&o.stdout).trim().is_empty()
+}
+
+/// CREDIBLE-1550 (Phase R R2, AC3): the merge commit SHA that proves this gap
+/// landed, so `ship()` can stamp it onto the [`chump_ship::LandingReceipt`].
+/// Returns `Some(sha)` only when a commit on the merge target (`origin/main`,
+/// falling back to local `main`) carries the gap ID or the PR marker `(#N)`.
+/// Returns `None` in every "no provable SHA" case — no `.git` tree (synthetic
+/// test fixtures), a fresh repo with no commits, git unavailable, or simply no
+/// matching commit. This is a *best-effort receipt enrichment*: the hard
+/// proof-of-merge gate stays in [`verify_proof_of_merge`], which keeps its own
+/// fail-open semantics for those edge cases; a `None` here never blocks a ship.
+pub fn proof_of_merge_sha(
+    repo_root: &Path,
+    gap_id: &str,
+    closed_pr: Option<i64>,
+) -> Option<String> {
+    if !repo_root.join(".git").exists() {
+        return None;
+    }
+    let has_origin_main = std::process::Command::new("git")
+        .args([
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "refs/remotes/origin/main",
+        ])
+        .current_dir(repo_root)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let target_ref = if has_origin_main {
+        "origin/main"
+    } else {
+        "main"
+    };
+    let mut args: Vec<String> = vec![
+        "log".into(),
+        target_ref.into(),
+        "-i".into(),
+        "-F".into(),
+        "-n".into(),
+        "1".into(),
+        "--format=%H".into(),
+    ];
+    push_receipt_greps(&mut args, gap_id, closed_pr);
+    let out = std::process::Command::new("git")
+        .args(&args)
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if sha.is_empty() {
+        None
+    } else {
+        Some(sha)
+    }
 }
 
 /// RESILIENT-1110: redefine "done" = verified running-and-effective on the
@@ -8401,6 +8462,56 @@ mod proof_of_merge_tests {
             "INFRA-NO-MATCH",
             Some(9999)
         ));
+    }
+
+    // CREDIBLE-1550 (Phase R R2, AC3): proof_of_merge_sha returns the matched
+    // merge SHA so ship() can stamp it onto the LandingReceipt.
+    #[test]
+    fn proof_of_merge_sha_returns_matched_commit_hash() {
+        let dir = tempdir().unwrap();
+        let init = hermetic_git(dir.path(), &["init", "--initial-branch=main", "--quiet"]);
+        if !init.status.success() {
+            return; // older git without --initial-branch
+        }
+        hermetic_git(dir.path(), &["config", "user.email", "test@test.local"]);
+        hermetic_git(dir.path(), &["config", "user.name", "test"]);
+        let commit = hermetic_git(
+            dir.path(),
+            &[
+                "commit",
+                "--allow-empty",
+                "-m",
+                "CREDIBLE-9551: proof-of-merge-sha fixture (#7777)",
+            ],
+        );
+        assert!(
+            commit.status.success(),
+            "git commit must succeed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
+        // HEAD sha is the commit we just made; proof_of_merge_sha must return it.
+        let head = hermetic_git(dir.path(), &["rev-parse", "HEAD"]);
+        let head_sha = String::from_utf8_lossy(&head.stdout).trim().to_string();
+        assert_eq!(
+            proof_of_merge_sha(dir.path(), "CREDIBLE-9551", None).as_deref(),
+            Some(head_sha.as_str()),
+            "matched by gap ID → returns the merge commit SHA"
+        );
+        // Matched by the (#PR) marker too.
+        assert_eq!(
+            proof_of_merge_sha(dir.path(), "NO-MATCH-9999", Some(7777)).as_deref(),
+            Some(head_sha.as_str())
+        );
+        // No matching commit → None (the receipt simply carries no SHA).
+        assert_eq!(proof_of_merge_sha(dir.path(), "NO-MATCH-9999", None), None);
+    }
+
+    #[test]
+    fn proof_of_merge_sha_none_without_git_tree() {
+        // Synthetic fixture with no `.git` — None, never a panic; the hard
+        // gate stays fail-open in verify_proof_of_merge.
+        let dir = tempdir().unwrap();
+        assert_eq!(proof_of_merge_sha(dir.path(), "INFRA-9502", Some(1)), None);
     }
 
     #[test]
