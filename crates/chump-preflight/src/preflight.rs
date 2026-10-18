@@ -173,6 +173,11 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
 // `cli-observability-misc` gate.
 const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
     ("acp-real-clients", "scripts/ci/test-acp-real-clients.sh"),
+    // CREDIBLE-1525: admin_merges_7d counter fixture — kpi report + floor_temp
+    // + admin_merge_executed agree over a synthetic github_cache.db. Pure local
+    // (chump binary + sqlite3 + python3, no network). Mirrors the audit.yml
+    // audit-shard step of the same name.
+    ("admin-merges-7d", "scripts/ci/test-admin-merges-7d.sh"),
     // INFRA-8219: `chump admit` node-wide admission ceiling smoke — proves the
     // free/deferred exit codes (0 / 75) + kind=admission_deferred emit. Fast
     // (~2s), pure local (chump binary + sentinel sleeps, no network).
@@ -2837,6 +2842,15 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "workflow-concurrency-groups",
             &["bash", "scripts/ci/test-workflow-concurrency-groups.sh"],
+            GateKind::Scripts,
+        ));
+        // CREDIBLE-1522 (PHASE-R R3 / CREDIBLE-1492 AC1): a new ci.yml job with
+        // job-level continue-on-error:true posts an always-green PR check that
+        // carries no information. Mirror the ci.yml fast-checks gate so the drift
+        // fails locally in <1s, not after a push.
+        steps.push(step(
+            "no-coe-pr-reporting",
+            &["bash", "scripts/ci/test-no-coe-pr-reporting.sh"],
             GateKind::Scripts,
         ));
         // RESILIENT-1606/1607 + RESILIENT-1611: wired by the 2026-10-17 Phase R train.
