@@ -12910,6 +12910,37 @@ events:
       incident).
     consumers: [fleet-brief, audit-log, infra-watcher]
     fields_required: [ts, kind, path, process, raw]
+  - kind: chumpd_worker_loop_started
+    effect_metric: self
+    emitter: crates/chumpd/src/worker_loop.rs (PHASE-R R6, INFRA-8575)
+    trigger: the `chumpd worker` per-worker loop started — the loop control
+      (cadence, heartbeat, fleet-paused sentinel, per-tick budget) that used to
+      live at the top of scripts/dispatch/worker.sh, which is now a shim
+      that execs this
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, agent, cadence_secs, budget_secs, note]
+  - kind: chumpd_worker_paused
+    effect_metric: self
+    emitter: crates/chumpd/src/worker_loop.rs (PHASE-R R6, INFRA-8575)
+    trigger: the .chump/fleet-paused sentinel is present — the loop skips the
+      tick body (no new work) but keeps writing the heartbeat so the
+      supervisor still sees the worker alive; emitted once per pause transition
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, agent, pause_file]
+  - kind: chumpd_worker_tick_budget_killed
+    effect_metric: waste_prevented
+    emitter: crates/chumpd/src/worker_loop.rs (PHASE-R R6, INFRA-8575)
+    trigger: a single tick body ran past the per-tick wall-clock budget and
+      was killed (or shutdown arrived mid-tick)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, agent, budget_secs]
+  - kind: chumpd_worker_loop_stopped
+    effect_metric: self
+    emitter: crates/chumpd/src/worker_loop.rs (PHASE-R R6, INFRA-8575)
+    trigger: the `chumpd worker` loop exited — on SIGTERM/SIGINT (process then
+      exits 128+signum) or after reaching --max-ticks
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, agent, signal, ticks]
   - kind: verify_bypassed
     effect_metric: self
     emitter: src/verify/mod.rs emit_verify_bypassed (CREDIBLE-155)
