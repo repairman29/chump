@@ -87,7 +87,16 @@ EOF
 CWD_PID=$!
 sleep 0.5
 
+# Regression pin: CI fast-checks exports CHUMP_LOCK_DIR=<workspace>/.chump-locks,
+# a store that does NOT hold this fixture's lease. Class D must still find the
+# lease in the scanned repo's own .chump-locks. Point the env store at an empty
+# foreign dir on every runner so the mismatch is always exercised.
+FOREIGN_LOCKS="$TMP/foreign-locks"
+mkdir -p "$FOREIGN_LOCKS"
+
 run_reaper() {
+    CHUMP_LOCK_DIR="$FOREIGN_LOCKS" \
+    CHUMP_STATE_DB="$TMP/foreign-state.db" \
     REAPER_REPO_ROOT="$FAKE_REPO" \
     CHUMP_WORKTREE_BASE="$WT_BASE" \
     CHUMP_AMBIENT_LOG="$AMBIENT" \

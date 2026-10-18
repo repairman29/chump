@@ -153,6 +153,24 @@ _classd_cwd_inside() {
     return 1
 }
 
+# _classd_has_lease <wt> — return 0 iff ANY lease store that could hold this
+# worktree's lease names it live. wt_has_active_lease reads ONE store, chosen
+# by env precedence (CHUMP_LOCK_DIR / CHUMP_STATE_DB beat the repo root). When
+# that env points at a different checkout than the repo whose worktrees are
+# being scanned (REAPER_REPO_ROOT), the scanned repo's own .chump-locks and
+# .chump/state.db were never consulted and a leased worktree read as
+# lease-less (CI fast-checks pins CHUMP_LOCK_DIR to the workspace; a node
+# pins CHUMP_STATE_DB). Check the env-resolved store AND the scanned repo's
+# stores; more stores can only skip more, never reap more.
+_classd_has_lease() {
+    local wt="$1" ttl="${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"
+    local root="${REAPER_REPO_ROOT:-$REPO_ROOT}"
+    wt_has_active_lease "$wt" "$ttl" && return 0
+    CHUMP_LOCK_DIR="${root}/.chump-locks" CHUMP_STATE_DB="${root}/.chump/state.db" \
+        wt_has_active_lease "$wt" "$ttl" && return 0
+    return 1
+}
+
 # _classd_pr_merged_or_closed <branch> — echo "yes" if the branch's PR is
 # merged or closed, "no" if open, "" if unknown/no PR. Cache-first (reads the
 # local github_cache.db directly), chump_gh fallback.
@@ -211,6 +229,12 @@ _classd_count=0
 run_class_d() {
     local wt_base
     wt_base="${CHUMP_WORKTREE_BASE:-${REAPER_REPO_ROOT:-$REPO_ROOT}/.claude/worktrees}"
+    # Fail closed: without the lease checker Class D cannot prove a worktree is
+    # lease-less, so it reaps nothing rather than everything.
+    if ! command -v wt_has_active_lease >/dev/null 2>&1; then
+        echo "[cargo-target-reaper] Class D skipped: wt_has_active_lease unavailable (scripts/lib/worktree-iter.sh not loaded)"
+        return 0
+    fi
     echo "[cargo-target-reaper] Scanning ${wt_base}/* (Class D: merged/closed lease-less dispatch worktrees)…"
     local wt
     local -a _wts=()
@@ -238,8 +262,7 @@ run_class_d() {
         fi
 
         # Safety: never reap a worktree with a live lease.
-        if command -v wt_has_active_lease >/dev/null 2>&1 \
-           && wt_has_active_lease "$wt" "${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"; then
+        if _classd_has_lease "$wt"; then
             echo "  skip (active lease): ${wt}"
             continue
         fi
