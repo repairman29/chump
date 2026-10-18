@@ -116,9 +116,9 @@ fi
 #     preflight entirely, so census / ci-parity / env-var / event-registry /
 #     path-filter / no-new-bypass / raw-gh are caught before push (#5582, #5585).
 guard_0a_block=$(awk '/^# Guard 0a:/,/^# Guard 0: cargo fmt/' "$HOOK")
-if echo "$guard_0a_block" | grep -q 'RESILIENT-1622' \
-    && echo "$guard_0a_block" | grep -q 'chump preflight \$_pf_structural_arg' \
-    && echo "$guard_0a_block" | grep -q 'prepush_preflight_skipped_botmerge'; then
+if grep -q 'RESILIENT-1622' <<<"$guard_0a_block" \
+    && grep -q 'chump preflight \$_pf_structural_arg' <<<"$guard_0a_block" \
+    && grep -q 'prepush_preflight_skipped_botmerge' <<<"$guard_0a_block"; then
     ok "RESILIENT-1622: bot-merge push runs the structural subset (narrowed) + emits an audit event"
 else
     fail "RESILIENT-1622: bot-merge branch should run 'chump preflight --structural' (INFRA-3521 narrowed), not skip entirely"
@@ -130,13 +130,21 @@ fi
 #     blow bot-merge's 300s push budget (the META-156 regression INFRA-3521
 #     fixed). The narrowing must therefore be CAPABILITY-GATED: run --structural
 #     only when `chump preflight --help` advertises it; otherwise fall back to
-#     the old skip. Assert the capability check wraps the structural branch.
-botmerge_narrow_block=$(echo "$guard_0a_block" | awk '/CHUMP_BOT_MERGE_IN_PROGRESS.*== "1"/,/^    fi/')
-if echo "$botmerge_narrow_block" | grep -q 'chump preflight --help' \
-    && echo "$botmerge_narrow_block" | grep -q "grep -q -- '--structural'"; then
+#     the old skip. Assert the capability check wraps the structural branch,
+#     and that it captures --help then tests the string: a `--help | grep -q`
+#     pipeline under pipefail can SIGPIPE the upstream and read as false,
+#     silently skipping the gate (fleet CI class 31).
+botmerge_narrow_block=$(awk '/CHUMP_BOT_MERGE_IN_PROGRESS.*== "1"/,/^    fi/' <<<"$guard_0a_block")
+if grep -q '_pf_help="$(chump preflight --help' <<<"$botmerge_narrow_block" \
+    && grep -qF '[[ "$_pf_help" == *--structural* ]]' <<<"$botmerge_narrow_block"; then
     ok "RESILIENT-1622: structural narrowing is capability-gated (stale binary falls back to the old skip)"
 else
-    fail "RESILIENT-1622: structural narrowing must be guarded by a 'chump preflight --help | grep -- --structural' capability check"
+    fail "RESILIENT-1622: structural narrowing must be guarded by a captured 'chump preflight --help' + [[ == *--structural* ]] capability check"
+fi
+if grep -qE 'preflight --help[^|]*\| *grep -q' <<<"$botmerge_narrow_block"; then
+    fail "RESILIENT-1622: capability check still pipes 'chump preflight --help' into grep -q (pipefail class 31)"
+else
+    ok "RESILIENT-1622: capability check has no 'preflight --help | grep -q' pipeline"
 fi
 
 # 10. INFRA-3524: clippy re-run is skipped for bot-merge-initiated pushes

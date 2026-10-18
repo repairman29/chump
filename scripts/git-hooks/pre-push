@@ -430,7 +430,10 @@ if command -v chump &>/dev/null \
         # regression INFRA-3521 fixed. Only run the structural subset when the
         # binary actually advertises the flag; otherwise fall back to the old
         # INFRA-3521 skip (CI remains authoritative) until the new binary is live.
-        if chump preflight --help 2>/dev/null | grep -q -- '--structural'; then
+        # Capture --help first, then test it: a `--help | grep -q` pipeline under
+        # pipefail can SIGPIPE the upstream and read as false (fleet CI class 31).
+        _pf_help="$(chump preflight --help 2>/dev/null || true)"
+        if [[ "$_pf_help" == *--structural* ]]; then
             _pf_structural_arg="--structural"
             echo "[pre-push] INFRA-3521 (RESILIENT-1622): bot-merge push — running structural preflight subset (no cargo build) instead of skipping." >&2
             printf '{"ts":"%s","kind":"prepush_preflight_skipped_botmerge","reason":"INFRA-3521 narrowed (RESILIENT-1622): full preflight skipped, structural subset runs"}\n' \
@@ -441,7 +444,7 @@ if command -v chump &>/dev/null \
             printf '{"ts":"%s","kind":"prepush_preflight_skipped_botmerge","reason":"INFRA-3521: bot-merge already gated + CI authoritative (binary predates --structural)"}\n' \
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_3521" 2>/dev/null || true
         fi
-        unset _amb_3521
+        unset _amb_3521 _pf_help
     fi
 
     if [[ "$preflight_has_targets" -eq 1 ]]; then

@@ -58,10 +58,14 @@ else
 fi
 
 # The seven no-build gates the gap + architect note require, by their gate names.
+# Capture the block first, then grep a here-string: an `awk | grep -q` pipeline
+# under pipefail can SIGPIPE awk on grep's early exit and read as a false FAIL
+# (fleet CI class 31).
+structural_gates_block=$(awk '/const STRUCTURAL_GATES/,/^\];/' "$PREFLIGHT")
 for gate in event-registry-audit env-var-coverage path-filter-coverage \
             no-new-bypass-env-vars census-shrink-only preflight-ci-parity-smoke \
             raw-gh-lint; do
-    if awk '/const STRUCTURAL_GATES/,/^\];/' "$PREFLIGHT" | grep -q "\"$gate\""; then
+    if grep -q "\"$gate\"" <<<"$structural_gates_block"; then
         ok "STRUCTURAL_GATES includes $gate"
     else
         fail "STRUCTURAL_GATES is missing $gate"
@@ -91,10 +95,34 @@ else
     fail "bot-merge does not fail the ship with the structural gate name on red"
 fi
 
+# bot-merge's capability gate must CAPTURE `chump preflight --help` and then
+# test the string — never pipe it into `grep -q` (under pipefail, grep's early
+# exit can SIGPIPE the upstream and read as false, silently skipping the gate:
+# fleet CI class 31).
+if grep -q '_bm_pf_help="$(chump preflight --help' "$BOT_MERGE" \
+    && grep -qF '[[ "$_bm_pf_help" == *--structural* ]]' "$BOT_MERGE"; then
+    ok "bot-merge capability gate captures --help then tests it (pipefail-safe)"
+else
+    fail "bot-merge capability gate must capture 'chump preflight --help' into a var and test it with [[ == *--structural* ]]"
+fi
+if grep -qE 'preflight --help[^|]*\| *grep -q' "$BOT_MERGE"; then
+    fail "bot-merge still pipes 'chump preflight --help' into grep -q (pipefail SIGPIPE class 31)"
+else
+    ok "bot-merge has no 'preflight --help | grep -q' pipeline"
+fi
+
+# No phantom bypass hint: nothing reads the advertised *_STRUCTURAL_GATE_DISABLE var, and the
+# fleet forbids new bypass env vars (INFRA-2429 ceiling). --fast is the escape.
+if grep -q 'STRUCTURAL_GATE_DISABLE' "$BOT_MERGE"; then
+    fail "bot-merge advertises STRUCTURAL_GATE_DISABLE, which nothing reads"
+else
+    ok "bot-merge advertises no phantom structural-gate bypass env var"
+fi
+
 # ── 3. pre-push hook: INFRA-3521 narrowed to the structural subset ──────────────
 guard_0a_block=$(awk '/^# Guard 0a:/,/^# Guard 0: cargo fmt/' "$HOOK")
-if echo "$guard_0a_block" | grep -q 'chump preflight \$_pf_structural_arg' \
-    && echo "$guard_0a_block" | grep -q 'RESILIENT-1622'; then
+if grep -q 'chump preflight \$_pf_structural_arg' <<<"$guard_0a_block" \
+    && grep -q 'RESILIENT-1622' <<<"$guard_0a_block"; then
     ok "pre-push runs 'chump preflight --structural' under bot-merge (INFRA-3521 narrowed)"
 else
     fail "pre-push should run the structural subset under bot-merge, not skip preflight entirely"
@@ -105,12 +133,19 @@ fi
 # FULL cargo-build preflight here and blow bot-merge's 300s push budget (the
 # META-156 regression). Only run --structural when the binary advertises it;
 # otherwise fall back to the old INFRA-3521 skip until the new binary is live.
-botmerge_narrow_block=$(echo "$guard_0a_block" | awk '/CHUMP_BOT_MERGE_IN_PROGRESS.*== "1"/,/^    fi/')
-if echo "$botmerge_narrow_block" | grep -q 'chump preflight --help' \
-    && echo "$botmerge_narrow_block" | grep -q "grep -q -- '--structural'"; then
+# The capability check captures --help into a var and tests the string; a
+# `--help | grep -q` pipeline is the banned pipefail shape (fleet CI class 31).
+botmerge_narrow_block=$(awk '/CHUMP_BOT_MERGE_IN_PROGRESS.*== "1"/,/^    fi/' <<<"$guard_0a_block")
+if grep -q '_pf_help="$(chump preflight --help' <<<"$botmerge_narrow_block" \
+    && grep -qF '[[ "$_pf_help" == *--structural* ]]' <<<"$botmerge_narrow_block"; then
     ok "pre-push narrowing is capability-gated (stale binary falls back to the old skip — no budget-blow)"
 else
-    fail "pre-push structural narrowing must be guarded by a 'chump preflight --help | grep -- --structural' capability check"
+    fail "pre-push structural narrowing must be guarded by a captured 'chump preflight --help' + [[ == *--structural* ]] capability check"
+fi
+if grep -qE 'preflight --help[^|]*\| *grep -q' <<<"$botmerge_narrow_block"; then
+    fail "pre-push still pipes 'chump preflight --help' into grep -q (pipefail SIGPIPE class 31)"
+else
+    ok "pre-push capability check has no 'preflight --help | grep -q' pipeline"
 fi
 
 # ── 4. BEHAVIORAL: a synthetic unwired scripts/ci test fails the census gate ────
@@ -156,7 +191,8 @@ fi
 # build-staleness condition, not a wiring defect in the diff. CI fast-checks has
 # no prebuilt chump binary, so this path is advisory everywhere.
 if command -v chump >/dev/null 2>&1 && chump preflight --help >/dev/null 2>&1; then
-    if chump preflight --help 2>&1 | grep -q -- '--structural'; then
+    _chump_pf_help="$(chump preflight --help 2>&1 || true)"
+    if [[ "$_chump_pf_help" == *--structural* ]]; then
         ok "prebuilt chump binary advertises --structural in --help"
     else
         echo "  SKIP: prebuilt chump binary predates --structural (stale build) — rebuild to pick it up; source wiring verified above"

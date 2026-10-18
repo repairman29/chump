@@ -3780,8 +3780,14 @@ fi
 # would silently run the FULL cargo-build preflight here. Capability-gate on the
 # binary actually advertising --structural; a stale binary skips this stage (the
 # pre-push hook + CI remain the gate) rather than paying an unexpected full build.
-if [[ $FAST -eq 0 ]] && command -v chump >/dev/null 2>&1 \
-    && chump preflight --help 2>/dev/null | grep -q -- '--structural'; then
+# Capture --help first, then test it: piping `chump preflight --help` into `grep -q`
+# under pipefail can SIGPIPE the upstream on grep's early exit and read as false,
+# silently skipping this gate (fleet CI class 31).
+_bm_pf_help=""
+if [[ $FAST -eq 0 ]] && command -v chump >/dev/null 2>&1; then
+    _bm_pf_help="$(chump preflight --help 2>/dev/null || true)"
+fi
+if [[ "$_bm_pf_help" == *--structural* ]]; then
     stage_start "structural preflight subset (chump preflight --structural)" 120
     _bm_struct_out="$(mktemp)"
     _bm_struct_rc=0
@@ -3790,16 +3796,17 @@ if [[ $FAST -eq 0 ]] && command -v chump >/dev/null 2>&1 \
     cat "$_bm_struct_out" >&2 || true
     if [[ "$_bm_struct_rc" -ne 0 ]]; then
         # Surface the failing gate name(s) from the "FAIL — structural gate(s): …" line.
-        _bm_struct_gates="$(grep -oE 'structural gate\(s\): [^(]+' "$_bm_struct_out" 2>/dev/null | head -1 | sed 's/structural gate(s): //; s/[[:space:]]*$//')"
+        _bm_struct_gates="$(grep -oE 'structural gate\(s\): [^(]+' "$_bm_struct_out" 2>/dev/null | head -1 | sed 's/structural gate(s): //; s/[[:space:]]*$//' || true)"
         [[ -z "$_bm_struct_gates" ]] && _bm_struct_gates="unknown (see output above)"
         rm -f "$_bm_struct_out"
         red "RESILIENT-1622: structural preflight subset FAILED before push — gate(s): ${_bm_struct_gates}"
-        red "  → Fix locally (each miss costs a full CI round). Bypass (rare): CHUMP_STRUCTURAL_GATE_DISABLE=1."
+        red "  → Fix locally (each miss costs a full CI round)."
         _bm_fail "preflight" 10 "RESILIENT-1622 structural subset refused — failing gate(s): ${_bm_struct_gates}"
     fi
     rm -f "$_bm_struct_out"
     stage_done
 fi
+unset _bm_pf_help
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 # META-156 AC#1: step=push
