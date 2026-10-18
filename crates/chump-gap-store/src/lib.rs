@@ -7116,6 +7116,47 @@ impl GapStore {
         Ok(())
     }
 
+    /// CREDIBLE-1552: remove ONE gap_prs row (single-writer). Used to undo a
+    /// mislinked gap→PR edge — e.g. a slice PR that was linked to the umbrella
+    /// gap instead of its own slice. Returns the number of rows removed (0 if
+    /// the link did not exist, which is not an error). Emits kind=gap_pr_unlinked
+    /// to ambient.jsonl carrying the operator-supplied reason so the unlink is
+    /// auditable. The gap row itself is untouched.
+    pub fn unlink_pr(&self, gap_id: &str, pr_number: i64, reason: &str) -> Result<usize> {
+        let removed = self.conn.execute(
+            "DELETE FROM gap_prs WHERE gap_id=?1 AND pr_number=?2",
+            params![gap_id, pr_number],
+        )?;
+        if removed > 0 {
+            self.emit_gap_pr_unlinked(gap_id, pr_number, reason);
+        }
+        Ok(removed)
+    }
+
+    /// Emit a `gap_pr_unlinked` event to `.chump-locks/ambient.jsonl`.
+    // scanner-anchor: "kind":"gap_pr_unlinked"
+    fn emit_gap_pr_unlinked(&self, gap_id: &str, pr_number: i64, reason: &str) {
+        let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+        let ts = unix_to_iso_full(unix_now());
+        let safe_gap = gap_id.replace('"', "\\\"");
+        let safe_reason = reason.replace('"', "\\\"");
+        let line = format!(
+            "{{\"ts\":\"{ts}\",\"kind\":\"gap_pr_unlinked\",\
+             \"gap\":\"{safe_gap}\",\"pr\":{pr_number},\"reason\":\"{safe_reason}\"}}\n"
+        );
+        use std::io::Write as _;
+        if let Some(parent) = amb.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&amb)
+        {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+
     /// List all PR links recorded for a gap, most-recently-opened first.
     pub fn list_prs_for_gap(&self, gap_id: &str) -> Result<Vec<GapPrRow>> {
         let mut stmt = self.conn.prepare(
@@ -8851,6 +8892,40 @@ mod tests {
     fn get_pr_link_returns_none_when_absent() {
         let (store, _dir) = test_store();
         assert!(store.get_pr_link("INFRA-8192", 1).unwrap().is_none());
+    }
+
+    // ── CREDIBLE-1552: unlink_pr removes exactly one gap_prs row ────────────
+
+    #[test]
+    fn unlink_pr_removes_one_row_and_leaves_siblings() {
+        let (store, _dir) = test_store();
+        store.link_pr("CREDIBLE-1550", 5600, "abc123").unwrap();
+        store.link_pr("CREDIBLE-1552", 5600, "abc123").unwrap();
+
+        // Undo the mislink to the umbrella; the slice's own link survives.
+        let removed = store
+            .unlink_pr("CREDIBLE-1550", 5600, "slice-of-CREDIBLE-1552")
+            .unwrap();
+        assert_eq!(removed, 1, "exactly one row removed");
+
+        assert!(
+            store.get_pr_link("CREDIBLE-1550", 5600).unwrap().is_none(),
+            "umbrella link gone"
+        );
+        assert!(
+            store.get_pr_link("CREDIBLE-1552", 5600).unwrap().is_some(),
+            "slice link preserved"
+        );
+    }
+
+    #[test]
+    fn unlink_pr_absent_link_is_not_an_error() {
+        let (store, _dir) = test_store();
+        let removed = store.unlink_pr("INFRA-8192", 404, "never-linked").unwrap();
+        assert_eq!(
+            removed, 0,
+            "removing a non-existent link returns 0, not Err"
+        );
     }
 
     // ── EFFECTIVE-679: idea-drop intake tests ──────────────────────────

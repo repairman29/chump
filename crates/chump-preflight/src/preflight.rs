@@ -2755,6 +2755,14 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-credible-1550-gap-prs-closer.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-1552: restored Part 1 of the deleted test-ghost-gap-thrash-fix
+        // — done-like dep statuses + dangling dep IDs count as resolved so stale
+        // dep-edges don't pin open gaps shut and starve workers on ghosts.
+        steps.push(step(
+            "unresolved-deps-resolution",
+            &["bash", "scripts/ci/test-unresolved-deps-resolution.sh"],
+            GateKind::Scripts,
+        ));
         // RESILIENT-1613 / INFRA-8221: every shell armer, the rebaser, the direct
         // mergers and the repair loop honor the arm policy (no-auto-merge label /
         // `Auto-merge: hold`). Stubbed gh + throwaway git repos, no network.
