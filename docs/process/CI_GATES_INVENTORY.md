@@ -254,6 +254,79 @@ Guarded by `scripts/ci/test-poll-cross-workflow-checks.sh` (shards-in_progress �
 `audit=in_progress` → aggregator exit 2; no-audit-run → `audit=failure` →
 aggregator exit 1).
 
+## Non-required checks red on main — 7-day sweep (CREDIBLE-1523, 2026-10-18)
+
+Slice of umbrella **CREDIBLE-1492** (Phase R). Branch protection on `main`
+requires exactly **one** context: `verified` (ci.yml) — see
+`gh api repos/repairman29/chump/branches/main/protection`. Every other workflow
+run that goes red on main is therefore a **non-required** check. This table is
+the 7-day sweep (`gh run list --branch main --status failure --created ">=2026-10-11"`;
+the local `.chump/github_cache.db` was a 0-byte cold cache at sweep time, so this
+fell back to `gh`). Window: 2026-10-11 → 2026-10-18, 372 failed runs across 12
+distinct workflows.
+
+**Decision vocabulary.** The umbrella's north star is "required-and-green *or*
+deleted". For workflows that run **only post-merge or on a schedule**, "required"
+is structurally impossible — a required status check must post on PR head
+commits, which these never do — so a third honest value, **Keep-advisory**
+(non-gating, kept green, not promotable), is used for them. Promotion to
+`required` would be a **branch-protection edit, which this slice does NOT make**
+(out of scope by gap directive); a `Required` decision below is a *recommendation*
+for the operator to enact, not an action taken here.
+
+| # | Workflow | Red runs (7d) | Failing job(s) | Trigger | Decision | Status |
+|---|---|---:|---|---|---|---|
+| 1 | **CI Advisory (post-merge)** | 226 | `advisory-drift-gate` | push→main | **Keep-advisory (fix→green)** | ✅ **Resolved this PR** — removed the dead, permanently-disabled `tauri-cowork-e2e` stub from `ci.yml` (RESILIENT-016 moved the live job to `ci-nightly.yml`; the stub tripped the drift gate). The 3 E2E jobs are `continue-on-error` and were already green. |
+| 2 | CI | 72 | `fast-checks`, `test`, `verified` | push→main | **Required (keep green)** | Follow-up — carries the sole required context; reds in-window are the transient `verified`-aggregation false-FAIL being closed by RESILIENT-1617 / verified-recompute. Confirm structural vs. flake. |
+| 3 | Audit | 8 | `audit`, `audit-shard (N)`, `audit-required` | push→main | **Required (keep green)** | Follow-up — `audit` feeds the `verified` aggregate; same transient class as row 2. (Aside: `scripts/ci/test-tauri-filter-scope.sh` is a **dormant/unwired** guard — invoked by no workflow — that nonetheless fails against current `ci.yml` because the `tauri:` paths-filter still lists bare `src/**`; it does *not* contribute to these Audit reds, but is worth cleaning up or re-wiring under this follow-up.) |
+| 4 | verified-recompute | 6 | `rerun-verified` | workflow_run | **Keep-advisory (fix→green)** | Follow-up — recomputes `verified` on Audit/integrations completion (RESILIENT-1562); its own reds must not mask the recomputed verdict. |
+| 5 | integrations | 2 | `ACP real-client — Zed preview (0.170.x-pre)` | push→main | **Delete / quarantine the pre-release job** | Follow-up — pins a Zed **pre-release** (`0.170.x-pre`); inherently flaky external dep. Keep the stable ACP smoke lane that feeds `verified`; drop/quarantine the preview matrix cell. |
+| 6 | cargo audit (nightly) | 15 | `audit` | schedule | **Keep-advisory (fix→green)** | Follow-up — RUSTSEC advisory sweep; red = an open advisory, not a merge blocker. Triage/suppress or fix. |
+| 7 | no-anthropic-smoke | 7 | `chump-first contract — coordination layer works without Anthropic` | schedule | **Keep-advisory (fix→green)** | Follow-up — chump-first contract smoke; a genuine signal worth keeping green. |
+| 8 | release-plz | 7 | `Test and verify` | push→main | **Keep-advisory (fix→green)** | Follow-up — release automation; not a PR gate. |
+| 9 | pr-rescue (RESILIENT-006) | 26 | `scan and rebase stale PRs` | schedule | **Keep-advisory (fix→green)** | Follow-up — ops automation, non-gating; fix the scan step or delete if obsolete. |
+| 10 | Weekly audit | 1 | `audit` | schedule | **Keep-advisory (fix→green)** | Follow-up — weekly scheduled audit. |
+| 11 | Build chump-ci Docker image | 1 | `build` | schedule | **Keep-advisory (fix→green)** | Follow-up — scheduled CI-image build. |
+| 12 | Dependabot Updates | 1 | (Dependabot internal run) | dynamic | **Excluded — not a repo-owned CI gate** | No slice — GitHub-managed Dependabot run, not a `.github/workflows/` check we author or can make required/green. |
+
+**This slice delivers:** the table above (AC1) and row 1's resolution (AC2).
+**Follow-up slices (AC3):** one P1 PHASE-R slice per remaining repo-owned
+workflow (rows 2–11; row 12 excluded with rationale):
+CREDIBLE-1532 (CI), CREDIBLE-1533 (Audit), CREDIBLE-1534 (verified-recompute),
+CREDIBLE-1535 (integrations), CREDIBLE-1536 (cargo audit nightly),
+CREDIBLE-1537 (no-anthropic-smoke), CREDIBLE-1538 (release-plz),
+CREDIBLE-1539 (pr-rescue RESILIENT-006), CREDIBLE-1540 (Weekly audit),
+CREDIBLE-1541 (Build chump-ci Docker image). The umbrella CREDIBLE-1492 closes
+when the slices land.
+
+## continue-on-error PR-reporting jobs (CREDIBLE-1522, PHASE-R R3 / CREDIBLE-1492 AC1)
+
+A top-level job in `.github/workflows/ci.yml` with `continue-on-error: true`
+**at the job level** posts a check-run to the PR whose conclusion is *always*
+success regardless of what its steps did — a green check carrying no
+information (the R3 "honest ship gate" defect: "Red checks carrying no
+information"). The R3 stance is: **make each such job required-and-green
+(remove `continue-on-error`) or delete it.** Step-level `continue-on-error` is
+out of scope — a step does not post its own PR check-run (its job does), so
+step-level `continue-on-error` is the sanctioned INFRA-1869 advisory-demotion
+mechanism and does not make a PR check lie.
+
+Enforcement: `scripts/ci/test-no-coe-pr-reporting.sh` (ci.yml `fast-checks` →
+feeds the required `verified` lane; mirrored in `chump preflight`) fails when a
+**new** job-level `continue-on-error` job appears that is not on
+`scripts/ci/coe-pr-reporting-allowlist.txt`. The allowlist is a decision ledger,
+intended to **shrink**, not a permanent exemption.
+
+Inventory + decision as of 2026-10-18:
+
+| Job (ci.yml key) | Decision | Why |
+|---|---|---|
+| `tauri-cowork-e2e` | **DELETED** | Disabled on PR runs forever (`if: github.event_name == 'disabled-RESILIENT-016'`); the real job lives in `ci-nightly.yml`. Nothing in ci.yml `needs` it. A permanently-skipped job posting a neutral check is pure noise. Removed in CREDIBLE-1522. (CREDIBLE-1515 claimed to remove it but the landed diff was comment-only.) |
+| `changes` | **KEEP (allowlisted)** | Routing / `dorny/paths-filter` job, not a correctness gate. `continue-on-error` makes the conclusion *neutral* on a transient runner/network failure so a blip does not flip rollup state and block auto-merge; downstream reads null path-filter outputs as `false` (safe skip). Not a verdict-bearing check. |
+| `e2e` | **KEEP (allowlisted)** | Selenium PWA e2e shards, deliberately non-blocking on PR runs (flaky; moved to the daily `ci-nightly.yml` cron per RESILIENT-016 / INFRA-1529). Candidate for deletion from PR runs once nightly coverage is confirmed sufficient — tracked, not a permanent keep. |
+| `test-e2e` | **KEEP (allowlisted)** | Aggregator rollup over the `e2e` shards; `continue-on-error` is defensive against the aggregator's own runner errors contributing a spurious FAILURE to rollup state (INFRA-1348). Lives or dies with `e2e` above. |
+| `integration-test` (System integration test, INFRA-849) | **FIX landed; promotion to required pending 3 green main runs** | The job was red on every PR — masked by `continue-on-error` — at the `test-gap-close-decomposed-integration.sh` (RESILIENT-1373) step, which ran against the **shared** store and hit the PHASE-R R1 single-writer proof-of-merge guard (CREDIBLE-1491): `gap set --status done --closed-pr 9001` refused because no commit carrying `(#9001)` is on `origin/main`. (Assertion 4 of `test-system-integration.sh`, which INFRA-8184 named, already passes — the real red was elsewhere in the same job.) CREDIBLE-1522 isolates that test into its own `CHUMP_REPO` with no `.git`, so the R1 guard runs in fixture mode and the test stops mutating the canonical store. Per CREDIBLE-1492 AC1, the job joins the required `verified` lane and drops `continue-on-error` **after 3 consecutive green main runs** — until then it stays allowlisted with this decision. |
+
 ## Update history
 
 - **2026-05-23** — Initial inventory. INFRA-1731 just shipped as the
@@ -264,3 +337,16 @@ aggregator exit 1).
 - **2026-10-17** — RESILIENT-1617: documented the cross-workflow `verified`
   lane-seen rule (shard-style members + backing-workflow-run signal) so a
   still-running audit reports PENDING, not a false FAIL.
+- **2026-10-18** — CREDIBLE-1523 (PHASE-R R3 slice of CREDIBLE-1492): added the
+  "Non-required checks red on main — 7-day sweep" table (every non-required
+  workflow red on main 2026-10-11→10-18 with a per-row decision), and resolved
+  row 1 (CI Advisory post-merge) by deleting the dead disabled `tauri-cowork-e2e`
+  stub from `ci.yml` so `advisory-drift-gate` passes. Follow-up slices filed per
+  remaining workflow (rows 2–11).
+- **2026-10-18** — CREDIBLE-1522 (PHASE-R R3 / CREDIBLE-1492 AC1): inventoried
+  the five job-level `continue-on-error` PR-reporting jobs (§ above); deleted the
+  dead `tauri-cowork-e2e` stub; added the `no-coe-pr-reporting` gate
+  (`scripts/ci/test-no-coe-pr-reporting.sh` + `coe-pr-reporting-allowlist.txt`,
+  wired into fast-checks and preflight) that fails on a new un-allowlisted
+  job-level `continue-on-error` job; fixed the INFRA-849 integration-test red
+  (RESILIENT-1373 step isolated from the shared store / R1 guard).
