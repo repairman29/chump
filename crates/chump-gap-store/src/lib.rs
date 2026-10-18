@@ -3322,6 +3322,28 @@ impl GapStore {
             );
         }
 
+        // CREDIBLE-1550 AC2 (completed in CREDIBLE-1551): the typed gap_prs FK
+        // is the ONLY proof a PR-backed close may trust. If this ship names a
+        // closed_pr, a gap_prs row must link THAT PR to THIS gap — the link is
+        // written at PR-open by every PR-opening path (bot-merge.sh main +
+        // recovery, the manual SUBAGENT_DISPATCH.md path), so a legitimate ship
+        // always has it. Refusing here is what retires the title-regex closers:
+        // a closer that derived the gap from a merged PR's title can no longer
+        // close the wrong gap, because the ship fails unless the link exists.
+        // Only enforced when a closed_pr is present — a genuinely PR-less ship
+        // (closed_pr: None) carries no PR to link and is unaffected.
+        if let Some(pr) = closed_pr {
+            if self.get_pr_link(gap_id, pr)?.is_none() {
+                bail!(
+                    "CREDIBLE-1550 AC2: refusing to flip {gap_id} to status=done from \
+                     PR #{pr} — no gap_prs row links PR #{pr} to {gap_id}. The gap→PR link \
+                     is written at PR-open time (`chump gap link-pr`, called by bot-merge.sh \
+                     right after `gh pr create`). If PR #{pr} genuinely implemented {gap_id}, \
+                     run `chump gap link-pr {gap_id} {pr} --sha <merge-sha>` first, then retry."
+                );
+            }
+        }
+
         // RESILIENT-1110: merged is a proxy, not the definition. Kill it at
         // the root — refuse status=done if the merge deploys an organ unit
         // that the target node's own verifier (RESILIENT-1108) currently
@@ -3371,6 +3393,13 @@ impl GapStore {
             DoneExtras::ShipCeremony,
             "ship",
         )?;
+        // CREDIBLE-1551 (Phase R R2, AC2): the PR this gap closed from has now
+        // landed, so flip its gap_prs row open → merged. Best-effort: the
+        // status=done write above already succeeded, so a bookkeeping failure
+        // here must never turn a landed ship into an error.
+        if let Some(pr) = closed_pr {
+            let _ = self.mark_pr_merged(gap_id, pr);
+        }
         Ok(())
     }
 
@@ -7137,6 +7166,38 @@ impl GapStore {
         stmt.query_row(params![gap_id, pr_number], Self::row_to_gap_pr)
             .optional()
             .map_err(Into::into)
+    }
+
+    /// CREDIBLE-1551 (Phase R R2, AC2): reverse lookup — the gap(s) a typed
+    /// gap_prs row links to this PR number, most-recently-opened first. This is
+    /// the FK-backed replacement for parsing gap IDs out of a merged PR's
+    /// title/body (what the two legacy title-regex closers did —
+    /// stale-pr-reaper's INFRA-674 ghost block and chump-pr-triage's
+    /// `--apply ship-gap`). A caller resolves the gap from the link, never the
+    /// title, so the close routes through the same proof `chump gap ship` now
+    /// enforces.
+    pub fn gaps_for_pr(&self, pr_number: i64) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT gap_id FROM gap_prs WHERE pr_number=?1 ORDER BY opened_at DESC")?;
+        let rows = stmt
+            .query_map(params![pr_number], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// CREDIBLE-1551 (Phase R R2, AC2): flip a gap_prs row's state to `merged`
+    /// once the PR it links has actually landed. Idempotent and best-effort: a
+    /// missing row is a no-op (the ship-time FK gate already proved the row
+    /// exists for a PR-backed close), so a caller may fire this without a
+    /// pre-check. The `open` → `merged` transition lets reconcilers and the
+    /// closer-conversion paths tell a still-open PR link from a landed one.
+    pub fn mark_pr_merged(&self, gap_id: &str, pr_number: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE gap_prs SET state='merged' WHERE gap_id=?1 AND pr_number=?2",
+            params![gap_id, pr_number],
+        )?;
+        Ok(())
     }
 }
 
