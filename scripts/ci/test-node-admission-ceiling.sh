@@ -168,5 +168,20 @@ rm -f "$TMP/e-home/.chump/node.env"
 r="$(doctor 3 0)"
 case "$r" in fail\|*"claude -p 3/2"*) ok "E no node.env -> nproc default (4 -> 2): 3 running -> RED" ;; *) ko "E nproc default: $r" ;; esac
 
+# ── F. fleet-doctor check_node_env_no_export (INFRA-8588) ──────────────────
+# shellcheck disable=SC2016  # the single-quoted script is expanded by the child bash
+doctor_noexport() { # -> prints "<status>|<detail>" for the LAST registered check
+    env HOME="$TMP/f-home" CHUMP_STATE_DIR="$TMP/f-home/.chump" \
+        FLEET_DOCTOR_SOURCED=1 DOCTOR="$DOCTOR" \
+        bash -c '. "$DOCTOR"; check_node_env_no_export; i=$(( ${#CHECKS[@]} - 1 )); printf "%s|%s\n" "${STATUSES[$i]}" "${DETAILS[$i]}"'
+}
+mkdir -p "$TMP/f-home/.chump"
+printf 'export CHUMP_NODE_MODE=paused\nCHUMP_RUN_USER=ubuntu\n' > "$TMP/f-home/.chump/node.env"
+r="$(doctor_noexport)"
+case "$r" in fail\|*"export line"*) ok "F node.env with an export line -> RED" ;; *) ko "F export line not flagged: $r" ;; esac
+printf 'CHUMP_NODE_MODE=paused\nCHUMP_RUN_USER=ubuntu\n' > "$TMP/f-home/.chump/node.env"
+r="$(doctor_noexport)"
+case "$r" in pass\|*) [ "${r%%\|*}" = pass ] && ok "F bare node.env -> PASS" || ko "F bare node.env not pass: $r" ;; esac
+
 printf '\n== %d passed, %d failed ==\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
