@@ -84,6 +84,13 @@ fi
 if [[ -f "$(dirname "$0")/../coord/lib/github_cache.sh" ]]; then
     source "$(dirname "$0")/../coord/lib/github_cache.sh"
 fi
+# RESILIENT-1620: chump_gh (throttled + criticality-aware gh wrapper, INFRA-1080)
+# for the Class D cache-miss fallback. Degrade to plain gh if the lib is absent.
+# shellcheck source=scripts/coord/lib/github.sh
+if [[ -f "$(dirname "$0")/../coord/lib/github.sh" ]]; then
+    source "$(dirname "$0")/../coord/lib/github.sh" 2>/dev/null || true
+fi
+command -v chump_gh >/dev/null 2>&1 || chump_gh() { gh "$@"; }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -148,7 +155,7 @@ _classd_cwd_inside() {
 
 # _classd_pr_merged_or_closed <branch> — echo "yes" if the branch's PR is
 # merged or closed, "no" if open, "" if unknown/no PR. Cache-first (reads the
-# local github_cache.db directly), gh fallback.
+# local github_cache.db directly), chump_gh fallback.
 _classd_pr_merged_or_closed() {
     local branch="$1"
     local state=""
@@ -176,10 +183,12 @@ _classd_pr_merged_or_closed() {
             fi
         fi
     fi
-    # gh fallback — --state all so merged/closed PRs are visible.
+    # chump_gh fallback (background-tagged) — --state all so merged/closed PRs
+    # are visible. cache_lookup_pr_by_branch filters merged_at IS NULL, so it
+    # cannot answer "merged or closed"; the inline cache read above covers that.
     local pr_json
     pr_json="$(CHUMP_GH_CALL_CRITICALITY=background \
-        gh pr list --head "$branch" --state all --json number,state --limit 1 2>/dev/null || true)"
+        chump_gh pr list --head "$branch" --state all --json number,state --limit 1 2>/dev/null || true)"
     [[ -n "$pr_json" ]] || { printf ''; return 0; }
     state="$(printf '%s' "$pr_json" | python3 -c \
         "import json,sys
