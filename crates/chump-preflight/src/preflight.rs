@@ -173,6 +173,11 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
 // `cli-observability-misc` gate.
 const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
     ("acp-real-clients", "scripts/ci/test-acp-real-clients.sh"),
+    // CREDIBLE-1525: admin_merges_7d counter fixture — kpi report + floor_temp
+    // + admin_merge_executed agree over a synthetic github_cache.db. Pure local
+    // (chump binary + sqlite3 + python3, no network). Mirrors the audit.yml
+    // audit-shard step of the same name.
+    ("admin-merges-7d", "scripts/ci/test-admin-merges-7d.sh"),
     // INFRA-8219: `chump admit` node-wide admission ceiling smoke — proves the
     // free/deferred exit codes (0 / 75) + kind=admission_deferred emit. Fast
     // (~2s), pure local (chump binary + sentinel sleeps, no network).
@@ -3240,6 +3245,17 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "orphan-branch-sweeper",
             &["bash", "scripts/ci/test-orphan-branch-sweeper.sh"],
+            GateKind::Scripts,
+        ));
+
+        // CREDIBLE-1524 (PHASE-R R3): admin-merge consensus gate. Grep gate
+        // (every `gh pr merge --admin` call site is guarded) + stubbed-gh
+        // refusal fixtures per call-site shape. Hermetic (tmpdir ambient +
+        // recorder stubs, no network). Mirrors the ci.yml step of the same
+        // name.
+        steps.push(step(
+            "admin-merge-consensus-gate",
+            &["bash", "scripts/ci/test-admin-merge-consensus-gate.sh"],
             GateKind::Scripts,
         ));
 
