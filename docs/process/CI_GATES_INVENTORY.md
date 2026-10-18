@@ -278,7 +278,7 @@ for the operator to enact, not an action taken here.
 |---|---|---:|---|---|---|---|
 | 1 | **CI Advisory (post-merge)** | 226 | `advisory-drift-gate` | push→main | **Keep-advisory (fix→green)** | ✅ **Resolved this PR** — removed the dead, permanently-disabled `tauri-cowork-e2e` stub from `ci.yml` (RESILIENT-016 moved the live job to `ci-nightly.yml`; the stub tripped the drift gate). The 3 E2E jobs are `continue-on-error` and were already green. |
 | 2 | CI | 72 | `fast-checks`, `test`, `verified` | push→main | **Required (keep green)** | Follow-up — carries the sole required context; reds in-window are the transient `verified`-aggregation false-FAIL being closed by RESILIENT-1617 / verified-recompute. Confirm structural vs. flake. |
-| 3 | Audit | 8 | `audit`, `audit-shard (N)`, `audit-required` | push→main | **Required (keep green)** | Follow-up — `audit` feeds the `verified` aggregate; same transient class as row 2. |
+| 3 | Audit | 8 | `audit`, `audit-shard (N)`, `audit-required` | push→main | **Required (keep green)** | Follow-up — `audit` feeds the `verified` aggregate; same transient class as row 2. Also carries a **pre-existing** red: `scripts/ci/test-tauri-filter-scope.sh` (audit.yml) fails on current main because the `tauri:` paths-filter still lists bare `src/**` (its Rule A forbids it) — independent of this slice; fix it there. |
 | 4 | verified-recompute | 6 | `rerun-verified` | workflow_run | **Keep-advisory (fix→green)** | Follow-up — recomputes `verified` on Audit/integrations completion (RESILIENT-1562); its own reds must not mask the recomputed verdict. |
 | 5 | integrations | 2 | `ACP real-client — Zed preview (0.170.x-pre)` | push→main | **Delete / quarantine the pre-release job** | Follow-up — pins a Zed **pre-release** (`0.170.x-pre`); inherently flaky external dep. Keep the stable ACP smoke lane that feeds `verified`; drop/quarantine the preview matrix cell. |
 | 6 | cargo audit (nightly) | 15 | `audit` | schedule | **Keep-advisory (fix→green)** | Follow-up — RUSTSEC advisory sweep; red = an open advisory, not a merge blocker. Triage/suppress or fix. |
@@ -291,8 +291,13 @@ for the operator to enact, not an action taken here.
 
 **This slice delivers:** the table above (AC1) and row 1's resolution (AC2).
 **Follow-up slices (AC3):** one P1 PHASE-R slice per remaining repo-owned
-workflow (rows 2–11; row 12 excluded with rationale). IDs recorded in this gap's
-notes. The umbrella CREDIBLE-1492 closes when the slices land.
+workflow (rows 2–11; row 12 excluded with rationale):
+CREDIBLE-1532 (CI), CREDIBLE-1533 (Audit), CREDIBLE-1534 (verified-recompute),
+CREDIBLE-1535 (integrations), CREDIBLE-1536 (cargo audit nightly),
+CREDIBLE-1537 (no-anthropic-smoke), CREDIBLE-1538 (release-plz),
+CREDIBLE-1539 (pr-rescue RESILIENT-006), CREDIBLE-1540 (Weekly audit),
+CREDIBLE-1541 (Build chump-ci Docker image). The umbrella CREDIBLE-1492 closes
+when the slices land.
 
 ## Update history
 
