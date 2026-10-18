@@ -119,10 +119,11 @@ EOF
     # Create a synthetic medium gap. Keep the description path-free so the AST
     # pre-step surfaces no candidates (no repo crawl needed).
     FIXTURE_TITLE="INFRA-8573-test-fixture-claude-backend"
-    CHUMP_STATE_DB="$TMPDB" "$CHUMP" gap reserve \
-        --domain INFRA --title "$FIXTURE_TITLE" 2>/dev/null || true
+    CHUMP_GAP_RESERVE_NO_SIMILARITY=1 CHUMP_STATE_DB="$TMPDB" "$CHUMP" gap reserve \
+        --domain INFRA --title "$FIXTURE_TITLE" --force-duplicate 2>/dev/null || true
+    # `gap list --json` is pretty-printed: `"id": "INFRA-NNNN"` (note the space).
     FIXTURE_ID=$(CHUMP_STATE_DB="$TMPDB" "$CHUMP" gap list --status open --json 2>/dev/null \
-        | grep -o '"id":"[^"]*"' | tail -1 | sed 's/"id":"//;s/"//') || true
+        | grep -o '"id": *"[^"]*"' | tail -1 | sed 's/.*"id": *"//;s/"//') || true
 
     if [[ -z "${FIXTURE_ID:-}" ]]; then
         fail "could not create fixture gap — runtime tests skipped"
