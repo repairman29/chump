@@ -22,6 +22,11 @@ fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
 # Resolve chump binary
 CHUMP_BIN="${CHUMP_BIN:-chump}"
+# CREDIBLE-1522: absolutize a relative path (CI passes CHUMP_BIN=target/debug/chump)
+# BEFORE the cd into the isolated store below, or it stops resolving there.
+if [[ "$CHUMP_BIN" == */* && "$CHUMP_BIN" != /* ]]; then
+  CHUMP_BIN="$PWD/$CHUMP_BIN"
+fi
 command -v "$CHUMP_BIN" >/dev/null 2>&1 || fail "Cannot find chump binary"
 
 TMP="$(mktemp -d -t test-resilient-1373.XXXXXX)"
