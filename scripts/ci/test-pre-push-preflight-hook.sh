@@ -124,16 +124,19 @@ else
     fail "RESILIENT-1622: bot-merge branch should run 'chump preflight --structural' (INFRA-3521 narrowed), not skip entirely"
 fi
 
-# 9c. RESILIENT-1622: the bot-merge branch must NOT disable the preflight block
-#     outright (the old `preflight_has_targets=0` skip) — that was the bug that
-#     let census/parity failures reach CI. The only 'preflight_has_targets=0' in
-#     the Guard 0a block should be the initial declaration, never inside the
-#     CHUMP_BOT_MERGE_IN_PROGRESS branch.
+# 9c. RESILIENT-1622 rollout safety: the structural subset is a NEW flag, and
+#     `chump preflight` ignores unknown flags, so a STALE binary handed
+#     --structural would silently run the FULL (cargo-build) preflight here and
+#     blow bot-merge's 300s push budget (the META-156 regression INFRA-3521
+#     fixed). The narrowing must therefore be CAPABILITY-GATED: run --structural
+#     only when `chump preflight --help` advertises it; otherwise fall back to
+#     the old skip. Assert the capability check wraps the structural branch.
 botmerge_narrow_block=$(echo "$guard_0a_block" | awk '/CHUMP_BOT_MERGE_IN_PROGRESS.*== "1"/,/^    fi/')
-if echo "$botmerge_narrow_block" | grep -q 'preflight_has_targets=0'; then
-    fail "RESILIENT-1622: bot-merge branch still zeroes preflight_has_targets — structural subset would not run"
+if echo "$botmerge_narrow_block" | grep -q 'chump preflight --help' \
+    && echo "$botmerge_narrow_block" | grep -q "grep -q -- '--structural'"; then
+    ok "RESILIENT-1622: structural narrowing is capability-gated (stale binary falls back to the old skip)"
 else
-    ok "RESILIENT-1622: bot-merge branch no longer disables preflight outright"
+    fail "RESILIENT-1622: structural narrowing must be guarded by a 'chump preflight --help | grep -- --structural' capability check"
 fi
 
 # 10. INFRA-3524: clippy re-run is skipped for bot-merge-initiated pushes

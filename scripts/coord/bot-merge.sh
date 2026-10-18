@@ -3775,7 +3775,13 @@ fi
 # (early bootstrap — the pre-push hook still enforces). No bot-merge-only bypass
 # env: --fast skips it, and the sanctioned emergency escape is
 # CHUMP_BOT_MERGE_NO_VERIFY (which bypasses the whole pre-push hook).
-if [[ $FAST -eq 0 ]] && command -v chump >/dev/null 2>&1; then
+# RESILIENT-1622 rollout safety: --structural is a NEW flag and `chump preflight`
+# ignores unknown flags (forward-compat), so a STALE binary handed --structural
+# would silently run the FULL cargo-build preflight here. Capability-gate on the
+# binary actually advertising --structural; a stale binary skips this stage (the
+# pre-push hook + CI remain the gate) rather than paying an unexpected full build.
+if [[ $FAST -eq 0 ]] && command -v chump >/dev/null 2>&1 \
+    && chump preflight --help 2>/dev/null | grep -q -- '--structural'; then
     stage_start "structural preflight subset (chump preflight --structural)" 120
     _bm_struct_out="$(mktemp)"
     _bm_struct_rc=0

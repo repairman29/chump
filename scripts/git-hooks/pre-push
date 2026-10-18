@@ -422,11 +422,25 @@ if command -v chump &>/dev/null \
     # runs the full preflight below.
     _pf_structural_arg=""
     if [[ "$preflight_has_targets" -eq 1 && "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" == "1" ]]; then
-        _pf_structural_arg="--structural"
-        echo "[pre-push] INFRA-3521 (RESILIENT-1622): bot-merge push — running structural preflight subset (no cargo build) instead of skipping." >&2
         _amb_3521="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump-locks/ambient.jsonl"
-        printf '{"ts":"%s","kind":"prepush_preflight_skipped_botmerge","reason":"INFRA-3521 narrowed (RESILIENT-1622): full preflight skipped, structural subset runs"}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_3521" 2>/dev/null || true
+        # RESILIENT-1622 rollout safety: --structural is a NEW flag. `chump
+        # preflight` ignores unknown flags for forward-compat, so a STALE binary
+        # handed --structural would silently run the FULL (cargo-build) preflight
+        # here and blow bot-merge's 300s push budget — the exact META-156
+        # regression INFRA-3521 fixed. Only run the structural subset when the
+        # binary actually advertises the flag; otherwise fall back to the old
+        # INFRA-3521 skip (CI remains authoritative) until the new binary is live.
+        if chump preflight --help 2>/dev/null | grep -q -- '--structural'; then
+            _pf_structural_arg="--structural"
+            echo "[pre-push] INFRA-3521 (RESILIENT-1622): bot-merge push — running structural preflight subset (no cargo build) instead of skipping." >&2
+            printf '{"ts":"%s","kind":"prepush_preflight_skipped_botmerge","reason":"INFRA-3521 narrowed (RESILIENT-1622): full preflight skipped, structural subset runs"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_3521" 2>/dev/null || true
+        else
+            preflight_has_targets=0
+            echo "[pre-push] INFRA-3521: skipping preflight re-run — bot-merge already gated this push; CI is authoritative (binary predates --structural)." >&2
+            printf '{"ts":"%s","kind":"prepush_preflight_skipped_botmerge","reason":"INFRA-3521: bot-merge already gated + CI authoritative (binary predates --structural)"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_3521" 2>/dev/null || true
+        fi
         unset _amb_3521
     fi
 

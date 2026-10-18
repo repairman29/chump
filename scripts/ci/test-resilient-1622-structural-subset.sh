@@ -100,12 +100,17 @@ else
     fail "pre-push should run the structural subset under bot-merge, not skip preflight entirely"
 fi
 
-# The bot-merge branch must no longer zero preflight_has_targets (the old skip).
+# Rollout safety: the narrowing must be CAPABILITY-GATED. `chump preflight`
+# ignores unknown flags, so a stale binary handed --structural would run the
+# FULL cargo-build preflight here and blow bot-merge's 300s push budget (the
+# META-156 regression). Only run --structural when the binary advertises it;
+# otherwise fall back to the old INFRA-3521 skip until the new binary is live.
 botmerge_narrow_block=$(echo "$guard_0a_block" | awk '/CHUMP_BOT_MERGE_IN_PROGRESS.*== "1"/,/^    fi/')
-if echo "$botmerge_narrow_block" | grep -q 'preflight_has_targets=0'; then
-    fail "pre-push bot-merge branch still zeroes preflight_has_targets — structural subset would not run"
+if echo "$botmerge_narrow_block" | grep -q 'chump preflight --help' \
+    && echo "$botmerge_narrow_block" | grep -q "grep -q -- '--structural'"; then
+    ok "pre-push narrowing is capability-gated (stale binary falls back to the old skip — no budget-blow)"
 else
-    ok "pre-push bot-merge branch no longer disables preflight outright"
+    fail "pre-push structural narrowing must be guarded by a 'chump preflight --help | grep -- --structural' capability check"
 fi
 
 # ── 4. BEHAVIORAL: a synthetic unwired scripts/ci test fails the census gate ────
