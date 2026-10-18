@@ -100,20 +100,40 @@ else
     fail "Guard 0a should run before Guard 0 (cargo fmt); 0a=$line_0a, 0=$line_0"
 fi
 
-# 9. INFRA-3521: preflight re-run is skipped for bot-merge-initiated pushes
-#    (bot-merge already gated + delegates to CI; re-running here blew the
-#    300s push budget → SIGTERM → orphaned worktree → META-156).
+# 9. INFRA-3521: the FULL preflight re-run is skipped for bot-merge-initiated
+#    pushes (bot-merge already gated + delegates the cargo suite to CI;
+#    re-running the full preflight here blew the 300s push budget → SIGTERM →
+#    orphaned worktree → META-156).
 if grep -q 'CHUMP_BOT_MERGE_IN_PROGRESS' "$HOOK" && grep -q 'INFRA-3521' "$HOOK"; then
-    ok "INFRA-3521: bot-merge pushes skip the redundant preflight re-run"
+    ok "INFRA-3521: bot-merge pushes skip the redundant FULL preflight re-run"
 else
-    fail "INFRA-3521 bot-merge preflight-skip missing — double-preflight timeout wedge unfixed"
+    fail "INFRA-3521 bot-merge preflight-narrowing missing — double-preflight timeout wedge unfixed"
 fi
 
-# 9b. The skip disables the preflight block (flips the flag) AND leaves an audit trail
-if grep -qE 'preflight_has_targets=0' "$HOOK" && grep -q 'prepush_preflight_skipped_botmerge' "$HOOK"; then
-    ok "INFRA-3521: skip disables the preflight block + emits an audit event"
+# 9b. RESILIENT-1622: INFRA-3521 is NARROWED, not a full skip — under
+#     CHUMP_BOT_MERGE_IN_PROGRESS the hook runs the STRUCTURAL subset
+#     (`chump preflight --structural`, no cargo build) instead of skipping
+#     preflight entirely, so census / ci-parity / env-var / event-registry /
+#     path-filter / no-new-bypass / raw-gh are caught before push (#5582, #5585).
+guard_0a_block=$(awk '/^# Guard 0a:/,/^# Guard 0: cargo fmt/' "$HOOK")
+if echo "$guard_0a_block" | grep -q 'RESILIENT-1622' \
+    && echo "$guard_0a_block" | grep -q 'chump preflight \$_pf_structural_arg' \
+    && echo "$guard_0a_block" | grep -q 'prepush_preflight_skipped_botmerge'; then
+    ok "RESILIENT-1622: bot-merge push runs the structural subset (narrowed) + emits an audit event"
 else
-    fail "INFRA-3521: skip should set preflight_has_targets=0 and emit prepush_preflight_skipped_botmerge"
+    fail "RESILIENT-1622: bot-merge branch should run 'chump preflight --structural' (INFRA-3521 narrowed), not skip entirely"
+fi
+
+# 9c. RESILIENT-1622: the bot-merge branch must NOT disable the preflight block
+#     outright (the old `preflight_has_targets=0` skip) — that was the bug that
+#     let census/parity failures reach CI. The only 'preflight_has_targets=0' in
+#     the Guard 0a block should be the initial declaration, never inside the
+#     CHUMP_BOT_MERGE_IN_PROGRESS branch.
+botmerge_narrow_block=$(echo "$guard_0a_block" | awk '/CHUMP_BOT_MERGE_IN_PROGRESS.*== "1"/,/^    fi/')
+if echo "$botmerge_narrow_block" | grep -q 'preflight_has_targets=0'; then
+    fail "RESILIENT-1622: bot-merge branch still zeroes preflight_has_targets — structural subset would not run"
+else
+    ok "RESILIENT-1622: bot-merge branch no longer disables preflight outright"
 fi
 
 # 10. INFRA-3524: clippy re-run is skipped for bot-merge-initiated pushes
