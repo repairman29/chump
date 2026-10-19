@@ -12,9 +12,6 @@ use std::path::PathBuf;
 pub struct NodeModeState {
     node_env_path: PathBuf,
     state_dir: PathBuf,
-    /// Repo root the kill-switch sentinel path resolves against — the same root
-    /// the farmer gate and the shared pause predicate read (RESILIENT-1652).
-    repo_root: PathBuf,
 }
 
 impl NodeModeState {
@@ -28,29 +25,27 @@ impl NodeModeState {
             })
             .context("unable to resolve state directory; set CHUMP_STATE_DIR or HOME")?;
 
-        let node_env_path = state_dir.join("node.env");
+        let node_env_path = crate::node_pause::node_env_path(&state_dir);
         Ok(NodeModeState {
             node_env_path,
             state_dir,
-            repo_root: crate::repo_path::repo_root(),
         })
     }
 
-    /// Pause the node: set CHUMP_NODE_MODE=paused in node.env and emit the pause
-    /// event.
+    /// Pause the node: set CHUMP_NODE_MODE=paused in node.env, write the node
+    /// pause sentinel, and emit the pause event.
     ///
-    /// RESILIENT-1652/1653: the durable pause signal is `node.env`
-    /// `CHUMP_NODE_MODE=paused` — the shared predicate ([`crate::node_pause`])
-    /// and the farmer gate both read it. `chump node pause` deliberately does
-    /// NOT write the `.chump/fleet-paused` kill-switch sentinel: that sentinel
-    /// is owned by the ci-health-gate / waste-SLO path and is a HARD RED the
-    /// farmer gate never relaxes (RESILIENT-1636 RED2). Writing it here would
-    /// wall every bot-merge re-entry on a verb-paused node — the exact
-    /// ship-wall this program fixes. (The former write landed at the doubled
-    /// `~/.chump/.chump/fleet-paused` path no reader checked; un-doubling it to
-    /// the real kill-switch path would have activated that wall, so it is
-    /// removed entirely. The operator's reason is carried by the
-    /// `kind=node_paused` ambient event.)
+    /// RESILIENT-1652/1653: the durable operator-pause signal is `node.env`
+    /// `CHUMP_NODE_MODE=paused` PLUS the node pause sentinel
+    /// `<state_dir>/.chump/fleet-paused` (carrying `REASON=…`), written through
+    /// the ONE shared [`crate::node_pause::node_sentinel_path`] every reader
+    /// uses — node-converge's `_nc_paused`, the farmer gate, and
+    /// `chump node is-paused`. This is a DIFFERENT file from the farmer kill
+    /// switch `<repo>/.chump/fleet-paused` (owned by the ci-health-gate; a HARD
+    /// RED the farmer gate never relaxes, RESILIENT-1636 RED2). Because the two
+    /// live under distinct roots (state_dir ≠ repo), writing the node sentinel
+    /// does NOT trip the kill switch, so a verb-paused node can still ship
+    /// already-claimed work (re-entry admitted) — the cuphead ship-wall fix.
     pub fn pause(&self, reason: &str) -> Result<()> {
         // Read current node.env
         let mut contents = if self.node_env_path.exists() {
@@ -65,8 +60,25 @@ impl NodeModeState {
         // Write updated node.env
         fs::write(&self.node_env_path, &contents).context("failed to write node.env")?;
 
-        // Emit node_paused event (carries the operator reason + actor).
+        // Write the node pause sentinel (with reason + actor) through the ONE
+        // shared path function — the same path node-converge / the farmer gate /
+        // is-paused read (RESILIENT-1653 AC2: no reader checks a path no writer
+        // writes). This is the node sentinel, NOT the repo kill switch.
         let actor = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+        let sentinel_path = crate::node_pause::node_sentinel_path(&self.state_dir);
+        let sentinel_content = format!(
+            "REASON={}\nACTOR={}\nTIMESTAMP={}\n",
+            reason,
+            actor,
+            Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+        );
+        if let Some(parent) = sentinel_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&sentinel_path, sentinel_content)
+            .context("failed to write node pause sentinel")?;
+
+        // Emit node_paused event (carries the operator reason + actor).
         self.emit_ambient(
             "node_paused",
             &format!(
@@ -79,10 +91,12 @@ impl NodeModeState {
         Ok(())
     }
 
-    /// Resume the node: set CHUMP_NODE_MODE=work-ready in node.env and emit the
-    /// resume event. RESILIENT-1652/1653: pause never wrote the kill-switch
-    /// sentinel, so resume never removes it — the `.chump/fleet-paused` sentinel
-    /// is the ci-health-gate's to clear on its own recovery, not node resume's.
+    /// Resume the node: set CHUMP_NODE_MODE=work-ready in node.env, remove the
+    /// node pause sentinel, and emit the resume event. RESILIENT-1652/1653:
+    /// resume clears exactly the node sentinel `chump node pause` wrote
+    /// (`<state_dir>/.chump/fleet-paused`), through the SAME shared path
+    /// function — never the repo kill switch (that is the ci-health-gate's to
+    /// clear on its own recovery).
     pub fn resume(&self) -> Result<()> {
         // Read current node.env
         let mut contents = if self.node_env_path.exists() {
@@ -97,6 +111,10 @@ impl NodeModeState {
         // Write updated node.env
         fs::write(&self.node_env_path, &contents).context("failed to write node.env")?;
 
+        // Remove the node pause sentinel (OK if it doesn't exist).
+        let sentinel_path = crate::node_pause::node_sentinel_path(&self.state_dir);
+        let _ = fs::remove_file(&sentinel_path);
+
         // Emit node_resumed event
         self.emit_ambient("node_resumed", "")?;
 
@@ -104,14 +122,11 @@ impl NodeModeState {
     }
 
     /// Check if the node is currently paused — the pause DETECTOR half of the
-    /// ONE predicate shared with the farmer gate (RESILIENT-1652). Reads
-    /// `node.env` (both line forms + the legacy control-plane form) and the repo
-    /// `.chump/fleet-paused` kill switch.
+    /// ONE predicate shared with the farmer gate (RESILIENT-1652). Reads the
+    /// node state dir: `node.env` (both line forms + the legacy control-plane
+    /// form) and the `<state_dir>/.chump/fleet-paused` node pause sentinel.
     pub fn is_paused(&self) -> Result<bool> {
-        Ok(crate::node_pause::is_paused(
-            &self.repo_root,
-            &self.node_env_path,
-        ))
+        Ok(crate::node_pause::is_paused(&self.state_dir))
     }
 
     /// Update or add a line in node.env. INFRA-8588: node.env must be the single
@@ -207,13 +222,12 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    /// Build a state whose repo_root and state_dir are both the temp dir, so
-    /// the pause detector reads node.env + the (absent) repo sentinel there.
+    /// Build a state rooted at the temp dir, so the pause verb writes + the
+    /// detector reads node.env + the node pause sentinel there.
     fn state_at(path: &std::path::Path) -> NodeModeState {
         NodeModeState {
-            node_env_path: path.join("node.env"),
+            node_env_path: crate::node_pause::node_env_path(path),
             state_dir: path.to_path_buf(),
-            repo_root: path.to_path_buf(),
         }
     }
 
@@ -241,10 +255,19 @@ mod tests {
             "pause must not write an export line: {contents:?}"
         );
 
-        // RESILIENT-1652/1653: pause does NOT write the `.chump/fleet-paused`
-        // kill switch (that would wall re-entry on a verb-paused node), and
-        // NEVER the old doubled `.chump/.chump` path.
-        assert!(!state_path.join(".chump").join("fleet-paused").exists());
+        // RESILIENT-1652/1653: pause writes the NODE pause sentinel at exactly
+        // `<state_dir>/.chump/fleet-paused` (the shared path node-converge reads)
+        // carrying REASON=, and NEVER the doubled `.chump/.chump` path.
+        let sentinel = crate::node_pause::node_sentinel_path(state_path);
+        assert_eq!(sentinel, state_path.join(".chump").join("fleet-paused"));
+        assert!(
+            sentinel.exists(),
+            "pause must write the node pause sentinel"
+        );
+        assert!(
+            fs::read_to_string(&sentinel)?.contains("REASON=test pause reason"),
+            "node pause sentinel must carry the reason"
+        );
         assert!(!state_path
             .join(".chump")
             .join(".chump")
@@ -261,6 +284,12 @@ mod tests {
         assert!(
             chump_provision::node_env::export_violations(&contents).is_empty(),
             "resume must not write an export line: {contents:?}"
+        );
+
+        // Resume removes the node pause sentinel it wrote.
+        assert!(
+            !sentinel.exists(),
+            "resume must remove the node pause sentinel"
         );
 
         Ok(())
@@ -283,16 +312,20 @@ mod tests {
     }
 
     #[test]
-    fn pause_detector_reads_repo_kill_switch_sentinel() -> Result<()> {
-        // RESILIENT-1653 AC2: the detector reads the repo `.chump/fleet-paused`
-        // sentinel — the same path the farmer and ci-health-gate share.
+    fn pause_detector_reads_node_sentinel() -> Result<()> {
+        // RESILIENT-1653 AC2: the detector reads the NODE pause sentinel
+        // `<state_dir>/.chump/fleet-paused` — the same path `chump node pause`
+        // writes and node-converge's `_nc_paused` reads.
         let temp_dir = TempDir::new()?;
         let state_path = temp_dir.path();
         fs::create_dir_all(state_path.join(".chump"))?;
         fs::write(state_path.join("node.env"), "CHUMP_NODE_MODE=work-ready\n")?;
         let state = state_at(state_path);
         assert!(!state.is_paused()?);
-        fs::write(crate::node_pause::sentinel_path(state_path), "slo_breach")?;
+        fs::write(
+            crate::node_pause::node_sentinel_path(state_path),
+            "REASON=slo_breach\n",
+        )?;
         assert!(state.is_paused()?);
         Ok(())
     }

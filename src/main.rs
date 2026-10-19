@@ -3531,14 +3531,14 @@ async fn main() -> Result<()> {
             println!("self-doctor, worker loop) check the mode first and exit 0 without");
             println!("installing, enabling, or restarting anything.");
             println!();
-            println!("Pause writes CHUMP_NODE_MODE=paused to node.env and emits kind=node_paused.");
-            println!("The .chump/fleet-paused sentinel is the ci-health-gate kill switch and is");
-            println!(
-                "NOT written by node pause (RESILIENT-1652/1653) — the durable operator-pause"
-            );
-            println!("signal is node.env, so a paused node can still ship already-claimed work.");
+            println!("Pause writes CHUMP_NODE_MODE=paused to node.env, writes the node pause");
+            println!("sentinel <state_dir>/.chump/fleet-paused (carrying REASON=), and emits");
+            println!("kind=node_paused. That node sentinel is a DIFFERENT file from the");
+            println!("ci-health-gate kill switch <repo>/.chump/fleet-paused (a HARD RED), so a");
+            println!("verb-paused node still ships already-claimed work (RESILIENT-1652/1653).");
             println!();
-            println!("Resume writes CHUMP_NODE_MODE=work-ready and emits kind=node_resumed.");
+            println!("Resume writes CHUMP_NODE_MODE=work-ready, removes the node pause sentinel,");
+            println!("and emits kind=node_resumed.");
             println!();
             println!("--help prints this; --dry-run makes no writes.");
             println!();
@@ -3601,8 +3601,9 @@ async fn main() -> Result<()> {
                 if dry_run {
                     println!("[dry-run] would pause node with reason: {reason}");
                     println!(
-                        "[dry-run] would set CHUMP_NODE_MODE=paused in node.env and emit \
-                         kind=node_paused (no .chump/fleet-paused sentinel; no writes performed)"
+                        "[dry-run] would set CHUMP_NODE_MODE=paused in node.env, write the node \
+                         pause sentinel <state_dir>/.chump/fleet-paused (REASON=), and emit \
+                         kind=node_paused (NOT the <repo>/.chump kill switch; no writes performed)"
                     );
                     return Ok(());
                 }

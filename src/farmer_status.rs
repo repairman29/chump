@@ -406,10 +406,11 @@ fn resolve_node_state_dir() -> PathBuf {
 
 /// Node-mode pause detection (RESILIENT-1636 / RESILIENT-1614 / RESILIENT-1652).
 /// Delegates to the ONE paused predicate in [`crate::node_pause`], shared with
-/// the pause detector in `node_mode.rs`. A node is paused when `node.env` (at
-/// `<state_dir>/node.env`) expresses it (`CHUMP_NODE_MODE=paused` in either line
-/// form, OR the legacy `control-plane` + `CHUMP_NODE_WORK_ENABLED=0` form cuphead
-/// carried), OR the node `.chump/fleet-paused` sentinel is present. A paused
+/// the pause detector in `node_mode.rs`, `chump node is-paused`, and
+/// node-converge. A node is paused when the node **state dir** expresses it via
+/// `node.env` (`CHUMP_NODE_MODE=paused` in either line form, OR the legacy
+/// `control-plane` + `CHUMP_NODE_WORK_ENABLED=0` form cuphead carried) OR the
+/// `<state_dir>/.chump/fleet-paused` node pause sentinel is present. A paused
 /// node's stale heartbeat is EXPECTED (the farmer is deliberately idle), so it
 /// is reported as PAUSED. Returns the signal so the gate can attribute the
 /// reason.
@@ -418,9 +419,11 @@ fn resolve_node_state_dir() -> PathBuf {
 /// NOT consult an exported `CHUMP_NODE_MODE` env var (that override is removed,
 /// so node.env is the sole durable source) and it does NOT resolve the state dir
 /// from the host itself. Both make every caller that passes an explicit (temp)
-/// state dir fully hermetic.
-fn node_is_paused(repo_root: &Path, state_dir: &Path) -> Option<crate::node_pause::PauseSignal> {
-    crate::node_pause::pause_signal(repo_root, &state_dir.join("node.env"))
+/// state dir fully hermetic. The node pause sentinel here is a DIFFERENT file
+/// from the kill switch [`check_sentinel`] reads (`repo_root/.chump`), so a
+/// verb-paused node reports PAUSED without tripping the HARD-RED kill switch.
+fn node_is_paused(state_dir: &Path) -> Option<crate::node_pause::PauseSignal> {
+    crate::node_pause::pause_signal(state_dir)
 }
 
 /// Compute the farmer status, resolving the node state dir from the host env
@@ -443,7 +446,7 @@ pub fn compute_at(repo_root: &Path, state_dir: &Path) -> FarmerStatus {
     let exit78_free = check_exit78_free(&mut reasons);
     let oauth_fresh = check_oauth_fresh(repo_root, &mut reasons);
     let (heartbeat_fresh, heartbeat_age_s) = heartbeat_verdict(&chump_dir);
-    let pause_signal = node_is_paused(repo_root, state_dir);
+    let pause_signal = node_is_paused(state_dir);
     let paused = pause_signal.is_some();
 
     // RESILIENT-1636: a paused node's stale heartbeat is expected — report it

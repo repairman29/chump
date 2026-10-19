@@ -1,59 +1,72 @@
 //! RESILIENT-1652 / RESILIENT-1653 (PHASE-R R6): the ONE paused predicate.
 //!
-//! Before this module the fleet detected a node pause in three places that did
-//! not agree:
+//! Before this module the fleet detected a node pause in places that did not
+//! agree:
 //!   * `farmer_status::node_is_paused` read `node.env` for `CHUMP_NODE_MODE=paused`
 //!     ONLY — it did not recognise the legacy `control-plane` + `WORK_ENABLED=0`
 //!     form cuphead was actually paused with, so the farmer gate saw the node as
 //!     UN-paused and walled every bot-merge re-entry (RESILIENT-1652 evidence);
 //!   * `node_mode::is_paused` read `node.env` directly;
-//!   * `node-converge.sh` had a fourth, shell-only rule.
+//!   * `node-converge.sh` had its own shell-only rule.
 //!
 //! This module owns the invariant (Rust-owns-invariants, PHASE-R R6): one
-//! predicate that both the farmer gate (`farmer_status`) and the pause detector
-//! (`node_mode`) call. It reads:
-//!   1. `node.env` `CHUMP_NODE_MODE` in BOTH line forms (bare `KEY=VALUE` and
-//!      the shell `export KEY=VALUE` form), and the legacy
-//!      `CHUMP_NODE_MODE=control-plane` + `CHUMP_NODE_WORK_ENABLED=0` pause form;
-//!   2. the repo `.chump/fleet-paused` sentinel (the kill switch every reader —
-//!      farmer, FLEET-054 workers, self-rescue, node-converge — shares).
+//! predicate that the pause/resume verb (writer), the farmer gate
+//! (`farmer_status`), the pause detector (`node_mode`), `chump node is-paused`,
+//! and node-converge (through `chump node is-paused`) all share. Every path is
+//! resolved from the node **state dir** (`CHUMP_STATE_DIR`, else
+//! `<state-home>/.chump`) — the same `sd` node-converge's `_nc_paused` uses.
 //!
-//! The two pause CONCEPTS stay distinct and must not be conflated:
-//!   * an operator node pause (`chump node pause`) is durably expressed as
-//!     `node.env CHUMP_NODE_MODE=paused`. The farmer gate excuses its (expected)
-//!     stale heartbeat and ADMITS re-entry of already-claimed ship work
-//!     (RESILIENT-1636) — the cuphead ship-wall fix;
-//!   * the `.chump/fleet-paused` kill switch is owned by the ci-health-gate /
-//!     waste-SLO path. It is a HARD RED the farmer gate never relaxes (the
-//!     RESILIENT-1636 RED2 invariant). `chump node pause` therefore MUST NOT
-//!     write it — doing so would wall every re-entry on a verb-paused node
-//!     (see `node_mode.rs`).
+//! Two pause files exist and MUST NOT be conflated — they live under different
+//! roots, so they never collide on a real node (state_dir ≠ repo):
 //!
-//! Reading the kill-switch sentinel here as a pause SIGNAL only affects
-//! reporting (`farmer status` prints PAUSED, the stale heartbeat is attributed
-//! to the pause); admission still refuses because the sentinel independently
-//! drives `sentinel_absent=false` in the farmer gate.
+//!   * the **node pause sentinel** `<state_dir>/.chump/fleet-paused` — the
+//!     operator pause. `chump node pause` WRITES it (with `REASON=…`),
+//!     `chump node resume` REMOVES it, and node-converge's `_nc_paused` READS
+//!     it. [`node_sentinel_path`] is the ONE function every writer and reader
+//!     derives it from, so no reader ever checks a path no writer writes
+//!     (RESILIENT-1653 AC2). It is a pause SIGNAL: the farmer gate reports
+//!     PAUSED and ADMITS re-entry of already-claimed ship work (RESILIENT-1636).
+//!
+//!   * the **farmer kill switch** `<repo>/.chump/fleet-paused` — owned by the
+//!     ci-health-gate / waste-SLO path, read by `farmer_status::check_sentinel`.
+//!     It is a HARD RED the farmer gate never relaxes (the RESILIENT-1636 RED2
+//!     invariant), so `chump node pause` MUST NOT write it — doing so would wall
+//!     every re-entry on a verb-paused node. It is NOT this module's concern.
+//!
+//! The node sentinel being a pause SIGNAL here only affects reporting (`farmer
+//! status` prints PAUSED, the stale heartbeat is attributed to the pause); the
+//! kill switch independently drives `sentinel_absent=false` in the farmer gate.
 
 use std::path::{Path, PathBuf};
 
 /// Why a node reads as paused. The farmer gate uses this to attribute the
-/// refusal reason accurately (node-env pause vs. the kill-switch sentinel).
+/// refusal reason accurately (node-env pause vs. the node pause sentinel).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PauseSignal {
     /// `node.env` expresses the pause (`CHUMP_NODE_MODE=paused`, or the legacy
     /// `control-plane` + `CHUMP_NODE_WORK_ENABLED=0` form).
     NodeEnv,
-    /// the repo `.chump/fleet-paused` kill-switch sentinel is present.
+    /// the `<state_dir>/.chump/fleet-paused` node pause sentinel is present.
     Sentinel,
 }
 
-/// The single `.chump/fleet-paused` kill-switch sentinel path EVERY reader
-/// shares: the repo root's `.chump/fleet-paused`. This is where the
-/// ci-health-gate writes, where the farmer (`farmer_status::check_sentinel`),
-/// FLEET-054 workers, and the self-rescue conductor read. `chump node pause`
-/// does NOT write here (it would self-wall); its durable signal is `node.env`.
-pub fn sentinel_path(repo_root: &Path) -> PathBuf {
-    repo_root.join(".chump").join("fleet-paused")
+/// The ONE node pause sentinel path every writer and reader shares:
+/// `<state_dir>/.chump/fleet-paused`. `chump node pause` writes it (carrying
+/// `REASON=…`), `chump node resume` removes it, and the predicate + node-converge
+/// read it. This is a DIFFERENT file from the farmer kill switch
+/// `<repo>/.chump/fleet-paused` (owned by the ci-health-gate; a HARD RED): the
+/// two live under distinct roots and must not be conflated. Routing every
+/// access through this function is RESILIENT-1653 AC2's "no reader may check a
+/// path no writer writes" guarantee (proved by `writer_and_reader_agree_*`).
+pub fn node_sentinel_path(state_dir: &Path) -> PathBuf {
+    state_dir.join(".chump").join("fleet-paused")
+}
+
+/// `node.env`'s path for a given state dir: `<state_dir>/node.env` — where
+/// `chump node pause` writes `CHUMP_NODE_MODE` and node-converge's `_nc_paused`
+/// reads it.
+pub fn node_env_path(state_dir: &Path) -> PathBuf {
+    state_dir.join("node.env")
 }
 
 /// Pure parse of a `node.env` body for a pause, in BOTH line forms:
@@ -84,27 +97,29 @@ pub fn node_env_is_paused(content: &str) -> bool {
     mode == Some("control-plane") && work_enabled == Some("0")
 }
 
-/// Resolve the pause signal from `node.env` at `node_env_path` and the repo
-/// kill-switch sentinel at `repo_root`. `node.env` wins the attribution when
-/// both are present, so a node paused via the verb reports "by node mode".
-pub fn pause_signal(repo_root: &Path, node_env_path: &Path) -> Option<PauseSignal> {
-    if let Ok(body) = std::fs::read_to_string(node_env_path) {
+/// Resolve the pause signal from the node **state dir**: `node.env`
+/// `CHUMP_NODE_MODE` (both line forms + the legacy control-plane form) wins the
+/// attribution when present, else the `<state_dir>/.chump/fleet-paused` node
+/// pause sentinel. `None` when neither expresses a pause.
+pub fn pause_signal(state_dir: &Path) -> Option<PauseSignal> {
+    if let Ok(body) = std::fs::read_to_string(node_env_path(state_dir)) {
         if node_env_is_paused(&body) {
             return Some(PauseSignal::NodeEnv);
         }
     }
-    if sentinel_path(repo_root).exists() {
+    if node_sentinel_path(state_dir).exists() {
         return Some(PauseSignal::Sentinel);
     }
     None
 }
 
-/// The ONE paused predicate: true when `node.env` expresses a pause (both line
-/// forms + the legacy control-plane form) OR the repo kill-switch sentinel
-/// exists. Used by the farmer gate (`farmer_status`) and the pause detector
-/// (`node_mode`).
-pub fn is_paused(repo_root: &Path, node_env_path: &Path) -> bool {
-    pause_signal(repo_root, node_env_path).is_some()
+/// The ONE paused predicate: true when the node state dir expresses a pause via
+/// `node.env` (both line forms + the legacy control-plane form) OR the
+/// `<state_dir>/.chump/fleet-paused` node pause sentinel exists. Shared by the
+/// farmer gate (`farmer_status`), the pause detector (`node_mode`), and
+/// `chump node is-paused`.
+pub fn is_paused(state_dir: &Path) -> bool {
+    pause_signal(state_dir).is_some()
 }
 
 #[cfg(test)]
@@ -156,57 +171,60 @@ mod tests {
     }
 
     #[test]
-    fn sentinel_path_is_repo_dot_chump_never_doubled() {
-        // Writer (ci-health-gate) and readers (farmer/predicate) share exactly
-        // this path — never a doubled `.chump/.chump` (RESILIENT-1653).
-        let p = sentinel_path(Path::new("/srv/repo"));
-        assert_eq!(p, PathBuf::from("/srv/repo/.chump/fleet-paused"));
-        assert!(!p.to_string_lossy().contains(".chump/.chump"));
+    fn node_sentinel_path_is_state_dir_dot_chump() {
+        // RESILIENT-1653 AC2: the node pause sentinel is exactly
+        // `<state_dir>/.chump/fleet-paused` — the same `$sd/.chump/fleet-paused`
+        // node-converge's `_nc_paused` reads. Never a doubled `.chump/.chump`.
+        let p = node_sentinel_path(Path::new("/home/ubuntu/.chump"));
+        assert_eq!(p, PathBuf::from("/home/ubuntu/.chump/.chump/fleet-paused"));
+        assert!(p.ends_with(".chump/fleet-paused"));
     }
 
     #[test]
     fn pause_signal_reads_node_env_and_sentinel() {
         let dir = tempfile::tempdir().unwrap();
-        let repo = dir.path();
-        std::fs::create_dir_all(repo.join(".chump")).unwrap();
-        let ne = repo.join("node.env");
+        let state = dir.path();
+        std::fs::create_dir_all(state.join(".chump")).unwrap();
 
         // Nothing paused yet.
-        assert_eq!(pause_signal(repo, &ne), None);
-        assert!(!is_paused(repo, &ne));
+        assert_eq!(pause_signal(state), None);
+        assert!(!is_paused(state));
 
         // node.env pause → NodeEnv (attribution wins over sentinel).
-        std::fs::write(&ne, "export CHUMP_NODE_MODE=paused\n").unwrap();
-        assert_eq!(pause_signal(repo, &ne), Some(PauseSignal::NodeEnv));
-        assert!(is_paused(repo, &ne));
+        std::fs::write(node_env_path(state), "export CHUMP_NODE_MODE=paused\n").unwrap();
+        assert_eq!(pause_signal(state), Some(PauseSignal::NodeEnv));
+        assert!(is_paused(state));
 
         // sentinel only → Sentinel.
-        std::fs::write(&ne, "CHUMP_NODE_MODE=work-ready\n").unwrap();
-        std::fs::write(sentinel_path(repo), "x").unwrap();
-        assert_eq!(pause_signal(repo, &ne), Some(PauseSignal::Sentinel));
-        assert!(is_paused(repo, &ne));
+        std::fs::write(node_env_path(state), "CHUMP_NODE_MODE=work-ready\n").unwrap();
+        std::fs::write(node_sentinel_path(state), "REASON=x\n").unwrap();
+        assert_eq!(pause_signal(state), Some(PauseSignal::Sentinel));
+        assert!(is_paused(state));
 
         // both present → NodeEnv attribution.
-        std::fs::write(&ne, "CHUMP_NODE_MODE=paused\n").unwrap();
-        assert_eq!(pause_signal(repo, &ne), Some(PauseSignal::NodeEnv));
+        std::fs::write(node_env_path(state), "CHUMP_NODE_MODE=paused\n").unwrap();
+        assert_eq!(pause_signal(state), Some(PauseSignal::NodeEnv));
     }
 
     #[test]
-    fn writer_and_reader_agree_on_sentinel_path() {
-        // RESILIENT-1653 AC2 / task (3): the path the predicate reads is the
-        // repo `.chump/fleet-paused`. A sentinel written exactly there is seen.
+    fn writer_and_reader_agree_on_node_sentinel_path() {
+        // RESILIENT-1653 AC2 / task (1): "no reader may check a path no writer
+        // writes." A sentinel written at `node_sentinel_path(state_dir)` — the
+        // ONE function the pause verb writes through — is seen by the predicate,
+        // which reads through the SAME function. A doubled
+        // `.chump/.chump/fleet-paused` is NOT where the reader looks.
         let dir = tempfile::tempdir().unwrap();
-        let repo = dir.path();
-        std::fs::create_dir_all(repo.join(".chump")).unwrap();
-        let ne = repo.join("node.env");
+        let state = dir.path();
+        std::fs::create_dir_all(node_sentinel_path(state).parent().unwrap()).unwrap();
+        std::fs::write(node_env_path(state), "CHUMP_NODE_MODE=work-ready\n").unwrap();
         // Write where the predicate reads → the predicate sees it.
-        std::fs::write(sentinel_path(repo), "slo_breach").unwrap();
-        assert_eq!(pause_signal(repo, &ne), Some(PauseSignal::Sentinel));
+        std::fs::write(node_sentinel_path(state), "REASON=slo_breach\n").unwrap();
+        assert_eq!(pause_signal(state), Some(PauseSignal::Sentinel));
         // A doubled `.chump/.chump/fleet-paused` is NOT where the reader looks.
-        std::fs::remove_file(sentinel_path(repo)).unwrap();
-        let doubled = repo.join(".chump").join(".chump").join("fleet-paused");
+        std::fs::remove_file(node_sentinel_path(state)).unwrap();
+        let doubled = state.join(".chump").join(".chump").join("fleet-paused");
         std::fs::create_dir_all(doubled.parent().unwrap()).unwrap();
-        std::fs::write(&doubled, "slo_breach").unwrap();
-        assert_eq!(pause_signal(repo, &ne), None);
+        std::fs::write(&doubled, "REASON=slo_breach\n").unwrap();
+        assert_eq!(pause_signal(state), None);
     }
 }
