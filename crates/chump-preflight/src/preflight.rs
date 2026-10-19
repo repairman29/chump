@@ -2948,13 +2948,20 @@ pub fn run(argv: &[String]) -> i32 {
             ],
             GateKind::Scripts,
         ));
-        // RESILIENT-1652/1653: the cuphead ship wall, second cut. One paused
-        // predicate (node.env both forms + legacy control-plane+WORK_ENABLED=0
-        // + repo sentinel) shared by the farmer gate and the pause detector;
-        // check_oauth_fresh reads ~/.claude/.credentials.json from HOME (not
-        // CHUMP_HOME); node pause|resume --help/--dry-run make zero writes, an
-        // unknown flag is exit 2, and pause writes no kill-switch sentinel.
-        // Resolves/builds ${CARGO_TARGET_DIR:-target}/debug/chump when absent.
+        // RESILIENT-1652/1653: the cuphead ship wall, second cut. ONE paused
+        // predicate (node.env both line forms + legacy control-plane+WORK_ENABLED=0,
+        // plus the NODE pause sentinel <state_dir>/.chump/fleet-paused — NOT the
+        // repo kill switch) shared by the farmer gate, the pause detector,
+        // `chump node is-paused`, and node-converge's _nc_paused (which delegates
+        // to that verb; this test runs _nc_paused itself over the node.env
+        // fixtures). check_oauth_fresh prefers ~/.claude/.credentials.json keyed
+        // off HOME; on Linux the ~/.chump/oauth-token.json fallback is judged by
+        // CONTENT (sk- prefix + future/absent expiry), NEVER by mtime — a
+        // long-lived old-mtime token reads fresh, a missing/empty/expired one
+        // reds (driven through the gate here). node pause|resume --help/--dry-run
+        // and `node is-paused` make ZERO writes, an unknown flag is exit 2, and
+        // pause writes the node sentinel (never the kill switch). Resolves/builds
+        // ${CARGO_TARGET_DIR:-target}/debug/chump when absent.
         steps.push(step(
             "pause-and-oauth",
             &["bash", "scripts/ci/test-resilient-1652-pause-and-oauth.sh"],

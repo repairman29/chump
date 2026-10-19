@@ -177,7 +177,12 @@ _nc_paused() {
         # rc>=2: is-paused errored — fall through to the shell fallback below.
     fi
     # Fallback (no chump binary / is-paused errored): the legacy shell checks.
-    [[ -f "$sd/.chump/fleet-paused" ]] && return 0
+    # RESILIENT-1653 AC2: derive the node pause sentinel the SAME way
+    # node_pause::node_sentinel_path does — <state_dir>/.chump/fleet-paused —
+    # into a named var rather than hard-coding the literal, so this reader and
+    # the Rust writer can never drift to different paths.
+    local sentinel="$sd/.chump/fleet-paused"
+    [[ -f "$sentinel" ]] && return 0
     local ne="$sd/node.env"
     if [[ -f "$ne" ]]; then
         grep -Eq '^(export )?CHUMP_NODE_MODE=paused([[:space:]]|$)' "$ne" && return 0
@@ -187,6 +192,15 @@ _nc_paused() {
     [[ "${CHUMP_NODE_MODE:-}" == "paused" ]] && return 0
     return 1
 }
+# RESILIENT-1652 (task 5): when this organ is SOURCED (not executed) — e.g. by
+# scripts/ci/test-resilient-1652-pause-and-oauth.sh to exercise `_nc_paused`
+# against node.env fixtures — return before the converge body runs. This is a
+# source-guard (BASH_SOURCE vs $0), NOT a skip/bypass env var: executed normally
+# (`bash node-converge.sh`) BASH_SOURCE[0] == $0 and this is a no-op.
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    return 0 2>/dev/null || true
+fi
+
 if _nc_paused; then
     log "SKIP: node is paused (CHUMP_NODE_MODE=paused / fleet-paused sentinel / CHUMP_NODE_WORK_ENABLED=0) — converging and installing nothing this tick"
     emit organ_skipped_paused "\"organ\":\"node-converge\",\"reason\":\"node_paused\""

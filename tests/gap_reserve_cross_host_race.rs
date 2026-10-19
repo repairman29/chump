@@ -60,6 +60,13 @@ fn two_concurrent_reserves_return_distinct_ids() {
 
     let root_a_str = root_a.to_string_lossy().into_owned();
     let root_b_str = root_b.to_string_lossy().into_owned();
+    // RESILIENT-1652 (task 2): pin the node state dir to each tempdir's .chump so
+    // the farmer gate's pause check is hermetic. The node installer exports
+    // CHUMP_STATE_DIR, so a worker's pre-push run would otherwise inherit the
+    // REAL (possibly paused) node.env and red the gate. Not a gate loosening —
+    // a real paused node.env still reds.
+    let state_a = format!("{root_a_str}/.chump");
+    let state_b = format!("{root_b_str}/.chump");
 
     let t1 = std::thread::spawn(move || {
         Command::new(&bin_a)
@@ -76,6 +83,7 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 // CHUMP_REPO/CHUMP_HOME, so test gaps don't pollute the real registry.
                 ("CHUMP_REPO", &root_a_str),
                 ("CHUMP_HOME", &root_a_str),
+                ("CHUMP_STATE_DIR", &state_a),
                 // Isolate HOME too: the RESILIENT-069 farmer gate resolves
                 // oauth-token.json under $HOME/.chump; setup_repo seeds a
                 // hermetic fixture token there so the Linux content-gate reads
@@ -112,6 +120,7 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 // CHUMP_REPO/CHUMP_HOME, so test gaps don't pollute the real registry.
                 ("CHUMP_REPO", &root_b_str),
                 ("CHUMP_HOME", &root_b_str),
+                ("CHUMP_STATE_DIR", &state_b),
                 // Isolate HOME too (see session-a note): farmer gate reads
                 // $HOME/.chump/oauth-token.json; setup_repo's fixture token
                 // reads fresh (RESILIENT-1652 task 0b).

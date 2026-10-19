@@ -69,6 +69,15 @@ fn isolation_env(root: &Path) -> Vec<(String, String)> {
         // this tempdir (RESILIENT-1652 task 0b) so the Linux content-gate reads
         // oauth_fresh=green and the tests exercise gap mechanics deterministically.
         ("HOME".into(), r.clone()),
+        // RESILIENT-1652 (task 2): the node installer exports CHUMP_STATE_DIR
+        // (chump-node-install.sh), so a worker's pre-push test run inherits the
+        // REAL node state dir — on a paused node that is CHUMP_NODE_MODE=paused,
+        // which the farmer gate reads via resolve_node_state_dir and reds
+        // ("farmer PAUSED"), failing every reserve/ship test here. Pin it to
+        // this isolated tempdir (no node.env → not paused) so the pause verdict
+        // is hermetic. This does NOT loosen the gate: a real node with a paused
+        // node.env still reds.
+        ("CHUMP_STATE_DIR".into(), format!("{r}/.chump")),
         ("CHUMP_RESERVE_SCAN_OPEN_PRS".into(), "0".into()),
         ("CHUMP_RESERVE_NO_AUTOSTAGE".into(), "1".into()),
         ("CHUMP_RAW_YAML_LOCK".into(), "0".into()),

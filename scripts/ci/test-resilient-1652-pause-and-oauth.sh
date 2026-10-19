@@ -204,5 +204,100 @@ grep -qF '"$chump" node is-paused' "$REPO_ROOT/scripts/ops/node-converge.sh" \
     || fail 'node-converge.sh _nc_paused must INVOKE "$chump" node is-paused'
 ok "(6) is-paused parity: both line forms + legacy control-plane+WE=0 paused; WE=0-alone not paused; sentinel present/absent; node-converge delegates"
 
+# ── (7) task (3): Linux oauth-token.json judged by CONTENT, not mtime, THROUGH
+#       the farmer gate (kills mutant M11 — oauth judged by mtime on Linux). ──
+# The gate's Linux fallback reads <state-home>/.chump/oauth-token.json and must
+# judge it by CONTENT: a long-lived env token (providers.env-linux shape, no
+# expiry) with an OLD mtime reads FRESH; a missing / empty / expired-with-expiry
+# token reds. env -i with no ANTHROPIC_API_KEY, no .credentials.json, no
+# auth-status-cache, no free-tier forces the check to the oauth-token.json
+# branch; a not-paused node.env isolates the oauth axis so `green` tracks
+# oauth_fresh 1:1. Linux-only (the content branch is `cfg!(target_os=linux)`).
+if [ "$(uname -s)" = "Linux" ]; then
+    OROOT="$TMP/oauth"; OSTATE="$OROOT/.chump"; ONODE="$TMP/oauth-node"
+    mkdir -p "$OSTATE" "$ONODE" "$TMP/ohome"
+    printf 'CHUMP_NODE_MODE=work-ready\n' > "$ONODE/node.env"   # not paused → isolate oauth axis
+    gate_oauth() {  # $1=label $2=expected (true|false); asserts oauth_fresh AND green both == expected
+        local json verdict
+        json="$(env -i PATH="$STUB:/usr/bin:/bin" HOME="$TMP/ohome" \
+            CHUMP_REPO="$OROOT" CHUMP_HOME="$OROOT" CHUMP_STATE_DIR="$ONODE" \
+            "$CHUMP_BIN" farmer status --json 2>/dev/null)" || true
+        verdict="$(printf '%s' "$json" | python3 -c 'import json,sys
+s=json.load(sys.stdin)
+print(str(s["oauth_fresh"]).lower(), str(s["green"]).lower())' 2>/dev/null)" || true
+        [ "$verdict" = "$2 $2" ] \
+            || fail "(7) oauth $1: oauth_fresh/green=[$verdict] expected [$2 $2] (json=$json)"
+    }
+    # Long-lived env token, no expiry, OLD mtime → FRESH (content, not mtime).
+    printf '{"token":"sk-ant-oat01-longlived-fixture","source":"providers.env-linux"}\n' > "$OSTATE/oauth-token.json"
+    backdate "$OSTATE/oauth-token.json" 8640000   # 100 days old
+    gate_oauth "long-lived old-mtime token" true
+    # Missing token → RED.
+    rm -f "$OSTATE/oauth-token.json"
+    gate_oauth "missing token" false
+    # Empty token → RED.
+    printf '{"token":""}\n' > "$OSTATE/oauth-token.json"
+    gate_oauth "empty token" false
+    # Expired-with-expiry token → RED.
+    printf '{"token":"sk-ant-oat01-x","expiresAt":1}\n' > "$OSTATE/oauth-token.json"
+    gate_oauth "expired-with-expiry token" false
+    ok "(7) Linux oauth-token.json judged by CONTENT through the gate: long-lived OLD-mtime token fresh; missing/empty/expired RED (kills M11 mtime-judging)"
+else
+    ok "(7) oauth content gate: skipped (non-Linux — the content branch is Linux-only)"
+fi
+
+# ── (8) task (4): `chump node is-paused` makes ZERO writes ────────────────────
+# A pure read-only predicate verb: the node state dir and node.env must be
+# byte-identical before and after the call, on BOTH a paused and a not-paused
+# node. Kills: is-paused writes a marker; is-paused rewrites node.env.
+snapshot() { ( cd "$1" && find . -type f -exec sha256sum {} + 2>/dev/null | LC_ALL=C sort ); }
+ISP="$TMP/isp"; mkdir -p "$ISP/.chump" "$TMP/isphome"
+for form in "CHUMP_NODE_MODE=paused" "CHUMP_NODE_MODE=work-ready"; do
+    printf '%s\n' "$form" > "$ISP/node.env"
+    isp_before="$(snapshot "$ISP")"; ne_before="$(cat "$ISP/node.env")"
+    env -i PATH="$STUB:/usr/bin:/bin" HOME="$TMP/isphome" CHUMP_STATE_DIR="$ISP" \
+        "$CHUMP_BIN" node is-paused >/dev/null 2>&1 || true
+    isp_after="$(snapshot "$ISP")"; ne_after="$(cat "$ISP/node.env")"
+    [ "$isp_before" = "$isp_after" ] \
+        || fail "(8) is-paused ($form) mutated the state dir (wrote a marker?): before=[$isp_before] after=[$isp_after]"
+    [ "$ne_before" = "$ne_after" ] \
+        || fail "(8) is-paused ($form) rewrote node.env"
+done
+ok "(8) chump node is-paused makes ZERO writes (state dir + node.env byte-identical before/after, paused & not-paused)"
+
+# ── (9) task (5): node-converge's OWN _nc_paused over the node.env fixtures ───
+# Source node-converge.sh (its source-guard returns before the converge body)
+# with the chump binary on PATH, and run _nc_paused directly. With a binary
+# present it DELEGATES to `chump node is-paused` (the ONE Rust predicate), so
+# WORK_ENABLED=0 ALONE reads NOT paused — the exact point the old shell-only
+# rule got wrong. Kills: node-converge keeps its own rule (`if false` → shell
+# fallback would pause on WE=0-alone); node-converge ignores the not-paused rc.
+NCSTATE="$TMP/ncstate"; mkdir -p "$NCSTATE/.chump" "$TMP/nchome"
+# node-converge's _nc_paused resolves the binary via `command -v chump`, so a
+# binary that must be named exactly `chump` on PATH is what makes it DELEGATE
+# (vs. the no-binary shell fallback). CHUMP_BIN may be named anything (a CI
+# per-run path, a local copy), so expose it as `chump` in a dedicated dir.
+NCBIN="$TMP/ncbin"; mkdir -p "$NCBIN"; ln -sf "$CHUMP_BIN" "$NCBIN/chump"
+(
+    set -uo pipefail
+    export HOME="$TMP/nchome"
+    export PATH="$NCBIN:$STUB:/usr/bin:/bin"
+    # shellcheck source=scripts/ops/node-converge.sh
+    source "$REPO_ROOT/scripts/ops/node-converge.sh"
+    [ "$(type -t _nc_paused)" = function ] || { echo "_nc_paused not defined after source"; exit 1; }
+    nc_is() {  # $1=label $2=expected_rc
+        local rc=0
+        CHUMP_STATE_DIR="$NCSTATE" _nc_paused || rc=$?
+        [ "$rc" -eq "$2" ] || { echo "_nc_paused $1: rc=$rc expected $2"; exit 1; }
+    }
+    printf 'CHUMP_NODE_MODE=paused\n'                                    > "$NCSTATE/node.env"; nc_is "mode=paused" 0
+    printf 'export CHUMP_NODE_MODE=control-plane\nexport CHUMP_NODE_WORK_ENABLED=0\n' > "$NCSTATE/node.env"; nc_is "legacy control-plane+WE=0" 0
+    printf 'CHUMP_NODE_MODE=work-ready\nCHUMP_NODE_WORK_ENABLED=0\n'     > "$NCSTATE/node.env"; nc_is "WORK_ENABLED=0 ALONE (not paused)" 1
+    printf 'CHUMP_NODE_MODE=work-ready\n'                                > "$NCSTATE/node.env"; nc_is "work-ready" 1
+    printf 'CHUMP_NODE_MODE=work-ready\n'                                > "$NCSTATE/node.env"
+    printf 'REASON=slo\n' > "$NCSTATE/.chump/fleet-paused"; nc_is "sentinel present" 0
+) || fail "(9) node-converge _nc_paused parity over fixtures (delegation to the Rust predicate broke)"
+ok "(9) node-converge _nc_paused (binary present) delegates to the Rust predicate: paused forms paused; WORK_ENABLED=0 ALONE NOT paused; sentinel paused"
+
 echo ""
 echo "All RESILIENT-1652 / RESILIENT-1653 pause + oauth tests passed!"
