@@ -34,18 +34,70 @@ USER="${USER:-$(id -un 2>/dev/null || echo root)}"
 
 CADENCE_MIN="${CADENCE_MIN:-30}"
 UNIT_DIR="$HOME/.config/systemd/user"
-SCRIPT_SRC=""
-for candidate in \
-    "${CHUMP_NODE_REPO:-}/scripts/ops/node-refresh-chump.sh" \
-    "$HOME/chump-host/scripts/ops/node-refresh-chump.sh" \
-    "$HOME/Projects/Chump/scripts/ops/node-refresh-chump.sh" \
-    "$(dirname "$0")/../ops/node-refresh-chump.sh"; do
-    if [[ -f "$candidate" ]]; then SCRIPT_SRC="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"; break; fi
-done
-if [[ -z "$SCRIPT_SRC" ]]; then
-    echo "FATAL: cannot locate node-refresh-chump.sh (set CHUMP_NODE_REPO)" >&2
+
+# --- canonical node checkout (INFRA-8597, PHASE-R R5) ------------------------
+# The script paths baked into ExecStart MUST live in the node's canonical,
+# durable checkout — never in a disposable `.claude/worktrees/*` linked worktree.
+# When this installer was invoked from inside a claimed worktree, the old
+# `$(dirname "$0")/..` candidate baked that worktree's path into
+# chump-node-refresh.service; the worktree was later reaped, leaving
+# ExecStart=.../.claude/worktrees/infra-8571/scripts/ops/node-refresh-chump.sh
+# → exit 127 every cycle (cuphead, since ~2026-10-17). Resolve the canonical
+# checkout explicitly: CHUMP_NODE_REPO, else the MAIN worktree of this git repo
+# (git-common-dir's parent — a linked worktree's common dir points at the main
+# repo's .git), else the well-known node checkouts. Anything under
+# `.claude/worktrees/` is rejected so a doomed path can never be rendered.
+is_worktree_path() { case "$1" in */.claude/worktrees/*) return 0;; *) return 1;; esac; }
+
+resolve_canonical_checkout() {
+    local cand
+    # 1. explicit operator/unit override.
+    if [[ -n "${CHUMP_NODE_REPO:-}" && -d "${CHUMP_NODE_REPO}/.git" ]]; then
+        cand="$(cd "$CHUMP_NODE_REPO" && pwd)"
+        if ! is_worktree_path "$cand"; then printf '%s\n' "$cand"; return 0; fi
+    fi
+    # 2. the MAIN worktree of whatever repo this installer runs from. From a
+    #    linked worktree, git-common-dir resolves to <main>/.git, whose parent
+    #    is the canonical checkout — so we hop out of the worktree automatically.
+    local gcd here; here="$(cd "$(dirname "$0")" && pwd)"
+    if gcd="$(git -C "$here" rev-parse --git-common-dir 2>/dev/null)"; then
+        [[ "$gcd" != /* ]] && gcd="$here/$gcd"
+        cand="$(cd "$(dirname "$gcd")" 2>/dev/null && pwd || true)"
+        if [[ -n "$cand" ]] && ! is_worktree_path "$cand" && [[ -f "$cand/scripts/ops/node-refresh-chump.sh" ]]; then
+            printf '%s\n' "$cand"; return 0
+        fi
+    fi
+    # 3. well-known node checkouts (canonical, never a worktree).
+    for cand in "$HOME/chump" "$HOME/chump-host" "$HOME/Projects/Chump"; do
+        if [[ -f "$cand/scripts/ops/node-refresh-chump.sh" ]] && ! is_worktree_path "$cand"; then
+            printf '%s\n' "$cand"; return 0
+        fi
+    done
+    return 1
+}
+
+# Assert a resolved ExecStart path is durable before it is baked into a unit.
+assert_canonical_path() {
+    local p="$1" label="$2"
+    if is_worktree_path "$p"; then
+        echo "FATAL: refusing to render $label from a disposable worktree path: $p (INFRA-8597)" >&2
+        exit 1
+    fi
+    if [[ ! -f "$p" ]]; then
+        echo "FATAL: $label resolves to a non-existent path: $p (INFRA-8597)" >&2
+        exit 1
+    fi
+}
+
+CANON_REPO="$(resolve_canonical_checkout || true)"
+if [[ -z "$CANON_REPO" ]]; then
+    echo "FATAL: cannot locate the canonical node checkout (set CHUMP_NODE_REPO)" >&2
     exit 1
 fi
+echo "canonical checkout: $CANON_REPO"
+
+SCRIPT_SRC="$CANON_REPO/scripts/ops/node-refresh-chump.sh"
+assert_canonical_path "$SCRIPT_SRC" "chump-node-refresh.service ExecStart"
 chmod +x "$SCRIPT_SRC" 2>/dev/null || true
 echo "refresh script: $SCRIPT_SRC"
 
@@ -121,14 +173,12 @@ mkdir -p "$UNIT_DIR"
 # timed-out refresh surfaces fast instead of silently leaving the node on a
 # stale binary (AC #2).
 WATCHDOG_SRC=""
-for candidate in \
-    "$(dirname "$SCRIPT_SRC")/../coord/node-deploy-lag-watchdog.sh" \
-    "${CHUMP_NODE_REPO:-}/scripts/coord/node-deploy-lag-watchdog.sh" \
-    "$(dirname "$0")/../coord/node-deploy-lag-watchdog.sh"; do
-    if [[ -n "$candidate" && -f "$candidate" ]]; then WATCHDOG_SRC="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"; break; fi
-done
+if [[ -f "$CANON_REPO/scripts/coord/node-deploy-lag-watchdog.sh" ]]; then
+    WATCHDOG_SRC="$CANON_REPO/scripts/coord/node-deploy-lag-watchdog.sh"
+fi
 
 if [[ -n "$WATCHDOG_SRC" ]]; then
+    assert_canonical_path "$WATCHDOG_SRC" "chump-node-deploy-lag-watchdog.service ExecStart"
     chmod +x "$WATCHDOG_SRC" 2>/dev/null || true
     echo "watchdog script: $WATCHDOG_SRC"
     {
@@ -171,12 +221,9 @@ fi
 # node-local tracked customizations (the muscle-node organ-manifest.txt stopgap)
 # and untracked hand-deployed files, and refusing to touch a diverged checkout.
 SCRIPTHOST_SRC=""
-for candidate in \
-    "$(dirname "$SCRIPT_SRC")/node-script-host-refresh.sh" \
-    "${CHUMP_NODE_REPO:-}/scripts/ops/node-script-host-refresh.sh" \
-    "$(dirname "$0")/../ops/node-script-host-refresh.sh"; do
-    if [[ -n "$candidate" && -f "$candidate" ]]; then SCRIPTHOST_SRC="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"; break; fi
-done
+if [[ -f "$CANON_REPO/scripts/ops/node-script-host-refresh.sh" ]]; then
+    SCRIPTHOST_SRC="$CANON_REPO/scripts/ops/node-script-host-refresh.sh"
+fi
 
 # Resolve the SCRIPT-HOST checkout the worker actually runs from (NOT the binary
 # mirror). Precedence: explicit override → first of the canonical worker
@@ -189,6 +236,7 @@ if [[ -z "${CHUMP_SCRIPT_HOST_REPO:-}" ]]; then
 fi
 
 if [[ -n "$SCRIPTHOST_SRC" ]]; then
+    assert_canonical_path "$SCRIPTHOST_SRC" "chump-script-host-refresh.service ExecStart"
     chmod +x "$SCRIPTHOST_SRC" 2>/dev/null || true
     echo "script-host refresh script: $SCRIPTHOST_SRC"
     echo "script-host checkout:       $CHUMP_SCRIPT_HOST_REPO"
