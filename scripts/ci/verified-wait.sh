@@ -227,13 +227,13 @@ while true; do
         0)
             echo "$agg_out"
             bash "$AGG" "${agg_args[@]}" >/dev/null 2>&1 || true  # emit ambient once
-            echo "[verified-wait] VERDICT=PASS — every lane green or legitimately skipped (event=${EVENT_NAME:-?} sha=${SHA} after ${attempt} poll(s))"
+            echo "[verified-wait] VERDICT=PASS — every lane green or legitimately skipped (event=${EVENT_NAME:-?} budget=${TIMEOUT_S}s sha=${SHA} after ${attempt} poll(s))"
             exit 0
             ;;
         1)
             echo "$agg_out"
             bash "$AGG" "${agg_args[@]}" >/dev/null 2>&1 || true  # emit ambient once
-            echo "[verified-wait] VERDICT=FAIL — a real red lane concluded failure (event=${EVENT_NAME:-?} sha=${SHA} after ${attempt} poll(s))" >&2
+            echo "[verified-wait] VERDICT=FAIL — a real red lane concluded failure (event=${EVENT_NAME:-?} budget=${TIMEOUT_S}s sha=${SHA} after ${attempt} poll(s))" >&2
             exit 1
             ;;
         2)
@@ -251,7 +251,7 @@ while true; do
         reason="${pending_cross[*]:-}"
         [[ -z "$reason" ]] && reason="<a lane never reached a terminal state>"
         echo "$agg_out"
-        echo "[verified-wait] TIMEOUT: waited ${TIMEOUT_S}s (${attempt} poll(s)); lanes still PENDING at timeout: ${reason}; concluding FAILURE (event=${EVENT_NAME:-?} sha=${SHA})" >&2
+        echo "[verified-wait] TIMEOUT: waited ${TIMEOUT_S}s (${attempt} poll(s)); lanes still PENDING at timeout: ${reason}; concluding FAILURE (event=${EVENT_NAME:-?} budget=${TIMEOUT_S}s sha=${SHA})" >&2
         exit 1
     fi
 
@@ -259,6 +259,6 @@ while true; do
     sleep_s="$INTERVAL_S"
     (( sleep_s > remaining )) && sleep_s="$remaining"
     (( sleep_s < 1 )) && sleep_s=1
-    echo "[verified-wait] poll #${attempt}: PENDING (waiting on: ${pending_cross[*]:-<none named>}); ${remaining}s left, sleeping ${sleep_s}s"
+    echo "[verified-wait] poll #${attempt}: PENDING (waiting on: ${pending_cross[*]:-<none named>}); budget=${TIMEOUT_S}s, ${remaining}s left, sleeping ${sleep_s}s"
     sleep "$sleep_s"
 done

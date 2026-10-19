@@ -42,6 +42,9 @@
 #  14. --print-budget: per-event wait budget resolves from --event-name alone (item
 #      3) — workflow_dispatch -> 300s, every other event -> 5400s (ONE lane list,
 #      only the budget differs by event)
+#  14b. the REAL wait loop (not just --print-budget) prints `budget=<N>s` on its
+#      poll/verdict lines — merge_group -> 5400s, workflow_dispatch -> 300s — so a
+#      budget shrunk AFTER the --print-budget early-exit is caught (item 3)
 #
 # Run locally: bash scripts/ci/test-verified-wait.sh
 
@@ -210,8 +213,8 @@ for EVENT in pull_request merge_group; do
         start=$(date +%s)
         run_wait "$EVENT" 60 5
         elapsed=$(( $(date +%s) - start ))
-        if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "real red lane" \
-           && ! echo "$OUT" | grep -q "TIMEOUT" && [[ "$elapsed" -lt 10 ]]; then
+        if [[ "$RC" -eq 1 ]] && grep -q "real red lane" <<<"$OUT" \
+           && ! grep -q "TIMEOUT" <<<"$OUT" && [[ "$elapsed" -lt 10 ]]; then
             ok "[$EVENT] cross lane ${concl} => FAIL real-red (exit 1, ${elapsed}s, no wait)"
         else
             bad "[$EVENT] cross ${concl}: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
@@ -228,8 +231,8 @@ for EVENT in pull_request merge_group; do
     }
     export -f gh
     run_wait "$EVENT" 2 1
-    if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "TIMEOUT" \
-       && ! echo "$OUT" | grep -q "VERDICT=PASS"; then
+    if [[ "$RC" -eq 1 ]] && grep -q "TIMEOUT" <<<"$OUT" \
+       && ! grep -q "VERDICT=PASS" <<<"$OUT"; then
         ok "[$EVENT] gh error => PENDING then TIMEOUT FAIL (exit 1, never fail-open)"
     else
         bad "[$EVENT] gh error fail-safe: rc=$RC out=<<$OUT>>"
@@ -245,8 +248,8 @@ for EVENT in pull_request merge_group; do
     }
     export -f gh
     run_wait_cross "$EVENT" 2 1 "audit" "ACP protocol smoke test (Zed / JetBrains compatible)"
-    if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "TIMEOUT" \
-       && echo "$OUT" | grep -q "audit" && ! echo "$OUT" | grep -q "VERDICT=PASS"; then
+    if [[ "$RC" -eq 1 ]] && grep -q "TIMEOUT" <<<"$OUT" \
+       && grep -q "audit" <<<"$OUT" && ! grep -q "VERDICT=PASS" <<<"$OUT"; then
         ok "[$EVENT] ACP green + audit never-seen => PENDING then TIMEOUT (not PASS, not early FAIL)"
     else
         bad "[$EVENT] ACP green + audit never-seen: rc=$RC out=<<$OUT>>"
@@ -284,8 +287,8 @@ export -f gh
 start=$(date +%s)
 run_wait "workflow_dispatch" 60 1
 elapsed=$(( $(date +%s) - start ))
-if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "real red lane" \
-   && ! echo "$OUT" | grep -q "TIMEOUT" && [[ "$elapsed" -lt 10 ]]; then
+if [[ "$RC" -eq 1 ]] && grep -q "real red lane" <<<"$OUT" \
+   && ! grep -q "TIMEOUT" <<<"$OUT" && [[ "$elapsed" -lt 10 ]]; then
     ok "workflow_dispatch + audit failure => FAIL real-red (exit 1, ${elapsed}s, cross NOT skipped)"
 else
     bad "workflow_dispatch audit-failure: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
@@ -298,8 +301,8 @@ export -f gh
 start=$(date +%s)
 run_wait "workflow_dispatch" 2 1
 elapsed=$(( $(date +%s) - start ))
-if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "TIMEOUT" \
-   && echo "$OUT" | grep -q "audit" && ! echo "$OUT" | grep -q "VERDICT=PASS" \
+if [[ "$RC" -eq 1 ]] && grep -q "TIMEOUT" <<<"$OUT" \
+   && grep -q "audit" <<<"$OUT" && ! grep -q "VERDICT=PASS" <<<"$OUT" \
    && [[ "$elapsed" -lt 10 ]]; then
     ok "workflow_dispatch + audit never-seen => FAIL TIMEOUT quickly (exit 1, ${elapsed}s, never PASS)"
 else
@@ -315,7 +318,7 @@ export -f gh
 start=$(date +%s)
 run_wait "workflow_dispatch" 60 1
 elapsed=$(( $(date +%s) - start ))
-if [[ "$RC" -eq 0 ]] && echo "$OUT" | grep -q "VERDICT=PASS" && [[ "$elapsed" -lt 10 ]]; then
+if [[ "$RC" -eq 0 ]] && grep -q "VERDICT=PASS" <<<"$OUT" && [[ "$elapsed" -lt 10 ]]; then
     ok "workflow_dispatch + audit success => PASS quickly (exit 0, ${elapsed}s)"
 else
     bad "workflow_dispatch audit-success: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
@@ -340,10 +343,10 @@ for EVENT in pull_request merge_group push workflow_dispatch; do
     gh() { if [[ "${1:-}" == "run" ]]; then echo '[]'; else echo '[]'; fi; }
     export -f gh
     run_wait_cross "$EVENT" 2 1 "${BOTH_CROSS[@]}"
-    if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "TIMEOUT" \
-       && echo "$OUT" | grep -q "audit" \
-       && echo "$OUT" | grep -q "ACP protocol smoke test (Zed / JetBrains compatible)" \
-       && ! echo "$OUT" | grep -q "VERDICT=PASS"; then
+    if [[ "$RC" -eq 1 ]] && grep -q "TIMEOUT" <<<"$OUT" \
+       && grep -q "audit" <<<"$OUT" \
+       && grep -q "ACP protocol smoke test (Zed / JetBrains compatible)" <<<"$OUT" \
+       && ! grep -q "VERDICT=PASS" <<<"$OUT"; then
         ok "[$EVENT] both cross lanes never-seen => FAIL TIMEOUT naming audit+ACP (never PASS)"
     else
         bad "[$EVENT] both cross never-seen: rc=$RC out=<<$OUT>>"
@@ -356,8 +359,8 @@ for EVENT in pull_request merge_group push workflow_dispatch; do
     }
     export -f gh
     run_wait_cross "$EVENT" 60 1 "${BOTH_CROSS[@]}"
-    if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "real red lane" \
-       && ! echo "$OUT" | grep -q "VERDICT=PASS"; then
+    if [[ "$RC" -eq 1 ]] && grep -q "real red lane" <<<"$OUT" \
+       && ! grep -q "VERDICT=PASS" <<<"$OUT"; then
         ok "[$EVENT] audit red => FAIL real-red (exit 1), cross lane classified"
     else
         bad "[$EVENT] audit red: rc=$RC out=<<$OUT>>"
@@ -379,6 +382,33 @@ for EV in pull_request merge_group push workflow_dispatch; do
         ok "budget for $EV resolves to ${exp}s (no --timeout-s)"
     else
         bad "budget for $EV: expected BUDGET_S=$exp, got <<$got>>"
+    fi
+done
+
+# 14b. (item 3) The REAL wait loop — not just --print-budget — must print its
+#      resolved budget (`budget=<N>s`) on every poll/verdict line, driven by the
+#      SAME per-event resolution. Run the real path with NO --timeout-s for
+#      merge_group and workflow_dispatch; with the cross lane never-seen the loop
+#      stays PENDING and prints a poll line carrying `budget=<N>s` before it
+#      sleeps, so a short `timeout` captures that line without waiting out the
+#      full 5400s/300s window. A mutant that shrinks the merge_group budget AFTER
+#      the --print-budget early-exit (so test 14 still sees 5400 but the real loop
+#      uses 300) prints `budget=300s` here and FAILs this assertion.
+echo "--- real wait loop prints its resolved per-event budget (item 3, test 14b) ---"
+declare -A EXPECT_REAL_BUDGET=( [merge_group]=5400 [workflow_dispatch]=300 )
+gh() { if [[ "${1:-}" == "run" ]]; then echo '[]'; else echo '[]'; fi; }
+export -f gh
+for EV in merge_group workflow_dispatch; do
+    exp="${EXPECT_REAL_BUDGET[$EV]}"
+    sha="${SHAS[$EV]}"
+    OUT="$(timeout 6 env GH_REPO="owner/repo" CHUMP_AMBIENT_LOG="$AMB" bash "$WAIT" \
+        --sha "$sha" --pr 999 --event-name "$EV" \
+        --lane "fast-checks=success" --lane "test=success" \
+        --cross "audit" --interval-s 2 2>&1)" || true
+    if grep -q "budget=${exp}s" <<<"$OUT"; then
+        ok "[$EV] real wait loop prints budget=${exp}s (resolved from --event-name, no --timeout-s)"
+    else
+        bad "[$EV] real-loop budget: expected budget=${exp}s in output, got <<$OUT>>"
     fi
 done
 
