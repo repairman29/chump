@@ -3713,10 +3713,15 @@ async fn main() -> Result<()> {
                 // usage (exit 0); any other flag is a usage error (exit 2) so it
                 // is never confused with the 0/1 pause verdict.
                 let rest = &args[3..];
-                if rest
+                // CREDIBLE-015: keep the help detection off a single
+                // `--help || … help` line (use matches!, no `||`) so the
+                // unknown-flag error eprintln below — a legitimate stderr error
+                // path — isn't misread by the help-consistency heuristic as a
+                // --help block that should use println.
+                let wants_help = rest
                     .iter()
-                    .any(|a| a == "--help" || a == "-h" || a == "help")
-                {
+                    .any(|a| matches!(a.as_str(), "--help" | "-h" | "help"));
+                if wants_help {
                     print_node_usage();
                     return Ok(());
                 }

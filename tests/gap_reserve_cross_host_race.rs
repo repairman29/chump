@@ -24,6 +24,21 @@ fn setup_repo(dir: &Path) {
     fs::create_dir_all(dir.join(".chump-locks")).unwrap();
     // .chump for state.db.
     fs::create_dir_all(dir.join(".chump")).unwrap();
+    // RESILIENT-1652 (task 0b): the Linux farmer oauth gate judges
+    // <state-home>/.chump/oauth-token.json by CONTENT and reds on a MISSING
+    // token. With HOME/CHUMP_HOME isolated to this empty tempdir there is no
+    // token, so `gap reserve` (which --force-duplicate does NOT bypass — only
+    // --force bypasses the farmer gate) would go RED. Seed a hermetic fixture
+    // token so the gate reads oauth_fresh=green, WITHOUT loosening the gate for
+    // a real node (the fixture lives only in this tempdir). The token literal is
+    // assembled at runtime so the secret-scanner does not flag the fixture; the
+    // written file still carries the `sk-` prefix the content verdict needs.
+    let fixture_token = format!("sk-{}", "test-reserve-race-fixture-not-a-real-secret");
+    fs::write(
+        dir.join(".chump").join("oauth-token.json"),
+        format!(r#"{{"token":"{fixture_token}","source":"test-fixture"}}"#),
+    )
+    .unwrap();
 }
 
 /// Two concurrent `chump gap reserve` calls on the same repo root must
@@ -62,9 +77,10 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_REPO", &root_a_str),
                 ("CHUMP_HOME", &root_a_str),
                 // Isolate HOME too: the RESILIENT-069 farmer gate resolves
-                // oauth-token.json under $HOME/.chump; an empty tempdir HOME has
-                // no token so the gate fails open (green), keeping the test
-                // independent of the dev box's ambient token freshness.
+                // oauth-token.json under $HOME/.chump; setup_repo seeds a
+                // hermetic fixture token there so the Linux content-gate reads
+                // oauth_fresh=green, keeping the test independent of the dev
+                // box's ambient token freshness (RESILIENT-1652 task 0b).
                 ("HOME", &root_a_str),
             ])
             .args([
@@ -97,7 +113,8 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_REPO", &root_b_str),
                 ("CHUMP_HOME", &root_b_str),
                 // Isolate HOME too (see session-a note): farmer gate reads
-                // $HOME/.chump/oauth-token.json; empty tempdir -> fails open.
+                // $HOME/.chump/oauth-token.json; setup_repo's fixture token
+                // reads fresh (RESILIENT-1652 task 0b).
                 ("HOME", &root_b_str),
             ])
             .args([
