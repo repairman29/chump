@@ -139,13 +139,19 @@ fn check_exit78_free(reasons: &mut Vec<String>) -> bool {
 ///          `CLAUDE_CODE_OAUTH_TOKEN` shortcut — a token env var being *set* is
 ///          not evidence it is *valid* (RESILIENT-086). The cache rc=0 branch
 ///          (step 2) is the only "a probe said the token works" fresh path.
-///   5. `~/.chump/oauth-token.json` Keychain mirror — consulted ONLY as a
-///      last-resort fallback when steps 1-4 produced no signal (no api key, no
-///      cache, no free-tier, no `.credentials.json` token at all). A stale
-///      mirror reds here (preserving the old default), but a valid
-///      `.credentials.json` in step 4 short-circuits FIRST, so a stale mirror
-///      never reds a node whose `claude -p` creds are good (the cuphead case).
-///   6. No positive signal of trouble -> fresh (fail-open).
+///   5. `~/.chump/oauth-token.json` — consulted ONLY as a last-resort fallback
+///      when steps 1-4 produced no signal (no api key, no cache, no free-tier,
+///      no `.credentials.json` token at all). On Linux (RESILIENT-1652) this
+///      file IS the credential `claude -p` uses and no macOS-Keychain refresher
+///      keeps its mtime fresh, so it is judged by CONTENT (via
+///      [`oauth_token_json_content_verdict`]): a present, non-empty, `sk-`-shaped
+///      token whose expiry (if present) is in the future reads fresh, while a
+///      missing/empty/expired token reds — mtime is NOT consulted. On macOS
+///      (unchanged) it is the Keychain mirror's mtime (a stale mirror reds,
+///      preserving the old default). A valid `.credentials.json` in step 4
+///      short-circuits FIRST on both platforms, so a stale mirror never reds a
+///      node whose creds are good.
+///   6. No positive signal of trouble -> fresh (fail-open; non-Linux only).
 fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .ok()
@@ -202,20 +208,97 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
         }
     }
 
-    // RESILIENT-1636: last-resort fallback — the macOS Keychain mirror's mtime.
-    // Only reached when NOTHING above gave a signal (no api key / cache / free-tier
-    // / `.credentials.json` token). A stale mirror reds here (preserving the old
-    // default), but a node with valid `.credentials.json` never gets this far.
+    // The `~/.chump/oauth-token.json` env token — last-resort fallback, reached
+    // only when NOTHING above gave a signal (no api key / cache / free-tier /
+    // `.credentials.json` token).
     let token_path = PathBuf::from(&home).join(".chump/oauth-token.json");
-    if token_path.exists() {
+    if cfg!(target_os = "linux") {
+        // RESILIENT-1652 (task 2): on Linux this file IS the credential
+        // `claude -p` uses — it exports CLAUDE_CODE_OAUTH_TOKEN from it — and NO
+        // macOS-Keychain refresher keeps its mtime fresh (`oauth-token-refresh.sh`
+        // is macOS-only). So mtime is a FALSE death signal (cuphead: a valid env
+        // token reads 45h "stale"). Judge by CONTENT: present + non-empty +
+        // plausible token shape + future expiry IF one is present. A missing /
+        // empty / expired token is a genuine RED (claude -p cannot authenticate).
+        match std::fs::read_to_string(&token_path) {
+            Ok(body) => {
+                return match oauth_token_json_content_verdict(&body, now_ms()) {
+                    Some(true) => true,
+                    _ => {
+                        reasons.push(
+                            "~/.chump/oauth-token.json token is empty / malformed / expired \
+                             (claude -p has no usable CLAUDE_CODE_OAUTH_TOKEN)"
+                                .to_string(),
+                        );
+                        false
+                    }
+                };
+            }
+            Err(_) => {
+                reasons.push(
+                    "~/.chump/oauth-token.json missing (claude -p has no CLAUDE_CODE_OAUTH_TOKEN \
+                     source and no api-key / cache / free-tier / .credentials.json signal)"
+                        .to_string(),
+                );
+                return false;
+            }
+        }
+    } else if token_path.exists() {
+        // macOS path UNCHANGED (RESILIENT-1636): the Keychain mirror's mtime.
+        // cfg!(...) (not #[cfg]) keeps this arm compiled on every platform so
+        // mtime_age_s / oauth_token_verdict stay referenced (no dead_code under
+        // -D warnings) and the Linux content helper is likewise always built.
         match mtime_age_s(&token_path) {
             Some(age) => return oauth_token_verdict(age, free_tier_cascade_active(), reasons),
             None => return true,
         }
     }
 
-    // No positive signal of trouble — fail-open (RED only on probed BROKEN above).
+    // No positive signal of trouble — fail-open (non-Linux, token absent).
     true
+}
+
+/// RESILIENT-1652 (task 2): pure CONTENT verdict for the Linux
+/// `~/.chump/oauth-token.json` env token (the file `claude -p` reads
+/// `CLAUDE_CODE_OAUTH_TOKEN` from; written from providers.env-linux, usually
+/// with no expiry field). A token is fresh iff it is present, non-empty, shaped
+/// like an Anthropic token (`sk-` prefix), and — IF an expiry field is present —
+/// not yet expired. `Some(true)` = usable, `Some(false)` =
+/// empty/malformed/expired (RED), `None` = unparseable JSON (caller treats as
+/// RED). Pure (no fs/env) and mtime-independent — content, never mtime.
+fn oauth_token_json_content_verdict(content: &str, now_ms: i64) -> Option<bool> {
+    let v: serde_json::Value = serde_json::from_str(content).ok()?;
+    // Claude Code nests under `claudeAiOauth`; the providers.env-linux writer is
+    // flat (`{"token":"sk-…"}`). Tolerate both.
+    let obj = v.get("claudeAiOauth").unwrap_or(&v);
+    let token = [
+        "token",
+        "accessToken",
+        "access_token",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+    ]
+    .iter()
+    .find_map(|k| obj.get(*k).and_then(|x| x.as_str()))
+    .map(str::trim)
+    .unwrap_or("");
+    // Present + non-empty + plausible Anthropic token shape (`sk-ant-oat01-…`).
+    if token.is_empty() || !token.starts_with("sk-") {
+        return Some(false);
+    }
+    // If an expiry is present it must be in the future (epoch millis; a JSON
+    // number or numeric string). No expiry field at all → usable (the
+    // providers.env-linux shape carries none).
+    let expires = obj
+        .get("expiresAt")
+        .or_else(|| obj.get("expires_at"))
+        .and_then(|x| {
+            x.as_i64()
+                .or_else(|| x.as_str().and_then(|s| s.trim().parse().ok()))
+        });
+    match expires {
+        Some(exp) if exp <= now_ms => Some(false), // expired
+        _ => Some(true),
+    }
 }
 
 /// RESILIENT-1636: pure verdict for the auth-status.sh VALIDITY cache body
@@ -983,6 +1066,53 @@ mod tests {
     fn creds_present_without_expiry_is_valid() {
         let body = r#"{"claudeAiOauth":{"accessToken":"sk-x"}}"#;
         assert_eq!(claude_creds_verdict(body, 1), Some(true));
+    }
+
+    // ── RESILIENT-1652 (task 2): Linux oauth-token.json judged by CONTENT ─────
+
+    #[test]
+    fn oauth_token_json_content_verdict_cases() {
+        // A long-lived env token (the providers.env-linux shape: flat `token`,
+        // no expiry field) is fresh regardless of mtime — this is pure content.
+        let long = r#"{"token":"sk-ant-oat01-abc","written_at":"2026-10-17T17:58:18Z","source":"providers.env-linux"}"#;
+        assert_eq!(
+            oauth_token_json_content_verdict(long, 9_999_999_999_999),
+            Some(true)
+        );
+        // Empty token → RED.
+        assert_eq!(
+            oauth_token_json_content_verdict(r#"{"token":""}"#, 1),
+            Some(false)
+        );
+        // No token key at all → RED.
+        assert_eq!(
+            oauth_token_json_content_verdict(r#"{"source":"x"}"#, 1),
+            Some(false)
+        );
+        // A non-token-shaped value (no `sk-` prefix) → RED.
+        assert_eq!(
+            oauth_token_json_content_verdict(r#"{"token":"old"}"#, 1),
+            Some(false)
+        );
+        // Future expiry → fresh; past expiry → RED.
+        assert_eq!(
+            oauth_token_json_content_verdict(
+                r#"{"token":"sk-ant-x","expiresAt":9999999999999}"#,
+                1_000
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            oauth_token_json_content_verdict(r#"{"token":"sk-ant-x","expiresAt":1}"#, 1_000_000),
+            Some(false)
+        );
+        // Unparseable JSON → None (caller treats as RED).
+        assert_eq!(oauth_token_json_content_verdict("not json", 1), None);
+        // Nested claudeAiOauth + accessToken key is tolerated.
+        assert_eq!(
+            oauth_token_json_content_verdict(r#"{"claudeAiOauth":{"accessToken":"sk-ant-x"}}"#, 1),
+            Some(true)
+        );
     }
 
     // ── RESILIENT-1636: paused-node reporting ────────────────────────────────
