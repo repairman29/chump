@@ -33,6 +33,15 @@
 #       the self-hosted runner accumulates 40-60GB here unbounded — it never
 #       runs as a worktree so (c)/(d) miss it. Safety guard: skip the
 #       sub-target dir if any chump-* binary mtime <24h ago (worker is hot).
+#   (j) RESILIENT-1620 + RESILIENT-1635: Class D — dispatch worktrees under the
+#       repo's .claude/worktrees. Reaps target/ + .cargo-test-target/ (build
+#       output only, source + branch untouched) when the worktree is lease-less,
+#       has no process cwd inside, and no live bot-merge AND either (a) its PR is
+#       merged/closed (RESILIENT-1620), or (b) RESILIENT-1635: its PR is still
+#       OPEN but the worktree is IDLE — no running chump dispatch for its gap, a
+#       clean source tree, and no bot-merge/dispatch activity within the 2h
+#       window. Also removes stale bot-merge-active-dispatch-*.path markers
+#       older than the RESILIENT-1609 grace.
 #
 # Disk-pressure escalation (INFRA-2188):
 #   CHUMP_DISK_CRITICAL_GB (default 20) — when df reports free < N GB on
@@ -64,6 +73,11 @@ EVENT_LISTEN=0
 # cargo lock before touching any worktree). Used by disk-health-monitor's
 # alert→action trigger and the Class-D CI test.
 CLASS_D_ONLY=0
+# RESILIENT-1635: a dispatch worktree whose PR is still OPEN is "idle" (its build
+# output is reapable) only when no bot-merge/dispatch activity has touched it
+# within this window. Fixed at 120 min per the gap ("no bot-merge or dispatch
+# activity in the last 2h"); not an env knob (no bypass var).
+CLASSD_IDLE_WINDOW_MIN=120
 FINGERPRINT_AGE_D="${CHUMP_CARGO_REAPER_FINGERPRINT_AGE_D:-14}"
 FLEET_AGE_D="${CHUMP_CARGO_REAPER_FLEET_AGE_D:-7}"
 MIN_FREE_GB=1
@@ -222,9 +236,134 @@ print(d[0]['state'] if d else '')" 2>/dev/null || true)"
     esac
 }
 
-# run_class_d — scan .claude/worktrees for merged/closed lease-less worktrees
-# and reap their target/ + .cargo-test-target/. Uses globals EXECUTE,
-# _dry_label, AMBIENT_LOG, _total_bytes, _reaped_count.
+# ── RESILIENT-1635: open-PR idle-worktree guards ────────────────────────────
+# A dispatch worktree whose PR is still OPEN is reapable (build output only)
+# ONLY when it is IDLE. On top of the lease / cwd / live-bot-merge checks that
+# run_class_d already applies to every candidate, "idle" requires all three:
+#   1. no running `chump dispatch` / `--execute-gap` for the worktree's gap
+#   2. a clean source tree (no tracked changes)   [Chief rule 2026-10-19 11:55Z]
+#   3. no bot-merge/dispatch activity within CLASSD_IDLE_WINDOW_MIN (2h)
+
+# _classd_dispatch_running <wt> <branch> — 0 iff a live `chump dispatch` /
+# `--execute-gap` process names this worktree's gap. The gap is derived from the
+# worktree basename and the branch's last segment (uppercased); candidates that
+# do NOT look like a gap id (no digit, e.g. "OPEN") are dropped so a generic
+# token can't false-match a long dispatch prompt, and the match is whole-token
+# (gap id bounded by non-[A-Z0-9]) rather than a loose substring.
+_classd_dispatch_running() {
+    local wt="$1" branch="$2"
+    local gap_a gap_b pid args g
+    gap_a="$(basename "$wt" | tr '[:lower:]' '[:upper:]')"
+    gap_b="$(printf '%s' "${branch##*/}" | tr '[:lower:]' '[:upper:]')"
+    [[ "$gap_a" == *[0-9]* ]] || gap_a=""
+    [[ "$gap_b" == *[0-9]* ]] || gap_b=""
+    [[ -n "$gap_a$gap_b" ]] || return 1
+    local pids
+    pids="$(pgrep -f 'chump dispatch|--execute-gap|execute-gap' 2>/dev/null || true)"
+    [[ -n "$pids" ]] || return 1
+    for pid in $pids; do
+        [[ "$pid" == "$$" ]] && continue
+        args="$(ps -o args= -p "$pid" 2>/dev/null | tr '[:lower:]' '[:upper:]' || true)"
+        [[ -n "$args" ]] || continue
+        for g in "$gap_a" "$gap_b"; do
+            [[ -n "$g" ]] || continue
+            if [[ "$args" =~ (^|[^A-Z0-9])${g}($|[^A-Z0-9]) ]]; then
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# _classd_source_clean <wt> — 0 iff the worktree's TRACKED files are clean
+# (ignores untracked build dirs). Fails closed: if git can't report, treat as
+# dirty so the worktree is skipped rather than reaped.
+_classd_source_clean() {
+    local wt="$1" dirty
+    dirty="$(git -C "$wt" status --porcelain --untracked-files=no 2>/dev/null || printf 'GIT_ERR')"
+    [[ -z "$dirty" ]]
+}
+
+# _classd_recent_activity <wt> <branch> <window_min> — 0 iff bot-merge/dispatch
+# activity touched this worktree within <window_min> minutes. Signals: the build
+# dirs' own mtime (a dispatch builds into them), a bot-merge-*.steps file naming
+# this worktree/gap, or any bot-merge-active-dispatch-*.path marker — each only
+# when its mtime is within the window.
+_classd_recent_activity() {
+    local wt="$1" branch="$2" window_min="$3"
+    local now cutoff p mt
+    now="$(date +%s)"
+    cutoff=$(( now - window_min * 60 ))
+    for p in "$wt/target" "$wt/.cargo-test-target"; do
+        [[ -e "$p" ]] || continue
+        mt="$(stat -f%m "$p" 2>/dev/null || stat -c%Y "$p" 2>/dev/null || echo 0)"
+        [[ "$mt" -gt "$cutoff" ]] && return 0
+    done
+    local lock_dir gap f first
+    lock_dir="${REAPER_REPO_ROOT:-$REPO_ROOT}/.chump-locks"
+    gap="$(basename "$wt" | tr '[:lower:]' '[:upper:]')"
+    [[ "$gap" == *[0-9]* ]] || gap=""   # only gap-id-shaped tokens
+    if [[ -d "$lock_dir" ]]; then
+        while IFS= read -r f; do
+            [[ -f "$f" ]] || continue
+            mt="$(stat -f%m "$f" 2>/dev/null || stat -c%Y "$f" 2>/dev/null || echo 0)"
+            [[ "$mt" -gt "$cutoff" ]] || continue
+            case "$f" in
+                *bot-merge-active-dispatch-*.path) return 0 ;;
+            esac
+            first="$(head -1 "$f" 2>/dev/null || true)"
+            if [[ "$first" == *"$wt"* ]] || { [[ -n "$gap" ]] && [[ "$first" == *"$gap"* ]]; }; then
+                return 0
+            fi
+        done < <(find "$lock_dir" -maxdepth 1 \
+            \( -name 'bot-merge-*.steps' -o -name 'bot-merge-active-dispatch-*.path' \) \
+            -type f 2>/dev/null)
+    fi
+    return 1
+}
+
+# _classd_reap_stale_markers — remove bot-merge-active-dispatch-*.path markers
+# older than the RESILIENT-1609 grace. bot-merge.sh writes one per ship to
+# advertise its log path and nothing cleans them up, so idle dispatch worktrees
+# strand 5-9h-old markers (receipt 2026-10-18). A marker within the grace still
+# names a live ship — keep it. Logs each removal (stdout + ambient class=D).
+# Uses globals EXECUTE, _dry_label, AMBIENT_LOG, _total_bytes, _reaped_count,
+# _classd_count.
+_classd_reap_stale_markers() {
+    local lock_dir grace_min now cutoff f mt size age
+    lock_dir="${REAPER_REPO_ROOT:-$REPO_ROOT}/.chump-locks"
+    [[ -d "$lock_dir" ]] || return 0
+    grace_min="${CHUMP_REAPER_BOT_MERGE_GRACE_MIN:-${CHUMP_REAPER_ACTIVE_LEASE_MIN:-15}}"
+    [[ "$grace_min" =~ ^[0-9]+$ ]] || grace_min=15
+    now="$(date +%s)"
+    cutoff=$(( now - grace_min * 60 ))
+    while IFS= read -r f; do
+        [[ -f "$f" ]] || continue
+        mt="$(stat -f%m "$f" 2>/dev/null || stat -c%Y "$f" 2>/dev/null || echo 0)"
+        if [[ "$mt" -ge "$cutoff" ]]; then
+            echo "  keep (marker within ${grace_min}m grace): ${f}"
+            continue
+        fi
+        size="$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo 0)"
+        age=$(( ( now - mt ) / 86400 ))
+        echo "${_dry_label}  class-D stale marker reap: ${f} (older than ${grace_min}m grace)"
+        if [[ $EXECUTE -eq 1 ]]; then
+            rm -f "$f" 2>/dev/null || true
+        fi
+        _total_bytes=$(( _total_bytes + size ))
+        _reaped_count=$(( _reaped_count + 1 ))
+        _classd_count=$(( _classd_count + 1 ))
+        printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","bytes_freed":%d,"age_days":%d,"dry_run":%s,"class":"D"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$f" "$size" "$age" \
+            "$([[ $EXECUTE -eq 1 ]] && echo 'false' || echo 'true')" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+    done < <(find "$lock_dir" -maxdepth 1 -name 'bot-merge-active-dispatch-*.path' -type f 2>/dev/null)
+}
+
+# run_class_d — scan .claude/worktrees for reapable dispatch worktrees (PR
+# merged/closed, or OPEN-but-idle per RESILIENT-1635) and reap their target/ +
+# .cargo-test-target/. Uses globals EXECUTE, _dry_label, AMBIENT_LOG,
+# _total_bytes, _reaped_count.
 _classd_count=0
 run_class_d() {
     local wt_base
@@ -286,11 +425,29 @@ run_class_d() {
             echo "  skip (no branch): ${wt}"
             continue
         fi
-        local merged
+        local merged pr_disp="merged/closed"
         merged="$(_classd_pr_merged_or_closed "$branch")"
         if [[ "$merged" != "yes" ]]; then
-            echo "  skip (PR open/unknown for ${branch}): ${wt}"
-            continue
+            # RESILIENT-1635: an OPEN PR is still reapable (build output only) if
+            # the dispatch worktree is IDLE. An unknown/no-PR state stays
+            # conservative. lease + cwd + live-bot-merge already excluded above.
+            if [[ "$merged" != "no" ]]; then
+                echo "  skip (PR unknown for ${branch}): ${wt}"
+                continue
+            fi
+            if _classd_dispatch_running "$wt" "$branch"; then
+                echo "  skip (running dispatch for gap): ${wt}"
+                continue
+            fi
+            if ! _classd_source_clean "$wt"; then
+                echo "  skip (dirty source tree): ${wt}"
+                continue
+            fi
+            if _classd_recent_activity "$wt" "$branch" "$CLASSD_IDLE_WINDOW_MIN"; then
+                echo "  skip (bot-merge/dispatch activity within ${CLASSD_IDLE_WINDOW_MIN}m): ${wt}"
+                continue
+            fi
+            pr_disp="idle open-PR"
         fi
 
         # Reap ONLY the build dirs — never the source tree.
@@ -305,7 +462,7 @@ run_class_d() {
             size_bytes=$(du -sk "$reap_dir" 2>/dev/null | awk '{print $1 * 1024}' || echo 0)
             age_days=$(( ( $(date +%s) - $(stat -f%m "$reap_dir" 2>/dev/null \
                 || stat -c%Y "$reap_dir" 2>/dev/null || echo 0) ) / 86400 ))
-            echo "${_dry_label}  class-D reap: ${reap_dir} (branch ${branch} merged/closed, ${age_days}d old, ~$(( size_bytes / 1024 / 1024 ))MB)"
+            echo "${_dry_label}  class-D reap: ${reap_dir} (branch ${branch} ${pr_disp}, ${age_days}d old, ~$(( size_bytes / 1024 / 1024 ))MB)"
             if [[ $EXECUTE -eq 1 ]]; then
                 rm -rf "$reap_dir" 2>/dev/null || true
             fi
@@ -318,6 +475,9 @@ run_class_d() {
                 >> "$AMBIENT_LOG" 2>/dev/null || true
         done
     done
+
+    # RESILIENT-1635: sweep stale bot-merge-active-dispatch-*.path markers.
+    _classd_reap_stale_markers
 }
 
 # ── --class-d-only early path (RESILIENT-1620) ──────────────────────────────
