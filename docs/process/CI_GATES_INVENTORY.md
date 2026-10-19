@@ -254,16 +254,25 @@ poll uses `poll-cross-workflow-checks.sh --snapshot` (one fetch, no fail-close),
 so a running OR never-seen lane reads `in_progress` → `PENDING` → keep polling;
 the job concludes `FAILURE` only on a real red lane (short-circuit) or on the
 90-min timeout (with a reason naming the unconcluded lanes), and `SUCCESS` only
-when every lane is green or legitimately skipped. `aggregator-verified.sh` keeps
-its `0/1/2/3` exit codes; no new bypass env var; the `verified` job
-`timeout-minutes` is raised to 95. See
+when every lane is green or legitimately skipped. On a `workflow_dispatch` re-run
+(the INFRA-1395 grace window) `verified-wait.sh` **skips the cross-workflow wait**
+with a logged reason and classifies the local lanes only — that event does not
+produce the audit/ACP runs, so waiting would burn the full window. The `verified`
+job runs exactly one step, `bash scripts/ci/verified-wait.sh`;
+`aggregator-verified.sh` keeps its `0/1/2/3` exit codes; no new bypass env var;
+the `verified` job `timeout-minutes` is 95 (> the 90-min wait). See
 `docs/design/CI_VERIFIED_AGGREGATOR.md` §2.6.
 
-Guarded by `scripts/ci/test-poll-cross-workflow-checks.sh` (shards-in_progress →
+Guarded by `scripts/ci/test-ci-verified-shape.sh` (PyYAML: the `verified` job
+runs `verified-wait.sh` with both `--cross` lanes and `timeout-minutes` ≥ 91, and
+the stale 120s poll/aggregate pair is gone — a comment-only edit cannot pass as
+wired), `scripts/ci/test-poll-cross-workflow-checks.sh` (shards-in_progress →
 `audit=in_progress` → aggregator exit 2; no-audit-run → `audit=failure` →
-aggregator exit 1) and `scripts/ci/test-verified-wait.sh` (in-job wait: running/
-never-seen → PENDING keep-polling, real-red/timeout → FAIL, all-green → PASS,
-both event types).
+aggregator exit 1), and `scripts/ci/test-verified-wait.sh` (in-job wait: running/
+never-seen → PENDING keep-polling, real-red/cross-cancelled/timed_out/
+action_required/timeout → FAIL, all-green → PASS, gh-error fail-SAFE, ACP-green+
+audit-never-seen → PENDING, temp-ambient isolation, workflow_dispatch skip, both
+event types).
 
 ## Non-required checks red on main — 7-day sweep (CREDIBLE-1523, 2026-10-18)
 

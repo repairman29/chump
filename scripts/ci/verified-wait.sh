@@ -2,8 +2,9 @@
 # verified-wait.sh — CREDIBLE-1554 (PHASE-R R3)
 #
 # The in-job wait loop for the sole required `verified` check, under a GitHub
-# native merge queue (umbrella CREDIBLE-1555). Replaces the old
-# "poll-120s-then-aggregate-once" step pair in ci.yml's `verified` job.
+# native merge queue (umbrella CREDIBLE-1555). ci.yml's `verified` job runs this
+# script as its SINGLE step (it replaced the old "poll-120s-then-aggregate-once"
+# step pair); the wiring is pinned by scripts/ci/test-ci-verified-shape.sh.
 #
 # WHY: a merge queue removes a PR from the queue the instant a required check
 # concludes FAILURE — there is no second pass. The previous verified job polled
