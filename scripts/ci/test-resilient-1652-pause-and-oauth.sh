@@ -17,8 +17,10 @@
 #   (3) `chump node pause|resume --help` and `--dry-run` make ZERO writes;
 #   (4) an unknown flag is a usage error (exit 2), NEVER a pause with a default
 #       reason;
-#   (5) node pause does NOT write the `.chump/fleet-paused` kill switch (it would
-#       wall re-entry) nor the old doubled `.chump/.chump` path.
+#   (5) node pause WRITES the node pause sentinel `<state_dir>/.chump/fleet-paused`
+#       (carrying REASON=), resume REMOVES it, and pause NEVER writes the
+#       `<repo>/.chump/fleet-paused` kill switch (it would wall re-entry) nor the
+#       old doubled `.chump/.chump` path.
 #
 # Zero network. Pure local: chump binary + git + python3.
 
@@ -148,13 +150,57 @@ run_verb node pause --reason >/dev/null 2>&1; RV_RC=$?
 assert_node_env_unchanged "node pause --reason (no value)"
 ok "(4) unknown flag / --reason-without-value ⇒ usage error exit 2 (never a default-reason pause)"
 
-# ── (5) a real pause writes node.env=paused and NO sentinel ───────────────────
+# ── (5) a real pause writes node.env=paused + the NODE sentinel (REASON=), never
+#       the repo kill switch; resume removes the node sentinel ─────────────────
 run_verb node pause --reason "maintenance" >/dev/null 2>&1 || fail "real pause should succeed"
 grep -qx "CHUMP_NODE_MODE=paused" "$VSTATE/node.env" || fail "real pause must set bare CHUMP_NODE_MODE=paused"
 grep -qx "export CHUMP_RUN_USER=ubuntu" "$VSTATE/node.env" || fail "real pause must preserve other lines' export form"
-[ ! -e "$VREPO/.chump/fleet-paused" ] || fail "real pause must NOT write the kill-switch sentinel"
-[ ! -e "$VSTATE/.chump/fleet-paused" ] || fail "real pause must NOT write the doubled/state sentinel"
-ok "(5) real pause: node.env=paused (bare), other lines preserved, NO fleet-paused sentinel"
+# RESILIENT-1652/1653 (task 1): pause WRITES the node pause sentinel at exactly
+# <state_dir>/.chump/fleet-paused carrying REASON= (the same path node-converge's
+# _nc_paused and the farmer gate read), and NEVER the <repo>/.chump kill switch
+# (which would wall re-entry) nor the old doubled .chump/.chump path.
+[ -e "$VSTATE/.chump/fleet-paused" ] || fail "real pause must write the node pause sentinel <state_dir>/.chump/fleet-paused"
+grep -q "REASON=maintenance" "$VSTATE/.chump/fleet-paused" || fail "node pause sentinel must carry REASON="
+[ ! -e "$VREPO/.chump/fleet-paused" ] || fail "real pause must NOT write the repo kill-switch sentinel"
+[ ! -e "$VSTATE/.chump/.chump/fleet-paused" ] || fail "real pause must NOT write the doubled .chump/.chump path"
+# is-paused agrees with the written state (exit 0 = paused), zero writes.
+run_verb node is-paused >/dev/null 2>&1 || fail "chump node is-paused must exit 0 on a paused node"
+# resume removes the node sentinel it wrote and flips is-paused back to exit 1.
+run_verb node resume >/dev/null 2>&1 || fail "real resume should succeed"
+[ ! -e "$VSTATE/.chump/fleet-paused" ] || fail "resume must remove the node pause sentinel"
+run_verb node is-paused >/dev/null 2>&1 && fail "chump node is-paused must exit 1 after resume"
+ok "(5) real pause writes node.env=paused (bare) + node sentinel (REASON=), no kill switch; resume removes it; is-paused agrees"
+
+# ── (6) is-paused ↔ node-converge parity over the node.env fixtures ───────────
+# task (3): node-converge's `_nc_paused` now DELEGATES to `chump node is-paused`
+# (the ONE Rust predicate) instead of its own divergent rule. Pin the verdict
+# the shell relies on across every fixture form, INCLUDING the key divergence:
+# WORK_ENABLED=0 ALONE (no control-plane mode) is NOT paused under the Rust
+# predicate, where the old shell-only rule wrongly treated it as paused.
+PSTATE="$TMP/pstate"
+# expect: 0 = must read PAUSED (is-paused exit 0); 1 = must read NOT paused.
+is_paused_is() {  # $1=label $2=expected_rc ; node.env already written to $PSTATE
+    local rc=0
+    env -i PATH="$STUB:/usr/bin:/bin" HOME="$TMP/phome" \
+        CHUMP_STATE_DIR="$PSTATE" "$CHUMP_BIN" node is-paused >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq "$2" ] || fail "parity $1: is-paused rc=$rc, expected $2"
+}
+rm -rf "$PSTATE"; mkdir -p "$PSTATE/.chump"
+printf 'CHUMP_NODE_MODE=paused\n' > "$PSTATE/node.env"; is_paused_is "bare mode=paused" 0
+printf 'export CHUMP_NODE_MODE=paused\n' > "$PSTATE/node.env"; is_paused_is "export mode=paused" 0
+printf 'CHUMP_NODE_MODE=control-plane\nCHUMP_NODE_WORK_ENABLED=0\n' > "$PSTATE/node.env"; is_paused_is "legacy bare control-plane+WE=0" 0
+printf 'export CHUMP_NODE_MODE=control-plane\nexport CHUMP_NODE_WORK_ENABLED=0\n' > "$PSTATE/node.env"; is_paused_is "legacy export control-plane+WE=0" 0
+# WORK_ENABLED=0 ALONE (work-ready mode) is NOT paused under the Rust predicate.
+printf 'CHUMP_NODE_MODE=work-ready\nCHUMP_NODE_WORK_ENABLED=0\n' > "$PSTATE/node.env"; is_paused_is "WE=0 alone (not control-plane)" 1
+# sentinel present (node.env unpaused) → paused; absent → not paused.
+printf 'CHUMP_NODE_MODE=work-ready\n' > "$PSTATE/node.env"; is_paused_is "work-ready, no sentinel" 1
+printf 'REASON=slo\n' > "$PSTATE/.chump/fleet-paused"; is_paused_is "work-ready + node sentinel present" 0
+rm -f "$PSTATE/.chump/fleet-paused"; is_paused_is "sentinel removed → not paused" 1
+# Static wiring guard: node-converge's _nc_paused must delegate to the verb, so
+# this parity governs the real converge path (not just a standalone binary).
+grep -q 'node is-paused' "$REPO_ROOT/scripts/ops/node-converge.sh" \
+    || fail "node-converge.sh _nc_paused must delegate to 'chump node is-paused'"
+ok "(6) is-paused parity: both line forms + legacy control-plane+WE=0 paused; WE=0-alone not paused; sentinel present/absent; node-converge delegates"
 
 echo ""
 echo "All RESILIENT-1652 / RESILIENT-1653 pause + oauth tests passed!"

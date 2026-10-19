@@ -1669,7 +1669,10 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("node")
         && !matches!(
             args.get(2).map(String::as_str),
-            Some("pause") | Some("resume")
+            // RESILIENT-1652/1653: `is-paused` is the node-mode read verb, handled
+            // by the pause/resume block below — NOT chump_provision. Exclude it
+            // here or it would hit the provision CLI and exit 2 as unknown.
+            Some("pause") | Some("resume") | Some("is-paused")
         )
     {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
@@ -3525,6 +3528,7 @@ async fn main() -> Result<()> {
         let print_node_usage = || {
             println!("Usage: chump node pause [--reason \"<reason>\"] [--dry-run]");
             println!("       chump node resume [--dry-run]");
+            println!("       chump node is-paused   (exit 0 paused, 1 not paused; no writes)");
             println!();
             println!("Pause and resume the node. When paused, work organs (node-converge,");
             println!("organ-reconcile, organ-deploy, paramedic, process-organ-heal,");
@@ -3701,9 +3705,46 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            "is-paused" => {
+                // RESILIENT-1652/1653 (task 3): a READ-ONLY predicate verb —
+                // exit 0 = paused, exit 1 = not paused, NO writes. node-converge's
+                // `_nc_paused` calls this so the shell honours the ONE Rust
+                // predicate instead of its own divergent rule. --help prints
+                // usage (exit 0); any other flag is a usage error (exit 2) so it
+                // is never confused with the 0/1 pause verdict.
+                let rest = &args[3..];
+                if rest
+                    .iter()
+                    .any(|a| a == "--help" || a == "-h" || a == "help")
+                {
+                    print_node_usage();
+                    return Ok(());
+                }
+                if let Some(bad) = rest.iter().find(|a| a.starts_with('-')) {
+                    eprintln!("chump node is-paused: unknown flag '{bad}'");
+                    eprintln!("Usage: chump node is-paused   (exit 0 paused, 1 not paused)");
+                    std::process::exit(2);
+                }
+                let state = match node_mode::NodeModeState::new(None) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("chump node is-paused: {e:#}");
+                        std::process::exit(2);
+                    }
+                };
+                match state.is_paused() {
+                    Ok(true) => std::process::exit(0),
+                    Ok(false) => std::process::exit(1),
+                    Err(e) => {
+                        eprintln!("chump node is-paused: {e:#}");
+                        std::process::exit(2);
+                    }
+                }
+            }
             _ => {
                 eprintln!("Usage: chump node pause [--reason \"<reason>\"] [--dry-run]");
                 eprintln!("       chump node resume [--dry-run]");
+                eprintln!("       chump node is-paused");
                 std::process::exit(2);
             }
         }
