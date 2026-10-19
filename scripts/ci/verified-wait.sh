@@ -33,7 +33,14 @@
 #             legible reason naming the lanes that never concluded, and exit 1.
 #
 # This behavior is IDENTICAL on pull_request and merge_group events (the event
-# only changes the SHA ci.yml passes in via --sha). --event-name is logging-only.
+# only changes the SHA ci.yml passes in via --sha). --event-name is logging-only
+# EXCEPT for workflow_dispatch: a dispatch re-run (the INFRA-1395 grace window)
+# does NOT itself produce the audit/ACP cross-workflow runs — those are gated on
+# the pull_request/merge_group run — so waiting on them here would burn the full
+# timeout window on lanes that will never post on this event. On
+# --event-name workflow_dispatch the cross-workflow wait is therefore SKIPPED
+# with a logged reason and only the local lanes are classified (one pass, no
+# 90-min burn).
 #
 # aggregator-verified.sh and poll-cross-workflow-checks.sh keep their existing
 # exit codes and contracts; no new bypass/skip env var is introduced (the wait
@@ -90,6 +97,17 @@ fi
 if [[ ${#LOCAL_LANES[@]} -eq 0 && ${#CROSS_CHECKS[@]} -eq 0 ]]; then
     echo "[verified-wait] ERROR: at least one --lane or --cross is required" >&2
     exit 3
+fi
+
+# workflow_dispatch skip (CREDIBLE-1554 item 5). A dispatch re-run — e.g. the
+# INFRA-1395 grace-window re-run of ci.yml — does not produce the audit/ACP
+# cross-workflow runs for this event; they are gated on the pull_request/
+# merge_group run. Waiting on them here would burn the full ${TIMEOUT_S}s window
+# on lanes that will never post. Drop the cross lanes (logged) so the loop below
+# does a single local-only classification and exits at once — never a 90-min burn.
+if [[ "$EVENT_NAME" == "workflow_dispatch" && ${#CROSS_CHECKS[@]} -gt 0 ]]; then
+    echo "[verified-wait] workflow_dispatch: SKIPPING the cross-workflow wait for lanes [${CROSS_CHECKS[*]}] (reason: a dispatch re-run does not produce the audit/ACP runs — they are gated on the pull_request/merge_group run; waiting would burn the ${TIMEOUT_S}s window on lanes that never post on this event). Classifying LOCAL lanes only, one pass."
+    CROSS_CHECKS=()
 fi
 
 # Static poll argv (snapshot mode ignores timeout/interval).
