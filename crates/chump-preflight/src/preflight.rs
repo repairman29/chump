@@ -2771,6 +2771,15 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-unresolved-deps-resolution.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-1551 (Phase R R2, AC2): `chump gap ship --closed-pr N` is
+        // refused unless a gap_prs row links PR #N to the gap; the landed ship
+        // flips the row open -> merged; the no-title-closer allowlist is true
+        // zero. Drives the debug binary; builds it when absent.
+        steps.push(step(
+            "credible-1551-ship-fk-gate",
+            &["bash", "scripts/ci/test-credible-1551-ship-fk-gate.sh"],
+            GateKind::Scripts,
+        ));
         // RESILIENT-1613 / INFRA-8221: every shell armer, the rebaser, the direct
         // mergers and the repair loop honor the arm policy (no-auto-merge label /
         // `Auto-merge: hold`). Stubbed gh + throwaway git repos, no network.
