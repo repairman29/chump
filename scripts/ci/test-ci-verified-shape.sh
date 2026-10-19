@@ -190,6 +190,65 @@ if not bad_exprs:
 else:
     bad(f"verified-wait run has disallowed ${{{{ }}}} expression(s): {bad_exprs}")
 
+# ── CREDIBLE-1554 delta item 1: pin the live event-name/sha/pr expressions ────
+# Assertion 10 only rejects DISALLOWED expressions; it does not REQUIRE the live
+# ones to be present. So hard-coding `--event-name "workflow_dispatch"` (reviewer
+# Mutant C) removes the ${{ github.event_name }} expression without adding a
+# disallowed one — and merge_group then borrows the 300s dispatch budget, letting
+# `verified` conclude FAILURE while audit (15-40 min) is still running: the exact
+# bug this gap fixes, reachable by a one-token ci.yml edit. Require each of the
+# three live expressions to appear EXACTLY ONCE as its flag's value.
+def count_arg(flag, value):
+    # matches the literal `--flag "value"` (value treated as a literal, incl. ${{ }})
+    return len(re.findall(r'--' + re.escape(flag) + r'\s+"' + re.escape(value) + r'"', wait_run))
+
+en = count_arg("event-name", "${{ github.event_name }}")
+if en == 1:
+    ok('verified-wait passes --event-name "${{ github.event_name }}" exactly once')
+else:
+    bad(f'expected exactly one --event-name "${{{{ github.event_name }}}}", found {en} '
+        "— a hard-coded --event-name lets one event borrow another's wait budget")
+
+sha_n = count_arg("sha", "${{ github.event.pull_request.head.sha || github.sha }}")
+if sha_n == 1:
+    ok('verified-wait passes the live --sha expression exactly once')
+else:
+    bad(f'expected exactly one live --sha expression, found {sha_n}')
+
+pr_n = count_arg("pr", "${{ github.event.pull_request.number }}")
+if pr_n == 1:
+    ok('verified-wait passes the live --pr expression exactly once')
+else:
+    bad(f'expected exactly one live --pr expression, found {pr_n}')
+
+# ── CREDIBLE-1554 delta item 2: the wait step's run holds ONE unconditional call
+# `verified-wait.sh` must appear EXACTLY ONCE in the single wait step's whole
+# run: text (assertion 5 counts STEPS, so it misses a 2nd call in the SAME step),
+# and the run must carry no GITHUB_EVENT_NAME reference and no shell conditional
+# (if/case/&&/||). Reviewer Mutant b adds a 2nd verified-wait.sh call in the same
+# step branched on $GITHUB_EVENT_NAME == merge_group without --cross — this kills
+# it. Strip ${{ }} GitHub expressions before the shell-conditional scan so the
+# `||` inside the --sha fallback expression is not misread as a shell OR.
+vw_calls = len(re.findall(r'verified-wait\.sh', wait_run))
+if vw_calls == 1:
+    ok("verified-wait.sh appears exactly once in the wait step's run text")
+else:
+    bad(f"verified-wait.sh appears {vw_calls}x in the wait step's run — the verdict "
+        "must flow through a single unconditional call, not an event-branched second call")
+
+if "GITHUB_EVENT_NAME" in wait_run:
+    bad("wait step run references GITHUB_EVENT_NAME — the event is passed via "
+        "--event-name only; a shell branch on it is a second-path smell")
+else:
+    ok("wait step run has no GITHUB_EVENT_NAME reference")
+
+wait_run_shell = re.sub(r'\$\{\{.*?\}\}', '', wait_run)
+if re.search(r'&&|\|\||(?:^|\s)(?:if|case)\s', wait_run_shell):
+    bad("wait step run contains a shell conditional (if/case/&&/||) — the single "
+        "verified-wait.sh call must be unconditional for every event")
+else:
+    ok("wait step run has no shell conditional (if/case/&&/||)")
+
 sys.exit(1 if fail else 0)
 PY
 rc=$?
