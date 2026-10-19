@@ -19,6 +19,19 @@
 #      `--timeout-s 120` grace window — so verified can only reach its verdict
 #      through the wait loop.
 #
+# CREDIBLE-1554 item 2 tightens the binding against the reviewer's Mutant B (an
+# `if:` on the wait step + a dispatch-only step without --cross) by reading the
+# STRUCTURE per-step, not a joined run blob:
+#   5. EXACTLY ONE step in verified runs verified-wait.sh (a 2nd call FAILs);
+#   6. NO step in verified has a step-level `if:` (the binding is unconditional;
+#      the job-level `if: always()` is not a step and is unaffected);
+#   7. the call's --lane names EQUAL the job's needs: (all six);
+#   8. the --cross set is EXACTLY {audit, ACP smoke};
+#   9. the call passes NO --timeout-s (the per-event budget resolves from
+#      --event-name inside verified-wait.sh);
+#  10. the call's only ${{ }} expressions are needs.*.result + the sha/pr/
+#      event_name inputs — nothing else drives the wait.
+#
 # Usage:
 #   bash scripts/ci/test-ci-verified-shape.sh
 #   CI_YML=path/to/ci.yml bash scripts/ci/test-ci-verified-shape.sh
@@ -96,6 +109,86 @@ if "--timeout-s 120" in run_blob:
     bad("stale 120s grace window still present in verified")
 else:
     ok("no stale --timeout-s 120 grace window in verified")
+
+# ── CREDIBLE-1554 item 2: tighten the binding so its mutants cannot pass ──────
+# The reviewer's Mutant B (an `if:` on the wait step + a dispatch-only step
+# without --cross) slipped past the join-every-run-into-one-string checks above.
+# These assertions read the STRUCTURE (per-step), not a joined blob.
+import re
+
+steps = [s for s in v.get("steps", []) if isinstance(s, dict)]
+
+# 5. EXACTLY ONE step runs verified-wait.sh (Mutant B adds a 2nd dispatch-only
+#    step → count 2 → FAIL). The verdict must flow through a single call site.
+wait_steps = [s for s in steps if "scripts/ci/verified-wait.sh" in s.get("run", "")]
+if len(wait_steps) == 1:
+    ok("exactly one step in verified runs verified-wait.sh")
+else:
+    bad(f"expected exactly one verified-wait.sh step in verified, found {len(wait_steps)}")
+
+# 6. NO step in verified has a step-level `if:` (Mutant B puts
+#    `if: github.event_name != 'workflow_dispatch'` on the wait step → FAIL).
+#    The job-level `if: always()` (v["if"]) is NOT a step and is unaffected.
+steps_with_if = [s for s in steps if "if" in s]
+if not steps_with_if:
+    ok("no step in verified has a step-level `if:` (the lane set is unconditional)")
+else:
+    bad(f"{len(steps_with_if)} step(s) in verified carry a step-level `if:` — the binding must be unconditional for every event")
+
+# Parse the single verified-wait call's run for the remaining assertions. If
+# there is not exactly one, the assertions above already failed; guard anyway.
+wait_run = wait_steps[0].get("run", "") if wait_steps else ""
+
+# 7. The --lane names equal the job's needs: (all six). A lane added/dropped vs
+#    needs means a local lane goes unclassified or a phantom lane is waited on.
+lane_names = set(re.findall(r'--lane\s+"([^="]+)=', wait_run))
+needs = v.get("needs", [])
+needs_set = set(needs) if isinstance(needs, list) else {needs}
+if lane_names == needs_set:
+    ok(f"verified-wait --lane names equal the job's needs: ({sorted(needs_set)})")
+else:
+    bad(f"--lane names {sorted(lane_names)} != job needs: {sorted(needs_set)} "
+        f"(missing: {sorted(needs_set - lane_names)}; extra: {sorted(lane_names - needs_set)})")
+
+# 8. The --cross set is EXACTLY {audit, ACP smoke} — no more, no fewer.
+cross_set = set(re.findall(r'--cross\s+"([^"]+)"', wait_run))
+expect_cross = {"audit", "ACP protocol smoke test (Zed / JetBrains compatible)"}
+if cross_set == expect_cross:
+    ok("verified-wait --cross set is exactly {audit, ACP smoke}")
+else:
+    bad(f"--cross set {sorted(cross_set)} != expected {sorted(expect_cross)} "
+        f"(missing: {sorted(expect_cross - cross_set)}; extra: {sorted(cross_set - expect_cross)})")
+
+# 9. The call passes NO --timeout-s at all (the per-event budget is resolved
+#    inside verified-wait.sh from --event-name; a hard-coded --timeout-s would
+#    override the budget and could shrink the pull_request/merge_group window).
+if re.search(r'--timeout-s\b', wait_run):
+    bad("verified-wait call passes --timeout-s — the per-event budget must resolve from --event-name, not a hard-coded flag")
+else:
+    ok("verified-wait call passes no --timeout-s (per-event budget resolves from --event-name)")
+
+# 10. The call's only ${{ }} expressions are needs.*.result and the
+#     sha/pr/event_name inputs — nothing else drives the wait. A stray expression
+#     (e.g. a Mutant-B-style `if:` condition smuggled into the run, or an
+#     event-name-switched arg) would show up here.
+exprs = [e.strip() for e in re.findall(r'\$\{\{(.*?)\}\}', wait_run)]
+allowed_exact = {
+    "github.event.pull_request.head.sha || github.sha",  # --sha input
+    "github.event.pull_request.number",                  # --pr input
+    "github.event_name",                                 # --event-name input
+}
+bad_exprs = []
+for e in exprs:
+    norm = " ".join(e.split())
+    if re.fullmatch(r"needs\.[A-Za-z0-9_-]+\.result", norm):
+        continue
+    if norm in allowed_exact:
+        continue
+    bad_exprs.append(norm)
+if not bad_exprs:
+    ok(f"verified-wait run uses only needs.*.result + sha/pr/event_name expressions ({len(exprs)} total)")
+else:
+    bad(f"verified-wait run has disallowed ${{{{ }}}} expression(s): {bad_exprs}")
 
 sys.exit(1 if fail else 0)
 PY
