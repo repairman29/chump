@@ -1821,6 +1821,14 @@ jobs:
         # was dropped with the title closer itself.)
         run: bash scripts/ci/test-unresolved-deps-resolution.sh
 
+      - name: gap ship refuses without a gap_prs FK (CREDIBLE-1551 / 1550 AC2)
+        # Completes the umbrella: `chump gap ship --closed-pr N` is refused
+        # unless a gap_prs row links PR #N to the gap (proof-of-merge alone is
+        # not enough). On the landed ship the row flips open -> merged. Also
+        # asserts the no-title-closer allowlist is TRUE ZERO (both legacy
+        # title-regex closers converted to `chump gap gaps-for-pr`). Hermetic.
+        run: CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-credible-1551-ship-fk-gate.sh
+
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
