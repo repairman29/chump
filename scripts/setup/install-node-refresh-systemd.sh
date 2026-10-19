@@ -89,6 +89,24 @@ assert_canonical_path() {
     fi
 }
 
+# INFRA-8597 (blocking #1): a SET CHUMP_NODE_REPO must resolve to a durable
+# checkout. A set-but-rejected value (missing, no .git, or a disposable
+# `.claude/worktrees/` path) is FATAL — NEVER a silent fall-through that then
+# writes the caller's raw value into `Environment=`. The refusal must happen
+# at top level (not inside the `$(resolve_canonical_checkout)` command
+# substitution, whose `exit` only kills the subshell).
+if [[ -n "${CHUMP_NODE_REPO:-}" ]]; then
+    if [[ ! -d "${CHUMP_NODE_REPO}/.git" ]]; then
+        echo "FATAL: CHUMP_NODE_REPO=${CHUMP_NODE_REPO} is not a git checkout (missing or no .git); refusing (INFRA-8597)" >&2
+        exit 1
+    fi
+    _canon_node_repo="$(cd "$CHUMP_NODE_REPO" && pwd)"
+    if is_worktree_path "$_canon_node_repo"; then
+        echo "FATAL: CHUMP_NODE_REPO=${_canon_node_repo} is a disposable .claude/worktrees/ path; refusing to render units from it (INFRA-8597)" >&2
+        exit 1
+    fi
+fi
+
 CANON_REPO="$(resolve_canonical_checkout || true)"
 if [[ -z "$CANON_REPO" ]]; then
     echo "FATAL: cannot locate the canonical node checkout (set CHUMP_NODE_REPO)" >&2
@@ -139,16 +157,15 @@ mkdir -p "$UNIT_DIR"
     # a truly wedged run (network hang, deadlocked cargo) instead of running
     # forever.
     echo "TimeoutStartSec=2700"
-    [[ -n "${CHUMP_NODE_REPO:-}" ]] && echo "Environment=CHUMP_NODE_REPO=${CHUMP_NODE_REPO}"
+    # INFRA-8597 (blocking #1): write the RESOLVED canonical repo (CANON_REPO),
+    # never the caller's raw CHUMP_NODE_REPO. A worktree/stale value here is the
+    # exact failure install-helsinki-atc.sh recorded on 2026-08-11.
+    echo "Environment=CHUMP_NODE_REPO=${CANON_REPO}"
     [[ -n "${CHUMP_NODE_BIN:-}" ]]  && echo "Environment=CHUMP_NODE_BIN=${CHUMP_NODE_BIN}"
-    # RESILIENT-1041 (fix a): a systemd --user timer starts with NO login
-    # session and therefore no `gh auth login` state — the node-refresh script
-    # can only see a real GH_TOKEN if this unit exports one. Bake in whatever
-    # GH_TOKEN the *installing* environment has (operator's shell / bootstrap
-    # secret), so the timer's `gh` calls are authenticated from the first run
-    # instead of silently degrading to the raw-HEAD-fallback / cold-build
-    # halt-class paths every single cycle.
-    [[ -n "${GH_TOKEN:-}" ]] && echo "Environment=GH_TOKEN=${GH_TOKEN}"
+    # INFRA-8597 (blocking #3, RESILIENT-1649 renderer half): do NOT bake any
+    # secret into the unit. node-refresh-chump.sh reads GH_TOKEN from
+    # ~/.chump/providers.env at runtime, so the timer's `gh` calls stay
+    # authenticated without a plaintext GH_TOKEN= line in a world-readable unit.
     echo "ExecStart=/usr/bin/env bash ${SCRIPT_SRC}"
     echo "Nice=10"
 } > "$UNIT_DIR/chump-node-refresh.service"
@@ -188,7 +205,8 @@ if [[ -n "$WATCHDOG_SRC" ]]; then
         echo ""
         echo "[Service]"
         echo "Type=oneshot"
-        [[ -n "${CHUMP_NODE_REPO:-}" ]] && echo "Environment=CHUMP_REPO_ROOT=${CHUMP_NODE_REPO}"
+        # INFRA-8597 (blocking #1): resolved canonical repo, never the caller's raw value.
+        echo "Environment=CHUMP_REPO_ROOT=${CANON_REPO}"
         [[ -n "${CHUMP_NODE_BIN:-}" ]]  && echo "Environment=CHUMP_NODE_BIN=${CHUMP_NODE_BIN}"
         echo "ExecStart=/usr/bin/env bash ${WATCHDOG_SRC}"
         echo "Nice=10"
@@ -251,7 +269,8 @@ if [[ -n "$SCRIPTHOST_SRC" ]]; then
         # a generous bound so a slow fetch on a 2-core node never wedges forever.
         echo "TimeoutStartSec=300"
         echo "Environment=CHUMP_SCRIPT_HOST_REPO=${CHUMP_SCRIPT_HOST_REPO}"
-        [[ -n "${GH_TOKEN:-}" ]] && echo "Environment=GH_TOKEN=${GH_TOKEN}"
+        # INFRA-8597 (blocking #3): no secret baked into the unit — the refresh
+        # script reads GH_TOKEN from ~/.chump/providers.env at runtime.
         echo "ExecStart=/usr/bin/env bash ${SCRIPTHOST_SRC}"
         echo "Nice=10"
     } > "$UNIT_DIR/chump-script-host-refresh.service"
