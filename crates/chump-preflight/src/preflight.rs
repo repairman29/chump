@@ -1351,6 +1351,14 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // `verified` job step itself IS GitHub-context-dependent (needs.*.result)
         // and is allowlisted separately in preflight-ci-parity-exceptions.txt.
         "scripts/ci/test-aggregator-verified.sh",
+        // CREDIBLE-1554: `verified` in-job wait loop guard — proves
+        // scripts/ci/verified-wait.sh reaches the right FIRST verdict under a
+        // merge queue (running/never-seen lane => PENDING keep-polling, FAILURE
+        // only on a real red lane or the 90-min timeout, SUCCESS only all-green)
+        // for both pull_request and merge_group. Stubs the Checks API; pure
+        // bash, no network, ~5s. The ci.yml `verified` job step is exempt from
+        // parity (it lives in CI_YML_INFRA_JOBS) — this test mirrors its logic.
+        "scripts/ci/test-verified-wait.sh",
         // INFRA-1841 (CP-009): mock-services offline-CI fixture smoke test —
         // builds+runs the 4 vendored Anthropic/OpenAI/Stripe/Supabase mocks
         // under tests/fixtures/mock-services and asserts response shape.
@@ -2737,6 +2745,30 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "css-token-discipline-smoke",
             &["bash", "scripts/ci/test-css-token-discipline.sh"],
+            GateKind::Scripts,
+        ));
+        // CREDIBLE-1550 (Phase R R2, AC4): no gap closer may derive the gap it
+        // closes from a PR title / commit subject regex (a title falsely closed
+        // CREDIBLE-1492 from a docs PR and CREDIBLE-1520 from its AC1-only
+        // slice). Hermetic grep over scripts/{coord,dispatch,ops,overnight}.
+        steps.push(step(
+            "no-title-regex-gap-closers",
+            &["bash", "scripts/ci/test-no-title-regex-gap-closers.sh"],
+            GateKind::Scripts,
+        ));
+        // CREDIBLE-1550 (AC1/AC5): gap-doctor-reconcile closes a gap only via a
+        // typed gap_prs row linking a merged PR — never a title.
+        steps.push(step(
+            "credible-1550-gap-prs-closer",
+            &["bash", "scripts/ci/test-credible-1550-gap-prs-closer.sh"],
+            GateKind::Scripts,
+        ));
+        // CREDIBLE-1552: restored Part 1 of the deleted test-ghost-gap-thrash-fix
+        // — done-like dep statuses + dangling dep IDs count as resolved so stale
+        // dep-edges don't pin open gaps shut and starve workers on ghosts.
+        steps.push(step(
+            "unresolved-deps-resolution",
+            &["bash", "scripts/ci/test-unresolved-deps-resolution.sh"],
             GateKind::Scripts,
         ));
         // RESILIENT-1613 / INFRA-8221: every shell armer, the rebaser, the direct
