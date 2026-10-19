@@ -1837,6 +1837,14 @@ jobs:
         # title-regex closers converted to `chump gap gaps-for-pr`). Hermetic.
         run: CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-credible-1551-ship-fk-gate.sh
 
+      - name: converted closers close via gap_prs FK only (CREDIBLE-1551 AC2)
+        # Behavioural proof that stale-pr-reaper.sh and chump-pr-triage.sh
+        # --apply ship-gap close a gap only from the typed gap_prs FK: a merged
+        # PR whose TITLE names an open gap but carries NO gap_prs link must NOT
+        # ship it; a FK-linked PR must. Diverges the gh-stub title from the
+        # gaps-for-pr result so restoring a title regex flips it red. Hermetic.
+        run: bash scripts/ci/test-credible-1551-converted-closers-behaviour.sh
+
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
