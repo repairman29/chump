@@ -125,6 +125,21 @@ else
     ko "AC2c gaps-for-pr 4242 expected '$G', got: '$after'"
 fi
 
+# ── AC2c': gaps-for-pr early return (the arm exits 0 and does NOT fall through
+# to main's "unknown subcommand 'gap'" catch-all, exit 2). The closers depend on
+# a clean exit 0 to read the FK; a fall-through would exit 2 AFTER printing.
+gfp_err="$(chump gap gaps-for-pr 4242 2>&1 >/dev/null)"; gfp_rc=$?
+if [[ $gfp_rc -eq 0 ]]; then
+    ok "AC2c' gaps-for-pr exits 0 (no fall-through to the unknown-subcommand catch-all)"
+else
+    ko "AC2c' gaps-for-pr exited $gfp_rc (regression: the arm fell through to exit 2)"
+fi
+if [[ "$gfp_err" != *"unknown subcommand"* ]]; then
+    ok "AC2c' gaps-for-pr does not print 'unknown subcommand'"
+else
+    ko "AC2c' gaps-for-pr printed the unknown-subcommand catch-all: $gfp_err"
+fi
+
 # ── AC2e: the gate checks the (gap, PR) PAIR, not any link for the PR (MS3) ───
 # PR #4242 is linked to gap A ($G) and merged. A different, unpaired gap B must
 # still be REFUSED when it tries to ride #4242's link — proof-of-merge passes
@@ -142,6 +157,45 @@ if [[ "$out" == *"CREDIBLE-1550 AC2"* ]]; then
     ok "AC2e refusal names the gap_prs FK requirement (CREDIBLE-1550 AC2), not an unrelated error"
 else
     ko "AC2e refusal did not name CREDIBLE-1550 AC2: ${out:0:300}"
+fi
+
+# ── AC2f: an AUTO-RESOLVED closed_pr (no --closed-pr flag) still requires the FK ─
+# On a feature branch whose merged PR is in the GitHub cache, `chump gap ship C`
+# with NO --closed-pr auto-resolves that PR from the cache (CREDIBLE-1489) — and
+# the FK gate holds the auto-resolved PR to the SAME (gap, PR) link requirement
+# as an explicit --closed-pr. Reuse #4242 (its "(#4242)" marker is already on
+# origin/main so proof-of-merge passes); it is linked to A ($G), not C, so the
+# auto-resolved close of C must be refused with a message that names BOTH the
+# auto-resolution and the FK requirement.
+Cgap="$(chump gap reserve --domain RESILIENT --title "c1551 fixture: autoresolve FK" \
+    --priority P2 --effort s --force 2>/dev/null | tail -1)"
+if [[ "$Cgap" =~ ^RESILIENT-[0-9]+$ ]]; then
+    git -C "$R" checkout -q -b c1551-autoresolve 2>/dev/null
+    mkdir -p "$R/.chump"
+    sqlite3 "$R/.chump/github_cache.db" \
+        "CREATE TABLE IF NOT EXISTS pr_state(number INTEGER PRIMARY KEY, head_ref TEXT, merged_at TEXT, title TEXT, raw_payload_json TEXT);
+         INSERT OR REPLACE INTO pr_state(number,head_ref,merged_at,title,raw_payload_json)
+         VALUES(4242,'c1551-autoresolve','2026-10-01T00:00:00Z','$Cgap autoresolve fixture','');"
+    out="$(chump gap ship "$Cgap" --update-yaml 2>&1)"; rc=$?
+    if [[ $rc -ne 0 && "$(status_of "$Cgap")" == "open" ]]; then
+        ok "AC2f ship with NO --closed-pr (branch's merged PR #4242 in cache) is refused (rc=$rc), $Cgap stays open"
+    else
+        ko "AC2f auto-resolved close was NOT refused: rc=$rc status=$(status_of "$Cgap") out=${out:0:300}"
+    fi
+    if [[ "$out" == *"auto-resolved"* && "$out" == *"4242"* ]]; then
+        ok "AC2f message names the auto-resolved PR #4242 (not a mysterious refusal)"
+    else
+        ko "AC2f message did not name the auto-resolved PR: ${out:0:300}"
+    fi
+    if [[ "$out" == *"CREDIBLE-1550 AC2"* ]]; then
+        ok "AC2f refusal names the gap_prs FK requirement (auto-resolve held to the same gate)"
+    else
+        ko "AC2f refusal did not name CREDIBLE-1550 AC2: ${out:0:300}"
+    fi
+    git -C "$R" checkout -q main 2>/dev/null
+    rm -f "$R/.chump/github_cache.db"
+else
+    ko "AC2f reserve of gap C failed: '$Cgap'"
 fi
 
 # ── AC2d: the no-title-closer gate passes with a true-zero allowlist ──────────
