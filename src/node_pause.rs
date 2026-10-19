@@ -61,6 +61,7 @@ pub fn sentinel_path(repo_root: &Path) -> PathBuf {
 ///   * the legacy `CHUMP_NODE_MODE=control-plane` (bare or `export`) together
 ///     with `CHUMP_NODE_WORK_ENABLED=0` (bare or `export`) — the 2026-10-17
 ///     hand-edit cuphead carried.
+///
 /// Pure (no fs/env) so it is deterministically unit-testable.
 pub fn node_env_is_paused(content: &str) -> bool {
     let mut mode: Option<&str> = None;
