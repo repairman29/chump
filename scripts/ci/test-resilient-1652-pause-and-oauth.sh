@@ -196,10 +196,12 @@ printf 'CHUMP_NODE_MODE=work-ready\nCHUMP_NODE_WORK_ENABLED=0\n' > "$PSTATE/node
 printf 'CHUMP_NODE_MODE=work-ready\n' > "$PSTATE/node.env"; is_paused_is "work-ready, no sentinel" 1
 printf 'REASON=slo\n' > "$PSTATE/.chump/fleet-paused"; is_paused_is "work-ready + node sentinel present" 0
 rm -f "$PSTATE/.chump/fleet-paused"; is_paused_is "sentinel removed → not paused" 1
-# Static wiring guard: node-converge's _nc_paused must delegate to the verb, so
-# this parity governs the real converge path (not just a standalone binary).
-grep -q 'node is-paused' "$REPO_ROOT/scripts/ops/node-converge.sh" \
-    || fail "node-converge.sh _nc_paused must delegate to 'chump node is-paused'"
+# Static wiring guard: node-converge's _nc_paused must actually INVOKE the verb
+# (not merely mention it in a comment), so this parity governs the real converge
+# path (not just a standalone binary). Match the invocation form `"$chump" node
+# is-paused`, which the comment block does not contain.
+grep -qF '"$chump" node is-paused' "$REPO_ROOT/scripts/ops/node-converge.sh" \
+    || fail 'node-converge.sh _nc_paused must INVOKE "$chump" node is-paused'
 ok "(6) is-paused parity: both line forms + legacy control-plane+WE=0 paused; WE=0-alone not paused; sentinel present/absent; node-converge delegates"
 
 echo ""
