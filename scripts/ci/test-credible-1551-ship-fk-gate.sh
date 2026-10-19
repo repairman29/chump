@@ -72,6 +72,13 @@ G="$(chump gap reserve --domain RESILIENT --title "c1551 fixture: FK-gated ship"
     --priority P2 --effort s --force 2>/dev/null | tail -1)"
 [[ "$G" =~ ^RESILIENT-[0-9]+$ ]] || die "reserve failed: '$G'"
 
+# A SECOND gap B — never linked to PR #4242 — pins that the FK gate checks the
+# (gap, PR) PAIR, not merely "some gap links PR #4242" (kills mutant MS3).
+B="$(chump gap reserve --domain RESILIENT --title "c1551 fixture: unpaired gap B" \
+    --priority P2 --effort s --force 2>/dev/null | tail -1)"
+[[ "$B" =~ ^RESILIENT-[0-9]+$ ]] || die "reserve of gap B failed: '$B'"
+[[ "$B" != "$G" ]] || die "gap B collided with gap A ($G)"
+
 echo "== PHASE-R R2: ship refuses without a gap_prs FK (CREDIBLE-1551 / 1550 AC2) =="
 
 # ── AC2a: no link → refuse ───────────────────────────────────────────────────
@@ -116,6 +123,25 @@ if [[ "$after" == "$G" ]]; then
     ok "AC2c gaps-for-pr 4242 resolves to $G (the reverse lookup the closers use)"
 else
     ko "AC2c gaps-for-pr 4242 expected '$G', got: '$after'"
+fi
+
+# ── AC2e: the gate checks the (gap, PR) PAIR, not any link for the PR (MS3) ───
+# PR #4242 is linked to gap A ($G) and merged. A different, unpaired gap B must
+# still be REFUSED when it tries to ride #4242's link — proof-of-merge passes
+# for #4242, and a link for #4242 EXISTS, but it is not a link to B. A mutant
+# that accepts "any gap_prs row for PR #4242" (rather than the (B, 4242) pair)
+# would wrongly CLOSE B here; the real gate must refuse and leave B open.
+out="$(chump gap ship "$B" --closed-pr 4242 --update-yaml 2>&1)"; rc=$?
+if [[ $rc -ne 0 && "$(status_of "$B")" == "open" ]]; then
+    ok "AC2e ship of gap B via PR #4242 (linked to A, not B) is refused (rc=$rc), B stays open"
+else
+    ko "AC2e MS3: a PR linked to A wrongly closed B — rc=$rc status=$(status_of "$B") out=${out:0:300}"
+fi
+# And the refusal must name the FK requirement, same as AC2a (not some other error).
+if [[ "$out" == *"CREDIBLE-1550 AC2"* ]]; then
+    ok "AC2e refusal names the gap_prs FK requirement (CREDIBLE-1550 AC2), not an unrelated error"
+else
+    ko "AC2e refusal did not name CREDIBLE-1550 AC2: ${out:0:300}"
 fi
 
 # ── AC2d: the no-title-closer gate passes with a true-zero allowlist ──────────
