@@ -23,6 +23,13 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # full CHUMP_HOME/CHUMP_REPO/CHUMP_REPO_ROOT/CHUMP_STATE_DB/CHUMP_LOCK_DIR
 # isolation set, so this test can't silently bleed into the real state.db.
 source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
+# RESILIENT-1652: each sandbox below runs `gap reserve`, which consults the
+# farmer readiness gate; a fresh Linux runner has no oauth token so the gate
+# reds. write_healthy_node_fixture lays down a healthy-node fixture under each
+# sandbox's CHUMP_HOME so the gate reads GREEN by evidence. No gate loosening,
+# no skip env var.
+# shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
+source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"
 
 echo "=== INFRA-635 gap rebalance test ==="
 echo
@@ -73,7 +80,7 @@ export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
 
 # ── Scenario 1: over-budget P0 (>5) ─────────────────────────────────────────
 echo "[scenario 1: over-budget P0]"
-TMP1="$(mktemp -d)"; chump_test_sandbox_setup "$TMP1"
+TMP1="$(mktemp -d)"; chump_test_sandbox_setup "$TMP1"; write_healthy_node_fixture
 
 # 6 P0 gaps (one over budget)
 for i in $(seq 1 6); do
@@ -110,7 +117,7 @@ chump_test_sandbox_cleanup "$TMP1"
 # ── Scenario 2: pillar skew (one dominates >50%) ─────────────────────────────
 echo
 echo "[scenario 2: pillar skew]"
-TMP2="$(mktemp -d)"; chump_test_sandbox_setup "$TMP2"
+TMP2="$(mktemp -d)"; chump_test_sandbox_setup "$TMP2"; write_healthy_node_fixture
 
 # 10 EFFECTIVE P1 gaps — EFFECTIVE dominates; other pillars starved
 for i in $(seq 1 10); do
@@ -135,7 +142,7 @@ chump_test_sandbox_cleanup "$TMP2"
 # ── Scenario 3: all clean ────────────────────────────────────────────────────
 echo
 echo "[scenario 3: all clean]"
-TMP3="$(mktemp -d)"; chump_test_sandbox_setup "$TMP3"
+TMP3="$(mktemp -d)"; chump_test_sandbox_setup "$TMP3"; write_healthy_node_fixture
 
 # 2 per pillar → balanced, no P0s
 for p in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
@@ -168,7 +175,7 @@ chump_test_sandbox_cleanup "$TMP3"
 # ── Scenario 4: no-action-needed (exactly at floor, P0=0) ───────────────────
 echo
 echo "[scenario 4: no-action-needed]"
-TMP4="$(mktemp -d)"; chump_test_sandbox_setup "$TMP4"
+TMP4="$(mktemp -d)"; chump_test_sandbox_setup "$TMP4"; write_healthy_node_fixture
 
 # Exactly 2 per pillar, 0 P0s → no action
 for p in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
@@ -188,7 +195,7 @@ chump_test_sandbox_cleanup "$TMP4"
 # ── --json required keys ──────────────────────────────────────────────────────
 echo
 echo "[--json required keys]"
-TMP5="$(mktemp -d)"; chump_test_sandbox_setup "$TMP5"
+TMP5="$(mktemp -d)"; chump_test_sandbox_setup "$TMP5"; write_healthy_node_fixture
 _j5_out="$(mktemp)"
 "$BIN" gap rebalance --json > "$_j5_out" 2>/dev/null || true
 JSON5="$(cat "$_j5_out")"; rm -f "$_j5_out"

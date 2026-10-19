@@ -43,6 +43,20 @@ mkdir -p "$(dirname "$AL_FILE")"
 echo 5 > "$AL_FILE"
 
 export CHUMP_LOCK_DIR="$TMP"
+# RESILIENT-1652: `gap reserve` / `claim` consult the farmer readiness gate,
+# which reads the oauth token + node state from <CHUMP_HOME>/.chump and reds a
+# fresh Linux runner (no oauth-token.json) — or a paused real ~/.chump/node.env.
+# Redirect ONLY the gate's reads to the temp $TMP (pin CHUMP_REPO + CHUMP_STATE_DB
+# to the real repo so repo_root + state.db are unchanged) and lay down a
+# healthy-node fixture there, so the gate reads GREEN by evidence WITHOUT
+# touching the operator's real ~/.chump. No gate loosening, no skip env var.
+export CHUMP_REPO="$ROOT"
+export CHUMP_STATE_DB="$ROOT/.chump/state.db"
+export CHUMP_HOME="$TMP"
+export CHUMP_AUTONOMY_LEVEL_FILE="$TMP/.chump/AUTONOMY_LEVEL"
+mkdir -p "$TMP/.chump"; echo 5 > "$TMP/.chump/AUTONOMY_LEVEL"
+# shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
+source "$ROOT/scripts/ci/lib/healthy-node-fixture.sh"; write_healthy_node_fixture
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export CHUMP_SESSION_ID="coord-surfaces-smoke-$$"
 # Smoke test creates an ephemeral gap — skip guards that check for real remote

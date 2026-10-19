@@ -71,6 +71,13 @@ trap 'rm -rf "$TMP"' EXIT
 
 export CHUMP_REPO="$TMP"
 export CHUMP_HOME="$TMP"
+# RESILIENT-1652: healthy-node fixture so the farmer readiness gate (consulted
+# by `gap reserve`) reads GREEN by evidence under this isolated CHUMP_HOME; a
+# fresh Linux runner has no oauth token. CHUMP_HOME stays $TMP across the TMP2/3/4
+# blocks (only CHUMP_REPO changes), so one fixture here covers them all. No gate
+# loosening, no skip env var.
+# shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
+source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"; write_healthy_node_fixture
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1
