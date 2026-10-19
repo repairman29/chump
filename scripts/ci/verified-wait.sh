@@ -62,10 +62,16 @@
 #       [--pr N] [--event-name NAME] \
 #       [--timeout-s N] [--interval-s N] [--repo owner/repo]
 #   verified-wait.sh --print-lanes --lane ... --cross ...   # print the lane set
+#   verified-wait.sh --print-budget --event-name NAME --lane ...  # print the budget
 #
 # --print-lanes renders the single, event-invariant lane set (local names +
 # cross names, origin-tagged, sorted) and exits 0 WITHOUT polling — the proof
 # surface that the lane set is identical for every event (test-verified-wait.sh).
+#
+# --print-budget renders the resolved per-event wait budget as `BUDGET_S=<n>` and
+# exits 0 WITHOUT --sha or polling — the proof surface that workflow_dispatch
+# resolves to the short window (300s) and every other event to the full ruleset
+# timeout (5400s) when no --timeout-s is given (test-verified-wait.sh item 3).
 #
 # Exit codes: 0=PASS  1=FAIL (real red lane OR timeout)  3=invocation error.
 #
@@ -89,6 +95,7 @@ REPO="${GH_REPO:-repairman29/chump}"
 LOCAL_LANES=()
 CROSS_CHECKS=()
 PRINT_LANES=0
+PRINT_BUDGET=0
 
 usage() { grep '^#' "$0" | sed 's/^# \?//'; }
 
@@ -103,6 +110,7 @@ while [[ $# -gt 0 ]]; do
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
         --repo)        REPO="$2"; shift 2 ;;
         --print-lanes) PRINT_LANES=1; shift ;;
+        --print-budget) PRINT_BUDGET=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[verified-wait] unknown arg: $1" >&2; exit 3 ;;
     esac
@@ -133,23 +141,32 @@ if [[ "$PRINT_LANES" -eq 1 ]]; then
     exit 0
 fi
 
-if [[ -z "$SHA" ]]; then
-    echo "[verified-wait] ERROR: --sha is required" >&2
-    exit 3
-fi
-
 # Resolve the per-event wait BUDGET (item 5: the lane set is identical across
 # events; only the budget differs). An explicit --timeout-s always wins; absent
 # one, workflow_dispatch gets the short bounded window and every other event the
 # full 90-min ruleset timeout. The cross lanes are NEVER dropped — a dispatch
 # still classifies audit/ACP on the SHA and FAILs (never PASSes) if, at the end
-# of its window, a cross lane is red, still running, or never-seen.
+# of its window, a cross lane is red, still running, or never-seen. Resolved
+# before the --sha gate so --print-budget needs only --event-name.
 if [[ -z "$TIMEOUT_S" ]]; then
     if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
         TIMEOUT_S="$DISPATCH_TIMEOUT_S"
     else
         TIMEOUT_S="$DEFAULT_TIMEOUT_S"
     fi
+fi
+
+# --print-budget: emit the resolved per-event wait budget and exit (no --sha, no
+# poll) — the proof surface that workflow_dispatch resolves to the short window
+# (300s) and every other event to the full ruleset timeout (5400s), item 3.
+if [[ "$PRINT_BUDGET" -eq 1 ]]; then
+    echo "BUDGET_S=$TIMEOUT_S"
+    exit 0
+fi
+
+if [[ -z "$SHA" ]]; then
+    echo "[verified-wait] ERROR: --sha is required" >&2
+    exit 3
 fi
 
 # Static poll argv (snapshot mode ignores timeout/interval).

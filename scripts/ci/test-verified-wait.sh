@@ -34,9 +34,14 @@
 #        12a. audit failure    -> FAIL (exit 1, real red)
 #        12b. audit never-seen -> FAIL (exit 1, TIMEOUT) quickly, never a PASS
 #        12c. audit success    -> PASS (exit 0) quickly
-#  13. --print-lanes renders the IDENTICAL lane set for pull_request, merge_group,
-#      push and workflow_dispatch (item 5, Chief-binding: ONE list, only the wait
-#      budget differs by event)
+#  13. the REAL classification path binds ONE lane list to ALL FOUR events —
+#      pull_request, merge_group, push and workflow_dispatch (item 5, Chief-binding):
+#        13a. both cross lanes never-seen -> FAIL via TIMEOUT naming audit+ACP;
+#        13b. audit red -> FAIL (real red). A mutant dropping the cross lanes on
+#             any single event FAILs 13a on that event.
+#  14. --print-budget: per-event wait budget resolves from --event-name alone (item
+#      3) — workflow_dispatch -> 300s, every other event -> 5400s (ONE lane list,
+#      only the budget differs by event)
 #
 # Run locally: bash scripts/ci/test-verified-wait.sh
 
@@ -72,7 +77,7 @@ AMB="$(mktemp)"
 
 # Representative SHAs for each event type (merge_group feeds github.sha; a PR
 # feeds pull_request.head.sha — verified-wait takes whichever as --sha).
-declare -A SHAS=( [pull_request]=prsha0000 [merge_group]=mergesha000 [workflow_dispatch]=dispatchsha0 )
+declare -A SHAS=( [pull_request]=prsha0000 [merge_group]=mergesha000 [push]=pushsha0000 [workflow_dispatch]=dispatchsha0 )
 
 # Run verified-wait with a cross `audit` lane + all-green local lanes (unless a
 # scenario overrides LOCAL_OVERRIDE). Captures combined stdout+stderr + exit.
@@ -258,7 +263,7 @@ else
     bad "temp CHUMP_AMBIENT_LOG has no verified_aggregator_decision: <<$(cat "$AMB")>>"
 fi
 REAL_AMB="$REPO_ROOT/.chump-locks/ambient.jsonl"
-if [[ ! -f "$REAL_AMB" ]] || ! grep -qE 'prsha0000|mergesha000|dispatchsha0' "$REAL_AMB"; then
+if [[ ! -f "$REAL_AMB" ]] || ! grep -qE 'prsha0000|mergesha000|pushsha0000|dispatchsha0' "$REAL_AMB"; then
     ok "real .chump-locks/ambient.jsonl was NOT polluted by the test's synthetic SHAs"
 else
     bad "real ambient.jsonl contains the test's synthetic SHAs — ambient isolation failed"
@@ -316,34 +321,66 @@ else
     bad "workflow_dispatch audit-success: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
 fi
 
-# 13. (item 5, Chief-binding) --print-lanes renders the IDENTICAL lane set for
-#     all four events. The lane set is ONE list; only the wait budget differs by
-#     event. Pass the SAME --lane/--cross for each event and diff the output.
-echo "--- lane set identical for all four events (item 5) ---"
-LANE_ARGS=(--lane "fast-checks=success" --lane "fast-checks-heavy=success"
-           --lane "clippy=success" --lane "cargo-test=success"
-           --lane "pr-hygiene=success" --lane "test=success"
-           --cross "audit"
-           --cross "ACP protocol smoke test (Zed / JetBrains compatible)")
-ref=""; lane_mismatch=0
-for EV in pull_request merge_group push workflow_dispatch; do
-    got="$(bash "$WAIT" --print-lanes --event-name "$EV" "${LANE_ARGS[@]}" 2>&1)"
-    [[ -z "$ref" ]] && ref="$got"
-    if [[ "$got" != "$ref" ]]; then
-        lane_mismatch=1
-        bad "lane set for event $EV differs from the reference (pull_request): <<$got>>"
+# 13. (item 5, Chief-binding) The REAL classification path binds ONE lane list
+#     to ALL FOUR events. Rather than --print-lanes (which exits before any event
+#     logic and so cannot catch a per-event lane mutation), this runs the actual
+#     wait/aggregate loop for pull_request, merge_group, push AND
+#     workflow_dispatch and asserts the cross lanes are classified for every one:
+#        13a. both cross lanes (audit + ACP) NEVER-SEEN, short --timeout-s
+#             => FAIL with a TIMEOUT that names BOTH cross lanes (never a PASS).
+#        13b. audit RED => FAIL (real red lane), for every event.
+#     A mutant that drops the cross lanes on any single event (e.g.
+#     `[[ "$EVENT_NAME" == "push" ]] && CROSS_CHECKS=()`) would PASS on that event
+#     with the cross lanes unseen — so 13a FAILs the suite on that event. The two
+#     cross lanes are the SAME list for every event; only the budget differs (13/14).
+echo "--- real classification binds one lane list to all four events (item 5) ---"
+BOTH_CROSS=("audit" "ACP protocol smoke test (Zed / JetBrains compatible)")
+for EVENT in pull_request merge_group push workflow_dispatch; do
+    # 13a. both cross lanes never-seen -> FAIL via TIMEOUT naming BOTH cross lanes.
+    gh() { if [[ "${1:-}" == "run" ]]; then echo '[]'; else echo '[]'; fi; }
+    export -f gh
+    run_wait_cross "$EVENT" 2 1 "${BOTH_CROSS[@]}"
+    if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "TIMEOUT" \
+       && echo "$OUT" | grep -q "audit" \
+       && echo "$OUT" | grep -q "ACP protocol smoke test (Zed / JetBrains compatible)" \
+       && ! echo "$OUT" | grep -q "VERDICT=PASS"; then
+        ok "[$EVENT] both cross lanes never-seen => FAIL TIMEOUT naming audit+ACP (never PASS)"
+    else
+        bad "[$EVENT] both cross never-seen: rc=$RC out=<<$OUT>>"
+    fi
+
+    # 13b. audit red -> FAIL (real red lane) for every event.
+    gh() {
+        if [[ "${1:-}" == "run" ]]; then echo '[]'; return 0; fi
+        echo '[{"name":"audit","status":"completed","conclusion":"failure","started_at":"2026-10-19T00:00:00Z"}]'
+    }
+    export -f gh
+    run_wait_cross "$EVENT" 60 1 "${BOTH_CROSS[@]}"
+    if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "real red lane" \
+       && ! echo "$OUT" | grep -q "VERDICT=PASS"; then
+        ok "[$EVENT] audit red => FAIL real-red (exit 1), cross lane classified"
+    else
+        bad "[$EVENT] audit red: rc=$RC out=<<$OUT>>"
     fi
 done
-# The canonical set is exactly the six local lanes + the two cross lanes (8).
-n_lanes="$(printf '%s\n' "$ref" | grep -c .)"
-if [[ "$lane_mismatch" -eq 0 ]] && [[ "$n_lanes" -eq 8 ]] \
-   && printf '%s\n' "$ref" | grep -q '^cross=audit$' \
-   && printf '%s\n' "$ref" | grep -q '^cross=ACP protocol smoke test' \
-   && printf '%s\n' "$ref" | grep -q '^local=fast-checks$'; then
-    ok "lane set identical for pull_request/merge_group/push/workflow_dispatch (8 lanes: 6 local + audit + ACP)"
-else
-    bad "lane set not invariant or not 8 lanes: n=$n_lanes mismatch=$lane_mismatch set=<<$ref>>"
-fi
+
+# 14. (item 3) The per-event wait BUDGET resolves from --event-name alone (no
+#     --timeout-s): workflow_dispatch -> the short bounded window (300s); every
+#     other event -> the full ruleset timeout (5400s). --print-budget renders the
+#     resolved budget and exits before any poll. This pins that the event changes
+#     only the BUDGET, never the lane set (13).
+echo "--- per-event wait budget resolves without --timeout-s (item 3) ---"
+declare -A EXPECT_BUDGET=( [pull_request]=5400 [merge_group]=5400 [push]=5400 [workflow_dispatch]=300 )
+for EV in pull_request merge_group push workflow_dispatch; do
+    got="$(bash "$WAIT" --print-budget --event-name "$EV" \
+            --lane "test=success" --cross "audit" 2>&1)"
+    exp="${EXPECT_BUDGET[$EV]}"
+    if [[ "$got" == "BUDGET_S=$exp" ]]; then
+        ok "budget for $EV resolves to ${exp}s (no --timeout-s)"
+    else
+        bad "budget for $EV: expected BUDGET_S=$exp, got <<$got>>"
+    fi
+done
 
 rm -f "$CNT" "$AMB"
 
