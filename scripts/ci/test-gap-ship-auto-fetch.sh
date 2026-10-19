@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # scripts/ci/test-gap-ship-auto-fetch.sh — INFRA-2423
 #
-# Smoke-tests for chump gap ship auto-fetch behaviour introduced in INFRA-2423.
-# Verifies that:
-#   A) clean local main N commits behind origin → auto-pull succeeds, proof passes
-#   B) dirty local main N commits behind origin → ship exits 1 with clear error
+# Smoke-tests for chump gap ship's origin/main read path (INFRA-2423, made
+# fetch-ONLY by RESILIENT-1645 — PHASE-R R4). Verifies that:
+#   A) clean local main N commits behind origin → ship succeeds off the fetched
+#      origin/main WITHOUT fast-forwarding the checkout (HEAD unchanged)
+#   B) dirty local main N commits behind origin → ship STILL succeeds (the old
+#      dirty-tree bail is gone because ship never pulls) and leaves the tree put
 #   C) clean local main up-to-date → ship proceeds normally (no noise)
-#   D) CHUMP_BYPASS_PROOF_OF_MERGE env var is NOT consulted (setting it to 1 in
-#      scenario B should still exit 1)
+#   D) CHUMP_BYPASS_PROOF_OF_MERGE env var is NOT consulted
 #
 # All tests are pure-Rust unit tests triggered via `cargo test`; this wrapper
 # runs them and checks exit codes. It also does source-level verification that
@@ -52,16 +53,20 @@ else
     fail "git fetch origin main call not found in $SRC"
 fi
 
-if grep -q '"pull".*"--ff-only"\|--ff-only' "$SRC"; then
-    ok "git pull --ff-only call found in $SRC"
+# RESILIENT-1645 (PHASE-R R4): ship() is now fetch-ONLY. Scope the grep to the
+# ship() body so a mention in an unrelated helper/doc comment does not false-fail.
+SHIP_BODY="$(awk '/pub fn ship\(&self, gap_id: &str, session_id: &str, closed_pr: Option<i64>\) -> Result<\(\)> \{/{f=1} f{print} /DoneExtras::ShipCeremony,/{if(f)exit}' "$SRC")"
+
+if grep -qE '"pull"|--ff-only' <<<"$SHIP_BODY"; then
+    fail "ship() still contains git pull / --ff-only (RESILIENT-1645: must be fetch-only)"
 else
-    fail "git pull --ff-only call not found in $SRC"
+    ok "ship() contains no git pull / --ff-only (fetch-only)"
 fi
 
-if grep -q "cannot auto-pull with uncommitted changes" "$SRC"; then
-    ok "dirty-tree error message found in $SRC"
+if grep -qE '"build", *"--release"|"hakari"' <<<"$SHIP_BODY"; then
+    fail "ship() still runs cargo build --release / cargo hakari (RESILIENT-1645: both removed)"
 else
-    fail "dirty-tree error message missing from $SRC"
+    ok "ship() runs no cargo build --release / cargo hakari"
 fi
 
 # ── Cargo unit tests ──────────────────────────────────────────────────────────

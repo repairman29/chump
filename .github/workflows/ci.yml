@@ -1665,6 +1665,13 @@ jobs:
         # crates/chump-preflight/src/preflight.rs.
         run: CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-decompose-claude-backend.sh
 
+      - name: gap ship must not mutate the node checkout (RESILIENT-1645)
+        # PHASE-R R4: ship reads origin/main fetch-only and runs no cargo in
+        # the checkout. Proves HEAD/index/working tree + Cargo.lock +
+        # workspace-hack/Cargo.toml byte-unchanged after a ship, even when
+        # origin/main is ahead. Mirrored in crates/chump-preflight/src/preflight.rs.
+        run: CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-ship-no-checkout-mutation.sh
+
       - name: chumpd worker owns loop control — cadence/heartbeat/pause (INFRA-8575)
         # Runs after "Build chump (debug, single bin)" so shared deps are warm.
         # Builds chumpd explicitly (no pipe, so a build failure fails the step)
@@ -2139,6 +2146,18 @@ jobs:
       # unit for no gain. clippy relies on the trunk cache alone (like before).
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # RESILIENT-1645 (PHASE-R R4): workspace-hack consistency moved off the
+      # ship path (chump gap ship no longer runs `cargo hakari generate` in the
+      # node checkout) to this PR gate. Install cargo-hakari, then the mirrored
+      # script runs `cargo hakari generate --diff` (verify form) and fails when
+      # workspace-hack is out of sync. Mirrored in chump preflight.
+      - name: Install cargo-hakari
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
+      - name: workspace-hack in sync (RESILIENT-1645)
+        run: bash scripts/ci/test-hakari-in-sync.sh
 
       - name: Emit self-hosted runner stats (CREDIBLE-069)
         if: always() && runner.os != 'Linux'

@@ -10721,29 +10721,31 @@ events:
     # payload: {gap_id: string, shape: "integration"|"per_pr", ts: string}
   - kind: ship_autofetch_pulled
     effect_metric: resilient
-    emitter: crates/chump-gap-store/src/lib.rs GapStore::ship() (INFRA-2423)
+    emitter: "(removed) formerly crates/chump-gap-store/src/lib.rs GapStore::ship() (INFRA-2423)"
     trigger: >
-      Emitted when chump gap ship auto-fetches origin/main, detects local main
-      is N commits behind, finds a clean working tree, and successfully pulls
-      with --ff-only. Indicates the stale-local-main case was recovered
-      automatically without operator intervention.
+      NO LONGER EMITTED (RESILIENT-1645, PHASE-R R4). chump gap ship used to
+      fast-forward the local checkout with `git pull --ff-only` when behind
+      origin/main; that moved the node checkout as a side effect of writing one
+      status row and caused the CREDIBLE-1550 false close. ship is now
+      fetch-only and never pulls, so this event has no emit site. Retained as a
+      deprecated entry so historical ambient rows stay documented.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, gap_id, behind]
-    expected_volume: "occasional; spikes indicate workers falling behind main"
-    status: stable
+    expected_volume: "none — emit site removed (RESILIENT-1645)"
+    status: deprecated
     # payload: {gap_id: string, behind: u64, ts: string}
   - kind: ship_autofetch_blocked_dirty
     effect_metric: resilient
-    emitter: crates/chump-gap-store/src/lib.rs GapStore::ship() (INFRA-2423)
+    emitter: "(removed) formerly crates/chump-gap-store/src/lib.rs GapStore::ship() (INFRA-2423)"
     trigger: >
-      Emitted when chump gap ship auto-fetches origin/main, detects local main
-      is N commits behind, but finds the working tree is dirty (staged or
-      unstaged changes). Ship is blocked; the caller must stash or commit
-      before retrying. This is a friction signal for fleet health dashboards.
+      NO LONGER EMITTED (RESILIENT-1645, PHASE-R R4). The dirty-tree block
+      existed only to refuse the auto-pull on an uncommitted checkout; ship no
+      longer pulls, so there is nothing to block and this event has no emit
+      site. Retained as a deprecated entry so historical rows stay documented.
     consumers: [fleet-brief, ops-audit, fleet-doctor]
     fields_required: [ts, kind, gap_id, behind]
-    expected_volume: "rare; should be near-zero in healthy fleet operation"
-    status: stable
+    expected_volume: "none — emit site removed (RESILIENT-1645)"
+    status: deprecated
     # payload: {gap_id: string, behind: u64, ts: string}
   - kind: closed_effect_unverified
     effect_metric: credible

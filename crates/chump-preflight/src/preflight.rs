@@ -2672,6 +2672,20 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-status-flip-proof-of-merge.sh"],
             GateKind::Scripts,
         ));
+        // RESILIENT-1645 (PHASE-R R4): ship must not mutate the node checkout
+        // (fetch-only, no cargo) and workspace-hack sync moved off the ship
+        // path to a PR/preflight gate. Mirrors the two ci.yml steps so the
+        // census counts them wired and the parity smoke passes.
+        steps.push(step(
+            "ship-no-checkout-mutation",
+            &["bash", "scripts/ci/test-ship-no-checkout-mutation.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "hakari-in-sync",
+            &["bash", "scripts/ci/test-hakari-in-sync.sh"],
+            GateKind::Scripts,
+        ));
 
         // INFRA-3383 (META-086 misc-hygiene cluster): mirror 25 docs/CLI/
         // git-hooks hygiene gates that were previously only allowlisted in
