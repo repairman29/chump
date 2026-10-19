@@ -51,10 +51,15 @@ is_worktree_path() { case "$1" in */.claude/worktrees/*) return 0;; *) return 1;
 
 resolve_canonical_checkout() {
     local cand
-    # 1. explicit operator/unit override.
-    if [[ -n "${CHUMP_NODE_REPO:-}" && -d "${CHUMP_NODE_REPO}/.git" ]]; then
+    # 1. explicit operator/unit override. A linked worktree's `.git` is a FILE,
+    #    not a dir, so accept either. Worktree rejection is DELEGATED to
+    #    assert_canonical_path below (where it is load-bearing + testable, so the
+    #    INFRA-8597 M6 mutant dies): candidate 1 returns the CHUMP_NODE_REPO path
+    #    verbatim and the assert FATALs on a `.claude/worktrees/` path — never a
+    #    silent fall-through to candidate 2/3.
+    if [[ -n "${CHUMP_NODE_REPO:-}" ]] && { [[ -d "${CHUMP_NODE_REPO}/.git" ]] || [[ -f "${CHUMP_NODE_REPO}/.git" ]]; }; then
         cand="$(cd "$CHUMP_NODE_REPO" && pwd)"
-        if ! is_worktree_path "$cand"; then printf '%s\n' "$cand"; return 0; fi
+        printf '%s\n' "$cand"; return 0
     fi
     # 2. the MAIN worktree of whatever repo this installer runs from. From a
     #    linked worktree, git-common-dir resolves to <main>/.git, whose parent
@@ -90,19 +95,15 @@ assert_canonical_path() {
 }
 
 # INFRA-8597 (blocking #1): a SET CHUMP_NODE_REPO must resolve to a durable
-# checkout. A set-but-rejected value (missing, no .git, or a disposable
-# `.claude/worktrees/` path) is FATAL — NEVER a silent fall-through that then
-# writes the caller's raw value into `Environment=`. The refusal must happen
-# at top level (not inside the `$(resolve_canonical_checkout)` command
-# substitution, whose `exit` only kills the subshell).
+# checkout — NEVER a silent fall-through that then writes the caller's raw value
+# into `Environment=`. A missing / no-.git value is FATAL here at top level (not
+# inside the `$(resolve_canonical_checkout)` command substitution, whose `exit`
+# only kills the subshell). A `.claude/worktrees/` value is rejected (also FATAL
+# exit 1) by assert_canonical_path below, where the worktree guard is
+# load-bearing and testable.
 if [[ -n "${CHUMP_NODE_REPO:-}" ]]; then
-    if [[ ! -d "${CHUMP_NODE_REPO}/.git" ]]; then
+    if [[ ! -d "${CHUMP_NODE_REPO}/.git" && ! -f "${CHUMP_NODE_REPO}/.git" ]]; then
         echo "FATAL: CHUMP_NODE_REPO=${CHUMP_NODE_REPO} is not a git checkout (missing or no .git); refusing (INFRA-8597)" >&2
-        exit 1
-    fi
-    _canon_node_repo="$(cd "$CHUMP_NODE_REPO" && pwd)"
-    if is_worktree_path "$_canon_node_repo"; then
-        echo "FATAL: CHUMP_NODE_REPO=${_canon_node_repo} is a disposable .claude/worktrees/ path; refusing to render units from it (INFRA-8597)" >&2
         exit 1
     fi
 fi

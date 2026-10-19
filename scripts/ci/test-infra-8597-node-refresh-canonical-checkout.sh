@@ -101,4 +101,102 @@ if grep -RE '^(ExecStart|WorkingDirectory)=' "$UNIT_DIR" 2>/dev/null | grep -q '
 fi
 ok "no rendered unit carries a .claude/worktrees/ path"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# REFUSAL-PATH CASES (INFRA-8597 PR #5606 repair). Each must FAIL under the
+# matching deliberate break so the reviewer's surviving mutants die:
+#   M3 — existence check removed from assert_canonical_path   → killed by (d)
+#   M5 — $0-relative fallback reintroduced in the resolver    → killed by (c)
+#   M6 — worktree check removed from assert_canonical_path    → killed by (a)
+# plus the blocking-#1 silent-fall-through fix → (b), and the blocking-#3
+# no-secret-in-unit fix → (e).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (a) M6: from the worktree with CHUMP_NODE_REPO pointing AT the worktree, no
+#     rendered unit may bake a .claude/worktrees/ path into ExecStart,
+#     WorkingDirectory OR Environment. The installer refuses (FATAL exit 1,
+#     assert_canonical_path's worktree guard). Removing that guard (M6) renders
+#     the worktree path + exits 0 → both assertions below fire.
+HOME_A="$TMP/home-a"; mkdir -p "$HOME_A"
+( cd "$WT" && env CHUMP_NODE_REPO="$WT" HOME="$HOME_A" PATH="$STUB:$PATH" \
+    bash "$WT/scripts/setup/install-node-refresh-systemd.sh" ) > "$TMP/a.log" 2>&1
+rc_a=$?
+UNIT_A="$HOME_A/.config/systemd/user"
+if grep -REn '^(ExecStart|WorkingDirectory|Environment)=' "$UNIT_A" 2>/dev/null | grep -q '\.claude/worktrees/'; then
+    cat "$TMP/a.log"; fail "(a) a rendered unit baked a .claude/worktrees/ path from CHUMP_NODE_REPO=\$WT"
+fi
+[ "$rc_a" -ne 0 ] || { cat "$TMP/a.log"; fail "(a) installer must refuse (exit non-zero) when CHUMP_NODE_REPO is a worktree; got exit 0"; }
+ok "(a) worktree CHUMP_NODE_REPO refused; no worktree path in ExecStart/WorkingDirectory/Environment"
+
+# (b) blocking #1: a set-but-missing CHUMP_NODE_REPO must stop with exit 1, not
+#     silently fall through to the git-common-dir / well-known resolution (which
+#     from the worktree would resolve canonically and exit 0).
+HOME_B="$TMP/home-b"; mkdir -p "$HOME_B"
+( cd "$WT" && env CHUMP_NODE_REPO="/nonexistent/chump" HOME="$HOME_B" PATH="$STUB:$PATH" \
+    bash "$WT/scripts/setup/install-node-refresh-systemd.sh" ) > "$TMP/b.log" 2>&1
+rc_b=$?
+[ "$rc_b" -eq 1 ] || { cat "$TMP/b.log"; fail "(b) CHUMP_NODE_REPO=/nonexistent must exit 1; got $rc_b"; }
+ok "(b) CHUMP_NODE_REPO=/nonexistent exits 1 (no silent fall-through)"
+
+# (c) M5: a non-git copy with an empty HOME — the git-common-dir resolver fails
+#     (not a repo) and the well-known checkouts don't exist (empty HOME), so the
+#     installer MUST refuse and write no units. A reintroduced $0-relative
+#     fallback (M5) resolves to $COPY (which HAS the scripts) and renders units,
+#     making the "no units / non-zero" assertions below fail.
+COPY="$TMP/nogit"
+mkdir -p "$COPY/scripts/setup" "$COPY/scripts/ops" "$COPY/scripts/coord"
+cp "$INSTALLER" "$COPY/scripts/setup/install-node-refresh-systemd.sh"
+for s in scripts/ops/node-refresh-chump.sh scripts/ops/node-script-host-refresh.sh scripts/coord/node-deploy-lag-watchdog.sh; do
+    printf '#!/usr/bin/env bash\n: node refresh target stub\n' > "$COPY/$s"; chmod +x "$COPY/$s"
+done
+HOME_C="$TMP/home-c"; mkdir -p "$HOME_C"
+( cd "$COPY" && env -u CHUMP_NODE_REPO -u CHUMP_SCRIPT_HOST_REPO HOME="$HOME_C" PATH="$STUB:$PATH" \
+    bash "$COPY/scripts/setup/install-node-refresh-systemd.sh" ) > "$TMP/c.log" 2>&1
+rc_c=$?
+[ "$rc_c" -ne 0 ] || { cat "$TMP/c.log"; fail "(c) non-git copy with empty HOME must exit non-zero; got 0"; }
+UNIT_C="$HOME_C/.config/systemd/user"
+if [ -d "$UNIT_C" ] && [ -n "$(ls -A "$UNIT_C" 2>/dev/null)" ]; then
+    cat "$TMP/c.log"; fail "(c) non-git copy with empty HOME wrote unit files: $(ls "$UNIT_C")"
+fi
+ok "(c) non-git copy + empty HOME refuses and writes no unit files"
+
+# (d) M3: a canonical git checkout missing one referenced ExecStart script
+#     (node-refresh-chump.sh) must trip assert_canonical_path's existence guard
+#     (FATAL exit 1). Removing that guard (M3) renders a unit whose ExecStart
+#     points at a non-existent script and exits 0.
+MISS="$TMP/missing"
+mkdir -p "$MISS/scripts/setup" "$MISS/scripts/ops" "$MISS/scripts/coord"
+git init -q "$MISS"
+git -C "$MISS" config user.email test@example.com
+git -C "$MISS" config user.name "Test"
+cp "$INSTALLER" "$MISS/scripts/setup/install-node-refresh-systemd.sh"
+# Intentionally OMIT scripts/ops/node-refresh-chump.sh (the primary ExecStart target).
+printf '#!/usr/bin/env bash\n: stub\n' > "$MISS/scripts/ops/node-script-host-refresh.sh"
+printf '#!/usr/bin/env bash\n: stub\n' > "$MISS/scripts/coord/node-deploy-lag-watchdog.sh"
+chmod +x "$MISS/scripts/ops/node-script-host-refresh.sh" "$MISS/scripts/coord/node-deploy-lag-watchdog.sh"
+git -C "$MISS" add -A
+git -C "$MISS" commit -q -m "fixture (missing node-refresh-chump.sh)"
+HOME_D="$TMP/home-d"; mkdir -p "$HOME_D"
+( cd "$MISS" && env CHUMP_NODE_REPO="$MISS" HOME="$HOME_D" PATH="$STUB:$PATH" \
+    bash "$MISS/scripts/setup/install-node-refresh-systemd.sh" ) > "$TMP/d.log" 2>&1
+rc_d=$?
+[ "$rc_d" -ne 0 ] || { cat "$TMP/d.log"; fail "(d) missing ExecStart script must trip the canonical-path assertion (non-zero); got 0"; }
+grep -q 'non-existent path' "$TMP/d.log" || { cat "$TMP/d.log"; fail "(d) expected assert_canonical_path existence FATAL in output"; }
+ok "(d) checkout missing node-refresh-chump.sh trips the existence assertion"
+
+# (e) blocking #3: with GH_TOKEN (and GITHUB_TOKEN) set in the environment, NO
+#     rendered unit may contain GH_TOKEN. node-refresh-chump.sh reads the token
+#     from ~/.chump/providers.env at runtime instead. Reintroducing any
+#     Environment=GH_TOKEN= line makes the grep below fire.
+HOME_E="$TMP/home-e"; mkdir -p "$HOME_E"
+( cd "$WT" && env -u CHUMP_NODE_REPO GH_TOKEN="ghp_SECRETTESTTOKEN" GITHUB_TOKEN="ghp_SECRETTESTTOKEN" \
+    HOME="$HOME_E" PATH="$STUB:$PATH" \
+    bash "$WT/scripts/setup/install-node-refresh-systemd.sh" ) > "$TMP/e.log" 2>&1
+rc_e=$?
+[ "$rc_e" -eq 0 ] || { cat "$TMP/e.log"; fail "(e) installer should render from worktree (git-common-dir path); got $rc_e"; }
+UNIT_E="$HOME_E/.config/systemd/user"
+if grep -REn 'GH_TOKEN|ghp_SECRETTESTTOKEN' "$UNIT_E" 2>/dev/null; then
+    fail "(e) a rendered unit leaked GH_TOKEN into a systemd unit"
+fi
+ok "(e) GH_TOKEN present in env but never written into any rendered unit"
+
 echo "ALL PASS — install-node-refresh-systemd.sh renders canonical ExecStart paths (INFRA-8597)"
