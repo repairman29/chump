@@ -766,16 +766,32 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_stale_fails() {
+    fn heartbeat_stale_fails_and_explains_why() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("farmer-heartbeat");
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let path = chump_dir.join("farmer-heartbeat");
         let file = std::fs::File::create(&path).unwrap();
         // Back-date the mtime past the freshness window.
         let old = SystemTime::now() - std::time::Duration::from_secs(HEARTBEAT_MAX_AGE_S + 1);
         file.set_modified(old).unwrap();
-        let (fresh, age) = heartbeat_verdict(dir.path());
+        // The stale verdict is still the pure helper's job …
+        let (fresh, age) = heartbeat_verdict(&chump_dir);
         assert!(!fresh);
         assert!(age.unwrap() > HEARTBEAT_MAX_AGE_S);
+        // … but the refusal REASON moved into compute()'s stale branch, so the
+        // "explains why" assertion must read it where it now lives: an un-paused
+        // node's stale heartbeat yields a reason naming "farmer heartbeat stale".
+        let status = compute(dir.path());
+        assert!(!status.heartbeat_fresh);
+        assert!(
+            status
+                .reasons
+                .iter()
+                .any(|r| r.contains("farmer heartbeat stale")),
+            "expected a 'farmer heartbeat stale' reason, got {:?}",
+            status.reasons
+        );
     }
 
     #[test]
