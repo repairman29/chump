@@ -114,17 +114,28 @@ while true; do
     agg_args=()
     for l in "${LOCAL_LANES[@]}"; do agg_args+=(--lane "$l"); done
     pending_cross=()
+    declare -A seen_cross=()
     if [[ -n "$cross_out" ]]; then
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
             name="${line%%=*}"
             res="${line#*=}"
+            seen_cross["$name"]=1
             agg_args+=(--lane "${name}=${res}")
             case "$res" in
                 in_progress|queued|"") pending_cross+=("$name") ;;
             esac
         done <<< "$cross_out"
     fi
+    # Fail-SAFE, never fail-OPEN: any declared cross lane the snapshot did not
+    # emit (gh transient error, empty output) is treated as PENDING, NOT dropped
+    # — dropping it would let the aggregator PASS without the audit/ACP verdict.
+    for c in "${CROSS_CHECKS[@]}"; do
+        if [[ -z "${seen_cross[$c]:-}" ]]; then
+            agg_args+=(--lane "${c}=in_progress")
+            pending_cross+=("$c")
+        fi
+    done
     agg_args+=(--pr "$PR" --sha "$SHA")
 
     # 3. Classify. Intermediate passes write ambient to /dev/null to avoid
