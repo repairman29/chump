@@ -2749,7 +2749,7 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         // CREDIBLE-1550 (AC1/AC5): gap-doctor-reconcile closes a gap only via a
-        // typed gap_prs row linking a merged, non-partial PR — never a title.
+        // typed gap_prs row linking a merged PR — never a title.
         steps.push(step(
             "credible-1550-gap-prs-closer",
             &["bash", "scripts/ci/test-credible-1550-gap-prs-closer.sh"],

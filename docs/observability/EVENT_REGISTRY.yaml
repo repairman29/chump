@@ -5286,7 +5286,7 @@ events:
   - kind: gap_closed_from_merged_pr
     effect_metric: self
     emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-links (CREDIBLE-1550)
-    trigger: open gap that a typed gap_prs row links to a MERGED, non-partial PR
+    trigger: open gap that a typed gap_prs row links to a MERGED PR
       but whose canonical state.db row was never flipped to done (closed_pr NULL)
       — the async-merge ghost class that --check-closure-drift (needs closed_pr)
       and --check-already-satisfied (no-op cycle-log signal only) both miss.
@@ -5313,7 +5313,9 @@ events:
       gap_prs row linking that PR to that gap. The FK closer (correctly) will not
       close from a title, so this report-only pass surfaces the gap for an
       operator to add the missing link (chump gap link-pr) or for CREDIBLE-1551
-      to backfill. Closes nothing.
+      to backfill. Closes nothing. Re-emits once per reconcile tick per (gap, PR)
+      pair until the link is added — there is intentionally NO dedupe state; the
+      signal clears when the missing gap_prs row is written.
     consumers: [fleet-brief, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, source]
   - kind: gap_pr_unlinked

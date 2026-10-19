@@ -1793,9 +1793,10 @@ jobs:
 
       - name: gap-doctor-reconcile closes via gap_prs FK only (CREDIBLE-1550 AC1/AC5)
         # The reconciler closes a gap ONLY via a typed gap_prs row linking a
-        # merged, non-partial PR — never a title. Fixture proves an umbrella
-        # named by a PR title but unlinked stays open, a docs PR with no row
-        # closes nothing, and an "AC1 only" PR flags instead of closing.
+        # merged PR — never a title. Fixture proves an umbrella named by a PR
+        # title but unlinked stays open (its merged title-named PR emits a
+        # report-only pr_without_gap_link instead of closing anything), and a
+        # docs PR with no row closes nothing.
         run: bash scripts/ci/test-credible-1550-gap-prs-closer.sh
 
       - name: unresolved_deps terminal+dangling resolution (CREDIBLE-1552)

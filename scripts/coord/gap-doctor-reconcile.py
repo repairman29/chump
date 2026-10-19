@@ -602,10 +602,10 @@ def check_already_satisfied(state_db: Path, ambient_path: Path, dry_run: bool) -
 # the PR implemented the gap. So this pass now trusts ONLY the typed gap_prs FK
 # written at PR-open (CREDIBLE-1520 AC1): a gap closes iff a gap_prs row links a
 # MERGED PR to THAT gap. A slice PR links to its slice gap, never the umbrella,
-# so the umbrella is structurally protected (AC1 fixture). A PR whose body is
-# marked partial ("AC1 only" / "partial delivery") closes nothing — it FLAGS
-# (AC1(e)). A docs-only PR titled with a gap ID but with no gap_prs row closes
-# nothing (AC5). The title-regex path (_GAP_TITLE_RE / merged_pr_gap_map) is
+# so the umbrella is structurally protected (AC1 fixture). A docs-only PR titled
+# with a gap ID but with no gap_prs row closes nothing (AC5); a merged
+# title-named PR with no row emits a report-only pr_without_gap_link instead.
+# The title-regex path (_GAP_TITLE_RE / merged_pr_gap_map) is
 # deleted; CI grep gate scripts/ci/test-no-title-regex-gap-closers.sh fails on
 # any reintroduction.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -671,7 +671,7 @@ def open_gap_ids(state_db: Path) -> list:
 
 def check_merged_pr_links(state_db: Path, ambient_path: Path, dry_run: bool) -> int:
     """CREDIBLE-1550 (AC1/AC5): close open gaps that a typed gap_prs row links to
-    a MERGED, non-partial PR. Returns count closed.
+    a MERGED PR. Returns count closed.
 
     The ONLY closure proof is the gap_prs FK (written at PR-open, CREDIBLE-1520
     AC1) — never a PR title, never a PARTIAL-body regex (CREDIBLE-1552 deleted
@@ -702,7 +702,7 @@ def check_merged_pr_links(state_db: Path, ambient_path: Path, dry_run: bool) -> 
               f"a gap_prs row (title matching is not a fallback), clean")
         return 0
     print(f"merged-pr-links: {len(candidates)} open gap(s) carry a gap_prs row — "
-          f"checking each linked PR for a merged, non-partial close")
+          f"checking each linked PR for a merged close")
     closed = 0
     for gid in sorted(candidates):
         for pr_num in candidates[gid]:
@@ -871,7 +871,7 @@ def main():
         "--check-merged-pr-links", "--check-merged-pr-titles",
         dest="check_merged_pr_links", action="store_true",
         help="CREDIBLE-1550: close open gaps that a typed gap_prs row links to a "
-             "MERGED, non-partial PR (the async-merge ghost class closed_pr-drift "
+             "MERGED PR (the async-merge ghost class closed_pr-drift "
              "+ already-satisfied both miss). The gap_prs FK is the ONLY proof — "
              "a PR title is never used. (--check-merged-pr-titles is a deprecated "
              "alias kept so the gap-closure-reconcile service keeps working.)",

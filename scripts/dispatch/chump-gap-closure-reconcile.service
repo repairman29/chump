@@ -3,7 +3,7 @@
 #   --check-closure-drift     : gaps still `open` whose closed_pr PR has MERGED
 #                               on GitHub → close (status=done + closed_pr).
 #   --check-merged-pr-links   : gaps still `open` with NO closed_pr that a typed
-#                               gap_prs row links to a MERGED, non-partial PR →
+#                               gap_prs row links to a MERGED PR →
 #                               close (status=done + closed_pr + closed_date)
 #                               from GitHub truth. CREDIBLE-1550 (Phase R R2)
 #                               replaced the former PR-TITLE match with the

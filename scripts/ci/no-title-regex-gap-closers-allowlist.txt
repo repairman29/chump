@@ -22,10 +22,3 @@ scripts/ops/stale-pr-reaper.sh
 # chump-pr-triage.sh `--apply ship-gap` derives the gap from the PR title then
 # ships it; the rest of the tool is advisory triage. Tracked: CREDIBLE-1551.
 scripts/coord/chump-pr-triage.sh
-# LEGITIMATE (never closes from a title). CREDIBLE-1552 added a REPORT-ONLY pass
-# (check_unlinked_merged_prs) that parses merged-PR titles ONLY to name the open
-# gap in a kind=pr_without_gap_link event — it closes NOTHING. Every actual
-# close in this file routes exclusively through the gap_prs FK
-# (check_merged_pr_links). The TIER-2 heuristic co-locates the title parse with
-# the FK closer's `chump gap ship`, so it flags; this entry documents the split.
-scripts/coord/gap-doctor-reconcile.py
