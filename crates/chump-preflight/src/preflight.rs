@@ -2948,6 +2948,18 @@ pub fn run(argv: &[String]) -> i32 {
             ],
             GateKind::Scripts,
         ));
+        // RESILIENT-1652/1653: the cuphead ship wall, second cut. One paused
+        // predicate (node.env both forms + legacy control-plane+WORK_ENABLED=0
+        // + repo sentinel) shared by the farmer gate and the pause detector;
+        // check_oauth_fresh reads ~/.claude/.credentials.json from HOME (not
+        // CHUMP_HOME); node pause|resume --help/--dry-run make zero writes, an
+        // unknown flag is exit 2, and pause writes no kill-switch sentinel.
+        // Resolves/builds ${CARGO_TARGET_DIR:-target}/debug/chump when absent.
+        steps.push(step(
+            "pause-and-oauth",
+            &["bash", "scripts/ci/test-resilient-1652-pause-and-oauth.sh"],
+            GateKind::Scripts,
+        ));
         // INFRA-8193: docs/gaps/*.yaml is an export-only mirror of state.db;
         // fail when a new script or Rust path writes it outside the export.
         steps.push(step(

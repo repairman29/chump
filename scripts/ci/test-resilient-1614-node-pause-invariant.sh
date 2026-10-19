@@ -2,12 +2,16 @@
 # scripts/ci/test-resilient-1614-node-pause-invariant.sh — RESILIENT-1614
 #
 # Proves that:
-#   1. `chump node pause --reason "reason"` sets CHUMP_NODE_MODE=paused in node.env,
-#      creates a .chump/fleet-paused sentinel, and emits node_paused;
-#   2. `chump node resume` sets CHUMP_NODE_MODE=work-ready, removes the sentinel,
-#      and emits node_resumed;
+#   1. `chump node pause --reason "reason"` sets CHUMP_NODE_MODE=paused in node.env
+#      and emits node_paused. RESILIENT-1652/1653: it does NOT write the
+#      `.chump/fleet-paused` kill switch (that would wall bot-merge re-entry on a
+#      verb-paused node — the RESILIENT-1636 RED2 invariant); node.env is the
+#      durable operator-pause signal;
+#   2. `chump node resume` sets CHUMP_NODE_MODE=work-ready and emits node_resumed
+#      (it never touches the kill-switch sentinel — that is ci-health-gate's);
 #   3. node-converge on a paused node leaves every stopped unit stopped
-#      (organ_skipped_paused emitted, no reconcile).
+#      (organ_skipped_paused emitted, no reconcile), detecting the pause from
+#      node.env CHUMP_NODE_MODE=paused.
 
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
@@ -57,20 +61,19 @@ CHUMP_STATE_DIR="$STATE_DIR" "$CHUMP_BIN" node pause --reason "test pause" \
     || fail "chump node pause failed"
 
 # Verify node.env was updated — INFRA-8588: pause writes the BARE form even
-# when the pre-existing line used `export` (in-place migration).
+# when the pre-existing line used `export` (in-place migration of the MODE line).
 grep -qx "CHUMP_NODE_MODE=paused" "$STATE_DIR/node.env" \
     || fail "CHUMP_NODE_MODE not set to (bare) paused in node.env: $(cat "$STATE_DIR/node.env")"
 ok "chump node pause sets bare CHUMP_NODE_MODE=paused (migrating the export line)"
 
-# Verify sentinel exists
-[ -f "$STATE_DIR/.chump/fleet-paused" ] \
-    || fail "fleet-paused sentinel not created"
-ok "chump node pause creates fleet-paused sentinel"
-
-# Verify sentinel contains reason
-grep -q "REASON=test pause" "$STATE_DIR/.chump/fleet-paused" \
-    || fail "sentinel does not contain reason"
-ok "fleet-paused sentinel contains reason"
+# RESILIENT-1652/1653: pause must NOT write the `.chump/fleet-paused` kill switch
+# (it would wall bot-merge re-entry on a verb-paused node — RED2), and must NEVER
+# write the old doubled `.chump/.chump/fleet-paused` path.
+[ ! -f "$STATE_DIR/.chump/fleet-paused" ] \
+    || fail "pause wrote the kill-switch sentinel — would wall re-entry (RESILIENT-1652)"
+[ ! -f "$STATE_DIR/.chump/.chump/fleet-paused" ] \
+    || fail "pause wrote the doubled-path sentinel (RESILIENT-1653)"
+ok "chump node pause writes NO fleet-paused sentinel (node.env is the durable signal)"
 
 # Verify ambient.jsonl has node_paused event
 AMBIENT="$STATE_DIR/ambient.jsonl"
@@ -86,11 +89,6 @@ CHUMP_STATE_DIR="$STATE_DIR" "$CHUMP_BIN" node resume \
 grep -qx "CHUMP_NODE_MODE=work-ready" "$STATE_DIR/node.env" \
     || fail "CHUMP_NODE_MODE not set to (bare) work-ready in node.env: $(cat "$STATE_DIR/node.env")"
 ok "chump node resume sets bare CHUMP_NODE_MODE=work-ready"
-
-# Verify sentinel was removed
-[ ! -f "$STATE_DIR/.chump/fleet-paused" ] \
-    || fail "fleet-paused sentinel still exists after resume"
-ok "chump node resume removes fleet-paused sentinel"
 
 # Verify ambient.jsonl has node_resumed event
 grep -q '"kind":"node_resumed"' "$AMBIENT" \
@@ -145,12 +143,11 @@ EOF
     fi
     ok "node-converge on a paused node enables/starts/restarts no unit"
 
-    # Holds today: converge on a paused node must not lift the pause.
-    [ -f "$STATE_DIR2/.chump/fleet-paused" ] \
-        || fail "fleet-paused sentinel gone after node-converge on a paused node"
+    # Holds today: converge on a paused node must not lift the pause. The pause
+    # is carried by node.env (RESILIENT-1652/1653 — no kill-switch sentinel).
     grep -qx "CHUMP_NODE_MODE=paused" "$STATE_DIR2/node.env" \
         || fail "node-converge lifted CHUMP_NODE_MODE=paused in node.env"
-    ok "node-converge on a paused node leaves the pause in place"
+    ok "node-converge on a paused node leaves the pause in place (node.env=paused)"
 
     # CREDIBLE-1517 narrowing (noted on RESILIENT-1615): #5550 shipped the verb
     # without the node-converge hook, so the organ_skipped_paused assertion was
