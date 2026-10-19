@@ -2789,6 +2789,19 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-credible-1551-ship-fk-gate.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-1551 (Phase R R2, AC2): behavioural proof that the two
+        // converted closers (stale-pr-reaper.sh ghost-status, chump-pr-triage.sh
+        // --apply ship-gap) close only from the gap_prs FK — a merged PR whose
+        // title names an open gap but has no link must NOT ship it. Hermetic
+        // (stubbed chump/gh/git). Mirrors the ci.yml step (INFRA-1867).
+        steps.push(step(
+            "credible-1551-converted-closers-behaviour",
+            &[
+                "bash",
+                "scripts/ci/test-credible-1551-converted-closers-behaviour.sh",
+            ],
+            GateKind::Scripts,
+        ));
         // RESILIENT-1613 / INFRA-8221: every shell armer, the rebaser, the direct
         // mergers and the repair loop honor the arm policy (no-auto-merge label /
         // `Auto-merge: hold`). Stubbed gh + throwaway git repos, no network.
