@@ -505,10 +505,16 @@ jobs:
   # means keep polling; the job concludes FAILURE only on a real red lane or on
   # the 90-min timeout, and SUCCESS only when every lane is green or legitimately
   # skipped. RESILIENT-1617's lane-seen rule is folded in: an unposted lane is
-  # PENDING, never FAIL/PASS, for the whole wait. On a workflow_dispatch re-run
-  # (the INFRA-1395 grace window) verified-wait.sh skips the cross-workflow wait
-  # with a logged reason — those runs do not produce the audit/ACP checks, so
-  # waiting would burn the full window — and classifies the local lanes only.
+  # PENDING, never FAIL/PASS, for the whole wait. The SAME lane set — the six
+  # local lanes plus the two cross lanes (audit, ACP) — is classified for EVERY
+  # event (pull_request, merge_group, push, workflow_dispatch); only the wait
+  # BUDGET differs (CREDIBLE-1554 item 5). A workflow_dispatch re-run (the
+  # INFRA-1395 grace window) uses verified-wait.sh's SHORT bounded window instead
+  # of the full 90 min — a manual probe must not block a human — but it STILL
+  # classifies the cross lanes on the SHA (required-check-monitor.sh dispatches
+  # ci.yml on the PR head, so audit/ACP already posted there) and concludes
+  # FAILURE if any is red, still running, or never-seen at the end of that window
+  # — never a silent PASS past an unseen or red cross lane.
   # timeout-minutes is 95 (> the 90-min in-job wait) so the Actions runner
   # outlives the wait rather than killing it mid-poll. See
   # docs/design/CI_VERIFIED_AGGREGATOR.md (META-134) §2.6 "In-job wait".
@@ -1039,6 +1045,16 @@ jobs:
         # a malformed registry, a self-report whose source or command is not
         # in the tree, or a missing receipt pair. Pure local, ~1s.
         run: bash scripts/ci/test-self-reports-registry.sh
+
+      # CREDIBLE-1554: the sole required `verified` check's two guards must run
+      # in CI, not only in preflight + the nightly census — otherwise a PR that
+      # breaks the wiring (ci.yml shape) or the in-job wait logic can merge.
+      # Both are pure local bash/python, no network (gh is stubbed), ~5s each.
+      - name: verified in-job wait logic guard (CREDIBLE-1554)
+        run: bash scripts/ci/test-verified-wait.sh
+
+      - name: verified ci.yml-shape wiring guard (CREDIBLE-1554)
+        run: bash scripts/ci/test-ci-verified-shape.sh
 
       - name: observability registry YAML-parse gate (CREDIBLE-1516)
         # Parses EVENT_REGISTRY.yaml + SELF_REPORTS.yaml with yaml.safe_load so

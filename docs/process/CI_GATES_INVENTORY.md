@@ -274,8 +274,9 @@ wired), `scripts/ci/test-poll-cross-workflow-checks.sh` (shards-in_progress →
 aggregator exit 1), and `scripts/ci/test-verified-wait.sh` (in-job wait: running/
 never-seen → PENDING keep-polling, real-red/cross-cancelled/timed_out/
 action_required/timeout → FAIL, all-green → PASS, gh-error fail-SAFE, ACP-green+
-audit-never-seen → PENDING, temp-ambient isolation, workflow_dispatch skip, both
-event types).
+audit-never-seen → PENDING, temp-ambient isolation, workflow_dispatch still
+classifies the cross lanes under a short bounded window (red/never-seen → FAIL,
+success → PASS), lane set identical for all four events, both event types).
 
 ## Non-required checks red on main — 7-day sweep (CREDIBLE-1523, 2026-10-18)
 
