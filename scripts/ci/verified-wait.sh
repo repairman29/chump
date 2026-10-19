@@ -33,19 +33,27 @@
 #   - TIMEOUT: --timeout-s elapsed while still PENDING — conclude FAILURE with a
 #             legible reason naming the lanes that never concluded, and exit 1.
 #
-# This behavior is IDENTICAL on pull_request and merge_group events (the event
-# only changes the SHA ci.yml passes in via --sha). --event-name is logging-only
-# EXCEPT for workflow_dispatch: a dispatch re-run (the INFRA-1395 grace window)
-# does NOT itself produce the audit/ACP cross-workflow runs — those are gated on
-# the pull_request/merge_group run — so waiting on them here would burn the full
-# timeout window on lanes that will never post on this event. On
-# --event-name workflow_dispatch the cross-workflow wait is therefore SKIPPED
-# with a logged reason and only the local lanes are classified (one pass, no
-# 90-min burn).
+# The SAME lane set is classified on the event SHA for EVERY event —
+# pull_request, merge_group, push and workflow_dispatch alike (CREDIBLE-1554
+# item 5, Chief-binding): the six local lanes plus the two cross-workflow lanes
+# (audit, ACP) are one list, defined once at the call site and never mutated by
+# event. --event-name selects only the WAIT BUDGET, not the lanes:
+#   - pull_request / merge_group / push: the full --timeout-s (default 90 min =
+#     the ruleset check_response_timeout), because a real audit takes 15-40 min
+#     and the merge queue has no second pass.
+#   - workflow_dispatch: a SHORT bounded window (DISPATCH_TIMEOUT_S, default
+#     300s). A dispatch re-run (the INFRA-1395 grace window) is a manual probe,
+#     not the authoritative pull_request/merge_group pass, so it must not block a
+#     human for 90 min — but it STILL classifies the cross lanes on the SHA. The
+#     cross-workflow runs for the real event already posted on that SHA
+#     (required-check-monitor.sh dispatches ci.yml on the PR head), so a dispatch
+#     that finds audit/ACP red, still running, or never-seen at the end of its
+#     short window concludes FAILURE — never a silent PASS past an unseen or red
+#     cross lane. An explicit --timeout-s always overrides the per-event default.
 #
 # aggregator-verified.sh and poll-cross-workflow-checks.sh keep their existing
 # exit codes and contracts; no new bypass/skip env var is introduced (the wait
-# lives here, driven by CLI flags).
+# and its per-event budget live here, driven by CLI flags).
 #
 # Usage:
 #   verified-wait.sh --sha SHA \
@@ -53,6 +61,11 @@
 #       --cross "check name" [--cross ...] \       # cross-workflow lanes to poll
 #       [--pr N] [--event-name NAME] \
 #       [--timeout-s N] [--interval-s N] [--repo owner/repo]
+#   verified-wait.sh --print-lanes --lane ... --cross ...   # print the lane set
+#
+# --print-lanes renders the single, event-invariant lane set (local names +
+# cross names, origin-tagged, sorted) and exits 0 WITHOUT polling — the proof
+# surface that the lane set is identical for every event (test-verified-wait.sh).
 #
 # Exit codes: 0=PASS  1=FAIL (real red lane OR timeout)  3=invocation error.
 #
@@ -68,11 +81,14 @@ AGG="$REPO_ROOT/scripts/ci/aggregator-verified.sh"
 SHA=""
 PR=""
 EVENT_NAME="${GITHUB_EVENT_NAME:-}"
-TIMEOUT_S=5400      # 90 min — matches the ruleset check_response_timeout
+TIMEOUT_S=""        # resolved per-event after parse (item 5: budget, not lanes)
+DEFAULT_TIMEOUT_S=5400    # 90 min — matches the ruleset check_response_timeout
+DISPATCH_TIMEOUT_S=300    # short bounded window for workflow_dispatch probes
 INTERVAL_S=30
 REPO="${GH_REPO:-repairman29/chump}"
 LOCAL_LANES=()
 CROSS_CHECKS=()
+PRINT_LANES=0
 
 usage() { grep '^#' "$0" | sed 's/^# \?//'; }
 
@@ -86,29 +102,54 @@ while [[ $# -gt 0 ]]; do
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
         --interval-s)  INTERVAL_S="$2"; shift 2 ;;
         --repo)        REPO="$2"; shift 2 ;;
+        --print-lanes) PRINT_LANES=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "[verified-wait] unknown arg: $1" >&2; exit 3 ;;
     esac
 done
 
-if [[ -z "$SHA" ]]; then
-    echo "[verified-wait] ERROR: --sha is required" >&2
-    exit 3
-fi
 if [[ ${#LOCAL_LANES[@]} -eq 0 && ${#CROSS_CHECKS[@]} -eq 0 ]]; then
     echo "[verified-wait] ERROR: at least one --lane or --cross is required" >&2
     exit 3
 fi
 
-# workflow_dispatch skip (CREDIBLE-1554 item 5). A dispatch re-run — e.g. the
-# INFRA-1395 grace-window re-run of ci.yml — does not produce the audit/ACP
-# cross-workflow runs for this event; they are gated on the pull_request/
-# merge_group run. Waiting on them here would burn the full ${TIMEOUT_S}s window
-# on lanes that will never post. Drop the cross lanes (logged) so the loop below
-# does a single local-only classification and exits at once — never a 90-min burn.
-if [[ "$EVENT_NAME" == "workflow_dispatch" && ${#CROSS_CHECKS[@]} -gt 0 ]]; then
-    echo "[verified-wait] workflow_dispatch: SKIPPING the cross-workflow wait for lanes [${CROSS_CHECKS[*]}] (reason: a dispatch re-run does not produce the audit/ACP runs — they are gated on the pull_request/merge_group run; waiting would burn the ${TIMEOUT_S}s window on lanes that never post on this event). Classifying LOCAL lanes only, one pass."
-    CROSS_CHECKS=()
+# render_lane_set — the single, event-invariant rendering of the lane set
+# `verified` requires (CREDIBLE-1554 item 5, Chief-binding): every local lane
+# (name only; the needs.*.result value is stripped) plus every cross-workflow
+# lane, one per line, origin-tagged, sorted. This is the one list the wait loop
+# classifies, and it is identical for pull_request, merge_group, push and
+# workflow_dispatch — no event path adds or drops a lane.
+render_lane_set() {
+    local l c
+    {
+        for l in "${LOCAL_LANES[@]+"${LOCAL_LANES[@]}"}"; do printf 'local=%s\n' "${l%%=*}"; done
+        for c in "${CROSS_CHECKS[@]+"${CROSS_CHECKS[@]}"}"; do printf 'cross=%s\n' "$c"; done
+    } | LC_ALL=C sort
+}
+
+# --print-lanes: emit the event-invariant lane set and exit (no --sha, no poll).
+if [[ "$PRINT_LANES" -eq 1 ]]; then
+    render_lane_set
+    exit 0
+fi
+
+if [[ -z "$SHA" ]]; then
+    echo "[verified-wait] ERROR: --sha is required" >&2
+    exit 3
+fi
+
+# Resolve the per-event wait BUDGET (item 5: the lane set is identical across
+# events; only the budget differs). An explicit --timeout-s always wins; absent
+# one, workflow_dispatch gets the short bounded window and every other event the
+# full 90-min ruleset timeout. The cross lanes are NEVER dropped — a dispatch
+# still classifies audit/ACP on the SHA and FAILs (never PASSes) if, at the end
+# of its window, a cross lane is red, still running, or never-seen.
+if [[ -z "$TIMEOUT_S" ]]; then
+    if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+        TIMEOUT_S="$DISPATCH_TIMEOUT_S"
+    else
+        TIMEOUT_S="$DEFAULT_TIMEOUT_S"
+    fi
 fi
 
 # Static poll argv (snapshot mode ignores timeout/interval).

@@ -29,8 +29,14 @@
 #
 # Non-matrix scenarios (CREDIBLE-1554 items 4 & 5):
 #  11. ambient emit lands in a TEMP CHUMP_AMBIENT_LOG, not the real ambient.jsonl
-#  12. --event-name workflow_dispatch SKIPS the cross wait (no 90-min burn) and
-#      classifies local lanes only
+#  12. --event-name workflow_dispatch STILL classifies the cross lanes on the SHA
+#      (it does NOT skip them) under a SHORT bounded window — three cases:
+#        12a. audit failure    -> FAIL (exit 1, real red)
+#        12b. audit never-seen -> FAIL (exit 1, TIMEOUT) quickly, never a PASS
+#        12c. audit success    -> PASS (exit 0) quickly
+#  13. --print-lanes renders the IDENTICAL lane set for pull_request, merge_group,
+#      push and workflow_dispatch (item 5, Chief-binding: ONE list, only the wait
+#      budget differs by event)
 #
 # Run locally: bash scripts/ci/test-verified-wait.sh
 
@@ -252,27 +258,91 @@ else
     bad "temp CHUMP_AMBIENT_LOG has no verified_aggregator_decision: <<$(cat "$AMB")>>"
 fi
 REAL_AMB="$REPO_ROOT/.chump-locks/ambient.jsonl"
-if [[ ! -f "$REAL_AMB" ]] || ! grep -qE 'prsha0000|mergesha000' "$REAL_AMB"; then
+if [[ ! -f "$REAL_AMB" ]] || ! grep -qE 'prsha0000|mergesha000|dispatchsha0' "$REAL_AMB"; then
     ok "real .chump-locks/ambient.jsonl was NOT polluted by the test's synthetic SHAs"
 else
     bad "real ambient.jsonl contains the test's synthetic SHAs — ambient isolation failed"
 fi
 
-# 12. (item 5) --event-name workflow_dispatch skips the cross wait: with a cross
-#     lane that would otherwise never be seen (gh -> []) and a LARGE timeout, the
-#     job must return at once (no 90-min burn), log the skip reason, and classify
-#     local lanes only (all green => PASS).
-echo "--- workflow_dispatch cross-wait skip (item 5) ---"
+# 12. (items 1 & 5) --event-name workflow_dispatch does NOT skip the cross lanes:
+#     it classifies audit on the SHA under a SHORT bounded window. Three cases
+#     prove red/never-seen at the end of the window FAIL (never a silent PASS),
+#     and a concluded-green cross lane PASSes — all quickly.
+echo "--- workflow_dispatch classifies cross lanes under a short window (items 1 & 5) ---"
+
+# 12a. audit failure -> FAIL (real red), short-circuits immediately.
+gh() {
+    if [[ "${1:-}" == "run" ]]; then echo '[]'; return 0; fi
+    echo '[{"name":"audit","status":"completed","conclusion":"failure","started_at":"2026-10-19T00:00:00Z"}]'
+}
+export -f gh
+start=$(date +%s)
+run_wait "workflow_dispatch" 60 1
+elapsed=$(( $(date +%s) - start ))
+if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "real red lane" \
+   && ! echo "$OUT" | grep -q "TIMEOUT" && [[ "$elapsed" -lt 10 ]]; then
+    ok "workflow_dispatch + audit failure => FAIL real-red (exit 1, ${elapsed}s, cross NOT skipped)"
+else
+    bad "workflow_dispatch audit-failure: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
+fi
+
+# 12b. audit never-seen -> FAIL quickly via TIMEOUT (never a PASS past an unseen
+#      cross lane). The short --timeout-s makes "quickly" literal.
 gh() { if [[ "${1:-}" == "run" ]]; then echo '[]'; else echo '[]'; fi; }
 export -f gh
 start=$(date +%s)
-run_wait "workflow_dispatch" 600 5
+run_wait "workflow_dispatch" 2 1
 elapsed=$(( $(date +%s) - start ))
-if [[ "$RC" -eq 0 ]] && echo "$OUT" | grep -q "SKIPPING the cross-workflow wait" \
-   && echo "$OUT" | grep -q "VERDICT=PASS" && [[ "$elapsed" -lt 10 ]]; then
-    ok "workflow_dispatch skips cross wait => PASS in ${elapsed}s (no 90-min burn), reason logged"
+if [[ "$RC" -eq 1 ]] && echo "$OUT" | grep -q "TIMEOUT" \
+   && echo "$OUT" | grep -q "audit" && ! echo "$OUT" | grep -q "VERDICT=PASS" \
+   && [[ "$elapsed" -lt 10 ]]; then
+    ok "workflow_dispatch + audit never-seen => FAIL TIMEOUT quickly (exit 1, ${elapsed}s, never PASS)"
 else
-    bad "workflow_dispatch skip: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
+    bad "workflow_dispatch audit-never-seen: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
+fi
+
+# 12c. audit success -> PASS quickly.
+gh() {
+    if [[ "${1:-}" == "run" ]]; then echo '[]'; return 0; fi
+    echo '[{"name":"audit","status":"completed","conclusion":"success","started_at":"2026-10-19T00:00:00Z"}]'
+}
+export -f gh
+start=$(date +%s)
+run_wait "workflow_dispatch" 60 1
+elapsed=$(( $(date +%s) - start ))
+if [[ "$RC" -eq 0 ]] && echo "$OUT" | grep -q "VERDICT=PASS" && [[ "$elapsed" -lt 10 ]]; then
+    ok "workflow_dispatch + audit success => PASS quickly (exit 0, ${elapsed}s)"
+else
+    bad "workflow_dispatch audit-success: rc=$RC elapsed=${elapsed}s out=<<$OUT>>"
+fi
+
+# 13. (item 5, Chief-binding) --print-lanes renders the IDENTICAL lane set for
+#     all four events. The lane set is ONE list; only the wait budget differs by
+#     event. Pass the SAME --lane/--cross for each event and diff the output.
+echo "--- lane set identical for all four events (item 5) ---"
+LANE_ARGS=(--lane "fast-checks=success" --lane "fast-checks-heavy=success"
+           --lane "clippy=success" --lane "cargo-test=success"
+           --lane "pr-hygiene=success" --lane "test=success"
+           --cross "audit"
+           --cross "ACP protocol smoke test (Zed / JetBrains compatible)")
+ref=""; lane_mismatch=0
+for EV in pull_request merge_group push workflow_dispatch; do
+    got="$(bash "$WAIT" --print-lanes --event-name "$EV" "${LANE_ARGS[@]}" 2>&1)"
+    [[ -z "$ref" ]] && ref="$got"
+    if [[ "$got" != "$ref" ]]; then
+        lane_mismatch=1
+        bad "lane set for event $EV differs from the reference (pull_request): <<$got>>"
+    fi
+done
+# The canonical set is exactly the six local lanes + the two cross lanes (8).
+n_lanes="$(printf '%s\n' "$ref" | grep -c .)"
+if [[ "$lane_mismatch" -eq 0 ]] && [[ "$n_lanes" -eq 8 ]] \
+   && printf '%s\n' "$ref" | grep -q '^cross=audit$' \
+   && printf '%s\n' "$ref" | grep -q '^cross=ACP protocol smoke test' \
+   && printf '%s\n' "$ref" | grep -q '^local=fast-checks$'; then
+    ok "lane set identical for pull_request/merge_group/push/workflow_dispatch (8 lanes: 6 local + audit + ACP)"
+else
+    bad "lane set not invariant or not 8 lanes: n=$n_lanes mismatch=$lane_mismatch set=<<$ref>>"
 fi
 
 rm -f "$CNT" "$AMB"
