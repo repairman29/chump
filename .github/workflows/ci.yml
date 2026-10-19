@@ -570,6 +570,9 @@ jobs:
   # (scripts/ci/poll-cross-workflow-checks.sh, since GH Actions `needs:` only
   # sees same-workflow jobs) — then prints a single PASS/FAIL verdict + emits
   # kind=verified_aggregator_decision to ambient.jsonl for offline audit.
+  # RESILIENT-1562: the poll is only a short grace; lanes still running stay
+  # PENDING and .github/workflows/verified-recompute.yml re-runs this job on
+  # Audit/integrations workflow_run completion (event-driven, no 600s window).
   #
   # Not yet required by branch-protection/ruleset 15133729 as of this commit
   # — flipping happens as an immediate follow-up once this cross-workflow
@@ -595,7 +598,7 @@ jobs:
             --sha "$sha" \
             --check "audit" \
             --check "ACP protocol smoke test (Zed / JetBrains compatible)" \
-            --timeout-s 600 --interval-s 15 > /tmp/cross-workflow-lanes.txt
+            --timeout-s 120 --interval-s 15 > /tmp/cross-workflow-lanes.txt
           cat /tmp/cross-workflow-lanes.txt
           audit_result="$(grep '^audit=' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
           acp_result="$(grep '^ACP protocol smoke test' /tmp/cross-workflow-lanes.txt | cut -d= -f2)"
@@ -921,6 +924,7 @@ jobs:
     # Feature-flag fallback: per-lane CHUMP_SELF_HOSTED_FAST_CHECKS=true reverts
     # this single lane to self-hosted if needed for diagnosis.
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    container: ${{ (vars.CHUMP_CI_CONTAINER == 'true' && vars.CHUMP_SELF_HOSTED_FAST_CHECKS != 'true') && 'ghcr.io/repairman29/chump-rust-builder:latest' || '' }}
     # INFRA-1959: force chump to use per-checkout state.db, never $HOME/.chump.
     # Prevents r2d2 sqlite-lock contention when multiple self-hosted runs are
     # active concurrently (each has its own _work checkout, but a stale system
@@ -1101,6 +1105,9 @@ jobs:
 
       - name: gap-preflight AC gate + picker AC filter (INFRA-1259)
         run: bash scripts/ci/test-gap-preflight-ac-gate.sh
+
+      - name: decompose re-slice guard — parent sliced at most once (RESILIENT-1437)
+        run: bash scripts/ci/test-gap-decompose-reslice-guard.sh
 
       - name: chump subcommand --help regression gate (INFRA-1246)
         # Prevents "claim --help exits non-zero" / "ship --help falls through to LLM" regressions.
@@ -1751,6 +1758,7 @@ jobs:
     # ci.yml-only edits don't pay the full build cost.
     if: (needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    container: ${{ (vars.CHUMP_CI_CONTAINER == 'true' && vars.CHUMP_SELF_HOSTED_CLIPPY != 'true') && 'ghcr.io/repairman29/chump-rust-builder:latest' || '' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
     # <workspace>/target so Swatinem caches build artifacts (see fast-checks).
@@ -1866,6 +1874,7 @@ jobs:
     # saturated (4 Macs, 45-PR queue). Expected: cargo-test 15 min → ~4 min once
     # sccache R2 warms (~$0.50/run vs queue-stall cost). Repo var override intact.
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-24.04-arm' }}
+    container: ${{ (vars.CHUMP_CI_CONTAINER == 'true' && vars.CHUMP_SELF_HOSTED_CARGO_TEST != 'true') && 'ghcr.io/repairman29/chump-rust-builder:latest' || '' }}
     timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     # INFRA-1959: per-checkout state.db (see fast-checks comment above).
     env:
