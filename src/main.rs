@@ -12838,6 +12838,17 @@ async fn main() -> Result<()> {
                 // rationale. Uses repo_root's local `main` (the canonical replica),
                 // distinct from the CHUMP_GAP_SHIP_STALE_THRESHOLD gate above which
                 // checks the current worktree's HEAD.
+                //
+                // CREDIBLE-1551 (Phase R R2, AC2) KNOWN LIMITATION — DO NOT fix here
+                // (RESILIENT-1650 owns it): when this routes to the fleet-server, the
+                // `ship` op is forwarded, but `chump gap link-pr` has no server-routing
+                // path — it only ever writes the LOCAL state.db. So on a stale client
+                // whose ships are forwarded, the gap_prs row the ship FK-gate requires
+                // lives on the client while the ship executes on the server, and a
+                // correctly-linked close would be refused server-side. The ship-gate
+                // itself is correct; the split is a link-pr routing gap tracked by
+                // RESILIENT-1650. Documented in the CREDIBLE-1551 PR body + here so the
+                // next reader does not "fix" the ship-gate thinking it is the bug.
                 if let Ok(server_base) = std::env::var(gap_route::GAP_SERVER_ENV) {
                     let server_base = server_base.trim().to_string();
                     if !server_base.is_empty() {
@@ -12920,7 +12931,14 @@ async fn main() -> Result<()> {
                             .filter(|b| !b.is_empty() && b != "HEAD" && b != "main")
                             .and_then(|b| chump_gap_store::merged_pr_for_branch(&repo_root, &b));
                         if let Some(n) = found {
-                            eprintln!("[gap ship] closed_pr resolved from the PR that merged this branch: #{n}");
+                            // CREDIBLE-1551 (Phase R R2, AC2): a closed_pr the CLI
+                            // auto-resolves is held to the SAME gap_prs FK gate as an
+                            // explicit --closed-pr — `store.ship` refuses unless a
+                            // gap_prs row links #{n} to this gap. Say so here so the
+                            // refusal that follows is not mysterious ("I never passed
+                            // --closed-pr"): the merge was auto-detected, and it still
+                            // needs the typed link.
+                            eprintln!("[gap ship] closed_pr auto-resolved from the PR that merged this branch: #{n} (CREDIBLE-1551: this close requires a gap_prs link #{n} -> {gap_id}; if refused, run `chump gap link-pr {gap_id} {n} --sha <merge-sha>` then retry)");
                         }
                         found
                     }
