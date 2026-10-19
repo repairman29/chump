@@ -254,10 +254,13 @@ poll uses `poll-cross-workflow-checks.sh --snapshot` (one fetch, no fail-close),
 so a running OR never-seen lane reads `in_progress` → `PENDING` → keep polling;
 the job concludes `FAILURE` only on a real red lane (short-circuit) or on the
 90-min timeout (with a reason naming the unconcluded lanes), and `SUCCESS` only
-when every lane is green or legitimately skipped. On a `workflow_dispatch` re-run
-(the INFRA-1395 grace window) `verified-wait.sh` **skips the cross-workflow wait**
-with a logged reason and classifies the local lanes only — that event does not
-produce the audit/ACP runs, so waiting would burn the full window. The `verified`
+when every lane is green or legitimately skipped. The SAME lane set (six local
+lanes + `audit` + ACP) is classified for every event; only the wait budget
+differs (CREDIBLE-1554 item 5). On a `workflow_dispatch` re-run (the INFRA-1395
+grace window) `verified-wait.sh` uses a **short bounded window** instead of the
+full 90 min, but **still classifies the cross lanes on the SHA** and concludes
+`FAILURE` if any is red, running, or never-seen at the end of that window —
+never a silent PASS. The `verified`
 job runs exactly one step, `bash scripts/ci/verified-wait.sh`;
 `aggregator-verified.sh` keeps its `0/1/2/3` exit codes; no new bypass env var;
 the `verified` job `timeout-minutes` is 95 (> the 90-min wait). See

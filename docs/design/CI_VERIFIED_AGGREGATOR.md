@@ -252,12 +252,20 @@ any not-yet-terminal lane reads `in_progress`); `verified-wait.sh` owns the
 single wait-and-fail-on-timeout decision. The default (non-snapshot) poll mode
 keeps its own short-wait + fail-closed-at-timeout behavior for other callers.
 
-**workflow_dispatch exception.** A `workflow_dispatch` re-run (the INFRA-1395
-grace window) does **not** itself produce the audit/ACP cross-workflow runs —
-those are gated on the `pull_request`/`merge_group` run — so on
-`--event-name workflow_dispatch` `verified-wait.sh` **skips the cross-workflow
-wait** with a logged reason and classifies the local lanes only (one pass).
-Waiting there would burn the full 90-min window on lanes that never post.
+**One lane set, per-event budget (CREDIBLE-1554 item 5, Chief-binding).** The
+set of lanes `verified` requires — the six local lanes plus the two
+cross-workflow lanes (`audit`, ACP) — is **one list**, classified on the event
+SHA identically for `pull_request`, `merge_group`, `push` and
+`workflow_dispatch`. No event path adds or drops a lane; `verified-wait.sh
+--print-lanes` renders that invariant set and `test-verified-wait.sh` asserts it
+is identical for all four events. Only the **wait budget** differs: a
+`workflow_dispatch` re-run (the INFRA-1395 grace window) is a manual probe, so it
+uses a **short bounded window** (`DISPATCH_TIMEOUT_S`, default 300s) rather than
+the full 90 min — but it **still classifies the cross lanes on the SHA**
+(`required-check-monitor.sh` dispatches `ci.yml` on the PR head, so audit/ACP
+already posted there) and concludes `FAILURE` if any cross lane is red, still
+running, or never-seen at the end of that window — **never a silent PASS** past
+an unseen or red cross lane.
 
 **Invariants preserved.** `aggregator-verified.sh` keeps its `0/1/2/3` exit
 codes for all existing callers; the wait lives in `verified-wait.sh`, not in a
