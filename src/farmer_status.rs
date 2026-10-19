@@ -387,35 +387,55 @@ fn heartbeat_verdict(chump_dir: &Path) -> (bool, Option<u64>) {
     }
 }
 
-/// Node-mode pause detection (RESILIENT-1636 / RESILIENT-1614 / RESILIENT-1652).
-/// Delegates to the ONE paused predicate in [`crate::node_pause`], shared with
-/// the pause detector in `node_mode.rs`. A node is paused when `node.env`
-/// expresses it (`CHUMP_NODE_MODE=paused` in either line form, OR the legacy
-/// `control-plane` + `CHUMP_NODE_WORK_ENABLED=0` form cuphead carried), the
-/// `CHUMP_NODE_MODE=paused` env var is exported directly, OR the repo
-/// `.chump/fleet-paused` kill switch is present. A paused node's stale
-/// heartbeat is EXPECTED (the farmer is deliberately idle), so it is reported
-/// as PAUSED. Returns the signal so the gate can attribute the reason.
-fn node_is_paused(repo_root: &Path) -> Option<crate::node_pause::PauseSignal> {
-    // An explicitly-exported CHUMP_NODE_MODE=paused is a node-env pause too.
-    if let Ok(m) = std::env::var("CHUMP_NODE_MODE") {
-        if m.trim() == "paused" {
-            return Some(crate::node_pause::PauseSignal::NodeEnv);
-        }
-    }
-    // node.env lives at CHUMP_STATE_DIR (if set) else <state-home>/.chump, the
-    // same resolution `chump node pause` uses in node_mode.rs.
-    let node_env_path = std::env::var("CHUMP_STATE_DIR")
+/// RESILIENT-1652 (task 0): resolve the node state dir (where `node.env` and
+/// the node pause sentinel live) the same way `chump node pause` does —
+/// `CHUMP_STATE_DIR` if set, else `<state-home>/.chump`, else `.chump`. This is
+/// the ONE place [`compute`] reads the host env for the pause inputs; tests call
+/// [`compute_at`] with an explicit state dir so they never read the host (the
+/// cuphead trap: the host's `~/.chump/node.env` is `CHUMP_NODE_MODE=paused`, so
+/// a test that let `compute` read the host saw `paused=true` and the
+/// stale-heartbeat reason it was asserting on was suppressed).
+fn resolve_node_state_dir() -> PathBuf {
+    std::env::var("CHUMP_STATE_DIR")
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .or_else(|| chump_state_home().map(|h| PathBuf::from(h).join(".chump")))
         .unwrap_or_else(|| PathBuf::from(".chump"))
-        .join("node.env");
-    crate::node_pause::pause_signal(repo_root, &node_env_path)
 }
 
+/// Node-mode pause detection (RESILIENT-1636 / RESILIENT-1614 / RESILIENT-1652).
+/// Delegates to the ONE paused predicate in [`crate::node_pause`], shared with
+/// the pause detector in `node_mode.rs`. A node is paused when `node.env` (at
+/// `<state_dir>/node.env`) expresses it (`CHUMP_NODE_MODE=paused` in either line
+/// form, OR the legacy `control-plane` + `CHUMP_NODE_WORK_ENABLED=0` form cuphead
+/// carried), OR the node `.chump/fleet-paused` sentinel is present. A paused
+/// node's stale heartbeat is EXPECTED (the farmer is deliberately idle), so it
+/// is reported as PAUSED. Returns the signal so the gate can attribute the
+/// reason.
+///
+/// RESILIENT-1652 (task 0 + 5): this reads ONLY the passed `state_dir` — it does
+/// NOT consult an exported `CHUMP_NODE_MODE` env var (that override is removed,
+/// so node.env is the sole durable source) and it does NOT resolve the state dir
+/// from the host itself. Both make every caller that passes an explicit (temp)
+/// state dir fully hermetic.
+fn node_is_paused(repo_root: &Path, state_dir: &Path) -> Option<crate::node_pause::PauseSignal> {
+    crate::node_pause::pause_signal(repo_root, &state_dir.join("node.env"))
+}
+
+/// Compute the farmer status, resolving the node state dir from the host env
+/// (`CHUMP_STATE_DIR` / `HOME`). Production entry point.
 pub fn compute(repo_root: &Path) -> FarmerStatus {
+    compute_at(repo_root, &resolve_node_state_dir())
+}
+
+/// RESILIENT-1652 (task 0): compute the farmer status against an EXPLICIT node
+/// state dir (where `node.env` + the node pause sentinel live). Split out from
+/// [`compute`] so tests pass a temp dir and never read the host's (paused)
+/// `~/.chump/node.env`. The kill-switch sentinel stays resolved from
+/// `repo_root/.chump` (it is the ci-health-gate's file, keyed off the repo, not
+/// the node state dir).
+pub fn compute_at(repo_root: &Path, state_dir: &Path) -> FarmerStatus {
     let chump_dir = repo_root.join(".chump");
     let mut reasons = Vec::new();
 
@@ -423,7 +443,7 @@ pub fn compute(repo_root: &Path) -> FarmerStatus {
     let exit78_free = check_exit78_free(&mut reasons);
     let oauth_fresh = check_oauth_fresh(repo_root, &mut reasons);
     let (heartbeat_fresh, heartbeat_age_s) = heartbeat_verdict(&chump_dir);
-    let pause_signal = node_is_paused(repo_root);
+    let pause_signal = node_is_paused(repo_root, state_dir);
     let paused = pause_signal.is_some();
 
     // RESILIENT-1636: a paused node's stale heartbeat is expected — report it
@@ -805,7 +825,13 @@ mod tests {
         // … but the refusal REASON moved into compute()'s stale branch, so the
         // "explains why" assertion must read it where it now lives: an un-paused
         // node's stale heartbeat yields a reason naming "farmer heartbeat stale".
-        let status = compute(dir.path());
+        // RESILIENT-1652 (task 0): isolate the pause inputs with an explicit,
+        // CLEAN (no node.env, no sentinel) state dir so the host's paused
+        // `~/.chump/node.env` can't flip this node to PAUSED and suppress the
+        // stale-heartbeat reason this test asserts on.
+        let clean_state = tempfile::tempdir().unwrap();
+        let status = compute_at(dir.path(), clean_state.path());
+        assert!(!status.paused, "clean state dir must not read as paused");
         assert!(!status.heartbeat_fresh);
         assert!(
             status
@@ -814,6 +840,55 @@ mod tests {
                 .any(|r| r.contains("farmer heartbeat stale")),
             "expected a 'farmer heartbeat stale' reason, got {:?}",
             status.reasons
+        );
+    }
+
+    #[test]
+    fn compute_at_reads_passed_state_dir_not_host() {
+        // RESILIENT-1652 (task 0): the hermetic guarantee. compute_at takes the
+        // node state dir explicitly; the pause verdict depends ONLY on that dir,
+        // never on the host's `~/.chump/node.env` (which on cuphead is
+        // CHUMP_NODE_MODE=paused). Prove both directions in one test:
+        //   * a CLEAN state dir → not paused, so a stale heartbeat reads as a
+        //     malfunction ("farmer heartbeat stale") even if the host is paused;
+        //   * a PAUSED state dir → paused, and the staleness is attributed to
+        //     the pause, not reported as a malfunction.
+        let repo = tempfile::tempdir().unwrap();
+        let chump_dir = repo.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let hb = chump_dir.join("farmer-heartbeat");
+        let f = std::fs::File::create(&hb).unwrap();
+        let old = SystemTime::now() - std::time::Duration::from_secs(HEARTBEAT_MAX_AGE_S + 1);
+        f.set_modified(old).unwrap();
+
+        // Clean state dir (no node.env, no node sentinel) → not paused.
+        let clean = tempfile::tempdir().unwrap();
+        let s = compute_at(repo.path(), clean.path());
+        assert!(!s.paused, "a clean state dir must not read as paused");
+        assert!(
+            s.reasons
+                .iter()
+                .any(|r| r.contains("farmer heartbeat stale")),
+            "un-paused stale heartbeat must report the malfunction: {:?}",
+            s.reasons
+        );
+
+        // Paused state dir (node.env=paused) → paused; staleness attributed to
+        // the pause, NOT reported as a stale-farmer malfunction.
+        let paused_dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            paused_dir.path().join("node.env"),
+            "CHUMP_NODE_MODE=paused\n",
+        )
+        .unwrap();
+        let s2 = compute_at(repo.path(), paused_dir.path());
+        assert!(s2.paused, "a paused node.env must read as paused");
+        assert!(
+            !s2.reasons
+                .iter()
+                .any(|r| r.contains("farmer heartbeat stale")),
+            "a paused node's stale heartbeat must NOT read as a malfunction: {:?}",
+            s2.reasons
         );
     }
 
