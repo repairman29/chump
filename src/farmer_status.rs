@@ -41,6 +41,7 @@ const CONTROL_PLANE_LABELS: &[&str] = &[
 
 const HEARTBEAT_MAX_AGE_S: u64 = 120;
 const OAUTH_CACHE_TTL_S: u64 = 600;
+const OAUTH_TOKEN_MAX_AGE_S: u64 = 3600;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FarmerStatus {
@@ -123,16 +124,28 @@ fn check_exit78_free(reasons: &mut Vec<String>) -> bool {
 /// authority for a BROKEN verdict is `auth-status.sh`'s probed cache
 /// (CREDIBLE-147, the six-day June outage).
 ///
-/// Priority:
+/// Priority (first positive/negative signal wins; RED requires POSITIVE evidence):
 ///   1. ANTHROPIC_API_KEY present (env or .env) -> fresh, no oauth needed.
 ///   2. auth-status.sh VALIDITY cache (`~/.chump/auth-status-cache`) says rc=0
 ///      within TTL -> fresh; rc!=0 within TTL -> RED (probed BROKEN).
 ///   3. free-tier cascade active (RESILIENT-409) -> Anthropic oauth unused -> fresh.
-///   4. the credential path `claude -p` uses is present AND valid:
-///      `CLAUDE_CODE_OAUTH_TOKEN` env, or `$HOME/.claude/.credentials.json` with
-///      a non-expired (or refreshable) oauth token -> fresh. The
-///      `~/.chump/oauth-token.json` mirror MTIME is never consulted.
-///   5. No positive signal of trouble -> fresh (fail-open).
+///   4. the credential path `claude -p` uses, `$HOME/.claude/.credentials.json`:
+///        * valid / expired-but-refreshable token (`Some(true)`) -> fresh;
+///        * expired, non-refreshable token (`Some(false)`) -> RED (the restored
+///          `stale_token_reds_by_default` invariant: an actually-dead credential
+///          must still refuse, paused or not);
+///        * no token / unparseable (`None`) -> fall through.
+///        * NOTE (RESILIENT-1636): there is NO presence-only
+///          `CLAUDE_CODE_OAUTH_TOKEN` shortcut — a token env var being *set* is
+///          not evidence it is *valid* (RESILIENT-086). The cache rc=0 branch
+///          (step 2) is the only "a probe said the token works" fresh path.
+///   5. `~/.chump/oauth-token.json` Keychain mirror — consulted ONLY as a
+///      last-resort fallback when steps 1-4 produced no signal (no api key, no
+///      cache, no free-tier, no `.credentials.json` token at all). A stale
+///      mirror reds here (preserving the old default), but a valid
+///      `.credentials.json` in step 4 short-circuits FIRST, so a stale mirror
+///      never reds a node whose `claude -p` creds are good (the cuphead case).
+///   6. No positive signal of trouble -> fresh (fail-open).
 fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .ok()
@@ -153,20 +166,8 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
     let home = chump_state_home().unwrap_or_default();
     let cache_path = PathBuf::from(&home).join(".chump/auth-status-cache");
     if let Ok(text) = std::fs::read_to_string(&cache_path) {
-        let mut lines = text.lines();
-        let ts: Option<u64> = lines.next().and_then(|s| s.trim().parse().ok());
-        let rc: Option<i32> = lines.next().and_then(|s| s.trim().parse().ok());
-        if let (Some(ts), Some(rc)) = (ts, rc) {
-            let age = now_s().saturating_sub(ts);
-            if age < OAUTH_CACHE_TTL_S {
-                if rc == 0 {
-                    return true;
-                }
-                reasons.push(format!(
-                    "auth-status cache reports BROKEN (rc={rc}, age={age}s)"
-                ));
-                return false;
-            }
+        if let Some(verdict) = auth_status_cache_verdict(&text, now_s(), reasons) {
+            return verdict;
         }
     }
 
@@ -176,22 +177,88 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
     }
 
     // RESILIENT-1636: validate the credential path `claude -p` actually uses.
-    if std::env::var("CLAUDE_CODE_OAUTH_TOKEN")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .is_some()
-    {
-        return true;
-    }
+    // Some(true) => usable; Some(false) => actually-dead creds, RED (restores the
+    // stale_token_reds_by_default pin); None => no token, fall through.
     let creds_path = PathBuf::from(&home).join(".claude/.credentials.json");
     if let Ok(body) = std::fs::read_to_string(&creds_path) {
-        if matches!(claude_creds_verdict(&body, now_ms()), Some(true)) {
-            return true;
+        match claude_creds_verdict(&body, now_ms()) {
+            Some(true) => return true,
+            Some(false) => {
+                reasons.push(
+                    "~/.claude/.credentials.json token expired with no refresh token \
+                     (claude -p cannot authenticate)"
+                        .to_string(),
+                );
+                return false;
+            }
+            None => {}
+        }
+    }
+
+    // RESILIENT-1636: last-resort fallback — the macOS Keychain mirror's mtime.
+    // Only reached when NOTHING above gave a signal (no api key / cache / free-tier
+    // / `.credentials.json` token). A stale mirror reds here (preserving the old
+    // default), but a node with valid `.credentials.json` never gets this far.
+    let token_path = PathBuf::from(&home).join(".chump/oauth-token.json");
+    if token_path.exists() {
+        match mtime_age_s(&token_path) {
+            Some(age) => return oauth_token_verdict(age, free_tier_cascade_active(), reasons),
+            None => return true,
         }
     }
 
     // No positive signal of trouble — fail-open (RED only on probed BROKEN above).
     true
+}
+
+/// RESILIENT-1636: pure verdict for the auth-status.sh VALIDITY cache body
+/// (`<home>/.chump/auth-status-cache`, two lines: epoch-seconds then rc). Split
+/// out so "rc!=0 within TTL => RED" is deterministically unit-testable without
+/// mutating process-global env. `Some(true)` = probed rc=0 within TTL (fresh),
+/// `Some(false)` = probed rc!=0 within TTL (RED, BROKEN), `None` = stale /
+/// malformed (caller continues to the next signal).
+fn auth_status_cache_verdict(text: &str, now: u64, reasons: &mut Vec<String>) -> Option<bool> {
+    let mut lines = text.lines();
+    let ts: Option<u64> = lines.next().and_then(|s| s.trim().parse().ok());
+    let rc: Option<i32> = lines.next().and_then(|s| s.trim().parse().ok());
+    if let (Some(ts), Some(rc)) = (ts, rc) {
+        let age = now.saturating_sub(ts);
+        if age < OAUTH_CACHE_TTL_S {
+            if rc == 0 {
+                return Some(true);
+            }
+            reasons.push(format!(
+                "auth-status cache reports BROKEN (rc={rc}, age={age}s)"
+            ));
+            return Some(false);
+        }
+    }
+    None
+}
+
+/// RESILIENT-409: pure verdict for the oauth-token.json freshness fallback.
+/// A fresh token is always GREEN. A stale token is RED -- EXCEPT when a
+/// free-tier cascade is active, because the DeepSeek floor never touches the
+/// Anthropic oauth token, so RED-blocking on its (perpetually stale on Linux,
+/// where the macOS-launchd refresher never runs) mtime self-strangles the
+/// whole fleet every OAUTH_TOKEN_MAX_AGE_S with zero benefit. The
+/// auth-status-cache BROKEN branch in `check_oauth_fresh` still forces RED on
+/// real auth failure even in free-tier mode. Pure (no env/fs) so it is
+/// deterministically unit-testable.
+fn oauth_token_verdict(age_s: u64, free_tier: bool, reasons: &mut Vec<String>) -> bool {
+    if age_s <= OAUTH_TOKEN_MAX_AGE_S {
+        return true;
+    }
+    if free_tier {
+        reasons.push(format!(
+            "oauth-token.json stale (age={age_s}s > {OAUTH_TOKEN_MAX_AGE_S}s) but free-tier cascade active -- decoupled from Anthropic-oauth (RESILIENT-409)"
+        ));
+        return true;
+    }
+    reasons.push(format!(
+        "oauth-token.json stale: age={age_s}s > {OAUTH_TOKEN_MAX_AGE_S}s, no api-key fallback, no fresh cache"
+    ));
+    false
 }
 
 /// RESILIENT-1636: pure validity verdict for Claude Code's credential store
@@ -403,17 +470,70 @@ pub enum ClaimAdmission {
 /// is admitted even on a RED/paused farmer. A new claim (no such lease) is
 /// still refused — the gate is not weakened.
 pub fn claim_admission(repo_root: &Path, gap_id: &str, session_id: Option<&str>) -> ClaimAdmission {
-    let status = compute(repo_root);
+    let mut status = compute(repo_root);
     let reentry_session = session_id.map(str::trim).filter(|s| !s.is_empty());
-    let has_reentry_lease = reentry_session
-        .map(|sess| session_holds_live_lease_for_gap(&repo_root.join(".chump-locks"), gap_id, sess))
-        .unwrap_or(false);
+
+    // RESILIENT-1636 (optional item 6): scan every lock dir a dispatch's
+    // lease-only claim may have written — CHUMP_LOCK_DIR, plus the repo and
+    // cwd-worktree `.chump-locks` — so the re-entry admission fires on cuphead
+    // regardless of which root the dispatch resolved.
+    let verdict = reentry_session
+        .map(|sess| classify_session_lease_in_dirs(&lease_lock_dirs(repo_root), gap_id, sess))
+        .unwrap_or(LeaseVerdict::NotLive);
+
+    // CHIEF RULE 8: a matching lease whose expires_at is missing/unparseable is
+    // MALFORMED (not live) and refuses with its own distinct reason.
+    if matches!(verdict, LeaseVerdict::Malformed) {
+        status.reasons.push(format!(
+            "lease malformed: missing or unparseable expires_at for {gap_id} \
+             — treating as not-live, re-entry refused (RESILIENT-1636)"
+        ));
+    }
+
+    let has_reentry_lease = matches!(verdict, LeaseVerdict::Live);
     build_admission(status, gap_id, reentry_session, has_reentry_lease)
 }
 
+/// RESILIENT-1636 (optional item 6): the set of `.chump-locks` directories a
+/// dispatch's lease-only claim may have written its lease into. Dedups so a
+/// lease present in two aliased paths is only read once. Order: `CHUMP_LOCK_DIR`
+/// (explicit override), the repo root's `.chump-locks`, and the current
+/// worktree's `.chump-locks` (when it differs from repo_root — a linked
+/// worktree's cwd).
+fn lease_lock_dirs(repo_root: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    let mut push = |p: PathBuf| {
+        if !dirs.contains(&p) {
+            dirs.push(p);
+        }
+    };
+    if let Ok(d) = std::env::var("CHUMP_LOCK_DIR") {
+        if !d.trim().is_empty() {
+            push(PathBuf::from(d));
+        }
+    }
+    push(repo_root.join(".chump-locks"));
+    if let Ok(cwd) = std::env::current_dir() {
+        push(cwd.join(".chump-locks"));
+    }
+    dirs
+}
+
 /// Pure admission decision (no fs/env), split out so the invariant is
-/// deterministically unit-testable: GREEN → admit; not-green + a live re-entry
-/// lease → admit (ship step of already-claimed work); otherwise → refuse.
+/// deterministically unit-testable.
+///
+/// RESILIENT-1636 (independent-review hardening): a ship gate may relax ONLY
+/// for a node the operator DELIBERATELY PAUSED, and only the (expected) stale
+/// heartbeat may be excused. Re-entry of already-claimed work is admitted iff:
+///   * GREEN                                   → admit normally; OR
+///   * the node is `paused` AND otherwise healthy (`sentinel_absent`,
+///     `exit78_free`, `oauth_fresh` all hold — heartbeat staleness is the
+///     ONLY thing pause excuses) AND the session holds a live re-entry lease.
+///
+/// Every genuinely-RED case — an un-paused node (even with a live lease), a
+/// paused node with a `fleet-paused` sentinel, an exit-78 supervisor, or a
+/// BROKEN oauth probe — still REFUSES, pinned by unit + e2e tests. The admit
+/// note therefore never says "RED": we only reach it when `status.paused`.
 fn build_admission(
     status: FarmerStatus,
     gap_id: &str,
@@ -423,12 +543,15 @@ fn build_admission(
     if status.green {
         return ClaimAdmission::Green;
     }
-    if has_reentry_lease {
+    // Re-entry relaxation is paused-only, and paused excuses the stale heartbeat
+    // and NOTHING else. Any other unhealthy signal is a genuine RED → refuse.
+    let paused_otherwise_healthy =
+        status.paused && status.sentinel_absent && status.exit78_free && status.oauth_fresh;
+    if has_reentry_lease && paused_otherwise_healthy {
         if let Some(sess) = session_id {
-            let state = if status.paused { "paused" } else { "RED" };
             return ClaimAdmission::ReentryAdmit {
                 note: format!(
-                    "farmer {state} but session {sess} already holds a live lease for {gap_id} \
+                    "farmer paused but session {sess} already holds a live lease for {gap_id} \
                      — admitting re-entry (ship step of already-claimed work; RESILIENT-1636). \
                      NEW claims remain refused."
                 ),
@@ -438,15 +561,52 @@ fn build_admission(
     ClaimAdmission::Refuse { status }
 }
 
-/// RESILIENT-1636: does `session_id` hold a LIVE (non-expired) lease for
-/// `gap_id` in `lock_dir`? The dispatch lane's lease-only claim writes
+/// RESILIENT-1636 / CHIEF RULE 8: the classification of the current session's
+/// lease for a gap. A "live lease" means a lease row for THIS gap and THIS
+/// session whose `expires_at` parses and is in the future. A missing or
+/// unparseable `expires_at` is NOT live — it is MALFORMED (refused with its own
+/// distinct reason); an expired one, or no matching lease at all, is `NotLive`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LeaseVerdict {
+    /// A matching lease exists and its `expires_at` parses to a future instant.
+    Live,
+    /// A matching lease exists but `expires_at` is missing or unparseable.
+    Malformed,
+    /// No matching lease, or the matching lease has expired.
+    NotLive,
+}
+
+/// Classify the current session's lease for `gap_id` across several lock dirs,
+/// taking the strongest verdict found: `Live` wins over `Malformed`, which wins
+/// over `NotLive` (so one aliased dir holding a good lease isn't masked by a
+/// malformed copy in another).
+fn classify_session_lease_in_dirs(
+    lock_dirs: &[PathBuf],
+    gap_id: &str,
+    session_id: &str,
+) -> LeaseVerdict {
+    let mut best = LeaseVerdict::NotLive;
+    for dir in lock_dirs {
+        match classify_session_lease(dir, gap_id, session_id) {
+            LeaseVerdict::Live => return LeaseVerdict::Live,
+            LeaseVerdict::Malformed => best = LeaseVerdict::Malformed,
+            LeaseVerdict::NotLive => {}
+        }
+    }
+    best
+}
+
+/// RESILIENT-1636: classify `session_id`'s lease for `gap_id` in a single
+/// `lock_dir`. The dispatch lane's lease-only claim writes
 /// `<lock_dir>/<session>.json` with `{gap_id, session_id, expires_at}` (RFC3339);
-/// scan every lease file so filename sanitisation can't cause a miss.
-fn session_holds_live_lease_for_gap(lock_dir: &Path, gap_id: &str, session_id: &str) -> bool {
+/// scan every lease file so filename sanitisation can't cause a miss. Returns
+/// the strongest verdict across all matching rows.
+fn classify_session_lease(lock_dir: &Path, gap_id: &str, session_id: &str) -> LeaseVerdict {
     let now = now_s();
     let Ok(entries) = std::fs::read_dir(lock_dir) else {
-        return false;
+        return LeaseVerdict::NotLive;
     };
+    let mut best = LeaseVerdict::NotLive;
     for entry in entries.flatten() {
         let p = entry.path();
         if p.extension().and_then(|e| e.to_str()) != Some("json") {
@@ -464,17 +624,39 @@ fn session_holds_live_lease_for_gap(lock_dir: &Path, gap_id: &str, session_id: &
         if val.get("session_id").and_then(|v| v.as_str()) != Some(session_id) {
             continue;
         }
-        // Liveness: an expired lease is not a re-entry anchor.
-        if let Some(exp) = val.get("expires_at").and_then(|v| v.as_str()) {
-            if let Some(exp_secs) = parse_rfc3339_secs(exp) {
-                if exp_secs <= now {
-                    continue;
-                }
-            }
+        // CHIEF RULE 8: liveness requires an expires_at that parses AND is in the
+        // future. Missing OR unparseable => malformed (not live). Expired => not
+        // live. Only a parsed, future expiry is a live re-entry anchor.
+        match val.get("expires_at").and_then(|v| v.as_str()) {
+            Some(exp) => match parse_rfc3339_secs(exp) {
+                Some(exp_secs) if exp_secs > now => return LeaseVerdict::Live,
+                Some(_) => {}                        // expired — not live
+                None => best = best.max_malformed(), // unparseable — malformed
+            },
+            None => best = best.max_malformed(), // missing expires_at — malformed
         }
-        return true;
     }
-    false
+    best
+}
+
+impl LeaseVerdict {
+    /// Raise a `NotLive` verdict to `Malformed`; leave `Live`/`Malformed` as-is.
+    fn max_malformed(self) -> LeaseVerdict {
+        match self {
+            LeaseVerdict::Live => LeaseVerdict::Live,
+            _ => LeaseVerdict::Malformed,
+        }
+    }
+}
+
+/// RESILIENT-1636: thin bool wrapper — does `session_id` hold a LIVE (parsed +
+/// future `expires_at`) lease for `gap_id` in `lock_dir`? Missing/unparseable
+/// expires_at and expired leases are all NOT live.
+fn session_holds_live_lease_for_gap(lock_dir: &Path, gap_id: &str, session_id: &str) -> bool {
+    matches!(
+        classify_session_lease(lock_dir, gap_id, session_id),
+        LeaseVerdict::Live
+    )
 }
 
 /// RFC3339 (`2026-04-17T02:27:48Z`) → Unix seconds, for lease-expiry liveness.
@@ -772,5 +954,186 @@ mod tests {
             build_admission(green, "GAP-1", None, false),
             ClaimAdmission::Green
         ));
+    }
+
+    // ── RESILIENT-1636 (independent-review hardening): genuinely-RED cases must
+    // refuse EVEN WITH a live re-entry lease. A ship gate relaxes ONLY for a
+    // deliberately-paused node whose single unhealthy signal is the (expected)
+    // stale heartbeat; every other RED condition still refuses. ───────────────
+
+    #[test]
+    fn admission_unpaused_stale_heartbeat_refuses_even_with_lease() {
+        // An UN-paused node with a stale heartbeat is genuinely RED — a live
+        // lease does NOT admit re-entry (pause is the only heartbeat excuse).
+        let status = FarmerStatus {
+            green: false,
+            sentinel_absent: true,
+            exit78_free: true,
+            oauth_fresh: true,
+            heartbeat_fresh: false,
+            heartbeat_age_s: Some(80_000),
+            paused: false,
+            reasons: vec!["farmer heartbeat stale".into()],
+        };
+        match build_admission(status, "GAP-1", Some("sess-A"), true) {
+            ClaimAdmission::Refuse { status } => assert!(!status.paused),
+            other => panic!("expected Refuse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn admission_paused_with_sentinel_refuses_even_with_lease() {
+        // Paused but the fleet-paused SENTINEL is present — a genuine RED that
+        // pause does not excuse. Refuse despite the live lease.
+        let mut status = paused_status();
+        status.sentinel_absent = false;
+        assert!(matches!(
+            build_admission(status, "GAP-1", Some("sess-A"), true),
+            ClaimAdmission::Refuse { .. }
+        ));
+    }
+
+    #[test]
+    fn admission_paused_with_exit78_refuses_even_with_lease() {
+        // Paused but a control-plane supervisor exited 78 — genuine RED.
+        let mut status = paused_status();
+        status.exit78_free = false;
+        assert!(matches!(
+            build_admission(status, "GAP-1", Some("sess-A"), true),
+            ClaimAdmission::Refuse { .. }
+        ));
+    }
+
+    #[test]
+    fn admission_paused_with_oauth_broken_refuses_even_with_lease() {
+        // Paused but oauth is NOT fresh (probed BROKEN / expired creds) — genuine
+        // RED. Pause excuses the stale heartbeat, never a dead credential.
+        let mut status = paused_status();
+        status.oauth_fresh = false;
+        assert!(matches!(
+            build_admission(status, "GAP-1", Some("sess-A"), true),
+            ClaimAdmission::Refuse { .. }
+        ));
+    }
+
+    #[test]
+    fn admission_reentry_note_never_says_red() {
+        // The admit note is reached only when paused — it must never say "RED".
+        if let ClaimAdmission::ReentryAdmit { note } =
+            build_admission(paused_status(), "GAP-1", Some("sess-A"), true)
+        {
+            assert!(
+                !note.contains("RED"),
+                "admit note must never say RED: {note}"
+            );
+            assert!(note.contains("paused"));
+        } else {
+            panic!("expected ReentryAdmit under a paused, otherwise-healthy farmer");
+        }
+    }
+
+    // ── RESILIENT-1636 / CHIEF RULE 8: a lease with missing or unparseable
+    // expires_at is NOT live — it is malformed. ───────────────────────────────
+
+    #[test]
+    fn lease_missing_expires_at_is_not_live() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&lock).unwrap();
+        std::fs::write(
+            lock.join("sess-A.json"),
+            r#"{"session_id":"sess-A","gap_id":"GAP-1"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            classify_session_lease(&lock, "GAP-1", "sess-A"),
+            LeaseVerdict::Malformed
+        );
+        assert!(!session_holds_live_lease_for_gap(&lock, "GAP-1", "sess-A"));
+    }
+
+    #[test]
+    fn lease_unparseable_expires_at_is_not_live() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&lock).unwrap();
+        std::fs::write(
+            lock.join("sess-A.json"),
+            r#"{"session_id":"sess-A","gap_id":"GAP-1","expires_at":"not-a-date"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            classify_session_lease(&lock, "GAP-1", "sess-A"),
+            LeaseVerdict::Malformed
+        );
+        assert!(!session_holds_live_lease_for_gap(&lock, "GAP-1", "sess-A"));
+    }
+
+    // ── RESILIENT-1636: auth-status cache rc!=0 inside TTL ⇒ oauth_fresh=false ──
+
+    #[test]
+    fn auth_status_cache_broken_within_ttl_is_red() {
+        let now = 1_000_000;
+        let mut r = Vec::new();
+        // rc=1, age=5s (< TTL) ⇒ probed BROKEN ⇒ Some(false) (RED).
+        let body = format!("{}\n1\n", now - 5);
+        assert_eq!(auth_status_cache_verdict(&body, now, &mut r), Some(false));
+        assert!(r[0].contains("BROKEN"));
+        // rc=0 within TTL ⇒ fresh.
+        let mut r2 = Vec::new();
+        let body_ok = format!("{}\n0\n", now - 5);
+        assert_eq!(
+            auth_status_cache_verdict(&body_ok, now, &mut r2),
+            Some(true)
+        );
+        // stale (age > TTL) ⇒ None (caller continues to next signal).
+        let mut r3 = Vec::new();
+        let body_stale = format!("{}\n1\n", now - (OAUTH_CACHE_TTL_S + 10));
+        assert_eq!(auth_status_cache_verdict(&body_stale, now, &mut r3), None);
+    }
+
+    // ── RESILIENT-1636 / CHIEF RULE 7: the deleted `stale_token_reds_by_default`
+    // pin is restored BYTE-IDENTICAL to origin/main (do not edit its body, name
+    // or assertions). The positive re-entry case is a SEPARATE test above. ─────
+
+    #[test]
+    fn stale_token_reds_by_default() {
+        // AC3 regression: without a free-tier cascade, a stale token stays RED.
+        let mut r = Vec::new();
+        assert!(!oauth_token_verdict(
+            OAUTH_TOKEN_MAX_AGE_S + 1,
+            false,
+            &mut r
+        ));
+        assert_eq!(r.len(), 1);
+        assert!(r[0].contains("stale"));
+    }
+
+    #[test]
+    fn stale_token_decoupled_under_free_tier() {
+        // AC2 (RESILIENT-409): DeepSeek floor never uses the Anthropic oauth
+        // token, so a 33-day-stale token must NOT RED-block claims when a
+        // free-tier cascade is active.
+        let mut r = Vec::new();
+        assert!(oauth_token_verdict(33 * 24 * 3600, true, &mut r));
+        assert!(r[0].contains("free-tier"));
+        assert!(r[0].contains("RESILIENT-409"));
+    }
+
+    #[test]
+    fn fresh_token_green_regardless_of_free_tier() {
+        let mut r = Vec::new();
+        assert!(oauth_token_verdict(10, false, &mut r));
+        assert!(oauth_token_verdict(10, true, &mut r));
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn creds_expired_no_refresh_drives_check_oauth_red() {
+        // Item (3) equivalent restored at the check level: no api key, no free
+        // tier, no cache — an expired non-refreshable .credentials.json makes
+        // claude_creds_verdict Some(false), which check_oauth_fresh turns to RED.
+        let body = r#"{"claudeAiOauth":{"accessToken":"sk-x","expiresAt":1}}"#;
+        assert_eq!(claude_creds_verdict(body, 1_000_000), Some(false));
     }
 }
