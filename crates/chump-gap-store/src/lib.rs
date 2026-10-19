@@ -7138,11 +7138,15 @@ impl GapStore {
     fn emit_gap_pr_unlinked(&self, gap_id: &str, pr_number: i64, reason: &str) {
         let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
         let ts = unix_to_iso_full(unix_now());
-        let safe_gap = gap_id.replace('"', "\\\"");
-        let safe_reason = reason.replace('"', "\\\"");
         let line = format!(
-            "{{\"ts\":\"{ts}\",\"kind\":\"gap_pr_unlinked\",\
-             \"gap\":\"{safe_gap}\",\"pr\":{pr_number},\"reason\":\"{safe_reason}\"}}\n"
+            "{}\n",
+            serde_json::json!({
+                "ts": ts,
+                "kind": "gap_pr_unlinked",
+                "gap": gap_id,
+                "pr": pr_number,
+                "reason": reason,
+            })
         );
         use std::io::Write as _;
         if let Some(parent) = amb.parent() {
@@ -8926,6 +8930,53 @@ mod tests {
             removed, 0,
             "removing a non-existent link returns 0, not Err"
         );
+    }
+
+    #[test]
+    fn unlink_pr_emits_one_parseable_gap_pr_unlinked_line() {
+        let (store, dir) = test_store();
+        let amb = dir.path().join(".chump-locks").join("ambient.jsonl");
+
+        // Reason intentionally carries a backslash and a double quote so the
+        // serde_json::json! encoder — not hand-escaping — is what makes the
+        // line parse back out cleanly.
+        let reason = r#"mislinked \ to "umbrella""#;
+        store.link_pr("CREDIBLE-1550", 5600, "abc123").unwrap();
+        let removed = store.unlink_pr("CREDIBLE-1550", 5600, reason).unwrap();
+        assert_eq!(removed, 1, "one row removed");
+
+        let body = std::fs::read_to_string(&amb).expect("ambient.jsonl written");
+        let lines: Vec<&str> = body
+            .lines()
+            .filter(|l| l.contains("\"kind\":\"gap_pr_unlinked\""))
+            .collect();
+        assert_eq!(lines.len(), 1, "exactly one gap_pr_unlinked line");
+
+        let v: serde_json::Value = serde_json::from_str(lines[0]).expect("line parses as JSON");
+        assert_eq!(v["kind"], "gap_pr_unlinked");
+        assert_eq!(v["gap"], "CREDIBLE-1550");
+        assert_eq!(v["pr"], 5600);
+        assert_eq!(v["reason"], reason, "reason round-trips with \\ and \"");
+    }
+
+    #[test]
+    fn unlink_pr_absent_link_emits_nothing() {
+        let (store, dir) = test_store();
+        let amb = dir.path().join(".chump-locks").join("ambient.jsonl");
+
+        let removed = store.unlink_pr("INFRA-8192", 404, "never-linked").unwrap();
+        assert_eq!(removed, 0, "nothing removed");
+
+        // No row removed => no event. The file may not exist at all, or (if some
+        // other code created it) must contain zero gap_pr_unlinked lines.
+        let count = std::fs::read_to_string(&amb)
+            .map(|b| {
+                b.lines()
+                    .filter(|l| l.contains("\"kind\":\"gap_pr_unlinked\""))
+                    .count()
+            })
+            .unwrap_or(0);
+        assert_eq!(count, 0, "an absent link writes no gap_pr_unlinked line");
     }
 
     // ── EFFECTIVE-679: idea-drop intake tests ──────────────────────────
