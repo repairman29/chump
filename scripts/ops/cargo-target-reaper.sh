@@ -285,10 +285,12 @@ _classd_source_clean() {
 }
 
 # _classd_recent_activity <wt> <branch> <window_min> — 0 iff bot-merge/dispatch
-# activity touched this worktree within <window_min> minutes. Signals: the build
-# dirs' own mtime (a dispatch builds into them), a bot-merge-*.steps file naming
-# this worktree/gap, or any bot-merge-active-dispatch-*.path marker — each only
-# when its mtime is within the window.
+# activity touched THIS worktree within <window_min> minutes. Signals, each only
+# when its own mtime is within the window: the build dirs' mtime (a dispatch
+# builds into target/ + .cargo-test-target/), a bot-merge-*.steps file whose
+# CONTENT names this worktree path or gap, or a bot-merge-active-dispatch-*.path
+# marker whose FILENAME names this gap. A marker that names a different/no gap is
+# NOT this worktree's activity — else one fresh ship elsewhere pins every idle wt.
 _classd_recent_activity() {
     local wt="$1" branch="$2" window_min="$3"
     local now cutoff p mt
@@ -299,7 +301,7 @@ _classd_recent_activity() {
         mt="$(stat -f%m "$p" 2>/dev/null || stat -c%Y "$p" 2>/dev/null || echo 0)"
         [[ "$mt" -gt "$cutoff" ]] && return 0
     done
-    local lock_dir gap f first
+    local lock_dir gap f first fbase
     lock_dir="${REAPER_REPO_ROOT:-$REPO_ROOT}/.chump-locks"
     gap="$(basename "$wt" | tr '[:lower:]' '[:upper:]')"
     [[ "$gap" == *[0-9]* ]] || gap=""   # only gap-id-shaped tokens
@@ -309,12 +311,22 @@ _classd_recent_activity() {
             mt="$(stat -f%m "$f" 2>/dev/null || stat -c%Y "$f" 2>/dev/null || echo 0)"
             [[ "$mt" -gt "$cutoff" ]] || continue
             case "$f" in
-                *bot-merge-active-dispatch-*.path) return 0 ;;
+                *bot-merge-active-dispatch-*.path)
+                    # A marker ties to a worktree only via its gap-named filename;
+                    # a generic marker is NOT this worktree's activity (else one
+                    # fresh ship elsewhere would pin every idle worktree).
+                    fbase="$(basename "$f" | tr '[:lower:]' '[:upper:]')"
+                    if [[ -n "$gap" && "$fbase" == *"$gap"* ]]; then
+                        return 0
+                    fi
+                    ;;
+                *)
+                    first="$(head -1 "$f" 2>/dev/null || true)"
+                    if [[ "$first" == *"$wt"* ]] || { [[ -n "$gap" ]] && [[ "$first" == *"$gap"* ]]; }; then
+                        return 0
+                    fi
+                    ;;
             esac
-            first="$(head -1 "$f" 2>/dev/null || true)"
-            if [[ "$first" == *"$wt"* ]] || { [[ -n "$gap" ]] && [[ "$first" == *"$gap"* ]]; }; then
-                return 0
-            fi
         done < <(find "$lock_dir" -maxdepth 1 \
             \( -name 'bot-merge-*.steps' -o -name 'bot-merge-active-dispatch-*.path' \) \
             -type f 2>/dev/null)
