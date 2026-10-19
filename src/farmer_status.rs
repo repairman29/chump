@@ -176,10 +176,17 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
         return true;
     }
 
-    // RESILIENT-1636: validate the credential path `claude -p` actually uses.
+    // RESILIENT-1636/1652: validate the credential path `claude -p` actually
+    // uses. `claude -p` reads `~/.claude/.credentials.json` relative to HOME —
+    // NOT `CHUMP_HOME`. On cuphead `CHUMP_HOME` is set (node.env exports it), so
+    // reading `<CHUMP_HOME>/.claude/.credentials.json` found nothing, fell
+    // through to the stale mirror, and reported oauth_fresh=false while
+    // `claude -p` authenticated fine from `<HOME>/.claude/.credentials.json`
+    // (RESILIENT-1652 evidence). Resolve this one path from HOME.
     // Some(true) => usable; Some(false) => actually-dead creds, RED (restores the
     // stale_token_reds_by_default pin); None => no token, fall through.
-    let creds_path = PathBuf::from(&home).join(".claude/.credentials.json");
+    let creds_path = PathBuf::from(claude_credentials_home().unwrap_or_default())
+        .join(".claude/.credentials.json");
     if let Ok(body) = std::fs::read_to_string(&creds_path) {
         match claude_creds_verdict(&body, now_ms()) {
             Some(true) => return true,
@@ -327,6 +334,24 @@ fn chump_state_home() -> Option<String> {
     resolve_state_home(std::env::var("CHUMP_HOME").ok(), std::env::var("HOME").ok())
 }
 
+/// RESILIENT-1652: the home `claude -p` reads `~/.claude/.credentials.json`
+/// from. This is `HOME`, NOT `CHUMP_HOME` — the two differ on a node (cuphead)
+/// whose node.env exports `CHUMP_HOME`, and reading the creds from `CHUMP_HOME`
+/// found nothing and falsely reported oauth_fresh=false. Unlike the chump state
+/// files (`oauth-token.json` mirror, `auth-status-cache`, which live under
+/// `CHUMP_HOME`/`chump_state_home`), the Claude credential store is owned by
+/// the Claude CLI and keyed off `HOME`.
+fn claude_credentials_home() -> Option<String> {
+    resolve_claude_home(std::env::var("HOME").ok())
+}
+
+/// Pure precedence rule for [`claude_credentials_home`]: a non-empty `HOME`
+/// wins; nothing else is consulted (the Claude CLI reads `~` = `HOME`). Split
+/// out so it is unit-testable without mutating process-global env.
+fn resolve_claude_home(home: Option<String>) -> Option<String> {
+    home.filter(|s| !s.is_empty())
+}
+
 /// Pure precedence rule for [`chump_state_home`]: a non-empty `CHUMP_HOME`
 /// wins, else `HOME`. Split out so the precedence is unit-testable without
 /// mutating process-global env (which would race the auth.rs env tests in the
@@ -362,42 +387,32 @@ fn heartbeat_verdict(chump_dir: &Path) -> (bool, Option<u64>) {
     }
 }
 
-/// Node-mode pause detection (RESILIENT-1636 / RESILIENT-1614). A node paused
-/// via `chump node pause` writes `CHUMP_NODE_MODE=paused` to `node.env`; the
-/// env var may also be exported directly. A paused node's stale heartbeat is
-/// EXPECTED (the farmer is deliberately idle), so it is reported as PAUSED.
-fn node_is_paused() -> bool {
+/// Node-mode pause detection (RESILIENT-1636 / RESILIENT-1614 / RESILIENT-1652).
+/// Delegates to the ONE paused predicate in [`crate::node_pause`], shared with
+/// the pause detector in `node_mode.rs`. A node is paused when `node.env`
+/// expresses it (`CHUMP_NODE_MODE=paused` in either line form, OR the legacy
+/// `control-plane` + `CHUMP_NODE_WORK_ENABLED=0` form cuphead carried), the
+/// `CHUMP_NODE_MODE=paused` env var is exported directly, OR the repo
+/// `.chump/fleet-paused` kill switch is present. A paused node's stale
+/// heartbeat is EXPECTED (the farmer is deliberately idle), so it is reported
+/// as PAUSED. Returns the signal so the gate can attribute the reason.
+fn node_is_paused(repo_root: &Path) -> Option<crate::node_pause::PauseSignal> {
+    // An explicitly-exported CHUMP_NODE_MODE=paused is a node-env pause too.
     if let Ok(m) = std::env::var("CHUMP_NODE_MODE") {
-        let m = m.trim();
-        if m == "paused" {
-            return true;
-        }
-        if !m.is_empty() {
-            return false; // explicit non-paused mode wins over the file
+        if m.trim() == "paused" {
+            return Some(crate::node_pause::PauseSignal::NodeEnv);
         }
     }
     // node.env lives at CHUMP_STATE_DIR (if set) else <state-home>/.chump, the
     // same resolution `chump node pause` uses in node_mode.rs.
-    let state_dir = std::env::var("CHUMP_STATE_DIR")
+    let node_env_path = std::env::var("CHUMP_STATE_DIR")
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .or_else(|| chump_state_home().map(|h| PathBuf::from(h).join(".chump")));
-    if let Some(dir) = state_dir {
-        if let Ok(body) = std::fs::read_to_string(dir.join("node.env")) {
-            return node_env_is_paused(&body);
-        }
-    }
-    false
-}
-
-/// Pure parse of a `node.env` body for `CHUMP_NODE_MODE=paused` (with or
-/// without the `export ` prefix node_mode.rs writes). Split out for unit tests.
-fn node_env_is_paused(content: &str) -> bool {
-    content.lines().any(|l| {
-        let t = l.trim().trim_start_matches("export ").trim();
-        t == "CHUMP_NODE_MODE=paused"
-    })
+        .or_else(|| chump_state_home().map(|h| PathBuf::from(h).join(".chump")))
+        .unwrap_or_else(|| PathBuf::from(".chump"))
+        .join("node.env");
+    crate::node_pause::pause_signal(repo_root, &node_env_path)
 }
 
 pub fn compute(repo_root: &Path) -> FarmerStatus {
@@ -408,18 +423,26 @@ pub fn compute(repo_root: &Path) -> FarmerStatus {
     let exit78_free = check_exit78_free(&mut reasons);
     let oauth_fresh = check_oauth_fresh(repo_root, &mut reasons);
     let (heartbeat_fresh, heartbeat_age_s) = heartbeat_verdict(&chump_dir);
-    let paused = node_is_paused();
+    let pause_signal = node_is_paused(repo_root);
+    let paused = pause_signal.is_some();
 
     // RESILIENT-1636: a paused node's stale heartbeat is expected — report it
     // as PAUSED, not as a stale-farmer malfunction. A truly-stale heartbeat on
-    // an UN-paused node keeps the original RED reason.
-    if paused {
+    // an UN-paused node keeps the original RED reason. RESILIENT-1652: attribute
+    // the pause accurately (node-env pause vs. the kill-switch sentinel).
+    if let Some(sig) = pause_signal {
         let agenote = heartbeat_age_s
             .map(|a| format!(" (heartbeat age={a}s, staleness expected while paused)"))
             .unwrap_or_default();
-        reasons.push(format!(
-            "farmer paused by node mode (CHUMP_NODE_MODE=paused){agenote}"
-        ));
+        let reason = match sig {
+            crate::node_pause::PauseSignal::NodeEnv => {
+                format!("farmer paused by node mode (CHUMP_NODE_MODE=paused){agenote}")
+            }
+            crate::node_pause::PauseSignal::Sentinel => {
+                format!("farmer paused (fleet-paused sentinel present){agenote}")
+            }
+        };
+        reasons.push(reason);
     } else if !heartbeat_fresh {
         reasons.push(format!(
             "farmer heartbeat stale: age={}s > {HEARTBEAT_MAX_AGE_S}s",
@@ -888,10 +911,29 @@ mod tests {
 
     #[test]
     fn node_env_paused_parse() {
+        // Delegates to the ONE predicate in node_pause (both line forms + the
+        // legacy control-plane form). Kept here so the farmer gate's reliance on
+        // it is guarded at this layer too.
+        use crate::node_pause::node_env_is_paused;
         assert!(node_env_is_paused("export CHUMP_NODE_MODE=paused\n"));
         assert!(node_env_is_paused("CHUMP_NODE_MODE=paused"));
+        assert!(node_env_is_paused(
+            "CHUMP_NODE_MODE=control-plane\nCHUMP_NODE_WORK_ENABLED=0\n"
+        ));
         assert!(!node_env_is_paused("export CHUMP_NODE_MODE=work-ready\n"));
         assert!(!node_env_is_paused("# comment\nexport FOO=bar\n"));
+    }
+
+    #[test]
+    fn resolve_claude_home_is_home_only() {
+        // RESILIENT-1652: the Claude credential store is keyed off HOME, never
+        // CHUMP_HOME. A non-empty HOME wins; empty/absent → None (fail-open).
+        assert_eq!(
+            resolve_claude_home(Some("/home/ubuntu".into())),
+            Some("/home/ubuntu".into())
+        );
+        assert_eq!(resolve_claude_home(Some(String::new())), None);
+        assert_eq!(resolve_claude_home(None), None);
     }
 
     // ── RESILIENT-1636: re-entry admission vs new-claim refusal ──────────────
