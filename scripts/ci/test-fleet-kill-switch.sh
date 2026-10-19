@@ -69,6 +69,17 @@ FAKE_HOME="$(mktemp -d)"
 trap 'rm -rf "$FAKE_HOME"' EXIT
 mkdir -p "$FAKE_HOME/.chump"
 
+# RESILIENT-1652: `chump claim` runs the farmer readiness gate BEFORE the
+# kill-switch gate (src/main.rs claim arm). On a fresh Linux runner the gate
+# reds (no $FAKE_HOME/.chump/oauth-token.json) and claim exits "farmer status
+# RED" before the kill switch can fire — so Tests 1-4 (which assert on the
+# kill-switch verdict) must first see a healthy node. Lay down the evidence in
+# $FAKE_HOME (the HOME every claim below runs under). No gate loosening, no skip
+# env var: an absent/empty/expired token on a real node still reds.
+# shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
+source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"
+write_healthy_node_fixture "$FAKE_HOME"
+
 AL_FILE="$FAKE_HOME/.chump/AUTONOMY_LEVEL"
 
 # Synthetic ambient log so events land somewhere inspectable.

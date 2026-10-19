@@ -25,6 +25,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=scripts/coord/lib/test-sandbox.sh
 # INFRA-2088: canonical sandbox primitive.
 source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
+# RESILIENT-1652: the farmer readiness gate reds `gap reserve` on a fresh Linux
+# runner (no ~/.chump/oauth-token.json). Lay down a healthy-node fixture in each
+# sandbox so the gate reads GREEN by evidence — no gate loosening, no skip env.
+# shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
+source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"
 
 echo "=== MISSION-045 outcome gate test ==="
 echo
@@ -54,7 +59,7 @@ reserve() {  # domain priority effort title [extra-args...]
 }
 
 # ── DB WITH outcomes ─────────────────────────────────────────────────────────
-WITH="$(mktemp -d)"; chump_test_sandbox_setup "$WITH"
+WITH="$(mktemp -d)"; chump_test_sandbox_setup "$WITH"; write_healthy_node_fixture
 "$BIN" outcome new --id GATEOUT --title "gate fixture outcome" >/dev/null 2>&1
 if "$BIN" outcome list 2>/dev/null | grep -q GATEOUT; then
     ok "fixture outcome GATEOUT created"
@@ -106,7 +111,7 @@ fi
 
 # ── EMPTY outcomes DB (vacuous-skip) ─────────────────────────────────────────
 chump_test_sandbox_cleanup "$WITH"
-EMPTY="$(mktemp -d)"; chump_test_sandbox_setup "$EMPTY"
+EMPTY="$(mktemp -d)"; chump_test_sandbox_setup "$EMPTY"; write_healthy_node_fixture
 if "$BIN" outcome list 2>/dev/null | grep -q '\['; then
     fail "case 6 setup: fresh DB unexpectedly has outcomes"
 fi

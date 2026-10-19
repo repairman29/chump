@@ -69,6 +69,14 @@ export CHUMP_RESERVE_NO_AUTOSTAGE=1
 
 (cd "$TMP" && git init -q -b main && git config user.email "test@chump.local" && git config user.name "Chump Test")
 
+# RESILIENT-1652: `gap reserve` consults the farmer readiness gate, which reds a
+# fresh Linux runner with no ~/.chump/oauth-token.json. CHUMP_HOME points the
+# gate at $TMP, so lay down a healthy-node fixture there (valid oauth token,
+# not-paused node.env, fresh heartbeat). No gate loosening, no skip env var.
+# shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
+source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"
+write_healthy_node_fixture
+
 reserve() {
     "$BIN" gap reserve --domain SYNCTEST --priority P2 --effort xs \
         --title "$1" --skip-obs-acs --quiet 2>/dev/null
