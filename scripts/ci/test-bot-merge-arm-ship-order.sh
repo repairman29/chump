@@ -278,6 +278,31 @@ else
     fail "CREDIBLE-1576: gate-file-without-arm should exit 0, got rc=$_gc_rc"
 fi
 
+# ── CREDIBLE-1576 (round 4, kills x1): multi-file gate diff, gate file NOT first ─
+# A mutant that inspects only the FIRST file of the diff (x1) passes a diff whose
+# gate file is second. `git diff --name-only` lists paths sorted, so committing
+# both docs/a.md and scripts/ci/x.sh puts docs/a.md FIRST and the gate file
+# second. The guard loops over EVERY file, so it must still refuse (exit 2 +
+# REFUSED). Driven through the same real-git --gate-arm-check seam as Case A.
+( cd "$GREPO" && git update-ref refs/remotes/origin/main HEAD )
+(
+  cd "$GREPO"
+  mkdir -p docs scripts/ci
+  echo a > docs/a.md
+  echo x > scripts/ci/second-gate.sh
+  git add -A && git commit -qm multifile-gate
+)
+set +e
+_mf_out="$( cd "$GREPO" && bash "$BOT_MERGE" --gate-arm-check --auto-merge 2>&1 )"
+_mf_rc=$?
+set -e
+if [[ "$_mf_rc" -eq 2 ]] && printf '%s' "$_mf_out" | grep -q 'REFUSED'; then
+    pass "CREDIBLE-1576: multi-file gate diff with the gate file NOT first refuses (exit 2 + REFUSED) [x1]"
+else
+    fail "CREDIBLE-1576: multi-file gate (gate not first) should refuse (exit 2), got rc=$_mf_rc out=$_mf_out [x1]"
+fi
+( cd "$GREPO" && git update-ref refs/remotes/origin/main HEAD )
+
 # ── CREDIBLE-1576 item 2: FAIL-CLOSED when the diff cannot be computed ───────
 # A branch with no merge base against origin/main (missing ref / unrelated
 # history) must REFUSE the arm, never read as "clean". A fresh repo WITHOUT an
@@ -373,7 +398,11 @@ case "$subcmd" in
     case "$pr_cmd" in
       view)   if [[ $_hasjq -eq 1 ]]; then printf '42\n'; else printf '{"number":42,"state":"OPEN","autoMergeRequest":null}\n'; fi ;;
       list)   printf '42\n' ;;
-      merge)  exit 0 ;;
+      # A real arm drops a state marker so the follow-up verify_arm REST read
+      # (and the armer's "already armed?" pre-check) reflect the arm just as
+      # GitHub would. ARM_ARMED_MARKER is a per-case test-fixture file path set
+      # only on the main-arm-site drives — never read by production code.
+      merge)  [ -n "${ARM_ARMED_MARKER:-}" ] && : > "$ARM_ARMED_MARKER"; exit 0 ;;
       checks) exit 0 ;;
       diff)   exit 0 ;;
       create) printf 'https://github.com/test/repo/pull/42\n'; exit 0 ;;
@@ -383,6 +412,11 @@ case "$subcmd" in
   api)
     case "$*" in
       *rate_limit*) if [[ $_hasjq -eq 1 ]]; then echo "4800 4900 9999999999"; else printf '{"resources":{"core":{"limit":5000,"remaining":4800,"reset":9999999999},"graphql":{"limit":5000,"remaining":4900,"reset":9999999999}}}\n'; fi ;;
+      # pulls REST reads the armer makes: .auto_merge (pre-check + verify_arm) and
+      # .state. auto_merge flips true only AFTER `gh pr merge` dropped the marker,
+      # so the armer actually arms and verify_arm succeeds without a 30s retry.
+      *pulls/*auto_merge*) if [ -n "${ARM_ARMED_MARKER:-}" ] && [ -f "${ARM_ARMED_MARKER:-}" ]; then echo 'true'; else echo 'false'; fi ;;
+      *pulls/*state*) echo 'open' ;;
       *) echo '[]' ;;
     esac ;;
   *) exit 0 ;;
@@ -451,6 +485,54 @@ chmod +x "$ARM_MOCK/gh" "$ARM_MOCK/chump" "$ARM_MOCK/git" "$ARM_MOCK/chump-ship"
 #                                     disables it) so it lands in a writable tmp.
 #   REPO_ROOT/MAIN_REPO/CHUMP_AMBIENT_LOG/MOCK_GIT_DIFF_*  standard test fixtures.
 
+# ── CREDIBLE-1576 item 3: a gate PR is forced out of Mode A (integrator batch) ─
+# Mode A routes a gap to the chump-integrator daemon, which pushes and arms with
+# --auto, bypassing the per-PR arm guard. A gate-file (or uncomputable) diff must
+# force Mode B BEFORE the Mode A `chump gap set --status ready_to_ship` write, so
+# the PR opens through the guarded per-PR flow instead of being batch-armed. The
+# pre-existing CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH test hook (not a new var)
+# reports the integrator HEALTHY so Mode A is actually REACHED — otherwise
+# INFRA-2523 fail-opens to B first and the CREDIBLE-1576 guard is never the
+# deciding factor. Assert: the diff emits the CREDIBLE-1576 force-B event AND the
+# Mode A ready_to_ship write NEVER happens (recorded via CHUMP_REC_LOG).
+#   n3  Mode A force-B removed    → gate diff stays Mode A → ready_to_ship written.
+#   n7  force-B not fail-closed   → uncomputable diff stays Mode A → ready_to_ship.
+_modea_run() {  # $1=label $2=diff-files $3=diff-rc ; caller sets MODEA_AMB + CHUMP_REC_LOG
+    local _lbl="$1" _df="$2" _rc="$3"
+    ( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" \
+        MOCK_GIT_DIFF_FILES="$_df" MOCK_GIT_DIFF_RC="$_rc" \
+        REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+        CHUMP_AMBIENT_LOG="$MODEA_AMB" CHUMP_REC_LOG="$CHUMP_REC_LOG" \
+        CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-$_lbl.lock" \
+        CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH=1 \
+        bash "$BOT_MERGE" --gap TEST-001 --auto-merge --no-local-build ) >"${MODEA_OUT:-/dev/null}" 2>&1 || true
+}
+
+for _ma_case in "modea-gate:scripts/ci/x.sh:0:n3" "modea-uncomputable::1:n7"; do
+    _ma_lbl="${_ma_case%%:*}"; _ma_tmp="${_ma_case#*:}"
+    _ma_df="${_ma_tmp%%:*}"; _ma_tmp="${_ma_tmp#*:}"
+    _ma_rc="${_ma_tmp%%:*}"; _ma_mut="${_ma_tmp##*:}"
+    MODEA_AMB="$TMP/$_ma_lbl.ambient.jsonl"; : > "$MODEA_AMB"
+    CHUMP_REC_LOG="$TMP/$_ma_lbl.chump.log"; : > "$CHUMP_REC_LOG"
+    MODEA_OUT="$TMP/$_ma_lbl.out.log"; : > "$MODEA_OUT"
+    export MODEA_AMB CHUMP_REC_LOG MODEA_OUT
+    _modea_run "$_ma_lbl" "$_ma_df" "$_ma_rc"
+    # Round 4 (kills x3): assert the ACTUAL routing decision flipped to B
+    # ("INFRA-2133: routing mode=B"), not merely that the force-B ambient event
+    # was emitted. A mutant that emits the CREDIBLE-1576 event but leaves
+    # _BM_MODE=A (x3) still prints "routing mode=A" here, so the routing-mode
+    # assertion catches it — the ready_to_ship assertion alone is vacuous because
+    # Mode A's canonical-db write aborts earlier in this fixture.
+    if grep -q '"kind":"bot_merge_mode_failopen"' "$MODEA_AMB" \
+        && grep -q '"note":"CREDIBLE-1576"' "$MODEA_AMB" \
+        && grep -q 'INFRA-2133: routing mode=B' "$MODEA_OUT" \
+        && ! grep -q 'ready_to_ship' "$CHUMP_REC_LOG"; then
+        pass "CREDIBLE-1576 item 3: $_ma_lbl diff forces Mode A→B (routing mode=B + CREDIBLE-1576), no ready_to_ship write [$_ma_mut,x3]"
+    else
+        fail "CREDIBLE-1576 item 3: $_ma_lbl should force Mode B (failopen=$(grep -c bot_merge_mode_failopen "$MODEA_AMB"), cred1576=$(grep -c 'CREDIBLE-1576' "$MODEA_AMB"), routing_b=$(grep -c 'routing mode=B' "$MODEA_OUT"), ready_to_ship=$(grep -c ready_to_ship "$CHUMP_REC_LOG")) [$_ma_mut,x3]"
+    fi
+done
+
 # Case D (recovery site, internal-lane DEFAULT arm, gate diff): no --auto-merge
 # flag — AUTO_MERGE=1 comes from the internal-lane default, the exact path that
 # self-armed #5602. Must refuse (exit 2) and NEVER reach `gh pr merge`.
@@ -488,20 +570,27 @@ fi
 
 # Case F (MAIN arm site, gate diff + --auto-merge): drive the full per-PR flow
 # to the main `if [[ $AUTO_MERGE -eq 1 ]]` arm block. Must refuse (exit 2) and
-# NEVER reach `gh pr merge`. Kills m5 (main arm call site dropped) and, with
-# Case D, m7 (both dropped).
+# NEVER reach `gh pr merge`. Kills m5 (main arm call site dropped), m7 (both
+# dropped, with Case D), and x2 (main refusal made non-fatal — `|| true`).
+# GITHUB_REPOSITORY (the armer's real, documented primary input, set by GitHub
+# Actions / the systemd unit — not a Chump knob) lets the real auto-merge-armer
+# resolve the repo in this fixture, so if the guard were dropped/softened the
+# armer WOULD arm and call `gh pr merge`. Case H below is the positive control
+# proving that; here it makes "no gh pr merge" mean "the guard stopped it".
 ARM_CALL_LOG="$TMP/arm-F.log"; : > "$ARM_CALL_LOG"; export ARM_CALL_LOG
+rm -f "$TMP/armed-F.marker"
 set +e
 _f_out="$( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="scripts/ci/x.sh" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+    GITHUB_REPOSITORY=testorg/testrepo ARM_ARMED_MARKER="$TMP/armed-F.marker" \
     CHUMP_AMBIENT_LOG="$AMBIENT" CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-F.lock" \
     bash "$BOT_MERGE" --gap TEST-001 --auto-merge --no-local-build 2>&1 )"
 _f_rc=$?
 set -e
-# Require the guard's OWN "REFUSED" signal: with the main call site dropped (m5)
-# the flow reaches the real auto-merge-armer, which fails in the mock env and
-# also exits 2 — but WITHOUT printing REFUSED, so this assertion still kills m5.
+# Require the guard's OWN "REFUSED" signal AND zero merge calls. With the main
+# call site dropped (m5) or softened (x2), the flow now reaches the real armer,
+# which (repo resolvable) arms and calls `gh pr merge` → merge-calls≥1 → FAIL.
 if [[ "$_f_rc" -eq 2 ]] && printf '%s' "$_f_out" | grep -q 'REFUSED' && ! grep -q 'pr merge' "$ARM_CALL_LOG"; then
-    pass "CREDIBLE-1576 item 1: MAIN arm site on gate diff refuses (exit 2 + REFUSED), no gh pr merge [m5,m7]"
+    pass "CREDIBLE-1576 item 1: MAIN arm site on gate diff refuses (exit 2 + REFUSED), no gh pr merge [m5,m7,x2]"
 else
     fail "CREDIBLE-1576 item 1: MAIN arm site not refused (rc=$_f_rc, refused=$(printf '%s' "$_f_out" | grep -c 'REFUSED'), merge-calls=$(grep -c 'pr merge' "$ARM_CALL_LOG"))"
 fi
@@ -517,16 +606,47 @@ fi
 # --auto-merge flag on a gate diff; must refuse (exit 2 + REFUSED) and NEVER
 # reach `gh pr merge`. Kills n9 (explicit-flag-only at the main site).
 ARM_CALL_LOG="$TMP/arm-G.log"; : > "$ARM_CALL_LOG"; export ARM_CALL_LOG
+rm -f "$TMP/armed-G.marker"
 set +e
 _g_out="$( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="scripts/ci/x.sh" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+    GITHUB_REPOSITORY=testorg/testrepo ARM_ARMED_MARKER="$TMP/armed-G.marker" \
     CHUMP_AMBIENT_LOG="$AMBIENT" CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-G.lock" \
     bash "$BOT_MERGE" --gap TEST-001 --no-local-build 2>&1 )"
 _g_rc=$?
 set -e
+# As in Case F, GITHUB_REPOSITORY makes the armer resolvable, so an n9/x2 mutant
+# that reaches the armer here WOULD call `gh pr merge` → merge-calls≥1 → FAIL.
 if [[ "$_g_rc" -eq 2 ]] && printf '%s' "$_g_out" | grep -q 'REFUSED' && ! grep -q 'pr merge' "$ARM_CALL_LOG"; then
-    pass "CREDIBLE-1576 item 2: MAIN arm site, internal-lane DEFAULT (no --auto-merge) on gate diff refuses (exit 2 + REFUSED), no gh pr merge [n9]"
+    pass "CREDIBLE-1576 item 2: MAIN arm site, internal-lane DEFAULT (no --auto-merge) on gate diff refuses (exit 2 + REFUSED), no gh pr merge [n9,x2]"
 else
     fail "CREDIBLE-1576 item 2: MAIN arm no-flag internal-lane not refused (rc=$_g_rc, refused=$(printf '%s' "$_g_out" | grep -c 'REFUSED'), merge-calls=$(grep -c 'pr merge' "$ARM_CALL_LOG"))"
+fi
+
+# ── CREDIBLE-1576 item 1 (round 4): MAIN arm site POSITIVE CONTROL (kills x2) ──
+# F and G assert the MAIN guard REFUSES a gate diff with no `gh pr merge`. That
+# is only meaningful if, ABSENT the guard, the main site WOULD reach `gh pr
+# merge` in this fixture. Round 3 could not prove it: the real auto-merge-armer
+# could not resolve the repo (mock git's `remote get-url` returns nothing), so it
+# always died with "Could not determine GITHUB_REPOSITORY" and never called
+# merge — a dropped/softened guard (x2) produced the SAME no-merge outcome, so x2
+# survived. This case drives the full per-PR flow on a NON-gate diff with
+# --auto-merge (repo resolvable via GITHUB_REPOSITORY, verify_arm satisfied via
+# the ARM_ARMED_MARKER stub) and asserts the MAIN site REACHES `gh pr merge` with
+# NO REFUSED. That is the positive control that makes F+G's no-merge assertion
+# mean "the guard stopped it", killing x2.
+ARM_CALL_LOG="$TMP/arm-H.log"; : > "$ARM_CALL_LOG"; export ARM_CALL_LOG
+rm -f "$TMP/armed-H.marker"
+set +e
+_h_out="$( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="docs/note.md" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+    GITHUB_REPOSITORY=testorg/testrepo ARM_ARMED_MARKER="$TMP/armed-H.marker" \
+    CHUMP_AMBIENT_LOG="$AMBIENT" CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-H.lock" \
+    bash "$BOT_MERGE" --gap TEST-001 --auto-merge --no-local-build 2>&1 )"
+_h_rc=$?
+set -e
+if grep -q 'pr merge' "$ARM_CALL_LOG" && ! printf '%s' "$_h_out" | grep -q 'REFUSED'; then
+    pass "CREDIBLE-1576 item 1: MAIN arm site on a NON-gate diff REACHES gh pr merge (positive control, no REFUSED) [x2]"
+else
+    fail "CREDIBLE-1576 item 1: MAIN non-gate positive control should reach gh pr merge (rc=$_h_rc, merge-calls=$(grep -c 'pr merge' "$ARM_CALL_LOG"), refused=$(printf '%s' "$_h_out" | grep -c 'REFUSED'))"
 fi
 
 # ── CREDIBLE-1576 item 4: CHUMP_SHIP_RUST exec shim never arms a gate PR ───────
@@ -575,45 +695,6 @@ else
     fail "CREDIBLE-1576 item 4: shim exec'd chump-ship on an uncomputable diff (fail-open) — $(cat "$SHIP_CALL_LOG")"
 fi
 
-# ── CREDIBLE-1576 item 3: a gate PR is forced out of Mode A (integrator batch) ─
-# Mode A routes a gap to the chump-integrator daemon, which pushes and arms with
-# --auto, bypassing the per-PR arm guard. A gate-file (or uncomputable) diff must
-# force Mode B BEFORE the Mode A `chump gap set --status ready_to_ship` write, so
-# the PR opens through the guarded per-PR flow instead of being batch-armed. The
-# pre-existing CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH test hook (not a new var)
-# reports the integrator HEALTHY so Mode A is actually REACHED — otherwise
-# INFRA-2523 fail-opens to B first and the CREDIBLE-1576 guard is never the
-# deciding factor. Assert: the diff emits the CREDIBLE-1576 force-B event AND the
-# Mode A ready_to_ship write NEVER happens (recorded via CHUMP_REC_LOG).
-#   n3  Mode A force-B removed    → gate diff stays Mode A → ready_to_ship written.
-#   n7  force-B not fail-closed   → uncomputable diff stays Mode A → ready_to_ship.
-_modea_run() {  # $1=label $2=diff-files $3=diff-rc ; caller sets MODEA_AMB + CHUMP_REC_LOG
-    local _lbl="$1" _df="$2" _rc="$3"
-    ( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" \
-        MOCK_GIT_DIFF_FILES="$_df" MOCK_GIT_DIFF_RC="$_rc" \
-        REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
-        CHUMP_AMBIENT_LOG="$MODEA_AMB" CHUMP_REC_LOG="$CHUMP_REC_LOG" \
-        CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-$_lbl.lock" \
-        CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH=1 \
-        bash "$BOT_MERGE" --gap TEST-001 --auto-merge --no-local-build ) >/dev/null 2>&1 || true
-}
-
-for _ma_case in "modea-gate:scripts/ci/x.sh:0:n3" "modea-uncomputable::1:n7"; do
-    _ma_lbl="${_ma_case%%:*}"; _ma_tmp="${_ma_case#*:}"
-    _ma_df="${_ma_tmp%%:*}"; _ma_tmp="${_ma_tmp#*:}"
-    _ma_rc="${_ma_tmp%%:*}"; _ma_mut="${_ma_tmp##*:}"
-    MODEA_AMB="$TMP/$_ma_lbl.ambient.jsonl"; : > "$MODEA_AMB"
-    CHUMP_REC_LOG="$TMP/$_ma_lbl.chump.log"; : > "$CHUMP_REC_LOG"
-    export MODEA_AMB CHUMP_REC_LOG
-    _modea_run "$_ma_lbl" "$_ma_df" "$_ma_rc"
-    if grep -q '"kind":"bot_merge_mode_failopen"' "$MODEA_AMB" \
-        && grep -q '"note":"CREDIBLE-1576"' "$MODEA_AMB" \
-        && ! grep -q 'ready_to_ship' "$CHUMP_REC_LOG"; then
-        pass "CREDIBLE-1576 item 3: $_ma_lbl diff forces Mode A→B (CREDIBLE-1576), no ready_to_ship write [$_ma_mut]"
-    else
-        fail "CREDIBLE-1576 item 3: $_ma_lbl should force Mode B with no ready_to_ship (failopen=$(grep -c bot_merge_mode_failopen "$MODEA_AMB"), cred1576=$(grep -c 'CREDIBLE-1576' "$MODEA_AMB"), ready_to_ship=$(grep -c ready_to_ship "$CHUMP_REC_LOG")) [$_ma_mut]"
-    fi
-done
 
 # ── CREDIBLE-1576 item 5: static assertions — guard reads NO env (m13), and the
 # gate-file glob list is a SINGLE literal constant (m4). The guard is a safety
