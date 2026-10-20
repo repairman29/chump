@@ -64,9 +64,12 @@ else
 fi
 
 # CREDIBLE-1578: an auto-block must NAME the failing step and KEEP the cycle log
-# (path in the note + event), not just rc + byte count. Replays the external-repo
-# signature that blocked 27 Olive gaps with no surviving log: a ~945B pre-agent
-# failure (`chump improve` could not find an onboard scan).
+# (path in the note + event), not just rc + byte count. Replays a SYNTHETIC
+# external-repo signature — a hypothesized ~945B pre-agent failure (`chump improve`
+# could not find an onboard scan). NOTE: this is a fabricated fixture, NOT a
+# reproduced Olive cycle; the live-cycle receipt that would confirm the real 27-gap
+# signature is carved to a lane-1 follow-up. This block proves the recording
+# machinery (AC2); the faithfulness guard below proves it never lies about the log.
 G5=CREDIBLE-1578-EXTERNAL
 rm -f "$TMP/chump-calls.log" "$TMP/ambient.jsonl"
 rm -rf "$TMP/.chump-locks/offense/logs"
@@ -110,5 +113,27 @@ if grep -Fq '"failing_step":"external_repo:no_onboard_scan"' "$TMP/ambient.jsonl
 else
     fail "CREDIBLE-1578: event missing failing_step/cycle_log"
 fi
+
+# CREDIBLE-1578 AC1 (faithfulness guard): the recorded "why" must be a FAITHFUL
+# receipt of the actual log, not an asserted/guessed cause. classify_failing_step
+# must name a specific pre-agent step ONLY when the log actually contains that
+# step's marker; for a log with none of the known markers it must fall back to a
+# receipt-grounded reason (tail:/unclassified), never fabricate a specific cause.
+# (The specific signature behind the 27 Olive blocks is not reproduced here — that
+# live-cycle receipt is carved to a lane-1 follow-up; this guard only proves the
+# classifier never lies about what the log says.)
+G6=CREDIBLE-1578-FAITHFUL
+_ulog="$TMP/cycle-$G6.log"
+printf '%s\n' '[improve] stage 1 progress, nothing actionable' \
+             'worker: generic line with none of the known markers' > "$_ulog"
+_step6="$(classify_failing_step "$_ulog")"
+case "$_step6" in
+    external_repo:*|in_repo_ship_on_external_gap|auth_or_billing|decompose_precheck)
+        fail "CREDIBLE-1578: classifier fabricated specific step '$_step6' for a log with no matching marker" ;;
+    tail:*|unclassified*)
+        ok "CREDIBLE-1578: classifier stays faithful to the log (receipt-grounded fallback, no guessed cause)" ;;
+    *)
+        fail "CREDIBLE-1578: classifier returned unexpected step '$_step6'" ;;
+esac
 
 echo "pass=$PASS fail=$FAIL"; [ "$FAIL" -eq 0 ]
