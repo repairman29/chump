@@ -32,6 +32,20 @@
 #  10. the call's only ${{ }} expressions are needs.*.result + the sha/pr/
 #      event_name inputs — nothing else drives the wait.
 #
+# CREDIBLE-1554 repair 5 (architect review 6273863218) closes the last hole:
+#  11. the call carries EXACTLY ONE --event-name, ONE --sha and ONE --pr flag of
+#      ANY value (the live-expression counts only counted the RIGHT value, and
+#      verified-wait.sh's parser kept the LAST one, so a 2nd
+#      `--event-name "workflow_dispatch"` handed merge_group the 300s window);
+#  12. the wait step's run: is a SINGLE command: after joining `\`-continuations
+#      it is one logical line of the exact form
+#        bash scripts/ci/verified-wait.sh --flag "value" [--flag "value" ...]
+#      so no second command (a `;`-chained one, or a new line that runs the
+#      script through a variable, `W=...; bash "$W.sh"`) can hide in the step.
+#  Mutant self-test: after the real ci.yml passes, the script re-runs itself
+#  against deliberately broken copies of ci.yml (MUTANTS at the bottom) and
+#  FAILs unless EVERY mutant is rejected, so a guard that stops biting is caught.
+#
 # Usage:
 #   bash scripts/ci/test-ci-verified-shape.sh
 #   CI_YML=path/to/ci.yml bash scripts/ci/test-ci-verified-shape.sh
@@ -249,10 +263,99 @@ if re.search(r'&&|\|\||(?:^|\s)(?:if|case)\s', wait_run_shell):
 else:
     ok("wait step run has no shell conditional (if/case/&&/||)")
 
+# ── CREDIBLE-1554 repair 5: ONE flag of ANY value + ONE command ───────────────
+# 11. Count the single-valued flags by NAME, whatever their value. The counts
+#     above (count_arg) only see the live expression, so `--event-name
+#     "${{ github.event_name }}"` followed by `--event-name "workflow_dispatch"`
+#     scored 1 there, and verified-wait.sh kept the last value. Require exactly
+#     one of each (the `--flag=value` spelling is counted too).
+from collections import Counter
+flag_counts = Counter(re.findall(r'(?<![\w-])--([a-z][a-z-]*)', wait_run))
+for flag in ("event-name", "sha", "pr"):
+    n = flag_counts.get(flag, 0)
+    if n == 1:
+        ok(f"verified-wait call has exactly one --{flag} flag (of any value)")
+    else:
+        bad(f"verified-wait call has {n} --{flag} flag(s); exactly one is allowed "
+            "(a repeated flag silently overrides the live value: last one wins)")
+
+# 12. The wait step's run: is ONE command. Join `\`-newline continuations, drop
+#     blank lines, and require a single logical line that is exactly
+#     `bash scripts/ci/verified-wait.sh` followed only by `--flag "value"` pairs
+#     (a value may hold ${{ }} expressions but no other `$`, backtick or `\`).
+#     This rejects a `;`/`|`/`&` chain, a redirect, a `$(...)`, and a second
+#     line that runs the script through a variable (`W=...; bash "$W.sh"`):
+#     the shapes the "verified-wait.sh appears once" count cannot see.
+logical = [ln.strip() for ln in re.sub(r'\\\n', ' ', wait_run).split("\n") if ln.strip()]
+VAL = r'"(?:[^"$`\\]|\$\{\{[^}]*\}\})*"'
+CMD = r'bash scripts/ci/verified-wait\.sh(?:\s+--[a-z][a-z-]*\s+' + VAL + r')*'
+if len(logical) == 1 and re.fullmatch(CMD, logical[0]):
+    ok('wait step run is a single command: bash scripts/ci/verified-wait.sh + --flag "value" pairs only')
+elif len(logical) != 1:
+    bad(f"wait step run has {len(logical)} logical lines; it must be ONE "
+        "verified-wait.sh command (a second line can hide a second call)")
+else:
+    bad('wait step run is not exactly `bash scripts/ci/verified-wait.sh --flag "value" ...`; '
+        f"extra shell (chain/redirect/substitution/variable call) found in: {logical[0]!r}")
+
 sys.exit(1 if fail else 0)
 PY
 rc=$?
 if [[ "$rc" -eq 0 ]]; then
   echo 'PASS: ci.yml verified job is wired to verified-wait.sh (CREDIBLE-1554)'
+fi
+
+# ── Mutant self-test (CREDIBLE-1554 repair 5) ─────────────────────────────────
+# Re-run this test against deliberately broken copies of ci.yml; EVERY mutant
+# must FAIL it. A mutant whose anchor text is missing from ci.yml is itself a
+# FAIL (the list is updated alongside the call site, never silently skipped).
+# The recursive runs set SHAPE_TEST_NO_MUTANTS=1 so they do not recurse.
+if [[ "$rc" -eq 0 && -z "${SHAPE_TEST_NO_MUTANTS:-}" ]]; then
+  MUT_DIR="$(mktemp -d)"
+  trap 'rm -rf "$MUT_DIR"' EXIT
+  CI_YML="$CI_YML" MUT_DIR="$MUT_DIR" python3 <<'MUTANTS_PY'
+import os, sys
+src = open(os.environ["CI_YML"]).read()
+I = " " * 12  # indent of the wait step's run: lines
+BS = "\\"     # the shell line-continuation backslash
+EV  = I + '--event-name "${{ github.event_name }}" ' + BS + "\n"
+SHA = I + '--sha "${{ github.event.pull_request.head.sha || github.sha }}" ' + BS + "\n"
+PR  = I + '--pr "${{ github.event.pull_request.number }}" ' + BS + "\n"
+ACP = I + '--cross "ACP protocol smoke test (Zed / JetBrains compatible)"' + "\n"
+MUTANTS = [
+    # (name, anchor, replacement); the anchor must occur EXACTLY once in ci.yml.
+    # repair 5 blocker: a 2nd --event-name AFTER the live one (last value wins).
+    ("dup-event-name-after-live", EV, EV + I + '--event-name "workflow_dispatch" ' + BS + "\n"),
+    # the same hole for the other single-valued flags.
+    ("dup-sha-after-live", SHA, SHA + I + '--sha "deadbeef" ' + BS + "\n"),
+    ("dup-pr-after-live", PR, PR + I + '--pr "1" ' + BS + "\n"),
+    # repair 5 item 2: a hidden 2nd call through a variable, on its own line.
+    ("hidden-var-call-new-line", ACP,
+     ACP + I + 'W=scripts/ci/verified-wait; bash "$W.sh" --lane "test=success" --cross "audit"' + "\n"),
+    # the same, chained onto the last line with `;`.
+    ("hidden-var-call-chained", ACP,
+     ACP[:-1] + '; W=scripts/ci/verified-wait; bash "$W.sh" --lane "test=success"' + "\n"),
+    # regression anchor (reviewer Mutant C, killed since repair 4).
+    ("hard-coded-event-name", EV, I + '--event-name "workflow_dispatch" ' + BS + "\n"),
+]
+for i, (name, anchor, repl) in enumerate(MUTANTS):
+    n = src.count(anchor)
+    if n != 1:
+        print(f"FAIL: mutant {name}: anchor occurs {n}x in ci.yml (expected 1); update MUTANTS", file=sys.stderr)
+        sys.exit(1)
+    mut = src.replace(anchor, repl)
+    assert mut != src
+    with open(os.path.join(os.environ["MUT_DIR"], f"{i:02d}-{name}.yml"), "w") as f:
+        f.write(mut)
+MUTANTS_PY
+  for m in "$MUT_DIR"/*.yml; do
+    name="$(basename "$m" .yml)"
+    if SHAPE_TEST_NO_MUTANTS=1 CI_YML="$m" bash "$0" >/dev/null 2>&1; then
+      echo "FAIL: mutant ${name} PASSED the shape test (a guard stopped biting)" >&2
+      rc=1
+    else
+      echo "PASS: mutant ${name} is rejected"
+    fi
+  done
 fi
 exit "$rc"
