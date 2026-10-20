@@ -198,5 +198,82 @@ else
     fail "Test 3: gap_ship_post_arm_failed not found in $EVENT_REG"
 fi
 
+# ── CREDIBLE-1576: gate-file auto-merge arm refusal ─────────────────────────
+# bot-merge.sh must REFUSE to arm --auto-merge (exit 2, named reason) when the
+# branch diff vs the merge base touches a gate file (ci.yml, scripts/ci/*,
+# scripts/git-hooks/*, crates/chump-preflight/*, verified-wait*); the PR may
+# still be pushed/opened — only the arm is refused. Exercised through the real
+# `--gate-arm-check` seam, which runs the exact constant + refusal routine the
+# live arm path uses, so a mutant that drops the refusal or empties the
+# gate-file list in bot-merge.sh fails these cases. Uses a REAL throwaway git
+# repo (not the mocked git above) so the diff is computed for real — strip the
+# mock dir ($TMP) that was prepended to PATH above so real git runs here and
+# inside bot-merge's `git diff`. Nothing after this block needs the mocks.
+PATH="${PATH#"$TMP:"}"
+GREPO="$TMP/gate-repo"
+git init -q "$GREPO"
+(
+  cd "$GREPO"
+  git config user.email t@example.com
+  git config user.name tester
+  echo base > README.md
+  git add -A && git commit -qm base
+  git update-ref refs/remotes/origin/main HEAD
+)
+
+_gate_rc() {
+    # $1 = subdir case label; remaining args passed to bot-merge --gate-arm-check
+    local rc
+    set +e
+    ( cd "$GREPO" && bash "$BOT_MERGE" --gate-arm-check "$@" ) >/dev/null 2>&1
+    rc=$?
+    set -e
+    printf '%s\n' "$rc"
+}
+
+# Case A: gate-file diff + --auto-merge → refuses with exit 2 + named reason.
+(
+  cd "$GREPO"
+  mkdir -p scripts/ci && echo 'x' > scripts/ci/new-gate.sh
+  git add -A && git commit -qm gate
+)
+set +e
+_ga_out="$( cd "$GREPO" && bash "$BOT_MERGE" --gate-arm-check --auto-merge 2>&1 )"
+_ga_rc=$?
+set -e
+if [[ "$_ga_rc" -eq 2 ]] && printf '%s' "$_ga_out" | grep -q 'REFUSED'; then
+    pass "CREDIBLE-1576: gate-file diff + --auto-merge refuses with exit 2 + named reason"
+else
+    fail "CREDIBLE-1576: expected exit 2 + REFUSED on gate-file arm (rc=$_ga_rc out=$_ga_out)"
+fi
+
+# Case B: non-gate diff + --auto-merge → arms as before (exit 0, no refusal).
+( cd "$GREPO" && git update-ref refs/remotes/origin/main HEAD )
+(
+  cd "$GREPO"
+  mkdir -p docs && echo 'y' > docs/note.md
+  git add -A && git commit -qm doc
+)
+_gb_rc="$(_gate_rc B --auto-merge)"
+if [[ "$_gb_rc" -eq 0 ]]; then
+    pass "CREDIBLE-1576: non-gate diff + --auto-merge arms as before (exit 0)"
+else
+    fail "CREDIBLE-1576: non-gate arm should exit 0, got rc=$_gb_rc"
+fi
+
+# Case C: gate-file diff WITHOUT --auto-merge → pushes as before (no refusal).
+( cd "$GREPO" && git update-ref refs/remotes/origin/main HEAD )
+(
+  cd "$GREPO"
+  mkdir -p scripts/git-hooks && echo 'z' > scripts/git-hooks/pre-x
+  git add -A && git commit -qm hook
+)
+_gc_rc="$(_gate_rc C)"
+if [[ "$_gc_rc" -eq 0 ]]; then
+    pass "CREDIBLE-1576: gate-file diff without --auto-merge pushes as before (exit 0)"
+else
+    fail "CREDIBLE-1576: gate-file-without-arm should exit 0, got rc=$_gc_rc"
+fi
+
 echo ""
-echo "All INFRA-1030 arm-ship-order checks passed (4/4)."
+echo "All INFRA-1030 arm-ship-order + CREDIBLE-1576 gate-file-arm checks passed."

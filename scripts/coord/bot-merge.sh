@@ -24,6 +24,66 @@ fi
 # shellcheck source=../lib/discover-flock.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 # (INFRA-1939: file-wide shellcheck disable moved to line 2 so source-on-line-24 is covered.)
+
+# ── CREDIBLE-1576: gate-file auto-merge arm guard ────────────────────────────
+# A gate-file change (CI workflow, ci-test, git-hook, chump-preflight crate, or
+# a verified-wait helper) must land under human review — never self-armed. So
+# bot-merge.sh REFUSES to arm --auto-merge (exit 2, named reason) when the PR
+# diff vs the merge base touches any gate file. The branch is still pushed and
+# the PR is still opened; only the unreviewed arm is refused (conductor
+# un-pause gate 3; parent CREDIBLE-1526). #5602 self-armed its own ci.yml gate
+# PR via dispatch --auto-merge and merged unreviewed on 2026-10-19 — this is
+# the refusal that closes that route.
+#
+# The gate-file list is a CONSTANT here and is NEVER read from an env var
+# (Chief standing rule 2026-10-20: no env override on a safety input).
+BOT_MERGE_GATE_FILE_GLOBS=(
+    '.github/workflows/*'
+    'scripts/ci/*'
+    'scripts/git-hooks/*'
+    'crates/chump-preflight/*'
+    '*verified-wait*'
+)
+
+# Prints the first gate file the branch diff touches and returns 0; returns 1
+# if the diff (name-only, vs the merge base) touches no gate file.
+bot_merge_gate_files_touched() {
+    local base="${1:-origin/main}" f glob
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        for glob in "${BOT_MERGE_GATE_FILE_GLOBS[@]}"; do
+            # shellcheck disable=SC2053  # intentional glob match, not literal
+            case "$f" in
+                $glob) printf '%s\n' "$f"; return 0 ;;
+            esac
+        done
+    done < <(git diff --name-only "${base}...HEAD" 2>/dev/null)
+    return 1
+}
+
+# The single arm-refusal routine, called before EVERY auto-merge arm site so
+# there is no route around it. If auto-merge is requested ($1==1) AND the diff
+# touches a gate file, print a named REFUSED reason and return 2 (caller does
+# `|| exit 2`). Otherwise return 0 and let the arm proceed.
+bot_merge_gate_arm_refused() {
+    local auto="${1:-0}" base="${2:-origin/main}" hit
+    [[ "$auto" == "1" ]] || return 0
+    hit="$(bot_merge_gate_files_touched "$base")" || return 0
+    printf '\033[0;31mREFUSED: bot-merge will not arm --auto-merge — PR diff touches gate file %s (CREDIBLE-1576 gate-file guard). The branch is pushed and the PR is open; land it only after review.\033[0m\n' \
+        "$hit" >&2
+    return 2
+}
+
+# Test/ops seam (explicit CLI arg — the systemd unit/timer never passes it):
+# `--gate-arm-check [--auto-merge]` runs ONLY the real gate decision against the
+# current branch diff and exits — 2 if arming would be refused, 0 otherwise.
+# Exercises the exact constant + refusal routine the arm path below uses.
+if [[ "${1:-}" == "--gate-arm-check" ]]; then
+    _gac_auto=0
+    for _gac_arg in "$@"; do [[ "$_gac_arg" == "--auto-merge" ]] && _gac_auto=1; done
+    bot_merge_gate_arm_refused "$_gac_auto" || exit $?
+    exit 0
+fi
 #
 # bot-merge.sh — Automated ship pipeline for agent branches.
 #
@@ -2105,6 +2165,9 @@ if [[ "${CHUMP_BOT_MERGE_RECOVERY_MODE:-0}" == "1" ]]; then
     fi
 
     if [[ -n "$_recover_pr_num" && "${AUTO_MERGE:-0}" == "1" ]]; then
+        # CREDIBLE-1576: same refusal on the recovery arm path — the PR is
+        # already created above, so it survives; only the arm is refused.
+        bot_merge_gate_arm_refused "$AUTO_MERGE" || exit 2
         stage_start "recovery: arm auto-merge"
         if arm_policy_allows "$_recover_pr_num" "bot-merge.sh(recovery)"; then
             gh pr merge "$_recover_pr_num" --auto --squash 2>/dev/null || true
@@ -4255,6 +4318,10 @@ _bm_step_start "pr_merge_arm"
 # is always visible in the run log and auditable.
 info "bot-merge: consensus merge gate mode=${CHUMP_CONSENSUS_MERGE_GATE:-0} (CHUMP_CONSENSUS_MERGE_GATE; shadow-first per CREDIBLE-1524)"
 if [[ $AUTO_MERGE -eq 1 ]]; then
+    # CREDIBLE-1576: refuse to self-arm a gate-file PR. Reached only after the
+    # branch is pushed and the PR is open, so the PR survives — only the arm is
+    # refused (exit 2, named reason). Placed before any gh-pr-merge-arm call.
+    bot_merge_gate_arm_refused "$AUTO_MERGE" || exit 2
     TARGET_PR="${EXISTING_PR:-}"
     if [[ -z "$TARGET_PR" ]]; then
         TARGET_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
