@@ -61,7 +61,11 @@ classify_failing_step() {
     if grep -qiE 'git clone .* failed|could not fetch PR branch|git worktree add .* failed|timed out .* waiting for a concurrent clone' "$log"; then echo "external_repo:clone_or_worktree"; return 0; fi
     if grep -qiE 'staged [0-9,]+ untracked|docs/gaps/.*untracked|in-repo ship' "$log"; then echo "in_repo_ship_on_external_gap"; return 0; fi
     if grep -qiE 'Invalid authentication credentials|authentication_error|API Error: 401|credit balance is too low' "$log"; then echo "auth_or_billing"; return 0; fi
-    if grep -qiE 'decompose' "$log"; then echo "decompose_precheck"; return 0; fi
+    # CREDIBLE-1578 faithfulness: only a decompose *failure* names this step. A bare
+    # mention of "decompose" (a normal "Stage: decompose umbrella" progress line) is
+    # NOT a precheck failure, so require a failure phrase co-occurring with the word —
+    # never assert a cause the log does not actually show failing.
+    if grep -qiE 'decompose.*(failed|failure|error|aborted|could not|unable)|(failed|failure|error|aborted|could not|unable).*decompose' "$log"; then echo "decompose_precheck"; return 0; fi
     # Fallback: the last non-empty line, trimmed, quote-stripped, length-capped.
     local last
     last="$(grep -v '^[[:space:]]*$' "$log" 2>/dev/null | tail -1 | tr -d '\r"\\' | tr '\t' ' ' | cut -c1-120)"

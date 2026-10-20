@@ -136,4 +136,33 @@ case "$_step6" in
         fail "CREDIBLE-1578: classifier returned unexpected step '$_step6'" ;;
 esac
 
+# CREDIBLE-1578 AC1 (faithfulness guard, decompose over-broadness): the review's
+# attack surface — the old `decompose` marker matched ANY line containing the word,
+# so a benign "Stage: decompose umbrella" progress line was fabricated into a
+# `decompose_precheck` cause. The marker must now fire ONLY when a decompose
+# *failure* phrase is literally present; a benign mention must fall through to the
+# receipt-grounded tail. (G7a kills the over-broad regression; G7b proves a real
+# decompose failure is still named.)
+G7=CREDIBLE-1578-DECOMPOSE
+_dblog="$TMP/cycle-$G7-benign.log"
+printf '%s\n' '[improve] Stage 2: decompose umbrella into sub-gaps' \
+             'worker: decompose produced 4 sub-gaps, proceeding' > "$_dblog"
+_step7="$(classify_failing_step "$_dblog")"
+case "$_step7" in
+    decompose_precheck)
+        fail "CREDIBLE-1578: classifier fabricated 'decompose_precheck' from a benign decompose mention" ;;
+    tail:*|unclassified*)
+        ok "CREDIBLE-1578: benign 'decompose' mention stays faithful (no fabricated precheck failure)" ;;
+    *)
+        fail "CREDIBLE-1578: unexpected step '$_step7' for a benign decompose log" ;;
+esac
+_dflog="$TMP/cycle-$G7-fail.log"
+printf '%s\n' 'chump gap decompose: precheck failed — no acceptance criteria' > "$_dflog"
+_step7b="$(classify_failing_step "$_dflog")"
+if [ "$_step7b" = "decompose_precheck" ]; then
+    ok "CREDIBLE-1578: a real decompose failure is still named decompose_precheck"
+else
+    fail "CREDIBLE-1578: decompose failure not classified (got '$_step7b')"
+fi
+
 echo "pass=$PASS fail=$FAIL"; [ "$FAIL" -eq 0 ]
