@@ -63,4 +63,52 @@ else
     fail "Capability (unverified_ship) did not escalate (got auto-blocked instead)"
 fi
 
+# CREDIBLE-1578: an auto-block must NAME the failing step and KEEP the cycle log
+# (path in the note + event), not just rc + byte count. Replays the external-repo
+# signature that blocked 27 Olive gaps with no surviving log: a ~945B pre-agent
+# failure (`chump improve` could not find an onboard scan).
+G5=CREDIBLE-1578-EXTERNAL
+rm -f "$TMP/chump-calls.log" "$TMP/ambient.jsonl"
+rm -rf "$TMP/.chump-locks/offense/logs"
+_clog="$TMP/cycle-$G5.log"
+cat > "$_clog" <<'LOG'
+[improve] Stage 1: PICK — scout repairman29/olive...
+chump improve: reading latest onboard scan: no onboard scan found under /x — run `chump onboard repairman29/olive` first
+LOG
+_clogsz="$(wc -c < "$_clog" | tr -d ' ')"
+n=$(offense_bump $G5); offense_maybe_block $G5 "$n" "timeout" 124 "$_clogsz" "$_clog"
+n=$(offense_bump $G5); offense_maybe_block $G5 "$n" "timeout" 124 "$_clogsz" "$_clog"
+n=$(offense_bump $G5); offense_maybe_block $G5 "$n" "timeout" 124 "$_clogsz" "$_clog"
+
+# (a) the block note names the failing step classified from the real log
+if grep -Fq "Failing step: external_repo:no_onboard_scan" "$TMP/chump-calls.log" 2>/dev/null; then
+    ok "CREDIBLE-1578: block note names the failing step"
+else
+    fail "CREDIBLE-1578: block note missing 'Failing step: external_repo:no_onboard_scan'"
+fi
+
+# (b) the cycle log is preserved to a durable path AND that path is in the note
+_kept="$(ls "$TMP/.chump-locks/offense/logs/${G5}-block-"*.log 2>/dev/null | head -1)"
+if [ -n "$_kept" ] && [ -f "$_kept" ] \
+   && grep -Fq "Cycle log kept at: $_kept" "$TMP/chump-calls.log" 2>/dev/null; then
+    ok "CREDIBLE-1578: cycle log preserved + exact path recorded in note"
+else
+    fail "CREDIBLE-1578: cycle log not preserved or path not in note (kept='$_kept')"
+fi
+
+# (c) the preserved copy is byte-identical to the source log (a real receipt)
+if [ -n "$_kept" ] && cmp -s "$_clog" "$_kept"; then
+    ok "CREDIBLE-1578: preserved log is byte-identical to the cycle log"
+else
+    fail "CREDIBLE-1578: preserved log differs from the source cycle log"
+fi
+
+# (d) the gap_auto_blocked ambient event carries failing_step + cycle_log
+if grep -Fq '"failing_step":"external_repo:no_onboard_scan"' "$TMP/ambient.jsonl" 2>/dev/null \
+   && grep -Fq "\"cycle_log\":\"$_kept\"" "$TMP/ambient.jsonl" 2>/dev/null; then
+    ok "CREDIBLE-1578: gap_auto_blocked event carries failing_step + cycle_log"
+else
+    fail "CREDIBLE-1578: event missing failing_step/cycle_log"
+fi
+
 echo "pass=$PASS fail=$FAIL"; [ "$FAIL" -eq 0 ]
