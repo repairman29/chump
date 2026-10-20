@@ -527,3 +527,93 @@ fn unknown_subcommand_with_trailing_args_exits_nonzero_no_prose() {
         stdout(&out)
     );
 }
+
+// ── RESILIENT-1652 (repair 6, item 3): `chump node is-paused` exit 0/1/2 ───────
+// The read-only pause predicate verb and node-converge's `_nc_paused`
+// delegation (which shells out to this exact verb) were exercised by no CI
+// test — the reviewer's R8 mutant (an inverted/short-circuited verdict)
+// survived with no `chump` on PATH. These spawn the compiled binary against a
+// temp CHUMP_STATE_DIR so the pause verdict is hermetic and the three exit
+// codes the shell depends on (0 paused / 1 not-paused / 2 usage) are pinned.
+// `run()` already exports CHUMP_STATE_DIR = <dir>/.chump, which is where the
+// verb resolves node.env (node_pause::node_env_path = <state_dir>/node.env).
+
+#[test]
+fn node_is_paused_exit_1_when_not_paused() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump")).unwrap();
+    // No node.env, no sentinel → not paused → exit 1.
+    let out = run(dir.path(), &["node", "is-paused"]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "is-paused must exit 1 when the state dir expresses no pause (stderr: {})",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn node_is_paused_exit_0_when_node_env_paused() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump")).unwrap();
+    // node.env lives at <state_dir>/node.env, and CHUMP_STATE_DIR = <dir>/.chump.
+    fs::write(
+        dir.path().join(".chump/node.env"),
+        "CHUMP_NODE_MODE=paused\n",
+    )
+    .unwrap();
+    let out = run(dir.path(), &["node", "is-paused"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "is-paused must exit 0 when node.env says CHUMP_NODE_MODE=paused (stderr: {})",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn node_is_paused_exit_2_on_unknown_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump")).unwrap();
+    // An unknown flag is a usage error (exit 2) — never confused with the
+    // 0/1 pause verdict the shell branches on.
+    let out = run(dir.path(), &["node", "is-paused", "--bogus"]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "is-paused must exit 2 on an unknown flag (stderr: {})",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn node_is_paused_ignores_env_override_r7() {
+    // RESILIENT-1652 (repair 6, R7): the production predicate reads ONLY
+    // node.env in the state dir — the removed CHUMP_NODE_MODE env override must
+    // not resurrect. A stray CHUMP_NODE_MODE=work-ready in the environment must
+    // NOT unpause a state dir whose node.env says paused.
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump")).unwrap();
+    fs::write(
+        dir.path().join(".chump/node.env"),
+        "CHUMP_NODE_MODE=paused\n",
+    )
+    .unwrap();
+    let bin = chump_bin();
+    let mut cmd = Command::new(&bin);
+    cmd.current_dir(dir.path());
+    for (k, v) in isolation_env(dir.path()) {
+        cmd.env(k, v);
+    }
+    cmd.env("CHUMP_NODE_MODE", "work-ready");
+    let out = cmd
+        .args(["node", "is-paused"])
+        .output()
+        .expect("spawn node is-paused");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "is-paused must read node.env, not a CHUMP_NODE_MODE env override (stderr: {})",
+        stderr(&out)
+    );
+}

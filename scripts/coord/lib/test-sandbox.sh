@@ -62,6 +62,14 @@ chump_test_sandbox_setup() {
     # where the gate reads it). Added here (not per-test) per the INFRA-2080
     # one-place-for-isolation-vars rule.
     export CHUMP_STATE_DIR="$sandbox/.chump"
+    # RESILIENT-1652 (repair 6): record, as a marker, the exact sandbox THIS lib
+    # created. write_sandbox_healthy_node refuses unless this marker is present
+    # AND equals the dir it is asked to write into — proving the dir came from
+    # the lib (an ephemeral mktemp sandbox), not a caller-set CHUMP_HOME that
+    # might point at a real node's home. A bare CHUMP_HOME match is NOT enough:
+    # test-fleet-kill-switch sets CHUMP_HOME inline, and a symlinked CHUMP_HOME
+    # could resolve into a real node dir. The marker is the lib's own signature.
+    export CHUMP_TEST_SANDBOX_MARKER="$sandbox"
 
     if [ -n "$seed_yaml" ]; then
         # `chump gap import --yaml <path>` derives repo-root from <path> by
@@ -86,7 +94,7 @@ chump_test_sandbox_setup() {
 # the sandbox dir atomically.
 chump_test_sandbox_cleanup() {
     local sandbox="$1"
-    unset CHUMP_HOME CHUMP_REPO CHUMP_REPO_ROOT CHUMP_STATE_DB CHUMP_LOCK_DIR CHUMP_STATE_DIR
+    unset CHUMP_HOME CHUMP_REPO CHUMP_REPO_ROOT CHUMP_STATE_DB CHUMP_LOCK_DIR CHUMP_STATE_DIR CHUMP_TEST_SANDBOX_MARKER
     if [ -n "$sandbox" ] && [ -d "$sandbox" ]; then
         rm -rf "$sandbox"
     fi

@@ -18,19 +18,44 @@
 # once the sandbox env is exported: the farmer heartbeat (CHUMP_REPO/.chump),
 # node.env (CHUMP_STATE_DIR) and the oauth token (CHUMP_HOME/.chump) all point
 # at <sandbox>/.chump. The function does NO HOME/passwd/getent lookup, has NO
-# allowlist or fallback, reads NO inherited CHUMP_STATE_DIR, and exits 2 when
-# the argument is missing, is not a directory, or is not the CHUMP_HOME the lib
-# exported (so a caller that forgot chump_test_sandbox_setup, or passed the
-# wrong dir, can never write outside its own sandbox).
+# allowlist or fallback, reads NO inherited CHUMP_STATE_DIR, and exits 2 unless
+# ALL of the following hold (so a caller that forgot chump_test_sandbox_setup,
+# set CHUMP_HOME by hand, pointed CHUMP_STATE_DIR at a real node dir, or passed
+# a symlinked sandbox can never write outside its own sandbox):
+#   - the argument is present and is a directory;
+#   - CHUMP_TEST_SANDBOX_MARKER is set and equals the argument — i.e. THIS dir
+#     was created by chump_test_sandbox_setup (repair 6). A bare CHUMP_HOME
+#     match is NOT sufficient: that let a caller-set CHUMP_HOME (F1) through;
+#   - CHUMP_HOME equals the argument;
+#   - CHUMP_STATE_DIR equals <argument>/.chump — the node.env the gate reads
+#     resolves from CHUMP_STATE_DIR, so an inherited/re-pointed CHUMP_STATE_DIR
+#     (F2) must never be treated as "the sandbox";
+#   - neither the sandbox leaf nor its .chump leaf is a symlink (F4) — an
+#     ancestor symlink (macOS /var→/private/var under mktemp) is fine, so this
+#     checks the leaf with -L, not a full pwd -P equality that would falsely
+#     refuse every macOS sandbox.
 #
 # Usage (AFTER chump_test_sandbox_setup "$SANDBOX"):
 #   source "$REPO_ROOT/scripts/ci/lib/sandbox-healthy-node.sh"
 #   write_sandbox_healthy_node "$SANDBOX"
 write_sandbox_healthy_node() {
     local sandbox="${1:-}"
-    if [ -z "$sandbox" ] || [ ! -d "$sandbox" ] || [ "$sandbox" != "${CHUMP_HOME:-}" ]; then
-        echo "[sandbox-healthy-node] REFUSING (exit 2): argument '$sandbox' must be an \
-existing directory equal to the lib's exported CHUMP_HOME ('${CHUMP_HOME:-}')" >&2
+    local refuse=""
+    if [ -z "$sandbox" ] || [ ! -d "$sandbox" ]; then
+        refuse="argument '$sandbox' is missing or not a directory"
+    elif [ "${CHUMP_TEST_SANDBOX_MARKER:-}" != "$sandbox" ]; then
+        refuse="CHUMP_TEST_SANDBOX_MARKER ('${CHUMP_TEST_SANDBOX_MARKER:-}') does not \
+record this dir — call chump_test_sandbox_setup first (dir did not come from the lib)"
+    elif [ "$sandbox" != "${CHUMP_HOME:-}" ]; then
+        refuse="argument != the lib's exported CHUMP_HOME ('${CHUMP_HOME:-}')"
+    elif [ "${CHUMP_STATE_DIR:-}" != "$sandbox/.chump" ]; then
+        refuse="CHUMP_STATE_DIR ('${CHUMP_STATE_DIR:-}') is not <sandbox>/.chump — \
+the gate's node.env would resolve elsewhere"
+    elif [ -L "$sandbox" ] || [ -L "$sandbox/.chump" ]; then
+        refuse="sandbox or its .chump is a symlink — refusing to write through it"
+    fi
+    if [ -n "$refuse" ]; then
+        echo "[sandbox-healthy-node] REFUSING (exit 2): $refuse" >&2
         exit 2
     fi
     local chump_dir="$sandbox/.chump"
