@@ -192,10 +192,10 @@ _nc_paused() {
     [[ "${CHUMP_NODE_MODE:-}" == "paused" ]] && return 0
     return 1
 }
-# RESILIENT-1652 (task 5): when this organ is SOURCED (not executed) — e.g. by
-# scripts/ci/test-resilient-1652-pause-and-oauth.sh to exercise `_nc_paused`
-# against node.env fixtures — return before the converge body runs. This is a
-# source-guard (BASH_SOURCE vs $0), NOT a skip/bypass env var: executed normally
+# RESILIENT-1652 (task 5): when this organ is SOURCED (not executed) — so a test
+# can exercise `_nc_paused` against node.env fixtures without running the whole
+# converge body — return before that body runs. This is a source-guard
+# (BASH_SOURCE vs $0), NOT a skip/bypass env var: executed normally
 # (`bash node-converge.sh`) BASH_SOURCE[0] == $0 and this is a no-op.
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     return 0 2>/dev/null || true
