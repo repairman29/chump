@@ -31,6 +31,28 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 skip() { echo "  SKIP: $1"; SKIP=$((SKIP+1)); }
 
+# RESILIENT-1652: snapshot the live gap store WAL-safely into the isolated repo.
+# state.db is WAL-mode; a plain `cp state.db` misses rows still resident in the
+# -wal sidecar whenever a concurrent reader (e.g. the live fleet on the shared
+# main checkout) holds a read transaction that blocks checkpoint-on-close. The
+# gap this test just reserved then isn't in the copy and `gap ship` reports it
+# "not found" (Assertions 4+5 flaked exactly this way under fleet load; CI
+# runners with no live fleet checkpoint on close and never saw it). `sqlite3
+# .backup` takes a consistent snapshot that includes WAL frames; fall back to
+# copying the -wal sidecar alongside the db (SQLite rebuilds -shm on open) when
+# the sqlite3 CLI is unavailable.
+snapshot_state_db() {
+    local src="$1" dest="$2"
+    if command -v sqlite3 >/dev/null 2>&1 && sqlite3 "$src" ".backup '$dest'" 2>/dev/null; then
+        return 0
+    fi
+    cp "$src" "$dest"
+    if [[ -f "$src-wal" ]]; then
+        cp "$src-wal" "$dest-wal"
+    fi
+    return 0
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
@@ -324,7 +346,7 @@ echo "--- Assertion 4: gap ship marks status done ---"
         fi
 
         if [[ -f "$REAL_STATE_DB" ]]; then
-            cp "$REAL_STATE_DB" "$SHIP_REPO/.chump/state.db"
+            snapshot_state_db "$REAL_STATE_DB" "$SHIP_REPO/.chump/state.db"
         fi
 
         # Provide docs/gaps/ so --update-yaml has a target directory.
@@ -408,7 +430,7 @@ echo "--- Assertion 5: Idempotent re-ship (ship twice, count events) ---"
         fi
 
         if [[ -f "$REAL_STATE_DB" ]]; then
-            cp "$REAL_STATE_DB" "$SHIP_REPO2/.chump/state.db"
+            snapshot_state_db "$REAL_STATE_DB" "$SHIP_REPO2/.chump/state.db"
         fi
 
         mkdir -p "$SHIP_REPO2/docs/gaps"
