@@ -52,6 +52,16 @@ chump_test_sandbox_setup() {
     export CHUMP_REPO_ROOT="$sandbox"
     export CHUMP_STATE_DB="$sandbox/.chump/state.db"
     export CHUMP_LOCK_DIR="$sandbox/.chump-locks"
+    # RESILIENT-1652: the farmer readiness gate resolves the node STATE dir
+    # (where node.env + the node pause sentinel live) from CHUMP_STATE_DIR first
+    # (src/farmer_status.rs resolve_node_state_dir). An INHERITED CHUMP_STATE_DIR
+    # — a fleet node's installer exports it to the REAL state dir — would make
+    # the gate read the real, possibly paused, node.env from inside a sandbox.
+    # Pin it to the sandbox's .chump so the sandbox is hermetic against that
+    # inherited env (and so write_sandbox_healthy_node's node.env lands exactly
+    # where the gate reads it). Added here (not per-test) per the INFRA-2080
+    # one-place-for-isolation-vars rule.
+    export CHUMP_STATE_DIR="$sandbox/.chump"
 
     if [ -n "$seed_yaml" ]; then
         # `chump gap import --yaml <path>` derives repo-root from <path> by
@@ -76,7 +86,7 @@ chump_test_sandbox_setup() {
 # the sandbox dir atomically.
 chump_test_sandbox_cleanup() {
     local sandbox="$1"
-    unset CHUMP_HOME CHUMP_REPO CHUMP_REPO_ROOT CHUMP_STATE_DB CHUMP_LOCK_DIR
+    unset CHUMP_HOME CHUMP_REPO CHUMP_REPO_ROOT CHUMP_STATE_DB CHUMP_LOCK_DIR CHUMP_STATE_DIR
     if [ -n "$sandbox" ] && [ -d "$sandbox" ]; then
         rm -rf "$sandbox"
     fi
