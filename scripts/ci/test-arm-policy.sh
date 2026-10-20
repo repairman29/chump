@@ -483,7 +483,13 @@ case "$1 $2" in
     if [[ "$a" == *isDraft* ]]; then cross=false; [[ "$pr" == 202 ]] && cross=true
       echo "{\"isDraft\":false,\"isCrossRepository\":$cross,\"headRefOid\":\"deadbeef1234567890abcdef1234567890abcdef\",\"author\":{\"login\":\"botx\"},\"headRefName\":\"chump/CREDIBLE-9${pr}-x\"}"; exit 0; fi
     if [[ "$a" == *"labels,comments"* ]]; then cat "$ORGCMT" 2>/dev/null || echo '{"labels":[],"comments":[]}'; exit 0; fi
-    if [[ "$a" == *statusCheckRollup* ]]; then echo '{"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"verified"}],"headRefOid":"deadbeef1234567890abcdef1234567890abcdef"}'; exit 0; fi
+    if [[ "$a" == *statusCheckRollup* ]]; then
+      # Test fixture only: ORG_ROLLUP lets a case drive a specific check rollup so
+      # verified_green can be pinned behaviorally. Default is all-green.
+      if [[ -n "${ORG_ROLLUP:-}" ]]; then printf '%s\n' "$ORG_ROLLUP"
+      else echo '{"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"verified"}],"headRefOid":"deadbeef1234567890abcdef1234567890abcdef"}'; fi
+      exit 0
+    fi
     if [[ "$a" == *isCrossRepository* ]]; then [[ "$pr" == 202 ]] && echo true || echo false; exit 0; fi
     if [[ "$a" == *headRefName* ]]; then echo "chump/CREDIBLE-9${pr}-x"; exit 0; fi
     exit 0;;
@@ -522,6 +528,37 @@ grep -q -- '--auto' "$ORGLOG.merges" && bad "organ AC3: merge used --auto (left 
     || bad "organ AC1: comment first line not VERDICT: APPROVE ($(sed -n '1p' "$ORGLOG.cmt.203" 2>/dev/null))"
 [[ "$(tail -1 "$ORGLOG.cmt.203")" == "VERDICT: APPROVE" ]] && ok "organ AC1: comment ends in VERDICT: APPROVE" \
     || bad "organ AC1: comment does not end in VERDICT: APPROVE"
+
+# verified_green BEHAVIORAL pinning (CREDIBLE-1542 review REQUIRED). The arm gate
+# is APPROVE (read from the comment) AND verified-green for the exact head. PR 203
+# is the AC3 PR: a clean APPROVE that arms. Here only the CHECK ROLLUP changes, so
+# any non-arm is attributable to verified_green alone. A NEUTRAL, SKIPPED, still-
+# running, empty, or head-mismatched rollup must HOLD the arm (no merge). This
+# kills the two surviving arm-gate mutants: H (verified_green counts NEUTRAL/
+# SKIPPED as green — repair item 12 N1) and I (verified_green gutted to return 0).
+echo "[d/verified_green] non-green check rollups hold the head-pinned arm"
+VG_HEAD=deadbeef1234567890abcdef1234567890abcdef
+# Positive control: the all-SUCCESS rollup still arms 203 (same as AC3).
+export ORG_ROLLUP='{"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"verified"}],"headRefOid":"'"$VG_HEAD"'"}'
+organ_run --pr 203
+grep -q '^MERGE pr merge 203 --squash --match-head-commit' "$ORGLOG.merges" \
+    && ok "verified_green: all-SUCCESS rollup for the approved head → armed (positive control)" \
+    || bad "verified_green: all-SUCCESS rollup did not arm 203 (merges: $(cat "$ORGLOG.merges"))"
+for spec in \
+    "a NEUTRAL check:{\"statusCheckRollup\":[{\"status\":\"COMPLETED\",\"conclusion\":\"NEUTRAL\",\"name\":\"verified\"}],\"headRefOid\":\"$VG_HEAD\"}" \
+    "a SKIPPED check:{\"statusCheckRollup\":[{\"status\":\"COMPLETED\",\"conclusion\":\"SKIPPED\",\"name\":\"verified\"}],\"headRefOid\":\"$VG_HEAD\"}" \
+    "a still-running check:{\"statusCheckRollup\":[{\"status\":\"IN_PROGRESS\",\"conclusion\":\"\",\"name\":\"verified\"}],\"headRefOid\":\"$VG_HEAD\"}" \
+    "an empty rollup:{\"statusCheckRollup\":[],\"headRefOid\":\"$VG_HEAD\"}" \
+    "a head-mismatched rollup:{\"statusCheckRollup\":[{\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\",\"name\":\"verified\"}],\"headRefOid\":\"cafef00dcafef00dcafef00dcafef00dcafef00d\"}" \
+  ; do
+    name="${spec%%:*}"; roll="${spec#*:}"
+    export ORG_ROLLUP="$roll"
+    organ_run --pr 203
+    [[ ! -s "$ORGLOG.merges" ]] \
+        && ok "verified_green: $name → NOT armed (head-pinned arm held)" \
+        || bad "verified_green: $name armed 203 (merges: $(cat "$ORGLOG.merges"))"
+done
+unset ORG_ROLLUP
 
 # AC4: CHANGES REQUIRED → exactly ONE repair dispatch, never --auto-merge, no merge.
 organ_run --pr 204
