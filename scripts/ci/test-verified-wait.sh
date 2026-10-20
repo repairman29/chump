@@ -45,6 +45,13 @@
 #  14b. the REAL wait loop (not just --print-budget) prints `budget=<N>s` on its
 #      poll/verdict lines — merge_group -> 5400s, workflow_dispatch -> 300s — so a
 #      budget shrunk AFTER the --print-budget early-exit is caught (item 3)
+#  14c. the real wait loop's DEADLINE is derived from that same printed budget:
+#      the first poll line's `<N>s left` is within 10s of `budget=<N>s` — so a
+#      deadline shrunk while the printed budget stays 5400 is caught (repair 5)
+#  15. a repeated --event-name / --sha / --pr is refused as an invocation error
+#      (exit 3) — never last-value-wins. A ci.yml that appends
+#      `--event-name "workflow_dispatch"` after the live one would otherwise hand
+#      merge_group the 300s dispatch window (CREDIBLE-1554 repair 5)
 #
 # Run locally: bash scripts/ci/test-verified-wait.sh
 
@@ -411,6 +418,75 @@ for EV in merge_group workflow_dispatch; do
         bad "[$EV] real-loop budget: expected budget=${exp}s in output, got <<$OUT>>"
     fi
 done
+
+# 14c. (repair 5, item 3) The wait DEADLINE comes from the same resolved budget
+#      the loop prints. With the cross lane never-seen the first poll line reads
+#      `budget=<B>s, <R>s left`; R must be within 10s of B. A mutant that hard-codes
+#      a shorter deadline (e.g. `deadline=$(( $(now_s) + 300 ))`) while the printed
+#      budget stays 5400 prints `budget=5400s, 299s left` and FAILs here.
+echo "--- real wait loop's deadline is derived from its printed budget (test 14c) ---"
+gh() { if [[ "${1:-}" == "run" ]]; then echo '[]'; else echo '[]'; fi; }
+export -f gh
+for EV in merge_group workflow_dispatch; do
+    exp="${EXPECT_REAL_BUDGET[$EV]}"
+    sha="${SHAS[$EV]}"
+    OUT="$(timeout 6 env GH_REPO="owner/repo" CHUMP_AMBIENT_LOG="$AMB" bash "$WAIT" \
+        --sha "$sha" --pr 999 --event-name "$EV" \
+        --lane "fast-checks=success" --lane "test=success" \
+        --cross "audit" --interval-s 2 2>&1)" || true
+    first_poll="$(grep -m1 'poll #1: PENDING' <<<"$OUT" || true)"
+    left="$(sed -n 's/.*budget=[0-9]*s, \([0-9]*\)s left.*/\1/p' <<<"$first_poll")"
+    if [[ -n "$left" ]] && (( left <= exp && left >= exp - 10 )); then
+        ok "[$EV] first poll has ${left}s left of budget=${exp}s (deadline derived from the printed budget)"
+    else
+        bad "[$EV] deadline not derived from budget=${exp}s: first poll line <<$first_poll>>"
+    fi
+done
+
+# 15. (repair 5) --event-name / --sha / --pr are single-valued: a repeat is an
+#     invocation error (exit 3), never a silent last-value-wins override. The
+#     first case is the reviewer's surviving mutant shape: the live event name
+#     followed by a second `--event-name workflow_dispatch`.
+echo "--- repeated single-valued flags are refused (test 15) ---"
+# Keep a never-seen gh stub exported: should the refusal ever regress, the loop
+# must hit the stub (and time out), never the real Checks API or real ambient.
+gh() { if [[ "${1:-}" == "run" ]]; then echo '[]'; else echo '[]'; fi; }
+export -f gh
+for dup in "--event-name merge_group --event-name workflow_dispatch" \
+           "--sha mergesha000 --sha othersha00" \
+           "--pr 999 --pr 1"; do
+    read -r -a DUP <<<"$dup"
+    base=(--lane "fast-checks=success" --cross "audit")
+    case "${DUP[0]}" in
+        --sha) base+=(--pr 999 --event-name merge_group) ;;
+        --pr)  base+=(--sha mergesha000 --event-name merge_group) ;;
+        *)     base+=(--sha mergesha000 --pr 999) ;;
+    esac
+    OUT="$(timeout 6 env GH_REPO="owner/repo" CHUMP_AMBIENT_LOG="$AMB" bash "$WAIT" \
+        "${base[@]}" "${DUP[@]}" --interval-s 1 2>&1)"
+    RC=$?
+    if [[ "$RC" -eq 3 ]] && grep -q "given more than once" <<<"$OUT"; then
+        ok "repeated ${DUP[0]} refused with exit 3 (no last-value-wins)"
+    else
+        bad "repeated ${DUP[0]}: expected exit 3 + 'given more than once', got rc=$RC <<$OUT>>"
+    fi
+done
+# --print-budget must refuse the duplicate too (it is the budget proof surface).
+OUT="$(bash "$WAIT" --print-budget --lane "a=success" \
+    --event-name merge_group --event-name workflow_dispatch 2>&1)"
+RC=$?
+if [[ "$RC" -eq 3 ]]; then
+    ok "--print-budget with a repeated --event-name is refused (exit 3), not BUDGET_S=300"
+else
+    bad "--print-budget with a repeated --event-name: expected exit 3, got rc=$RC <<$OUT>>"
+fi
+# A single --event-name still resolves normally (the refusal is not over-broad).
+OUT="$(bash "$WAIT" --print-budget --lane "a=success" --event-name merge_group 2>&1)"
+if [[ "$OUT" == "BUDGET_S=5400" ]]; then
+    ok "a single --event-name merge_group still resolves BUDGET_S=5400"
+else
+    bad "a single --event-name merge_group: expected BUDGET_S=5400, got <<$OUT>>"
+fi
 
 rm -f "$CNT" "$AMB"
 

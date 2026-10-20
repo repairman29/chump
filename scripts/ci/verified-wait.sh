@@ -74,6 +74,8 @@
 # timeout (5400s) when no --timeout-s is given (test-verified-wait.sh item 3).
 #
 # Exit codes: 0=PASS  1=FAIL (real red lane OR timeout)  3=invocation error.
+# --sha, --pr and --event-name are single-valued: a repeat of any of them is an
+# invocation error (exit 3), never a silent last-value-wins override.
 #
 # Requires: gh CLI (authenticated via GH_TOKEN/GITHUB_TOKEN), jq — only when at
 # least one --cross lane is given.
@@ -99,11 +101,25 @@ PRINT_BUDGET=0
 
 usage() { grep '^#' "$0" | sed 's/^# \?//'; }
 
+# once_flag — CREDIBLE-1554 repair 5: --sha, --pr and --event-name are
+# single-valued. The parser below would otherwise keep the LAST value, so a
+# second `--event-name "workflow_dispatch"` appended after the live
+# ${{ github.event_name }} would silently hand merge_group the 300s dispatch
+# window. Refuse a repeat as an invocation error (exit 3) instead of guessing.
+SEEN_FLAGS=" "
+once_flag() {
+    if [[ "$SEEN_FLAGS" == *" --$1 "* ]]; then
+        echo "[verified-wait] ERROR: --$1 given more than once (it is single-valued; a repeat would silently override the first)" >&2
+        exit 3
+    fi
+    SEEN_FLAGS+="--$1 "
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --sha)         SHA="$2"; shift 2 ;;
-        --pr)          PR="$2"; shift 2 ;;
-        --event-name)  EVENT_NAME="$2"; shift 2 ;;
+        --sha)         once_flag sha;        SHA="$2"; shift 2 ;;
+        --pr)          once_flag pr;         PR="$2"; shift 2 ;;
+        --event-name)  once_flag event-name; EVENT_NAME="$2"; shift 2 ;;
         --lane)        LOCAL_LANES+=("$2"); shift 2 ;;
         --cross)       CROSS_CHECKS+=("$2"); shift 2 ;;
         --timeout-s)   TIMEOUT_S="$2"; shift 2 ;;
@@ -155,6 +171,10 @@ if [[ -z "$TIMEOUT_S" ]]; then
         TIMEOUT_S="$DEFAULT_TIMEOUT_S"
     fi
 fi
+# The resolved budget is fixed from here on: it is what --print-budget prints,
+# what every poll/verdict line prints, AND what the wait deadline below is
+# computed from — one value, one place (CREDIBLE-1554 repair 5, item 3).
+readonly TIMEOUT_S
 
 # --print-budget: emit the resolved per-event wait budget and exit (no --sha, no
 # poll) — the proof surface that workflow_dispatch resolves to the short window
