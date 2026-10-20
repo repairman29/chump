@@ -212,11 +212,15 @@ label_remove() { GH pr edit "$1" ${REPO:+--repo "$REPO"} --remove-label "$2" >/d
 
 # dispatch_repair <pr> <head> — exactly ONE repair to the author lane, NEVER with
 # --auto-merge (AC4 / repair item 9). Derives the gap from the head branch name
-# (chump/<gap>-…) and dispatches it; if no gap can be derived, logs and skips.
+# and dispatches it; if no gap can be derived, logs and skips. Every real lane
+# branch is `claude/<gap-lowercase>-…` (e.g. claude/credible-1542); the legacy
+# `chump/<GAP>-…` form and a bare gap id are also accepted. The match is
+# case-insensitive via [A-Za-z] and the derived id is upper-cased for `chump
+# dispatch` (CREDIBLE-1542 review: the old `[A-Z]+` regex matched no real branch).
 dispatch_repair() {
     local pr="$1" head="$2" branch gap
     branch="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} --json headRefName --jq '.headRefName' 2>/dev/null || true)"
-    gap="$(printf '%s' "$branch" | sed -nE 's#^(chump/)?([A-Z]+-[0-9]+).*#\2#p' | tr '[:lower:]' '[:upper:]')"
+    gap="$(printf '%s' "$branch" | sed -nE 's#^(chump/|claude/)?([A-Za-z]+-[0-9]+).*#\2#p' | tr '[:lower:]' '[:upper:]')"
     if [[ -z "$gap" ]]; then
         log "PR #$pr: CHANGES REQUIRED but no gap id in branch '$branch' — no repair dispatched"
         return 0
@@ -224,6 +228,48 @@ dispatch_repair() {
     log "PR #$pr: CHANGES REQUIRED → dispatching one repair for $gap (no auto-merge)"
     chump dispatch "$gap" --backend headless >/dev/null 2>&1 || log "WARN: repair dispatch for $gap failed"
     DISPATCHED=$((DISPATCHED + 1))
+}
+
+# current_head_verdict <pr> <head> — prints APPROVE or CHANGES_REQUIRED when a
+# prior review comment already names THIS exact head sha (`head: <sha>`), rc 1
+# (no output) when the current head has no verdict yet. This is the idempotency
+# predicate behind design item (a): only PRs whose current head has NO verdict
+# are (re)reviewed, so a 15-min tick does not re-review, re-post, or re-dispatch
+# a PR it already judged this head. Reads comments via gh (no local ref needed).
+current_head_verdict() {
+    local pr="$1" head="$2" payload
+    payload="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
+        --json comments 2>/dev/null || true)"
+    [[ -n "$payload" ]] || return 1
+    HEAD_SHA="$head" python3 -c '
+import json, os, re, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+head = (os.environ.get("HEAD_SHA","") or "").lower()
+verd = re.compile(r"^[ \t]*VERDICT:[ \t]*(APPROVE|CHANGES[ \t]+REQUIRED)[ \t]*$", re.I | re.M)
+headmark = re.compile(r"^[ \t]*head:[ \t]*([0-9a-fA-F]{7,40})", re.I | re.M)
+cands = []
+for c in d.get("comments") or []:
+    b = c.get("body","") if isinstance(c, dict) else str(c)
+    hm = headmark.search(b or "")
+    if not hm:
+        continue
+    # A comment names THIS head when its >=7-hex marker is a prefix of the full head.
+    if head.startswith(hm.group(1).lower()):
+        cands.append((c.get("createdAt","") if isinstance(c, dict) else "", b))
+if not cands:
+    sys.exit(1)
+cands.sort(key=lambda t: t[0])
+body = cands[-1][1]
+hits = [("APPROVE" if m.group(1).upper().startswith("APPROVE") else "CHANGES_REQUIRED")
+        for m in verd.finditer(body)]
+if not hits:
+    sys.exit(1)
+print("CHANGES_REQUIRED" if len(set(hits)) > 1 else hits[-1])
+sys.exit(0)
+' "$payload"
 }
 
 # process_pr <pr> — the whole per-PR decision. Testable with stub gh + claude.
@@ -244,7 +290,22 @@ process_pr() {
     fi
     [[ "$head" =~ ^[0-9a-fA-F]{7,40}$ ]] || { log "PR #$pr: no head sha — skip"; SKIPPED=$((SKIPPED+1)); return 0; }
 
-    # Already a current-head verdict? Then only (re)concile arming, don't re-review.
+    # Idempotency (design item (a)): if THIS head already has a verdict comment,
+    # do NOT re-review, re-post a verdict, or re-dispatch a repair — only reconcile
+    # arming on a prior APPROVE (so a PR that only went green after its APPROVE tick
+    # still arms). Without this, every 15-min tick re-reviews each PR (burning the
+    # budget) and re-dispatches a repair for each still-open CHANGES PR.
+    local prior
+    if prior="$(current_head_verdict "$pr" "$head")"; then
+        if [[ "$prior" == APPROVE ]]; then
+            log "PR #$pr: current-head verdict already APPROVE — reconciling arming only (no re-review)"
+            maybe_arm "$pr" "$head"
+        else
+            log "PR #$pr: current-head verdict already CHANGES REQUIRED — held, no re-review/re-dispatch"
+        fi
+        SKIPPED=$((SKIPPED+1)); return 0
+    fi
+
     local run_dir; run_dir="$(mktemp -d)"
     local gate_hit="" gate_rc
     if gate_hit="$(gate_files_touched "$pr" 2>/dev/null)"; then gate_rc=0; else gate_rc=$?; fi

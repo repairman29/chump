@@ -481,8 +481,9 @@ case "$1 $2" in
   "pr view")
     if [[ "$a" == *"--json files"* ]]; then [[ "$pr" == 201 ]] && echo ".github/workflows/ci.yml" || echo "src/foo.rs"; exit 0; fi
     if [[ "$a" == *isDraft* ]]; then cross=false; [[ "$pr" == 202 ]] && cross=true
-      echo "{\"isDraft\":false,\"isCrossRepository\":$cross,\"headRefOid\":\"deadbeef1234567890abcdef1234567890abcdef\",\"author\":{\"login\":\"botx\"},\"headRefName\":\"chump/CREDIBLE-9${pr}-x\"}"; exit 0; fi
-    if [[ "$a" == *"labels,comments"* ]]; then cat "$ORGCMT" 2>/dev/null || echo '{"labels":[],"comments":[]}'; exit 0; fi
+      echo "{\"isDraft\":false,\"isCrossRepository\":$cross,\"headRefOid\":\"deadbeef1234567890abcdef1234567890abcdef\",\"author\":{\"login\":\"botx\"},\"headRefName\":\"claude/credible-9${pr}-x\"}"; exit 0; fi
+    # Serves both review_hold_allows (labels,comments) and current_head_verdict (comments).
+    if [[ "$a" == *comments* ]]; then cat "$ORGCMT" 2>/dev/null || echo '{"labels":[],"comments":[]}'; exit 0; fi
     if [[ "$a" == *statusCheckRollup* ]]; then
       # Test fixture only: ORG_ROLLUP lets a case drive a specific check rollup so
       # verified_green can be pinned behaviorally. Default is all-green.
@@ -491,7 +492,7 @@ case "$1 $2" in
       exit 0
     fi
     if [[ "$a" == *isCrossRepository* ]]; then [[ "$pr" == 202 ]] && echo true || echo false; exit 0; fi
-    if [[ "$a" == *headRefName* ]]; then echo "chump/CREDIBLE-9${pr}-x"; exit 0; fi
+    if [[ "$a" == *headRefName* ]]; then echo "claude/credible-9${pr}-x"; exit 0; fi
     exit 0;;
   "pr diff") [[ "$pr" == 204 ]] && echo "FORCE_CHANGES diff" || echo "clean diff"; exit 0;;
   "pr comment")
@@ -591,6 +592,50 @@ organ_run --pr 202
 rm -f "$ORGLOG.cmt.203"
 organ_run --pr 203 --self-login botx
 if [[ -e "$ORGLOG.cmt.203" ]]; then bad "organ: own-lane PR was still reviewed"; else ok "organ: own-lane PR (author==self-login) skipped"; fi
+
+# Idempotency (design item (a) / CREDIBLE-1542 review REQUIRED): a PR whose CURRENT
+# head already has a verdict comment must NOT be re-reviewed, re-posted, or
+# re-dispatched on the next tick — only arming is reconciled. These ticks pre-seed
+# ORGCMT with a current-head verdict (so they do NOT use organ_run, which resets
+# ORGCMT) and assert the short-circuit. The killing mutant: delete the
+# current_head_verdict short-circuit in process_pr — then a current-head CHANGES
+# PR re-dispatches a repair every tick, and a current-head APPROVE PR re-posts a
+# verdict, failing the assertions below.
+echo "[d/idempotency] a current-head verdict short-circuits re-review/re-post/re-dispatch"
+IHEAD=deadbeef1234567890abcdef1234567890abcdef
+# (i) current-head CHANGES REQUIRED → no re-review, no re-post, no re-dispatch, no merge.
+: >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; rm -f "$ORGLOG.cmt.204"
+python3 - "$ORGCMT" "$IHEAD" <<'PY'
+import json, sys
+head = sys.argv[2]
+body = "VERDICT: CHANGES REQUIRED\nhead: %s\nblockers: x\nmutants: none\nVERDICT: CHANGES REQUIRED" % head
+json.dump({"labels": [{"name": "review-held"}],
+           "comments": [{"body": body, "createdAt": "2026-10-20T00:00:00Z"}]}, open(sys.argv[1], "w"))
+PY
+( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
+  bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" --pr 204 ) >/dev/null 2>&1 || true
+ndisp2="$(grep -c 'chump dispatch' "$ORGLOG.chump" 2>/dev/null || true)"; ndisp2="${ndisp2:-0}"
+[[ "$ndisp2" == 0 ]] && ok "organ idempotency: current-head CHANGES verdict → no re-dispatch" \
+    || bad "organ idempotency: re-dispatched despite an existing current-head verdict (got $ndisp2)"
+[[ ! -e "$ORGLOG.cmt.204" ]] && ok "organ idempotency: current-head CHANGES verdict → no re-posted comment" \
+    || bad "organ idempotency: re-posted a verdict for an already-judged head"
+[[ ! -s "$ORGLOG.merges" ]] && ok "organ idempotency: current-head CHANGES verdict → not merged" \
+    || bad "organ idempotency: a CHANGES-verdict head was merged"
+# (ii) current-head APPROVE → no re-review/re-post, but arming IS reconciled.
+: >"$ORGLOG.merges"; : >"$ORGLOG.chump"; rm -f "$ORGLOG.cmt.205"
+python3 - "$ORGCMT" "$IHEAD" <<'PY'
+import json, sys
+head = sys.argv[2]
+body = "VERDICT: APPROVE\nhead: %s\nblockers: none\nmutants: ok\nVERDICT: APPROVE" % head
+json.dump({"labels": [], "comments": [{"body": body, "createdAt": "2026-10-20T00:00:00Z"}]}, open(sys.argv[1], "w"))
+PY
+( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
+  bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" --pr 205 ) >/dev/null 2>&1 || true
+[[ ! -e "$ORGLOG.cmt.205" ]] && ok "organ idempotency: current-head APPROVE → not re-reviewed/re-posted" \
+    || bad "organ idempotency: re-posted a verdict for an already-approved head"
+grep -q '^MERGE pr merge 205 --squash --match-head-commit' "$ORGLOG.merges" \
+    && ok "organ idempotency: current-head APPROVE still reconciles arming (head-pinned merge)" \
+    || bad "organ idempotency: APPROVE head not armed on reconcile (merges: $(cat "$ORGLOG.merges"))"
 
 # Structural arm-site gate: the organ's arm path is guarded by the fail-closed
 # predicate and is head-pinned; it must NOT contain a `gh pr merge … --auto`.
