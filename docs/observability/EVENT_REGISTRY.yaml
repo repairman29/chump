@@ -14734,7 +14734,9 @@ events:
       on the node (outcome=ran, carrying the gap rollup done/total and trunk state),
       or refused to start (outcome=skipped) because an admission guard fired — another
       claude already running (the wait_quiet rule), free disk below the 20G floor after
-      the reaper, or the single-architect lock held.
+      the reaper, the local single-architect flock held (or flock missing), or another
+      host's cross-host architect lease fresh on origin (refs/architect-lease/, or the
+      lease unreadable / unwritable, fail closed).
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, outcome, rollup_done, rollup_total]
   # ── INFRA-8218 / CREDIBLE-1509: invariant-boundary gate reading (Phase R R6) ──

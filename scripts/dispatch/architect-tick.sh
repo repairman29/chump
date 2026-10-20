@@ -24,15 +24,30 @@
 #
 # ADMISSION (AC3): refuses to start when another `claude` is already running on
 # the node (the one-claude-per-node "wait_quiet" rule the chains use), when free
-# disk is under the floor (reaper first, then refuse under 20G), or when the
-# single-architect lock is already held (so it never races a desktop architect
-# session). Each refusal is a clean skip (exit 0) with an ambient emit.
+# disk is under the floor (reaper first, then refuse under 20G), when the local
+# single-architect flock is held (a prior tick still running on THIS node), or
+# when another host holds a fresh cross-host architect lease. Each refusal is a
+# clean skip (exit 0) with an ambient emit.
+#
+# THE SINGLE-ARCHITECT LOCK, stated plainly: the local flock only excludes
+# another tick on the same node. A Mac desktop architect session never takes
+# cuphead's flock. The cross-host exclusion is the lease on origin
+# (scripts/dispatch/architect-lease.sh, refs/architect-lease/<host>/<epoch>,
+# fresh for 40 minutes): the tick refuses while another host's lease is fresh and
+# writes its own before it runs. That excludes a desktop session ONLY if the
+# desktop session runs `architect-lease.sh check` before acting and
+# `architect-lease.sh heartbeat` once per loop. A desktop session that does not
+# run the helper is NOT excluded; the tick cannot see it.
 #
 # OUTPUTS (AC2): ~/.chump/architect/ticks/<UTC>.md plus a stable latest.md the
 # Mac session or the operator reads — board, trunk, nodes, rollup done+total.
 #
-# Runs on cuphead via chump-architect-tick.{service,timer} (shipped DISABLED;
-# enabling it is the operator's decision — see the PR body). Idempotent, safe to
+# Runs on cuphead via chump-architect-tick.{service,timer} (shipped DISABLED: no
+# organ manifest line enables it; the operator renders and enables the units by
+# hand, see the timer file's header). Hygiene-class in code: the unit name is a
+# SUBSTRATE_MARKERS entry (crates/chump-provision/src/scopes.rs), so the fleet
+# pause does not count it as a work organ, and it is in organ-reconcile.sh's
+# NODE_LOCAL_ORGAN_BASES, so a role-scoped reconcile never reaps it. Idempotent, safe to
 # run by hand. A step failing never aborts observability: the ambient emit always
 # fires so the tick's execution is provable, not assumed (DURABLE_FIX_DOCTRINE).
 #
@@ -49,7 +64,16 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 cd "$REPO_ROOT" || { echo "[architect-tick] cannot cd repo root" >&2; exit 1; }
 
 TIMEOUT_S="${CHUMP_ARCHITECT_TICK_TIMEOUT_S:-900}"
-MIN_DISK_G="${CHUMP_ARCHITECT_TICK_MIN_DISK_G:-20}"
+case "$TIMEOUT_S" in '' | *[!0-9]*) TIMEOUT_S=900 ;; esac
+# The agent run must end well inside the unit's TimeoutStartSec=1800.
+(( TIMEOUT_S > 1500 )) && TIMEOUT_S=1500
+(( TIMEOUT_S < 60 )) && TIMEOUT_S=60
+# The disk floor can be RAISED, never lowered below 20G (an env knob that
+# lowers it would be a way to switch the guard off).
+DISK_FLOOR_G=20
+MIN_DISK_G="${CHUMP_ARCHITECT_TICK_MIN_DISK_G:-$DISK_FLOOR_G}"
+case "$MIN_DISK_G" in '' | *[!0-9]*) MIN_DISK_G=$DISK_FLOOR_G ;; esac
+(( MIN_DISK_G < DISK_FLOOR_G )) && MIN_DISK_G=$DISK_FLOOR_G
 MODEL="${CHUMP_ARCHITECT_TICK_MODEL:-opus}"
 BUDGET_USD="${CHUMP_ARCHITECT_TICK_BUDGET_USD:-2.00}"
 CLAUDE_BIN="${CHUMP_ARCHITECT_TICK_CLAUDE_BIN:-claude}"
@@ -68,21 +92,59 @@ mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 log() { printf '[architect-tick %s] %s\n' "$(ts)" "$*"; }
+NODE_NAME="$(hostname -s 2>/dev/null || echo node)"
+
+# bounded <secs> cmd... — run a step under timeout(1) when it exists, so a hung
+# git fetch, reaper or agent can never pin the oneshot unit.
+bounded() {
+    local s="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${s}s" "$@"
+    else
+        "$@"
+    fi
+}
+
+# json_escape <string> — escape a value for a JSON string field: backslash,
+# double quote, and the control characters (tab/CR/LF become \t \r \n; the
+# rest are dropped).
+json_escape() {
+    local s="$1" out="" c i
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            '\') out+='\\' ;;
+            '"') out+='\"' ;;
+            $'\t') out+='\t' ;;
+            $'\n') out+='\n' ;;
+            $'\r') out+='\r' ;;
+            *) out+="$c" ;;
+        esac
+    done
+    printf '%s' "$out" | LC_ALL=C tr -d '\000-\010\013\014\016-\037'
+}
 
 # emit_skip <reason-slug> <detail> — one ambient architect_tick line marking a
 # refused/aborted tick (admission guard). rollup numbers are -1 (not measured).
 emit_skip() {
     local reason="$1" detail="${2:-}"
     printf '{"ts":"%s","kind":"architect_tick","node":"%s","outcome":"skipped","reason":"%s","rollup_done":-1,"rollup_total":-1,"detail":"%s"}\n' \
-        "$(ts)" "$(hostname -s 2>/dev/null || echo node)" "$reason" "$detail" \
+        "$(ts)" "$(json_escape "$NODE_NAME")" "$(json_escape "$reason")" "$(json_escape "$detail")" \
         >> "$AMBIENT" 2>/dev/null || true
 }
 # scanner-anchor: "kind":"architect_tick" — emitted by emit_skip above and by
 # the terminal emit below (both this script's own printf, RESILIENT-1634).
 
 # ── ADMISSION GUARD 1: single-architect lock (AC3) ──────────────────────────
-# A desktop architect session or a prior still-running tick holds this lock.
-# Non-blocking flock: if we cannot take it, another architect is live — skip.
+# A prior still-running tick on THIS node holds this lock (a desktop session on
+# another host does not; that is guard 4, the cross-host lease). Non-blocking
+# flock: if we cannot take it, another tick is live — skip. No flock binary means
+# no exclusion, so that refuses too (fail closed).
+if ! command -v flock >/dev/null 2>&1; then
+    log "flock(1) not on PATH — cannot take the single-architect lock; skip"
+    emit_skip flock_unavailable "flock not on PATH"
+    exit 0
+fi
 exec {LOCK_FD}>"$LOCK_FILE" 2>/dev/null || true
 if [[ -n "${LOCK_FD:-}" ]] && ! flock -n "$LOCK_FD"; then
     log "single-architect lock held ($LOCK_FILE) — another architect is running; skip"
@@ -93,14 +155,12 @@ fi
 # ── ADMISSION GUARD 2: one claude per node, the wait_quiet rule (AC3) ────────
 # Count live `claude` processes on the node OTHER than this script's own
 # subshell. The tick is the fleet's quiet-window beat: it must not add a
-# second concurrent claude. CHUMP_ARCHITECT_TICK_CLAUDE_COUNT overrides the
-# live count for tests (no real claude needed to prove the refusal).
+# second concurrent claude. There is no env override: the test stubs pgrep on
+# PATH instead, so production can never be told "zero claudes".
 claude_live_count() {
-    if [[ -n "${CHUMP_ARCHITECT_TICK_CLAUDE_COUNT:-}" ]]; then
-        echo "${CHUMP_ARCHITECT_TICK_CLAUDE_COUNT}"
-        return 0
-    fi
-    pgrep -fc '(^|/)claude( |$)|claude -p' 2>/dev/null || echo 0
+    local n
+    n="$(pgrep -fc '(^|/)claude( |$)|claude -p' 2>/dev/null | head -1)"
+    printf '%s' "${n:-0}"
 }
 _claude_n="$(claude_live_count)"
 case "$_claude_n" in '' | *[!0-9]*) _claude_n=0 ;; esac
@@ -111,21 +171,18 @@ if (( _claude_n > 0 )); then
 fi
 
 # ── ADMISSION GUARD 3: disk floor — reaper first, refuse under 20G (AC3) ─────
-# CHUMP_ARCHITECT_TICK_FREE_G overrides the measured free space for tests.
+# No env override for the measured free space: the test stubs df on PATH.
 free_disk_g() {
-    if [[ -n "${CHUMP_ARCHITECT_TICK_FREE_G:-}" ]]; then
-        echo "${CHUMP_ARCHITECT_TICK_FREE_G}"
-        return 0
-    fi
-    # Available GiB on the filesystem holding the repo (portable: df -k, /1024/1024).
-    df -k "$REPO_ROOT" 2>/dev/null | awk 'NR==2 {printf "%d", $4/1024/1024}' || echo 0
+    # Available GiB on the filesystem holding the repo. -P (POSIX) keeps one
+    # line per filesystem even for a long device name; -k is 1024-byte blocks.
+    df -Pk "$REPO_ROOT" 2>/dev/null | awk 'NR==2 {printf "%d", $4/1024/1024}'
 }
 _free_g="$(free_disk_g)"
 case "$_free_g" in '' | *[!0-9]*) _free_g=0 ;; esac
 if (( _free_g < MIN_DISK_G )); then
     log "free disk ${_free_g}G < floor ${MIN_DISK_G}G — running disk-pressure reaper first"
     REAPER="$REPO_ROOT/scripts/coord/disk-pressure-reaper.sh"
-    [[ -x "$REAPER" || -f "$REAPER" ]] && bash "$REAPER" >/dev/null 2>&1 || true
+    [[ -f "$REAPER" ]] && { bounded 600 bash "$REAPER" >/dev/null 2>&1 || true; }
     _free_g="$(free_disk_g)"
     case "$_free_g" in '' | *[!0-9]*) _free_g=0 ;; esac
     if (( _free_g < MIN_DISK_G )); then
@@ -136,16 +193,57 @@ if (( _free_g < MIN_DISK_G )); then
     log "reaper recovered disk to ${_free_g}G — proceeding"
 fi
 
+# ── ADMISSION GUARD 4: the cross-host single-architect lease (AC3) ──────────
+# The flock above cannot see a desktop architect on another host. The lease on
+# origin can (scripts/dispatch/architect-lease.sh): refuse while another host's
+# lease is fresh (40 min), then write ours before the agent runs. Unreadable or
+# unwritable leases refuse the tick (fail closed: we cannot prove we are alone).
+LEASE_HELPER="$REPO_ROOT/scripts/dispatch/architect-lease.sh"
+_lease_out="$(bounded 60 bash "$LEASE_HELPER" check 2>/dev/null)"
+_lease_rc=$?
+case "$_lease_rc" in
+    0) ;;
+    3)
+        log "another architect holds a fresh lease ($_lease_out) — skip"
+        emit_skip architect_lease_held "$_lease_out"
+        exit 0 ;;
+    *)
+        log "architect lease unreadable (rc=$_lease_rc) — cannot prove single architect; skip"
+        emit_skip architect_lease_unreadable "rc=$_lease_rc"
+        exit 0 ;;
+esac
+_lease_out="$(bounded 60 bash "$LEASE_HELPER" heartbeat 2>/dev/null)"
+_lease_rc=$?
+case "$_lease_rc" in
+    0) LEASE_REF="${_lease_out#lease }" ;;
+    3)
+        log "lost the lease race ($_lease_out) — skip"
+        emit_skip architect_lease_race_lost "$_lease_out"
+        exit 0 ;;
+    *)
+        log "could not write the architect lease (rc=$_lease_rc) — skip"
+        emit_skip architect_lease_write_failed "rc=$_lease_rc"
+        exit 0 ;;
+esac
+
 # ── Credentials (INFRA-3602 pattern): this beat runs from a bare systemd user
 # process, not an interactive claude session, so CLAUDE_CODE_OAUTH_TOKEN is not
-# inherited. Load the fleet's refreshed copy if neither auth env var is set. ──
-if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" && -z "${ANTHROPIC_API_KEY:-}" && -r "$HOME/.chump/oauth-token.json" ]]; then
-    _token=$(python3 -c "import json,sys; print(json.load(open('$HOME/.chump/oauth-token.json')).get('token',''))" 2>/dev/null)
+# inherited. Load the fleet's refreshed copy whenever it is not already set,
+# EVEN IF ANTHROPIC_API_KEY is set, and then prefer it: an API key outranks the
+# OAuth token in claude's auth order, and the fleet's API key is the known
+# depleted one (the presence-is-not-validity trap, RESILIENT-086). ──
+_tok_file="$HOME/.chump/oauth-token.json"
+if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" && -r "$_tok_file" ]]; then
+    _token="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("token",""))' "$_tok_file" 2>/dev/null)"
     [[ -n "${_token:-}" ]] && export CLAUDE_CODE_OAUTH_TOKEN="$_token"
     unset _token
 fi
+if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" && -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    log "subscription OAuth token present — unsetting ANTHROPIC_API_KEY so the agent uses the subscription"
+    unset ANTHROPIC_API_KEY
+fi
 
-git fetch origin main -q 2>/dev/null || true
+bounded 120 git fetch origin main -q 2>/dev/null || true
 
 # ── BRIEF: latest architect handoff + the previous tick report (the memory the
 # organ carries between runs). Newest HANDOFF.md wins; missing is fine. ───────
@@ -181,19 +279,21 @@ Your previous tick report:
 ${PREV_TICK_TEXT}
 
 THE TICK:
-1. BOARD: read open PRs cache-first (.chump/github_cache.db before any 'gh pr' \
-call, per CLAUDE.md) and score the 30-minute merge SLA — armed, all-green PRs \
-past 30m are breaches.
-2. TRUNK: is origin/main green right now? Name the single dominant cause if red.
-3. NODES: quick fleet-health read (disk, ship-rate, dead daemons, orphaned \
-leases) from ambient + chump health.
+1. BOARD: read open PRs cache-first ('scripts/dispatch/architect-ro.sh open-prs' \
+and 'scripts/dispatch/architect-ro.sh pr-checks <n>' before any 'gh pr' call, \
+per CLAUDE.md) and score the 30-minute merge SLA — armed, all-green PRs past \
+30m are breaches.
+2. TRUNK: is origin/main green right now? Name the single dominant cause if red \
+('scripts/dispatch/architect-ro.sh trunk-head', 'gh run list').
+3. NODES: quick fleet-health read (disk, ship-rate via \
+'scripts/dispatch/architect-ro.sh ship-log 1', dead daemons, orphaned leases) \
+from chump health.
 4. ROLLUP: count open vs done gaps ('chump gap list').
-5. UNSTICK — ONLY by rebase-behind or CI rerun. You may rerun a failed check \
-and rebase a BEHIND PR against its base. You must NOT: admin-merge (gh pr \
-merge --admin), use --no-verify, push to main, or set any bypass env var. Arm \
-auto-merge ONLY through the normal review-held predicate \
-(scripts/coord/lib/arm-policy.sh, CREDIBLE-1526) — never by hand. Do NOT \
-hand-implement any gap; file it and let the fleet build it.
+5. UNSTICK — ONLY by CI rerun ('gh run rerun') or the queue tender's \
+rebase-behind tick ('scripts/coord/queue-tender-loop.sh tick'). \
+NEVER arm auto-merge on any PR and NEVER merge any PR, through any script or command, and never by hand. \
+You must NOT admin-merge, use --no-verify, push anything, or set any bypass env \
+var. Do NOT hand-implement any gap; file it and let the fleet build it.
 6. FILE FINDINGS as gaps ('chump gap reserve') or A2A proposals \
 ('scripts/coord/broadcast.sh').
 7. LAST, print EXACTLY this block to stdout (and nothing after it):
@@ -205,24 +305,43 @@ rollup: done=<int> total=<int>
 findings: <one terse line: what you filed / unstuck, or 'clean tick'>
 ${END_MARK}
 
-Read + rerun + rebase-behind + file-findings only. Never merge, never push \
-code, never modify gap status beyond 'chump gap reserve'. If gh/cache access \
+Read + rerun + rebase-behind + file-findings only. Never arm, never merge, never \
+push, never modify gap status beyond 'chump gap reserve'. If gh/cache access \
 fails entirely, say so in the block rather than silently exiting."
 
 # ── Tool allowlist IS the enforcement (AC4), not just the prompt. --permission-mode
 # dontAsk default-denies everything NOT listed, so the absence of any merge /
 # push / --admin / bypass entry is what forbids them. Keep this list read-only,
-# rerun, rebase-behind, and file-findings — audited by scripts/ci/test-architect-tick.sh.
+# rerun, rebase-behind, and file-findings. scripts/ci/test-architect-tick.sh
+# parses the ACTUAL argv this script hands claude and fails on ANY entry not on
+# its expected list, so a new entry needs a reviewed test change too.
+#
+# No raw git / sqlite3: `git fetch --upload-pack=` and `git -c` execute
+# commands, `git log --output=` / `git diff --output=` write files, and
+# sqlite3's .shell/.system/-cmd execute commands. History and the GitHub cache
+# come only through scripts/dispatch/architect-ro.sh (fixed command lines,
+# sqlite3 -readonly, validated integer args). No cat/echo/printf/head/tail:
+# Read/Grep/Glob cover reading, and a redirect would turn them into writers.
 ARCH_ALLOWED_TOOLS=(
-    'Bash(git log*)' 'Bash(git status*)' 'Bash(git diff*)' 'Bash(git fetch*)'
+    'Bash(scripts/dispatch/architect-ro.sh *)'
     'Bash(gh pr list*)' 'Bash(gh pr view*)' 'Bash(gh pr checks*)'
     'Bash(gh run list*)' 'Bash(gh run view*)' 'Bash(gh run rerun*)'
-    'Bash(sqlite3*)' 'Bash(jq*)' 'Bash(cat*)' 'Bash(tail*)' 'Bash(head*)'
-    'Bash(printf*)' 'Bash(echo*)'
+    'Bash(jq*)'
     'Bash(chump gap list*)' 'Bash(chump gap show*)' 'Bash(chump gap reserve*)'
-    'Bash(chump health*)' 'Bash(chump kpi*)'
-    'Bash(scripts/coord/queue-tender-loop.sh*)'
+    'Bash(chump health*)' 'Bash(chump kpi report*)'
+    'Bash(scripts/coord/queue-tender-loop.sh tick)'
     'Bash(scripts/coord/broadcast.sh*)'
+)
+# Explicit denies (deny wins over allow): the write tools, every merge / push /
+# raw-API path, every interpreter or shell that could run an arbitrary string,
+# and the raw git / sqlite3 forms the wrapper replaces.
+ARCH_DENIED_TOOLS=(
+    'Edit' 'Write' 'NotebookEdit'
+    'Bash(gh pr merge*)' 'Bash(gh api*)' 'Bash(git push*)'
+    'Bash(bash*)' 'Bash(sh*)' 'Bash(zsh*)' 'Bash(env*)' 'Bash(sudo*)'
+    'Bash(python*)' 'Bash(perl*)' 'Bash(eval*)' 'Bash(exec*)' 'Bash(xargs*)'
+    'Bash(sqlite3*)' 'Bash(git fetch*)' 'Bash(git log*)' 'Bash(git diff*)' 'Bash(git -c*)'
+    'Bash(chump gap reserve*--no-outcome-required*)'
 )
 
 # `claude -p --dangerously-skip-permissions` refuses to run as root unless
@@ -236,19 +355,14 @@ cycle_rc=0
 CLAUDE_ARGS=(-p "$ARCH_PROMPT"
     --tools "Read,Grep,Glob,Bash"
     --allowedTools "${ARCH_ALLOWED_TOOLS[@]}"
-    --disallowedTools "Edit,Write,NotebookEdit"
+    --disallowedTools "${ARCH_DENIED_TOOLS[@]}"
     --permission-mode dontAsk
     --max-budget-usd "$BUDGET_USD"
     --model "$MODEL")
 
 if command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
-    if command -v timeout >/dev/null 2>&1; then
-        cycle_output="$(timeout "${TIMEOUT_S}s" "$CLAUDE_BIN" "${CLAUDE_ARGS[@]}" 2>&1)"
-        cycle_rc=$?
-    else
-        cycle_output="$("$CLAUDE_BIN" "${CLAUDE_ARGS[@]}" 2>&1)"
-        cycle_rc=$?
-    fi
+    cycle_output="$(bounded "$TIMEOUT_S" "$CLAUDE_BIN" "${CLAUDE_ARGS[@]}" 2>&1)"
+    cycle_rc=$?
 else
     log "WARN: claude binary '$CLAUDE_BIN' not on PATH — recording a no-agent tick"
     cycle_rc=127
@@ -271,16 +385,19 @@ trunk_line="$(sed -n 's/^trunk:[[:space:]]*//p' <<< "$report_body" | head -1)"
 
 {
     printf '# architect tick — %s\n\n' "$RUN_UTC"
-    printf 'node: %s\n' "$(hostname -s 2>/dev/null || echo node)"
+    printf 'node: %s\n' "$NODE_NAME"
+    printf 'lease: %s\n' "${LEASE_REF:-none}"
     printf 'agent_rc: %s\n\n' "$cycle_rc"
     printf '%s\n' "$report_body"
 } > "$TICK_FILE" 2>/dev/null || log "WARN: could not write $TICK_FILE"
 cp -f "$TICK_FILE" "$LATEST_MD" 2>/dev/null || log "WARN: could not update $LATEST_MD"
 
 # ── Terminal emit (AC5): always fires, carries the rollup numbers. ───────────
-printf '{"ts":"%s","kind":"architect_tick","node":"%s","outcome":"ran","agent_rc":%s,"rollup_done":%s,"rollup_total":%s,"trunk":"%s","tick_file":"%s"}\n' \
-    "$(ts)" "$(hostname -s 2>/dev/null || echo node)" "$cycle_rc" "$rollup_done" "$rollup_total" \
-    "${trunk_line//\"/}" "$TICK_FILE" \
+[[ "$rollup_done" =~ ^-?[0-9]+$ ]] || rollup_done=-1
+[[ "$rollup_total" =~ ^-?[0-9]+$ ]] || rollup_total=-1
+printf '{"ts":"%s","kind":"architect_tick","node":"%s","outcome":"ran","agent_rc":%s,"rollup_done":%s,"rollup_total":%s,"trunk":"%s","lease":"%s","tick_file":"%s"}\n' \
+    "$(ts)" "$(json_escape "$NODE_NAME")" "$cycle_rc" "$rollup_done" "$rollup_total" \
+    "$(json_escape "$trunk_line")" "$(json_escape "${LEASE_REF:-none}")" "$(json_escape "$TICK_FILE")" \
     >> "$AMBIENT" 2>/dev/null || true
 
 log "tick done (rc=$cycle_rc rollup=${rollup_done}/${rollup_total}) → $TICK_FILE"
