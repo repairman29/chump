@@ -48,6 +48,15 @@ case "$branch" in
 esac
 GH
 chmod +x "$BIN/gh"
+# RESILIENT-1635: Class D takes the node build lane lock and passes
+# `chump admit cargo` before deleting anything. Stub chump to admit, and point
+# the lane lock at a fixture path (never the real ~/.chump lock).
+cat > "$BIN/chump" <<'CHUMP'
+#!/usr/bin/env bash
+exit 0
+CHUMP
+chmod +x "$BIN/chump"
+export CHUMP_ARCH_LANE_LOCK="$TMP/architect-lane.lock"
 export PATH="$BIN:$PATH"
 # Force cache-miss so the gh fallback path is exercised deterministically.
 export CHUMP_CACHE_DB="$TMP/nonexistent-cache.db"
