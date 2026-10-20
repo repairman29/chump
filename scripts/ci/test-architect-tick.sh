@@ -101,7 +101,7 @@ SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 STUB_BIN="$SANDBOX/bin"
 FAKE_ROOT="$SANDBOX/repo"
-mkdir -p "$STUB_BIN" "$FAKE_ROOT/scripts/dispatch" "$FAKE_ROOT/scripts/coord" "$SANDBOX/home"
+mkdir -p "$STUB_BIN" "$FAKE_ROOT/scripts/dispatch" "$FAKE_ROOT/scripts/coord" "$SANDBOX/userhome"
 # The beat and the lease helper run as COPIES of the real files (same bytes),
 # so the disk reaper they reach is the sandbox stub, never the real one.
 cp "$BEAT" "$FAKE_ROOT/scripts/dispatch/architect-tick.sh"
@@ -212,7 +212,7 @@ reset_state() {
     echo 100 > "$DF_FILE"
 }
 run_beat() { # extra env passed as KEY=VAL ...
-    env PATH="$STUB_BIN:$PATH" HOME="$SANDBOX/home" \
+    env PATH="$STUB_BIN:$PATH" HOME="$SANDBOX/userhome" \
         CHUMP_ARCHITECT_HOME="$ARCH_HOME" \
         CHUMP_AMBIENT_LOG="$AMBIENT" \
         CHUMP_ARCHITECT_TICK_CLAUDE_BIN=claude \
@@ -332,15 +332,15 @@ fi
 
 # ── 9. auth: the subscription OAuth token is loaded and preferred ────────────
 reset_state
-mkdir -p "$SANDBOX/home/.chump"
-printf '{"token":"oauth-test-value"}\n' > "$SANDBOX/home/.chump/oauth-token.json"
+mkdir -p "$SANDBOX/userhome/.chump"
+printf '{"token":"oauth-test-value"}\n' > "$SANDBOX/userhome/.chump/oauth-token.json"
 run_beat ANTHROPIC_API_KEY=apikey-test-value
 if grep -qx 'oauth=oauth-test-value' "$ENV_FILE" 2>/dev/null && grep -qx 'apikey=<unset>' "$ENV_FILE" 2>/dev/null; then
     ok "OAuth token loaded even with ANTHROPIC_API_KEY set, and the API key is dropped"
 else
     fail "auth: want OAuth loaded + API key unset; got: $(tr '\n' ' ' < "$ENV_FILE" 2>/dev/null)"
 fi
-rm -f "$SANDBOX/home/.chump/oauth-token.json"
+rm -f "$SANDBOX/userhome/.chump/oauth-token.json"
 
 # ── 10. AC5: the ran emit is valid JSON even with a hostile trunk line ───────
 reset_state
