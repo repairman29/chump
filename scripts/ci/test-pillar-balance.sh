@@ -77,6 +77,7 @@ export CHUMP_HOME="$TMP"
 # blocks (only CHUMP_REPO changes), so one fixture here covers them all. No gate
 # loosening, no skip env var.
 # shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
+export HOME="$TMP" CHUMP_STATE_DIR="$TMP/.chump"  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"; write_healthy_node_fixture
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1

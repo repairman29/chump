@@ -55,6 +55,12 @@ export CHUMP_STATE_DB="$ROOT/.chump/state.db"
 export CHUMP_HOME="$TMP"
 export CHUMP_AUTONOMY_LEVEL_FILE="$TMP/.chump/AUTONOMY_LEVEL"
 mkdir -p "$TMP/.chump"; echo 5 > "$TMP/.chump/AUTONOMY_LEVEL"
+# RESILIENT-1652 (repair 5): export this test's OWN temp HOME + CHUMP_STATE_DIR
+# (inside $TMP) so the gate + healthy-node-fixture resolve the node state dir and
+# oauth inside the tempdir even on a real node that exports CHUMP_STATE_DIR.
+# CHUMP_REPO stays pinned at the real $ROOT (repo_root reads) — the helper SKIPS
+# the heartbeat there rather than planting it in the real repo.
+export HOME="$TMP" CHUMP_STATE_DIR="$TMP/.chump"
 # shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
 source "$ROOT/scripts/ci/lib/healthy-node-fixture.sh"; write_healthy_node_fixture
 export CHUMP_ALLOW_MAIN_WORKTREE=1

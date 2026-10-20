@@ -59,7 +59,11 @@ reserve() {  # domain priority effort title [extra-args...]
 }
 
 # ── DB WITH outcomes ─────────────────────────────────────────────────────────
-WITH="$(mktemp -d)"; chump_test_sandbox_setup "$WITH"; write_healthy_node_fixture
+# RESILIENT-1652 (repair 5): export this test's OWN temp HOME + CHUMP_STATE_DIR
+# (inside the sandbox) so the farmer gate + healthy-node-fixture resolve the node
+# state dir inside the tempdir even on a real node that exports CHUMP_STATE_DIR.
+WITH="$(mktemp -d)"; chump_test_sandbox_setup "$WITH"
+export HOME="$WITH" CHUMP_STATE_DIR="$WITH/.chump"; write_healthy_node_fixture
 "$BIN" outcome new --id GATEOUT --title "gate fixture outcome" >/dev/null 2>&1
 if "$BIN" outcome list 2>/dev/null | grep -q GATEOUT; then
     ok "fixture outcome GATEOUT created"
@@ -111,7 +115,8 @@ fi
 
 # ── EMPTY outcomes DB (vacuous-skip) ─────────────────────────────────────────
 chump_test_sandbox_cleanup "$WITH"
-EMPTY="$(mktemp -d)"; chump_test_sandbox_setup "$EMPTY"; write_healthy_node_fixture
+EMPTY="$(mktemp -d)"; chump_test_sandbox_setup "$EMPTY"
+export HOME="$EMPTY" CHUMP_STATE_DIR="$EMPTY/.chump"; write_healthy_node_fixture
 if "$BIN" outcome list 2>/dev/null | grep -q '\['; then
     fail "case 6 setup: fresh DB unexpectedly has outcomes"
 fi

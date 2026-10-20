@@ -47,6 +47,7 @@ export CHUMP_REPO="$TMP"
 # isolate via CHUMP_HOME (honored by src/farmer_status.rs) instead.
 export CHUMP_HOME="$TMP"
 export CHUMP_WORKTREE_ROOT="$TMP"
+export HOME="$TMP" CHUMP_STATE_DIR="$TMP/.chump"  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 write_healthy_node_fixture  # RESILIENT-1652: healthy node under CHUMP_HOME=$TMP
 export CHUMP_BINARY_STALENESS_CHECK=0
 # Bypass FLEET-029 ambient glance and INFRA-1149 similarity check in seed
@@ -122,6 +123,7 @@ git -C "$TMP2" config user.name "CI" 2>/dev/null || true
 export CHUMP_REPO="$TMP2"
 export CHUMP_HOME="$TMP2"  # CREDIBLE-1519: isolate farmer-gate oauth path
 export CHUMP_WORKTREE_ROOT="$TMP2"
+export HOME="$TMP2" CHUMP_STATE_DIR="$TMP2/.chump"  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 write_healthy_node_fixture  # RESILIENT-1652: healthy node under CHUMP_HOME=$TMP2
 
 # Seed 9 RESILIENT + 1 EFFECTIVE with real ACs
@@ -166,6 +168,7 @@ git -C "$TMP3" config user.name "CI" 2>/dev/null || true
 export CHUMP_REPO="$TMP3"
 export CHUMP_HOME="$TMP3"  # RESILIENT-1652: Scenario B rm -rf'd $TMP2; re-home the gate here
 export CHUMP_WORKTREE_ROOT="$TMP3"
+export HOME="$TMP3" CHUMP_STATE_DIR="$TMP3/.chump"  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 write_healthy_node_fixture  # RESILIENT-1652: healthy node under CHUMP_HOME=$TMP3
 
 # Seed 5 RESILIENT with real ACs (would be 100% if we add one more)

@@ -16,6 +16,15 @@ cd "$REPO_ROOT"
 # shellcheck disable=SC1091
 source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
 
+# RESILIENT-1652 (repair 5): `chump gap reserve` (invoked by gap-reserve.sh)
+# consults the RESILIENT-069 farmer readiness gate, which reds a fresh Linux CI
+# runner that has no ~/.chump/oauth-token.json. Each sandbox lays down an
+# explicit healthy-node fixture under its OWN temp CHUMP_HOME/CHUMP_STATE_DIR via
+# the ONE shared helper. No gate loosening, no skip env var.
+# shellcheck source=lib/healthy-node-fixture.sh
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"
+
 PASS=0
 FAIL=0
 TMPROOT=$(mktemp -d)
@@ -76,6 +85,14 @@ FLOCK_EOF
     local fixture_file="$sandbox/.fixture-gaps.yaml"
     printf '%s' "$fixture_yaml" | sed '/^gaps:$/d' > "$fixture_file"
     chump_test_sandbox_setup "$sandbox" --seed-yaml "$fixture_file"
+    # RESILIENT-1652 (repair 5): export this sandbox's OWN temp HOME +
+    # CHUMP_STATE_DIR (chump_test_sandbox_setup already set CHUMP_HOME=$sandbox)
+    # and lay down the healthy-node fixture there, so the reserve subshell below
+    # reads the gate GREEN by evidence inside $sandbox even on a real node that
+    # exports CHUMP_STATE_DIR at the real state dir.
+    export HOME="$sandbox"
+    export CHUMP_STATE_DIR="$sandbox/.chump"
+    write_healthy_node_fixture
 }
 
 # EFFECTIVE-466: is_skippable_gap — a gap is "skippable" (already spoken for)

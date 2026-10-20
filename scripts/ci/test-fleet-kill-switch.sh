@@ -76,6 +76,16 @@ mkdir -p "$FAKE_HOME/.chump"
 # kill-switch verdict) must first see a healthy node. Lay down the evidence in
 # $FAKE_HOME (the HOME every claim below runs under). No gate loosening, no skip
 # env var: an absent/empty/expired token on a real node still reds.
+# RESILIENT-1652 (repair 5): export this test's OWN temp HOME + CHUMP_STATE_DIR
+# (inside $FAKE_HOME) so the gate + healthy-node-fixture resolve the node state
+# dir and oauth inside the tempdir even on a real node that exports
+# CHUMP_STATE_DIR at the real state dir. Deliberately do NOT export CHUMP_HOME:
+# Test 7 runs bot-merge's `chump gap preflight` which resolves repo_root from
+# CHUMP_HOME when set — pinning it at $FAKE_HOME (not a git repo) would break the
+# preflight. HOME alone gives chump_state_home=$FAKE_HOME for the oauth read, and
+# the helper is called with $FAKE_HOME explicitly.
+export HOME="$FAKE_HOME"
+export CHUMP_STATE_DIR="$FAKE_HOME/.chump"
 # shellcheck source=scripts/ci/lib/healthy-node-fixture.sh
 source "$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"
 write_healthy_node_fixture "$FAKE_HOME"

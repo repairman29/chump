@@ -63,6 +63,11 @@ export CHUMP_REPO="$TMP"
 export CHUMP_HOME="$TMP"
 export CHUMP_REPO_ROOT="$TMP"
 export CHUMP_LOCK_DIR="$TMP/.chump-locks"
+# RESILIENT-1652 (repair 5): export this test's OWN temp HOME + CHUMP_STATE_DIR so
+# the farmer gate (and healthy-node-fixture) resolve the node state dir INSIDE
+# $TMP even on a real node that exports CHUMP_STATE_DIR at the real state dir.
+export HOME="$TMP"
+export CHUMP_STATE_DIR="$TMP/.chump"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1

@@ -80,7 +80,8 @@ export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
 
 # ── Scenario 1: over-budget P0 (>5) ─────────────────────────────────────────
 echo "[scenario 1: over-budget P0]"
-TMP1="$(mktemp -d)"; chump_test_sandbox_setup "$TMP1"; write_healthy_node_fixture
+TMP1="$(mktemp -d)"; chump_test_sandbox_setup "$TMP1"
+export HOME="$TMP1" CHUMP_STATE_DIR="$TMP1/.chump"; write_healthy_node_fixture  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 
 # 6 P0 gaps (one over budget)
 for i in $(seq 1 6); do
@@ -117,7 +118,8 @@ chump_test_sandbox_cleanup "$TMP1"
 # ── Scenario 2: pillar skew (one dominates >50%) ─────────────────────────────
 echo
 echo "[scenario 2: pillar skew]"
-TMP2="$(mktemp -d)"; chump_test_sandbox_setup "$TMP2"; write_healthy_node_fixture
+TMP2="$(mktemp -d)"; chump_test_sandbox_setup "$TMP2"
+export HOME="$TMP2" CHUMP_STATE_DIR="$TMP2/.chump"; write_healthy_node_fixture  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 
 # 10 EFFECTIVE P1 gaps — EFFECTIVE dominates; other pillars starved
 for i in $(seq 1 10); do
@@ -142,7 +144,8 @@ chump_test_sandbox_cleanup "$TMP2"
 # ── Scenario 3: all clean ────────────────────────────────────────────────────
 echo
 echo "[scenario 3: all clean]"
-TMP3="$(mktemp -d)"; chump_test_sandbox_setup "$TMP3"; write_healthy_node_fixture
+TMP3="$(mktemp -d)"; chump_test_sandbox_setup "$TMP3"
+export HOME="$TMP3" CHUMP_STATE_DIR="$TMP3/.chump"; write_healthy_node_fixture  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 
 # 2 per pillar → balanced, no P0s
 for p in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
@@ -175,7 +178,8 @@ chump_test_sandbox_cleanup "$TMP3"
 # ── Scenario 4: no-action-needed (exactly at floor, P0=0) ───────────────────
 echo
 echo "[scenario 4: no-action-needed]"
-TMP4="$(mktemp -d)"; chump_test_sandbox_setup "$TMP4"; write_healthy_node_fixture
+TMP4="$(mktemp -d)"; chump_test_sandbox_setup "$TMP4"
+export HOME="$TMP4" CHUMP_STATE_DIR="$TMP4/.chump"; write_healthy_node_fixture  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 
 # Exactly 2 per pillar, 0 P0s → no action
 for p in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
@@ -195,7 +199,8 @@ chump_test_sandbox_cleanup "$TMP4"
 # ── --json required keys ──────────────────────────────────────────────────────
 echo
 echo "[--json required keys]"
-TMP5="$(mktemp -d)"; chump_test_sandbox_setup "$TMP5"; write_healthy_node_fixture
+TMP5="$(mktemp -d)"; chump_test_sandbox_setup "$TMP5"
+export HOME="$TMP5" CHUMP_STATE_DIR="$TMP5/.chump"; write_healthy_node_fixture  # RESILIENT-1652 r5: own temp HOME+CHUMP_STATE_DIR
 _j5_out="$(mktemp)"
 "$BIN" gap rebalance --json > "$_j5_out" 2>/dev/null || true
 JSON5="$(cat "$_j5_out")"; rm -f "$_j5_out"
