@@ -32,6 +32,32 @@
 #   (m) a worktree whose target/ is a symlink is kept, link and pointee intact;
 #   (n) a symlinked worktree entry that resolves INSIDE the base (an alias of a
 #       nested checkout) is still kept: the -L check stands on its own.
+#
+# Repair-3 fixtures (review of 492aa340e), each killed by its own mutant:
+#   (o) structural: the reaper has no ${CHUMP_ARCH...:-} env default and never
+#       names the old lane-lock override variable (the lock path is fixed);
+#   (k) the lane lock is the one under the sandbox HOME; with it held, a decoy
+#       old-override env var aimed at /dev/null or at a free lock changes
+#       nothing: still nothing deleted;
+#   (p) Linux only: a same-uid NON-DUMPABLE process (environ/cwd/fd unreadable)
+#       whose cmdline names the worktree and which holds a file open under
+#       target/ keeps it (skipped with a message on macOS);
+#   (q) M13: with CHUMP_REAPER_SAFETY_CHECK=0 (so wt_has_live_bot_merge is off),
+#       a process whose cwd is in the worktree SOURCE tree keeps it;
+#   (r) N2: a file held open only under .cargo-test-target (cwd elsewhere, no
+#       CARGO_TARGET_DIR) keeps the worktree;
+#   (s) N6: a worktree whose .cargo-test-target is a symlink is kept whole;
+#   (t) the github cache is parsed with json_extract: a row saying
+#       "state": "closed" (json.dumps spacing, REST or webhook shape) reads as
+#       closed and is reaped; a row with no parseable state is UNKNOWN and kept
+#       even though gh would say OPEN;
+#   (u) CARGO_TARGET_DIR spelled through a symlink alias of the worktree keeps
+#       it (resolved with cd -P on both platforms), including a value that does
+#       not exist yet (its longest existing prefix is resolved).
+#
+# Isolation: the reaper runs with HOME set to a sandbox dir (test-sandbox.sh),
+# so its fixed $HOME/.chump/architect-lane.lock resolves inside the sandbox;
+# no env var redirects the lock.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,6 +71,17 @@ echo "=== test-cargo-target-reaper-class-d-open-idle.sh ==="
 
 command -v flock >/dev/null 2>&1 || fail "flock is required (Class D takes the node build lane lock)"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required"
+command -v sqlite3 >/dev/null 2>&1 || fail "sqlite3 is required (the github cache fixtures)"
+
+# ── (o) structural: no CHUMP_ARCH* env default, no lane-lock override ───────
+echo "--- (o) the lane lock path takes no env override ---"
+ARCH_DEFAULTS="$(grep -nE '[$][{]CHUMP_ARCH[A-Z_]*:-' "$REAPER" || true)"
+[[ -z "$ARCH_DEFAULTS" ]] \
+    || fail "(o) the reaper has a CHUMP_ARCH* env default (a safety-input bypass): ${ARCH_DEFAULTS}"
+LANE_OVERRIDE_REFS="$(grep -n 'CHUMP_ARCH_LANE_LOCK' "$REAPER" || true)"
+[[ -z "$LANE_OVERRIDE_REFS" ]] \
+    || fail "(o) the reaper still reads the lane-lock override variable: ${LANE_OVERRIDE_REFS}"
+pass "(o) no CHUMP_ARCH* env default and no lane-lock override in the reaper"
 
 TMP="$(mktemp -d)"
 declare -a BG_PIDS=()
@@ -94,9 +131,18 @@ exit 0
 CHUMP
 chmod +x "$BIN/chump"
 export PATH="$BIN:$PATH"
-export CHUMP_CACHE_DB="$TMP/nonexistent-cache.db"  # force gh fallback
-# The node build lane lock Class D takes; a fixture path, never ~/.chump.
-LANE_LOCK="$TMP/architect-lane.lock"
+# (t) a github cache holding rows only for the cache fixtures' branches; every
+# other branch misses it and takes the gh fallback.
+CACHE_DB="$TMP/github_cache.db"
+export CHUMP_CACHE_DB="$CACHE_DB"
+# The reaper runs under a sandbox HOME, so the node build lane lock it takes
+# ($HOME/.chump/architect-lane.lock, a fixed path) is the sandbox's, never the
+# real ~/.chump one.
+SANDBOX_HOME="$TMP/home"
+# shellcheck source=scripts/coord/lib/test-sandbox.sh
+source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
+chump_test_sandbox_setup "$SANDBOX_HOME"
+LANE_LOCK="$SANDBOX_HOME/.chump/architect-lane.lock"
 
 # backdate <seconds-ago> <path>... — portable (GNU + BSD) mtime backdate.
 backdate() {
@@ -149,6 +195,35 @@ WT_OPENFILE="$(mk_wt resilient-1811 chump/resilient-1811-open)"
 WT_DEEP="$(mk_wt resilient-1812 chump/resilient-1812-open)"
 WT_NOGAP="$(mk_wt scratch-wt chump/scratch-open)"
 WT_LINKTGT="$(mk_wt resilient-1813 chump/resilient-1813-open)"
+WT_BLIND="$(mk_wt resilient-1815 chump/resilient-1815-open)"
+WT_M13="$(mk_wt resilient-1816 chump/resilient-1816-open)"
+WT_N2="$(mk_wt resilient-1817 chump/resilient-1817-open)"
+WT_N6="$(mk_wt resilient-1818 chump/resilient-1818-open)"
+WT_CACHE_UNK="$(mk_wt resilient-1819 chump/resilient-1819-open)"
+WT_CACHE_SHUT="$(mk_wt cachewt-shut chump/cachewt-shut)"
+WT_CACHE_HOOK="$(mk_wt cachewt-hook chump/cachewt-hook)"
+WT_ALIAS1="$(mk_wt resilient-1820 chump/resilient-1820-open)"
+WT_ALIAS2="$(mk_wt resilient-1821 chump/resilient-1821-open)"
+
+# (t) cache rows. merged_at is NULL everywhere, so only raw_payload_json says
+# what state the PR is in. json.dumps spacing ("state": "closed") on purpose.
+sqlite3 "$CACHE_DB" <<'SQL'
+CREATE TABLE pr_state (number INTEGER PRIMARY KEY, head_ref TEXT, merged_at TEXT, raw_payload_json TEXT);
+INSERT INTO pr_state VALUES (901, 'chump/cachewt-shut', NULL, '{"number": 901, "state": "closed"}');
+INSERT INTO pr_state VALUES (902, 'chump/cachewt-hook', NULL, '{"action": "closed", "number": 902, "pull_request": {"number": 902, "state": "closed"}}');
+INSERT INTO pr_state VALUES (903, 'chump/resilient-1819-open', NULL, '{"number": 903}');
+SQL
+
+# (s) N6: WT_N6/.cargo-test-target is a symlink to a build dir elsewhere; its
+# target/ is a real, idle dir. The whole worktree must be kept.
+ELSEWHERE_CTT="$TMP/elsewhere-ctt"
+mkdir -p "$ELSEWHERE_CTT/debug"
+echo shared-test-artifact > "$ELSEWHERE_CTT/debug/chump"
+backdate "$THREE_H" "$ELSEWHERE_CTT/debug/chump" "$ELSEWHERE_CTT/debug" "$ELSEWHERE_CTT"
+rm -rf "$WT_N6/.cargo-test-target"
+ln -s "$ELSEWHERE_CTT" "$WT_N6/.cargo-test-target"
+_e=$(( $(date +%s) - THREE_H ))
+touch -h -t "$(date -d "@$_e" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$_e" +%Y%m%d%H%M.%S)" "$WT_N6/.cargo-test-target"
 
 # (m) WT_LINKTGT/target is a symlink to a build dir that is not this worktree's.
 ELSEWHERE="$TMP/elsewhere-target"
@@ -192,9 +267,59 @@ BG_PIDS+=("$!")
 
 # (i) the pre-push nextest shape: CARGO_TARGET_DIR inside WT_CTD, cwd elsewhere.
 # python3 (not /bin/sleep): macOS hides a platform binary's environment.
-( cd "$TMP" && CARGO_TARGET_DIR="$WT_CTD/.cargo-test-target" \
+# The value is built in a variable first: this is a fixture aiming a build at a
+# worktree on purpose, not a script defaulting its own target dir there.
+CTD_FIXTURE_VALUE="$WT_CTD/.cargo-test-target"
+( cd "$TMP" && CARGO_TARGET_DIR="$CTD_FIXTURE_VALUE" \
     exec python3 -c 'import time; time.sleep(300)' ) >/dev/null 2>&1 &
 BG_PIDS+=("$!")
+
+# (u) CARGO_TARGET_DIR spelled through a symlink alias of the worktree (outside
+# the scanned base), cwd elsewhere: an existing path under the alias, and one
+# that does not exist yet. python3 so macOS shows the environment.
+ln -s "$WT_ALIAS1" "$TMP/alias-1820"
+ln -s "$WT_ALIAS2" "$TMP/alias-1821"
+CTD_ALIAS1_VALUE="$TMP/alias-1820/target"
+CTD_ALIAS2_VALUE="$TMP/alias-1821/not-built-yet/.cargo-test-target"
+( cd "$TMP" && CARGO_TARGET_DIR="$CTD_ALIAS1_VALUE" \
+    exec python3 -c 'import time; time.sleep(300)' ) >/dev/null 2>&1 &
+BG_PIDS+=("$!")
+( cd "$TMP" && CARGO_TARGET_DIR="$CTD_ALIAS2_VALUE" \
+    exec python3 -c 'import time; time.sleep(300)' ) >/dev/null 2>&1 &
+BG_PIDS+=("$!")
+
+# (q) M13: a process whose cwd is in WT_M13's SOURCE tree (not under target/
+# or .cargo-test-target/, so an open-file scan of the build dirs never sees it).
+mkdir -p "$WT_M13/src"
+( cd "$WT_M13/src" && exec sleep 300 ) >/dev/null 2>&1 &
+BG_PIDS+=("$!")
+
+# (r) N2: a file held open ONLY under WT_N2/.cargo-test-target; cwd elsewhere,
+# no CARGO_TARGET_DIR in its environment.
+# shellcheck disable=SC2016  # $1 expands in the child sh, on purpose
+( cd "$TMP" && exec env -u CARGO_TARGET_DIR sh -c \
+    'exec 3<"$1" && exec sleep 300' n2 "$WT_N2/.cargo-test-target/debug/chump" ) >/dev/null 2>&1 &
+BG_PIDS+=("$!")
+
+# (p) Linux only: a same-uid NON-DUMPABLE process. prctl(PR_SET_DUMPABLE, 0)
+# makes its /proc environ, cwd and fd unreadable to this uid; only cmdline
+# stays world-readable. Its cmdline names WT_BLIND and it holds a file open
+# under WT_BLIND/target, with CARGO_TARGET_DIR inside WT_BLIND and cwd elsewhere.
+BLIND_PID=""
+BLIND_IS_BLIND=0
+if [[ -d /proc/self ]]; then
+    CTD_BLIND_VALUE="$WT_BLIND/target"
+    ( cd "$TMP" && CARGO_TARGET_DIR="$CTD_BLIND_VALUE" exec python3 -c '
+import ctypes, sys, time
+f = open(sys.argv[1], "rb")
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(4, 0, 0, 0, 0) != 0:   # PR_SET_DUMPABLE = 4
+    sys.exit(3)
+time.sleep(300)
+' "$WT_BLIND/target/debug/chump" "$WT_BLIND" ) >/dev/null 2>&1 &
+    BLIND_PID="$!"
+    BG_PIDS+=("$BLIND_PID")
+fi
 
 # (j) a process holding a file open under WT_OPENFILE/target, cwd elsewhere.
 ( cd "$TMP" && exec 3<"$WT_OPENFILE/target/debug/chump" && exec sleep 300 ) >/dev/null 2>&1 &
@@ -235,7 +360,19 @@ FOREIGN_LOCKS="$TMP/foreign-locks"
 mkdir -p "$FOREIGN_LOCKS"
 sleep 0.5   # let the fixture processes exec
 
+if [[ -n "$BLIND_PID" ]]; then
+    kill -0 "$BLIND_PID" 2>/dev/null || fail "(p) the non-dumpable fixture process did not start"
+    if ! readlink "/proc/${BLIND_PID}/cwd" >/dev/null 2>&1 \
+        && ! { : < "/proc/${BLIND_PID}/environ"; } 2>/dev/null; then
+        BLIND_IS_BLIND=1
+    fi
+fi
+
+# run_reaper [VAR=value...] — run the real reaper, Class D only, under the
+# sandbox HOME. Extra VAR=value words are added to its environment (a decoy
+# env var, or CHUMP_REAPER_SAFETY_CHECK=0 for (q)).
 run_reaper() {
+    env HOME="$SANDBOX_HOME" \
     CHUMP_LOCK_DIR="$FOREIGN_LOCKS" \
     CHUMP_STATE_DB="$TMP/foreign-state.db" \
     REAPER_REPO_ROOT="$FAKE_REPO" \
@@ -243,7 +380,7 @@ run_reaper() {
     CHUMP_AMBIENT_LOG="$AMBIENT" \
     CHUMP_REAPER_SAFETY_CHECK=1 \
     CHUMP_REAPER_BOT_MERGE_GRACE_MIN=15 \
-    CHUMP_ARCH_LANE_LOCK="$LANE_LOCK" \
+    "$@" \
         bash "$REAPER" --class-d-only --execute 2>&1
 }
 
@@ -252,7 +389,8 @@ nothing_deleted() {
     local w
     for w in "$WT_REAP" "$WT_LEASE" "$WT_CWD" "$WT_DISPATCH" "$WT_DIRTY" "$WT_ACTIVE" \
              "$WT_NOPR" "$WT_GHFAIL" "$WT_SUFFIX" "$WT_CTD" "$WT_OPENFILE" "$WT_DEEP" "$OTHER" \
-             "$WT_NOGAP" "$WT_LINKTGT" "$NESTED"; do
+             "$WT_NOGAP" "$WT_LINKTGT" "$NESTED" "$WT_BLIND" "$WT_M13" "$WT_N2" "$WT_N6" \
+             "$WT_CACHE_UNK" "$WT_CACHE_SHUT" "$WT_CACHE_HOOK" "$WT_ALIAS1" "$WT_ALIAS2"; do
         [[ -d "$w/target" && -d "$w/.cargo-test-target" ]] || fail "$1: $w build output was deleted"
     done
     [[ -f "$MARK_STALE" && -f "$MARK_FRESH" && -f "$MARK_LIVE" ]] || fail "$1: a marker was deleted"
@@ -270,11 +408,23 @@ BG_PIDS+=("$LOCK_HOLDER")
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     if flock -n "$LANE_LOCK" true 2>/dev/null; then sleep 0.2; else break; fi
 done
+flock -n "$LANE_LOCK" true 2>/dev/null && fail "(k) the fixture could not take the sandbox HOME lane lock"
 OUT="$(run_reaper)" || fail "reaper exited non-zero (lock held)"
 echo "$OUT" | sed 's/^/    /'
 nothing_deleted "(k) lock held"
 [[ "$OUT" == *"lane lock held"* ]] || fail "(k) skip reason for the held lane lock not logged"
+[[ "$OUT" == *"$LANE_LOCK"* ]] || fail "(k) the reaper did not report the sandbox HOME lane lock path"
 pass "(k) lane lock held by another process: nothing deleted, reason logged"
+# The old test-only override, aimed at /dev/null or at a free lock, must not
+# move the lock: HOME's lock is held, so the tick still skips.
+FREE_LOCK="$TMP/free-decoy.lock"
+for decoy in /dev/null "$FREE_LOCK"; do
+    OUT="$(run_reaper CHUMP_ARCH_LANE_LOCK="$decoy")" || fail "reaper exited non-zero (decoy ${decoy})"
+    echo "$OUT" | sed 's/^/    /'
+    nothing_deleted "(k) lock held, decoy override ${decoy}"
+    [[ "$OUT" == *"lane lock held"* ]] || fail "(k) decoy override ${decoy} moved the lane lock"
+done
+pass "(k) a decoy lane-lock override env var (/dev/null, a free lock) changes nothing"
 kill "$LOCK_HOLDER" 2>/dev/null || true
 wait "$LOCK_HOLDER" 2>/dev/null || true
 
@@ -337,22 +487,32 @@ no_reap_event() {
 
 # (b) live lease → kept.
 [[ -d "$WT_LEASE/target" ]]              || fail "(b) live-lease open-PR target/ was reaped"
+[[ -d "$WT_LEASE/.cargo-test-target" ]]  || fail "(b) live-lease open-PR .cargo-test-target/ was reaped"
+no_reap_event "$WT_LEASE" "(b) live lease"
 pass "(b) live-lease worktree kept"
 
 # (b) process cwd inside → kept.
 [[ -d "$WT_CWD/target" ]]                || fail "(b) cwd-held open-PR target/ was reaped"
+[[ -d "$WT_CWD/.cargo-test-target" ]]    || fail "(b) cwd-held open-PR .cargo-test-target/ was reaped"
+no_reap_event "$WT_CWD" "(b) cwd inside"
 pass "(b) process-cwd-inside worktree kept"
 
 # (b) running dispatch for the gap → kept.
 [[ -d "$WT_DISPATCH/target" ]]           || fail "(b) running-dispatch open-PR target/ was reaped"
+[[ -d "$WT_DISPATCH/.cargo-test-target" ]] || fail "(b) running-dispatch open-PR .cargo-test-target/ was reaped"
+no_reap_event "$WT_DISPATCH" "(b) running dispatch"
 pass "(b) running-dispatch worktree kept"
 
 # (dirty) tracked source change → kept.
 [[ -d "$WT_DIRTY/target" ]]              || fail "(dirty) dirty-source open-PR target/ was reaped"
+[[ -d "$WT_DIRTY/.cargo-test-target" ]]  || fail "(dirty) dirty-source open-PR .cargo-test-target/ was reaped"
+no_reap_event "$WT_DIRTY" "(dirty) dirty source"
 pass "(dirty) dirty-source worktree kept"
 
 # (d) build activity under 2h → kept.
 [[ -d "$WT_ACTIVE/target" ]]             || fail "(d) activity<2h open-PR target/ was reaped"
+[[ -d "$WT_ACTIVE/.cargo-test-target" ]] || fail "(d) activity<2h open-PR .cargo-test-target/ was reaped"
+no_reap_event "$WT_ACTIVE" "(d) activity<2h"
 pass "(d) activity-within-2h worktree kept"
 [[ -d "$WT_DEEP/target" && -d "$WT_DEEP/.cargo-test-target" ]] \
     || fail "(d) deep-file activity<2h (top-level mtime 3h old) open-PR build output was reaped"
@@ -427,8 +587,78 @@ grep -Fq "bot-merge-active-dispatch-stale.path" "$AMBIENT" \
     || fail "(c) stale-marker removal not logged to ambient"
 pass "(c) stale active-dispatch marker removed + logged, fresh and live-PID markers kept"
 
+# (r) N2: open file only under .cargo-test-target → kept.
+[[ -d "$WT_N2/target" && -d "$WT_N2/.cargo-test-target" ]] \
+    || fail "(r) N2: worktree with a file open only under .cargo-test-target was reaped"
+no_reap_event "$WT_N2" "(r) N2 open file under .cargo-test-target"
+pass "(r) N2: a file open only under .cargo-test-target (cwd elsewhere, no env) keeps the worktree"
+
+# (s) N6: symlinked .cargo-test-target → the whole worktree kept.
+[[ -L "$WT_N6/.cargo-test-target" ]]     || fail "(s) N6: the symlinked .cargo-test-target link was removed"
+[[ "$(cat "$ELSEWHERE_CTT/debug/chump")" == "shared-test-artifact" ]] \
+    || fail "(s) N6: the symlinked .cargo-test-target's pointee changed"
+[[ -d "$WT_N6/target" ]]                 || fail "(s) N6: worktree with a symlinked .cargo-test-target had target/ reaped"
+no_reap_event "$WT_N6" "(s) N6 symlinked .cargo-test-target"
+pass "(s) N6: symlinked .cargo-test-target: worktree kept, link + pointee intact"
+
+# (t) cache: "state": "closed" (REST and webhook shapes) → closed → reaped;
+# a row with no parseable state → unknown → kept (gh would have said OPEN).
+for w in "$WT_CACHE_SHUT" "$WT_CACHE_HOOK"; do
+    [[ ! -d "$w/target" && ! -d "$w/.cargo-test-target" ]] \
+        || fail "(t) cache row \"state\": \"closed\" not read as closed for $w (kept)"
+    [[ -f "$w/main.rs" ]]                || fail "(t) cache-closed worktree source removed!"
+done
+[[ "$OUT" == *"chump/cachewt-shut merged/closed"* && "$OUT" == *"chump/cachewt-hook merged/closed"* ]] \
+    || fail "(t) cache-closed worktrees not reaped on the merged/closed path"
+[[ -d "$WT_CACHE_UNK/target" && -d "$WT_CACHE_UNK/.cargo-test-target" ]] \
+    || fail "(t) cache row with no parseable state was read as open and reaped"
+no_reap_event "$WT_CACHE_UNK" "(t) cache unknown state"
+pass "(t) cache: json_extract reads \"state\": \"closed\" as closed; an unparseable row is unknown and kept"
+
+# (u) CARGO_TARGET_DIR through a symlink alias (existing, and not yet built) → kept.
+[[ -d "$WT_ALIAS1/target" && -d "$WT_ALIAS1/.cargo-test-target" ]] \
+    || fail "(u) worktree with CARGO_TARGET_DIR spelled through a symlink alias was reaped"
+no_reap_event "$WT_ALIAS1" "(u) CARGO_TARGET_DIR via alias"
+[[ -d "$WT_ALIAS2/target" && -d "$WT_ALIAS2/.cargo-test-target" ]] \
+    || fail "(u) worktree with a not-yet-existing CARGO_TARGET_DIR under a symlink alias was reaped"
+no_reap_event "$WT_ALIAS2" "(u) not-yet-existing CARGO_TARGET_DIR via alias"
+pass "(u) CARGO_TARGET_DIR via a symlink alias (existing and not yet built) keeps the worktree"
+
+# (p) Linux only: same-uid non-dumpable process naming the worktree → kept.
+if [[ -n "$BLIND_PID" ]]; then
+    [[ -d "$WT_BLIND/target" && -d "$WT_BLIND/.cargo-test-target" ]] \
+        || fail "(p) worktree named by a non-dumpable (unreadable /proc) process's cmdline was reaped"
+    no_reap_event "$WT_BLIND" "(p) non-dumpable process"
+    if [[ $BLIND_IS_BLIND -eq 1 ]]; then
+        [[ "$OUT" == *"unreadable pid judged busy by cmdline"* ]] \
+            || fail "(p) the non-dumpable fixture was not judged by its cmdline"
+        [[ "$OUT" == *"judged by cmdline: "*"$BLIND_PID"* ]] \
+            || fail "(p) the per-tick blind-pid summary line does not list pid $BLIND_PID"
+        pass "(p) non-dumpable same-uid process (environ/cwd/fd unreadable) naming the worktree: kept, blind pids logged"
+    else
+        pass "(p) worktree kept; NOTE the fixture process was readable here (running as root?), so the blind path was not exercised"
+    fi
+else
+    echo "  - (p) SKIPPED: no /proc on this host (macOS); the non-dumpable-process fixture runs on Linux only"
+fi
+
 # class=D emitted for the open-PR reap.
 grep -q '"class":"D"' "$AMBIENT" || fail "no class=D event emitted"
 pass "cargo_target_reaped class=D emitted"
+
+# ── (q) M13: CHUMP_REAPER_SAFETY_CHECK=0 + cwd in the source tree → kept ─────
+# With the safety check off, wt_has_live_bot_merge (which also checks cwds)
+# returns early; only the Class D cwd check can keep WT_M13.
+echo "--- (q) M13: safety check off, process cwd in the source tree ---"
+[[ -d "$WT_M13/target" && -d "$WT_M13/.cargo-test-target" ]] \
+    || fail "(q) M13: cwd-in-source worktree reaped on the first (safety check on) run"
+OUT="$(run_reaper CHUMP_REAPER_SAFETY_CHECK=0)" || fail "reaper exited non-zero (safety check off)"
+echo "$OUT" | sed 's/^/    /'
+[[ -d "$WT_M13/target" && -d "$WT_M13/.cargo-test-target" ]] \
+    || fail "(q) M13: with CHUMP_REAPER_SAFETY_CHECK=0 a worktree with a process cwd in its source tree was reaped"
+no_reap_event "$WT_M13" "(q) M13 cwd in source tree"
+[[ "$OUT" == *"skip (process cwd inside): $(cd -P "$WT_M13" && pwd -P)"* ]] \
+    || fail "(q) M13: the cwd check did not report keeping the worktree"
+pass "(q) M13: safety check off, a process cwd in the source tree keeps the worktree"
 
 echo "=== all Class-D open-idle tests passed ==="

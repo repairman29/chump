@@ -46,9 +46,14 @@
 #       unless it holds the node build lane lock (flock -n) and passes
 #       `chump admit cargo`; a symlinked worktree entry or build dir, or one
 #       resolving outside the scanned base, is kept; a process with
-#       CARGO_TARGET_DIR inside the worktree or an open file under its build
-#       dirs keeps it; an unknown/no-PR state or failing gh is NOT open; an
-#       open-PR worktree with no derivable gap id is kept.
+#       CARGO_TARGET_DIR inside the worktree (as spelled or resolved) or an
+#       open file under its build dirs keeps it; on Linux a pid whose /proc
+#       environ/cwd/fd is unreadable is judged by its cmdline (names the
+#       worktree, or is a same-uid cargo/rustc/nextest/rustdoc/bot-merge.sh:
+#       busy); an unknown/no-PR state, an unparseable cache row or failing gh
+#       is NOT open; an open-PR worktree with no derivable gap id is kept. The
+#       lane lock path is fixed at $HOME/.chump/architect-lane.lock (no env
+#       override; tests use a sandbox HOME).
 #
 # Disk-pressure escalation (INFRA-2188):
 #   CHUMP_DISK_CRITICAL_GB (default 20) — when df reports free < N GB on
@@ -213,48 +218,173 @@ _classd_cwd_inside() {
     return 1
 }
 
+# _classd_resolve_path <abs_path> — RESILIENT-1635: echo <abs_path> with its
+# longest EXISTING prefix resolved through symlinks (cd -P) and the missing
+# tail appended unchanged. A CARGO_TARGET_DIR that does not exist yet (the
+# build is about to create it) still resolves through a symlinked parent, so an
+# alias spelling cannot hide a build aimed inside the worktree. Returns 1 when
+# no prefix resolves.
+_classd_resolve_path() {
+    local p="${1%/}" head rest="" r
+    [[ -n "$p" ]] || return 1
+    head="$p"
+    while [[ -n "$head" && "$head" != "/" && ! -d "$head" ]]; do
+        rest="/$(basename "$head")${rest}"
+        head="$(dirname "$head")"
+    done
+    [[ -n "$head" ]] || head="/"
+    r="$(cd -P "$head" 2>/dev/null && pwd -P || true)"
+    [[ -n "$r" ]] || return 1
+    printf '%s%s' "${r%/}" "$rest"
+}
+
+# _classd_ctd_value_busy <value> <cwd> <wt_real> [<wt_alt>] — 0 iff one
+# CARGO_TARGET_DIR value lands at or under the worktree, compared both as
+# spelled and resolved (a relative value is taken against <cwd>, when known).
+_classd_ctd_value_busy() {
+    local v="$1" cwd="$2" wt="$3" alt="${4:-}" r
+    [[ -n "$v" ]] || return 1
+    if [[ "$v" != /* ]]; then
+        [[ -n "$cwd" ]] || return 1
+        v="${cwd%/}/${v}"
+    fi
+    _classd_under "$v" "$wt" "$alt" && return 0
+    r="$(_classd_resolve_path "$v" || true)"
+    [[ -n "$r" ]] && _classd_under "$r" "$wt" "$alt" && return 0
+    return 1
+}
+
 # _classd_target_dir_env_busy <wt_real> [<wt_alt>] — RESILIENT-1635: 0 iff a
 # live process has CARGO_TARGET_DIR at or under the worktree. The pre-push test
 # gate runs nextest with CARGO_TARGET_DIR=<wt>/.cargo-test-target and its cwd
 # ELSEWHERE, so the cwd check alone reaped a live test build. Linux reads
 # /proc/<pid>/environ (a relative value resolves against that process's cwd);
 # macOS reads `ps -wwE` (the environment of the user's own non-platform
-# processes, which is what cargo/rustc/nextest are). Fails closed with neither.
+# processes, which is what cargo/rustc/nextest are). Both compare the value as
+# spelled AND resolved (longest existing prefix, cd -P). A pid whose environ
+# cannot be read is judged by _classd_blind_pid_busy. Fails closed with neither.
 _classd_target_dir_env_busy() {
-    local wt="$1" alt="${2:-}" e pid kv v r line out
+    local wt="$1" alt="${2:-}" e pid kv v line out rest cwd
     if [[ -d /proc/self ]]; then
         for e in /proc/[0-9]*/environ; do
             pid="${e#/proc/}"; pid="${pid%/environ}"
             [[ "$pid" == "$$" ]] && continue
             [[ -r "$e" ]] || continue
-            while IFS= read -r -d '' kv; do
-                [[ "$kv" == CARGO_TARGET_DIR=* ]] || continue
-                v="${kv#CARGO_TARGET_DIR=}"
-                [[ -n "$v" ]] || continue
-                [[ "$v" == /* ]] || v="$(readlink "/proc/${pid}/cwd" 2>/dev/null || true)/${v}"
-                _classd_under "$v" "$wt" "$alt" && return 0
-                if [[ -e "$v" ]]; then
-                    r="$(cd -P "$v" 2>/dev/null && pwd -P || true)"
-                    [[ -n "$r" ]] && _classd_under "$r" "$wt" "$alt" && return 0
-                fi
-            done < "$e" 2>/dev/null || true
+            # The < redirection sits inside the guarded group, so an environ
+            # that turns unreadable between the -r test and the open (or a pid
+            # that exits) prints nothing on stderr.
+            {
+                while IFS= read -r -d '' kv; do
+                    [[ "$kv" == CARGO_TARGET_DIR=* ]] || continue
+                    v="${kv#CARGO_TARGET_DIR=}"
+                    cwd=""
+                    [[ "$v" == /* ]] || cwd="$(readlink "/proc/${pid}/cwd" 2>/dev/null || true)"
+                    _classd_ctd_value_busy "$v" "$cwd" "$wt" "$alt" && return 0
+                done < "$e"
+            } 2>/dev/null || true
         done
         return 1
     fi
     command -v ps >/dev/null 2>&1 || return 0
-    out="$(ps -A -wwE -o command= 2>/dev/null || true)"
+    out="$(ps -A -wwE -o pid=,command= 2>/dev/null || true)"
     [[ -n "$out" ]] || return 0
     while IFS= read -r line; do
         [[ "$line" == *CARGO_TARGET_DIR=* ]] || continue
+        line="${line#"${line%%[![:space:]]*}"}"
+        pid="${line%% *}"
+        [[ "$pid" == "$$" ]] && continue
+        rest="${line#* }"
+        # Lexical compare first (the value as spelled, no fork).
         for v in "$wt" "$alt"; do
             [[ -n "$v" ]] || continue
             v="${v%/}"
-            if [[ "$line" == *"CARGO_TARGET_DIR=${v} "* || "$line" == *"CARGO_TARGET_DIR=${v}/"* \
-                  || "$line" == *"CARGO_TARGET_DIR=${v}" ]]; then
+            if [[ "$rest" == *"CARGO_TARGET_DIR=${v} "* || "$rest" == *"CARGO_TARGET_DIR=${v}/"* \
+                  || "$rest" == *"CARGO_TARGET_DIR=${v}" ]]; then
                 return 0
             fi
         done
+        # Then every CARGO_TARGET_DIR value on the line, resolved through
+        # symlinks (an alias spelling of the worktree is the same build dir).
+        while [[ "$rest" == *CARGO_TARGET_DIR=* ]]; do
+            rest="${rest#*CARGO_TARGET_DIR=}"
+            v="${rest%% *}"
+            cwd=""
+            if [[ -n "$v" && "$v" != /* ]] && command -v lsof >/dev/null 2>&1; then
+                cwd="$(lsof -a -p "$pid" -d cwd -n -P -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
+            fi
+            _classd_ctd_value_busy "$v" "$cwd" "$wt" "$alt" && return 0
+        done
     done <<< "$out"
+    return 1
+}
+
+# _classd_blind_pid_busy <wt_real> [<wt_alt>] — RESILIENT-1635 (Linux only):
+# the cwd, CARGO_TARGET_DIR and open-file checks read /proc/<pid>/cwd, environ
+# and fd, which are unreadable for another uid's process AND for a same-uid
+# non-dumpable one (prctl PR_SET_DUMPABLE 0, setuid helpers). Such a "blind"
+# pid used to count as not busy. For every blind pid, fall back to the
+# world-readable /proc/<pid>/cmdline: 0 (busy) iff that cmdline names a path at
+# or under the worktree, or the process is a same-uid cargo / rustc / nextest /
+# cargo-nextest / rustdoc / bot-merge.sh. A blind pid matching neither does NOT
+# make the worktree busy (on cuphead 260 of 295 pids are blind; treating all of
+# them as busy would mean Class D never runs). Each blind pid is recorded in
+# CLASSD_BLIND_PIDS for the one per-tick summary line; the match is in
+# CLASSD_BLIND_DETAIL. Returns 1 off Linux (no /proc).
+CLASSD_BLIND_PIDS=" "
+CLASSD_BLIND_DETAIL=""
+_classd_blind_pid_busy() {
+    local wt="$1" alt="${2:-}" p pid myuid a w k val _rest uid nm
+    local -a args
+    [[ -d /proc/self ]] || return 1
+    myuid="$(id -u 2>/dev/null || echo -1)"
+    for p in /proc/[0-9]*; do
+        pid="${p#/proc/}"
+        [[ "$pid" == "$$" ]] && continue
+        # Readable on all three: the precise checks already judged this pid.
+        if { : < "$p/environ"; } 2>/dev/null \
+            && readlink "$p/cwd" >/dev/null 2>&1 \
+            && [[ -r "$p/fd" && -x "$p/fd" ]]; then
+            continue
+        fi
+        args=()
+        {
+            while IFS= read -r -d '' a || [[ -n "$a" ]]; do args+=("$a"); done < "$p/cmdline"
+        } 2>/dev/null || true
+        [[ ${#args[@]} -gt 0 ]] || continue   # exited, or a kernel thread
+        [[ "$CLASSD_BLIND_PIDS" == *" $pid "* ]] || CLASSD_BLIND_PIDS+="$pid "
+        for a in "${args[@]}"; do
+            for w in "$wt" "$alt"; do
+                [[ -n "$w" ]] || continue
+                w="${w%/}"
+                if [[ "$a" == *"$w" || "$a" == *"$w/"* || "$a" == *"$w "* ]]; then
+                    CLASSD_BLIND_DETAIL="pid=${pid} cmdline names ${w}"
+                    return 0
+                fi
+            done
+        done
+        nm="${args[0]%% *}"
+        nm="${nm##*/}"
+        case "$nm" in
+            cargo|rustc|nextest|cargo-nextest|rustdoc) ;;
+            *) nm="" ;;
+        esac
+        if [[ -z "$nm" ]]; then
+            for a in "${args[@]:0:4}"; do
+                [[ " $a " =~ [[:space:]/]bot-merge\.sh[[:space:]] ]] && { nm="bot-merge.sh"; break; }
+            done
+        fi
+        [[ -n "$nm" ]] || continue
+        uid=""
+        {
+            while read -r k val _rest; do
+                [[ "$k" == Uid: ]] && { uid="$val"; break; }
+            done < "$p/status"
+        } 2>/dev/null || true
+        if [[ -n "$uid" && "$uid" == "$myuid" ]]; then
+            CLASSD_BLIND_DETAIL="pid=${pid} same-uid ${nm}"
+            return 0
+        fi
+    done
     return 1
 }
 
@@ -322,17 +452,26 @@ _classd_pr_merged_or_closed() {
         if [[ -n "$db" && -f "$db" ]]; then
             local esc="${branch//\'/\'\'}"
             local row
+            # RESILIENT-1635 (CREDIBLE-1574): parse the state with
+            # json_extract, never LIKE — the receiver writes json.dumps output
+            # ("state": "closed", with a space) that the old LIKE never matched.
+            # A REST row carries $.state; a webhook row $.pull_request.state.
+            # Only an explicit "open" reads as open; a row whose state is
+            # missing or unparseable is UNKNOWN (kept), never open.
             row="$(sqlite3 "$db" \
                 "SELECT CASE \
                     WHEN merged_at IS NOT NULL THEN 'yes' \
-                    WHEN raw_payload_json LIKE '%\"state\":\"closed\"%' THEN 'yes' \
-                    ELSE 'no' END \
+                    WHEN json_valid(raw_payload_json) THEN (CASE lower(COALESCE( \
+                        json_extract(raw_payload_json, '\$.state'), \
+                        json_extract(raw_payload_json, '\$.pull_request.state'), '')) \
+                        WHEN 'closed' THEN 'yes' WHEN 'open' THEN 'no' ELSE 'unknown' END) \
+                    ELSE 'unknown' END \
                  FROM pr_state WHERE head_ref = '${esc}' \
                  ORDER BY number DESC LIMIT 1" 2>/dev/null || true)"
-            if [[ -n "$row" ]]; then
-                printf '%s' "$row"
-                return 0
-            fi
+            case "$row" in
+                yes|no)  printf '%s' "$row"; return 0 ;;
+                unknown) printf ''; return 0 ;;
+            esac
         fi
     fi
     # chump_gh fallback (background-tagged) — --state all so merged/closed PRs
@@ -538,15 +677,28 @@ _classd_reap_stale_markers() {
     done < <(find "$lock_dir" -maxdepth 1 -name 'bot-merge-active-dispatch-*.path' -type f 2>/dev/null)
 }
 
-# _classd_lane_acquire — RESILIENT-1635: Class D must never overlap a build on
-# the node's shared target. Before it deletes anything it takes the node build
-# lane lock the architect's guarded sweep takes (a non-blocking flock -n on
-# ~/.chump/architect-lane.lock; CHUMP_ARCH_LANE_LOCK names another path, for
-# tests) and passes the `chump admit cargo` admission check. Returns 0 holding
-# the lock on fd 8, else 1 after logging why; the caller then skips the whole
-# Class D tick. Fails closed when flock, the lock file or chump is unavailable.
+# _classd_lane_acquire — RESILIENT-1635: before it deletes anything, Class D
+# takes the node build lane lock the architect's guarded sweep and lane builds
+# take (a non-blocking flock -n on $HOME/.chump/architect-lane.lock) and passes
+# the `chump admit cargo` admission check. The lock path is FIXED: no env var
+# can point it elsewhere (a test override was a production bypass: pointed at
+# /dev/null it reaped while the real lock was held). Tests run the real code
+# under a sandbox HOME instead. What this buys: no Class D tick runs while a
+# lane holder (architect sweep or lane build) holds the lock, and none runs past
+# the admit capacity ceiling; it does NOT serialise against a cargo build that
+# never takes the lane lock (those are covered per worktree by the cwd,
+# CARGO_TARGET_DIR, open-file and blind-pid checks). A lock file missing from
+# an existing $HOME/.chump is created (>>) and the tick proceeds; a missing
+# $HOME/.chump directory skips the tick. Returns 0 holding the lock on fd 8,
+# else 1 after logging why; the caller then skips the whole Class D tick. Fails
+# closed when HOME, flock, the lock file or chump is unavailable.
 _classd_lane_acquire() {
-    local lock="${CHUMP_ARCH_LANE_LOCK:-${HOME}/.chump/architect-lane.lock}" rc=0
+    local lock rc=0
+    if [[ -z "${HOME:-}" ]]; then
+        echo "[cargo-target-reaper] Class D skipped: HOME unset, cannot locate the node build lane lock"
+        return 1
+    fi
+    lock="${HOME}/.chump/architect-lane.lock"
     if ! command -v flock >/dev/null 2>&1; then
         echo "[cargo-target-reaper] Class D skipped: flock unavailable, cannot take the node build lane lock (${lock})"
         return 1
@@ -611,6 +763,26 @@ run_class_d() {
     if ! _classd_lane_acquire; then
         return 0
     fi
+    # The scan runs with fd 8 closed (8>&-): bash parks the lock fd on a
+    # close-on-exec descriptor for the call, so the lock stays held by this
+    # shell while no child (git, find, lsof, rm, ...) inherits it. A child that
+    # outlived the tick could otherwise keep the lane locked.
+    CLASSD_BLIND_PIDS=" "
+    _classd_scan "$wt_base" "$base_real" 8>&-
+    local blind="${CLASSD_BLIND_PIDS# }"
+    blind="${blind% }"
+    if [[ -n "$blind" ]]; then
+        local nblind
+        nblind="$(wc -w <<< "$blind" | tr -d ' ')"
+        echo "[cargo-target-reaper] Class D: ${nblind} pid(s) with unreadable /proc environ/cwd/fd, judged by cmdline: ${blind}"
+    fi
+    _classd_lane_release
+}
+
+# _classd_scan <wt_base> <base_real> — the Class D worktree loop + the stale
+# marker sweep. Called by run_class_d holding the lane lock, with fd 8 closed.
+_classd_scan() {
+    local wt_base="$1" base_real="$2"
     echo "[cargo-target-reaper] Scanning ${wt_base}/* (Class D: merged/closed or idle open-PR lease-less dispatch worktrees)…"
     local wt wt_entry
     local -a _wts=()
@@ -725,6 +897,13 @@ run_class_d() {
             echo "  skip (a process holds an open file under the build dirs): ${wt}"
             continue
         fi
+        # RESILIENT-1635: a pid whose environ/cwd/fd the checks above could not
+        # read is judged by its cmdline (Linux; see _classd_blind_pid_busy).
+        CLASSD_BLIND_DETAIL=""
+        if _classd_blind_pid_busy "$wt" "$wt_entry"; then
+            echo "  skip (unreadable pid judged busy by cmdline: ${CLASSD_BLIND_DETAIL:-?}): ${wt}"
+            continue
+        fi
 
         # Reap ONLY the build dirs — never the source tree.
         local reap_dir size_bytes age_days
@@ -755,7 +934,6 @@ run_class_d() {
 
     # RESILIENT-1635: sweep stale bot-merge-active-dispatch-*.path markers.
     _classd_reap_stale_markers
-    _classd_lane_release
 }
 
 # ── --class-d-only early path (RESILIENT-1620) ──────────────────────────────
