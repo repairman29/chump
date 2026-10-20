@@ -14,13 +14,22 @@
 #     when the review-held label is present).
 #
 # THE CONTRACT
-#   review_hold_allows <pr-number> <head-sha> [owner/repo] [armer-name]
+#   review_hold_allows <pr-number> <head-sha> [owner/repo] [armer-name] [trusted-author]
 #     returns 0 (arming allowed) ONLY when ALL hold conditions are clear:
 #       * the PR carries neither `review-held` nor `review-needs-mutants`;
-#       * a review comment exists that names head-sha (`head: <sha>`) and whose
-#         LAST verdict block is VERDICT: APPROVE with no outstanding blockers.
+#       * a review comment AUTHORED BY the trusted-author login exists that names
+#         head-sha (`head: <sha>`) and whose LAST verdict block is VERDICT: APPROVE
+#         with no outstanding blockers.
 #     returns 1 (HELD) otherwise, including when the PR/labels/comments cannot
 #     be read. Emits kind=pr_arm_skipped_review_hold on a hold.
+#
+#     trusted-author (CREDIBLE-1542 review REQUIRED): the login whose verdict
+#     comments are trusted — the organ's OWN authenticated account. A forged
+#     `VERDICT: APPROVE / head: <sha>` comment from any other account (anyone can
+#     comment on a public PR) must NEVER satisfy the gate, so a comment whose
+#     `author.login` is not the trusted-author is ignored and HELD with reason
+#     `verdict-author-untrusted`. An empty trusted-author trusts nobody → HELD
+#     (fail closed: we cannot prove the diff was reviewed by us).
 #
 #   review_parse_verdict  (reads a comment body on stdin)
 #     prints APPROVE or CHANGES_REQUIRED and returns 0 when at least one
@@ -106,7 +115,7 @@ print(result)
 
 # review_hold_allows <pr> <head-sha> [owner/repo] [armer]
 review_hold_allows() {
-    local pr="${1:-}" head="${2:-}" repo="${3:-}" armer="${4:-review-organ}"
+    local pr="${1:-}" head="${2:-}" repo="${3:-}" armer="${4:-review-organ}" trusted="${5:-}"
     if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
         echo "[review-hold] WARN: review_hold_allows needs a PR number ('$pr') — HELD" >&2
         return 1
@@ -129,7 +138,7 @@ review_hold_allows() {
     fi
 
     local reason
-    reason="$(HEAD_SHA="$head" HOLD_LABELS="$REVIEW_HOLD_LABELS" python3 -c '
+    reason="$(HEAD_SHA="$head" HOLD_LABELS="$REVIEW_HOLD_LABELS" TRUSTED_AUTHOR="$trusted" python3 -c '
 import json, os, re, sys
 try:
     d = json.loads(sys.argv[1])
@@ -141,11 +150,15 @@ for l in d.get("labels") or []:
     if name.lower() in holds:
         print("label:" + name); sys.exit(0)
 head = os.environ.get("HEAD_SHA", "")
+trusted = (os.environ.get("TRUSTED_AUTHOR", "") or "").strip().lower()
 verd = re.compile(r"^[ \t]*VERDICT:[ \t]*(APPROVE|CHANGES[ \t]+REQUIRED)[ \t]*$", re.I | re.M)
 headmark = re.compile(r"^[ \t]*head:[ \t]*([0-9a-fA-F]{7,40})", re.I | re.M)
 blocker = re.compile(r"^[ \t]*blockers?:[ \t]*(.*)$", re.I | re.M)
-# Comments that name THIS head, newest last.
+# Comments that name THIS head, newest last — and ONLY those authored by the
+# trusted login (the organ itself). A forged VERDICT comment from any other
+# account must never satisfy the gate (CREDIBLE-1542 review REQUIRED).
 cands = []
+saw_untrusted = False
 head = head.lower()
 for c in d.get("comments") or []:
     b = c.get("body", "") if isinstance(c, dict) else str(c)
@@ -155,10 +168,22 @@ for c in d.get("comments") or []:
     marked = hm.group(1).lower()
     # A comment names THIS head when its `head:` marker (>=7 hex) is a prefix of
     # the full head sha (or equal). A marker for a different head never matches.
-    if head.startswith(marked):
-        cands.append((c.get("createdAt", "") if isinstance(c, dict) else "", b))
+    if not head.startswith(marked):
+        continue
+    author = ""
+    if isinstance(c, dict):
+        a = c.get("author") or {}
+        if isinstance(a, dict):
+            author = (a.get("login") or "")
+    if not trusted or author.strip().lower() != trusted:
+        # A head-marked VERDICT from a non-organ author is a forged/untrusted
+        # approval — ignore it and remember we saw one (for the hold reason).
+        if verd.search(b or ""):
+            saw_untrusted = True
+        continue
+    cands.append((c.get("createdAt", "") if isinstance(c, dict) else "", b))
 if not cands:
-    print("no-verdict-for-head"); sys.exit(0)
+    print("verdict-author-untrusted" if saw_untrusted else "no-verdict-for-head"); sys.exit(0)
 cands.sort(key=lambda t: t[0])
 body = cands[-1][1]
 hits = [("APPROVE" if m.group(1).upper().startswith("APPROVE") else "CHANGES_REQUIRED")

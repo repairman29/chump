@@ -97,6 +97,20 @@ log() { printf '[review-organ %s] %s\n' "$(ts)" "$*"; }
 
 GH() { if declare -F chump_gh >/dev/null 2>&1; then chump_gh "$@"; else gh "$@"; fi; }
 
+# ORGAN_LOGIN — the ONLY login whose verdict comments the organ trusts (the
+# account it posts as). Not a tunable safety input: it is the organ's IDENTITY,
+# resolved from --self-login (the test seam the systemd unit never passes) or, in
+# production, from the real authenticated account via `gh api user`. A forged
+# `VERDICT: APPROVE / head: <sha>` comment from any other account (anyone can
+# comment on a public PR) must NEVER arm a PR — so both the idempotency
+# short-circuit (current_head_verdict) and the arm gate (review_hold_allows) only
+# count comments authored by this login (CREDIBLE-1542 review REQUIRED). Empty →
+# the organ trusts nobody and holds everything (fail closed).
+ORGAN_LOGIN="$SELF_LOGIN"
+if [[ -z "$ORGAN_LOGIN" ]]; then
+    ORGAN_LOGIN="$(CHUMP_GH_CALL_CRITICALITY=background GH api user --jq '.login' 2>/dev/null || true)"
+fi
+
 json_str() { printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 emit() { printf '%s\n' "$1" >> "$AMBIENT" 2>/dev/null || true; }
 # scanner-anchor: "kind":"review_organ_tick"
@@ -231,23 +245,27 @@ dispatch_repair() {
 }
 
 # current_head_verdict <pr> <head> — prints APPROVE or CHANGES_REQUIRED when a
-# prior review comment already names THIS exact head sha (`head: <sha>`), rc 1
-# (no output) when the current head has no verdict yet. This is the idempotency
-# predicate behind design item (a): only PRs whose current head has NO verdict
-# are (re)reviewed, so a 15-min tick does not re-review, re-post, or re-dispatch
-# a PR it already judged this head. Reads comments via gh (no local ref needed).
+# prior review comment AUTHORED BY THE ORGAN already names THIS exact head sha
+# (`head: <sha>`), rc 1 (no output) when the current head has no verdict from the
+# organ yet. This is the idempotency predicate behind design item (a): only PRs
+# whose current head has NO organ verdict are (re)reviewed, so a 15-min tick does
+# not re-review, re-post, or re-dispatch a PR it already judged this head.
+# A forged VERDICT comment from any other account is ignored (CREDIBLE-1542 review
+# REQUIRED): it must not short-circuit the independent review. Reads comments via
+# gh (no local ref needed); the comments payload carries `author.login`.
 current_head_verdict() {
     local pr="$1" head="$2" payload
     payload="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
         --json comments 2>/dev/null || true)"
     [[ -n "$payload" ]] || return 1
-    HEAD_SHA="$head" python3 -c '
+    HEAD_SHA="$head" TRUSTED_AUTHOR="$ORGAN_LOGIN" python3 -c '
 import json, os, re, sys
 try:
     d = json.loads(sys.argv[1])
 except Exception:
     sys.exit(1)
 head = (os.environ.get("HEAD_SHA","") or "").lower()
+trusted = (os.environ.get("TRUSTED_AUTHOR","") or "").strip().lower()
 verd = re.compile(r"^[ \t]*VERDICT:[ \t]*(APPROVE|CHANGES[ \t]+REQUIRED)[ \t]*$", re.I | re.M)
 headmark = re.compile(r"^[ \t]*head:[ \t]*([0-9a-fA-F]{7,40})", re.I | re.M)
 cands = []
@@ -257,8 +275,17 @@ for c in d.get("comments") or []:
     if not hm:
         continue
     # A comment names THIS head when its >=7-hex marker is a prefix of the full head.
-    if head.startswith(hm.group(1).lower()):
-        cands.append((c.get("createdAt","") if isinstance(c, dict) else "", b))
+    if not head.startswith(hm.group(1).lower()):
+        continue
+    author = ""
+    if isinstance(c, dict):
+        a = c.get("author") or {}
+        if isinstance(a, dict):
+            author = (a.get("login") or "")
+    # Only a verdict authored by the organ itself is idempotent; a forged one is not.
+    if not trusted or author.strip().lower() != trusted:
+        continue
+    cands.append((c.get("createdAt","") if isinstance(c, dict) else "", b))
 if not cands:
     sys.exit(1)
 cands.sort(key=lambda t: t[0])
@@ -371,9 +398,10 @@ maybe_arm() {
         log "PR #$pr: cross-repository (fork) — NEVER arm"; return 0
     fi
     # AC3: the arm decision reads the APPROVE STRING from the comment for THIS
-    # head (fail closed), not any exit code.
-    if ! review_hold_allows "$pr" "$head" "$REPO" "review-organ"; then
-        log "PR #$pr: review_hold_allows held it (no current-head APPROVE / hold label) — not arming"; return 0
+    # head (fail closed), not any exit code — and ONLY from the organ's own
+    # comment ($ORGAN_LOGIN), never a forged one (CREDIBLE-1542 review REQUIRED).
+    if ! review_hold_allows "$pr" "$head" "$REPO" "review-organ" "$ORGAN_LOGIN"; then
+        log "PR #$pr: review_hold_allows held it (no current-head organ APPROVE / hold label) — not arming"; return 0
     fi
     if ! verified_green "$pr" "$head"; then
         log "PR #$pr: not verified-green for head ${head:0:12} — not arming (head may have moved)"; return 0
