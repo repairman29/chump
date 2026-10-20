@@ -49,11 +49,16 @@
 #       CARGO_TARGET_DIR inside the worktree (as spelled or resolved) or an
 #       open file under its build dirs keeps it; on Linux a pid whose /proc
 #       environ/cwd/fd is unreadable is judged by its cmdline (names the
-#       worktree, or is a same-uid cargo/rustc/nextest/rustdoc/bot-merge.sh:
-#       busy); an unknown/no-PR state, an unparseable cache row or failing gh
+#       worktree, or is a same-uid cargo/rustc/nextest/rustdoc/clippy/sccache/
+#       bot-merge.sh: busy); an unknown/no-PR state, an unparseable cache row or failing gh
 #       is NOT open; an open-PR worktree with no derivable gap id is kept. The
 #       lane lock path is fixed at $HOME/.chump/architect-lane.lock (no env
 #       override; tests use a sandbox HOME).
+#       SAME-UID ONLY: the reaper sees the cwd, environment and open files of
+#       processes running as its own uid (on Linux, only the dumpable ones; a
+#       non-dumpable or other-uid pid is judged by its cmdline alone). Run it
+#       as the uid that owns the worktrees and their builds; a build run by
+#       another uid that never names the worktree in its argv is not seen.
 #
 # Disk-pressure escalation (INFRA-2188):
 #   CHUMP_DISK_CRITICAL_GB (default 20) — when df reports free < N GB on
@@ -238,11 +243,33 @@ _classd_resolve_path() {
     printf '%s%s' "${r%/}" "$rest"
 }
 
+# _classd_normalize_path <abs_path> — RESILIENT-1635: echo <abs_path> with
+# empty and "." components dropped and each ".." popping the component before
+# it (lexical, no filesystem access; ".." at the root stays at the root). cargo
+# creates a CARGO_TARGET_DIR such as <x>/not-yet/../<wt>/target with
+# create_dir_all, so the build lands in <x>/<wt>/target even though no prefix
+# past <x> exists for cd -P to resolve.
+_classd_normalize_path() {
+    local p="$1" c out=""
+    local -a parts=() stack=()
+    IFS='/' read -r -a parts <<< "$p"
+    for c in "${parts[@]+"${parts[@]}"}"; do
+        case "$c" in
+            ''|.) ;;
+            ..) [[ ${#stack[@]} -gt 0 ]] && stack=("${stack[@]:0:${#stack[@]}-1}") ;;
+            *) stack+=("$c") ;;
+        esac
+    done
+    for c in "${stack[@]+"${stack[@]}"}"; do out+="/${c}"; done
+    printf '%s' "${out:-/}"
+}
+
 # _classd_ctd_value_busy <value> <cwd> <wt_real> [<wt_alt>] — 0 iff one
-# CARGO_TARGET_DIR value lands at or under the worktree, compared both as
-# spelled and resolved (a relative value is taken against <cwd>, when known).
+# CARGO_TARGET_DIR value lands at or under the worktree, compared as spelled,
+# as resolved, and with ".." normalized (then resolved again); a relative value
+# is taken against <cwd>, when known. Any one match is busy.
 _classd_ctd_value_busy() {
-    local v="$1" cwd="$2" wt="$3" alt="${4:-}" r
+    local v="$1" cwd="$2" wt="$3" alt="${4:-}" r n
     [[ -n "$v" ]] || return 1
     if [[ "$v" != /* ]]; then
         [[ -n "$cwd" ]] || return 1
@@ -250,6 +277,10 @@ _classd_ctd_value_busy() {
     fi
     _classd_under "$v" "$wt" "$alt" && return 0
     r="$(_classd_resolve_path "$v" || true)"
+    [[ -n "$r" ]] && _classd_under "$r" "$wt" "$alt" && return 0
+    n="$(_classd_normalize_path "$v")"
+    _classd_under "$n" "$wt" "$alt" && return 0
+    r="$(_classd_resolve_path "$n" || true)"
     [[ -n "$r" ]] && _classd_under "$r" "$wt" "$alt" && return 0
     return 1
 }
@@ -318,14 +349,38 @@ _classd_target_dir_env_busy() {
     return 1
 }
 
+# _classd_names_path <string> <path> — RESILIENT-1635: 0 iff <string>
+# contains <path> at an occurrence whose next character is the end of the
+# string or NOT one of [A-Za-z0-9._-] (a path-name character). So
+# "--manifest-path=<wt>/Cargo.toml", "<wt>;", "<wt>:", "'<wt>'", "<wt>=" all
+# name <wt>, while "<wt>-old" and "<wt>2" do not. Every occurrence is tried.
+_classd_names_path() {
+    local s="$1" w="$2" rest nxt
+    [[ -n "$w" ]] || return 1
+    rest="$s"
+    while [[ "$rest" == *"$w"* ]]; do
+        rest="${rest#*"$w"}"
+        [[ -n "$rest" ]] || return 0
+        nxt="${rest:0:1}"
+        case "$nxt" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]) ;;
+            *) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 # _classd_blind_pid_busy <wt_real> [<wt_alt>] — RESILIENT-1635 (Linux only):
 # the cwd, CARGO_TARGET_DIR and open-file checks read /proc/<pid>/cwd, environ
 # and fd, which are unreadable for another uid's process AND for a same-uid
 # non-dumpable one (prctl PR_SET_DUMPABLE 0, setuid helpers). Such a "blind"
 # pid used to count as not busy. For every blind pid, fall back to the
-# world-readable /proc/<pid>/cmdline: 0 (busy) iff that cmdline names a path at
-# or under the worktree, or the process is a same-uid cargo / rustc / nextest /
-# cargo-nextest / rustdoc / bot-merge.sh. A blind pid matching neither does NOT
+# world-readable /proc/<pid>/cmdline: 0 (busy) iff an argument names the
+# worktree (_classd_names_path: the worktree path not followed by a path-name
+# character), or the process is a same-uid cargo / rustc / nextest /
+# cargo-nextest / rustdoc / cargo-clippy / clippy-driver / sccache /
+# bot-merge.sh (argv0 basename; bot-merge.sh anywhere in the first four
+# arguments; uid from /proc/<pid>/status). A blind pid matching neither does NOT
 # make the worktree busy (on cuphead 260 of 295 pids are blind; treating all of
 # them as busy would mean Class D never runs). Each blind pid is recorded in
 # CLASSD_BLIND_PIDS for the one per-tick summary line; the match is in
@@ -356,7 +411,7 @@ _classd_blind_pid_busy() {
             for w in "$wt" "$alt"; do
                 [[ -n "$w" ]] || continue
                 w="${w%/}"
-                if [[ "$a" == *"$w" || "$a" == *"$w/"* || "$a" == *"$w "* ]]; then
+                if _classd_names_path "$a" "$w"; then
                     CLASSD_BLIND_DETAIL="pid=${pid} cmdline names ${w}"
                     return 0
                 fi
@@ -365,7 +420,7 @@ _classd_blind_pid_busy() {
         nm="${args[0]%% *}"
         nm="${nm##*/}"
         case "$nm" in
-            cargo|rustc|nextest|cargo-nextest|rustdoc) ;;
+            cargo|rustc|nextest|cargo-nextest|rustdoc|cargo-clippy|clippy-driver|sccache) ;;
             *) nm="" ;;
         esac
         if [[ -z "$nm" ]]; then

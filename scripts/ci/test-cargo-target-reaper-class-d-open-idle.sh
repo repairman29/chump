@@ -55,6 +55,20 @@
 #       it (resolved with cd -P on both platforms), including a value that does
 #       not exist yet (its longest existing prefix is resolved).
 #
+# Repair-4 fixtures (review of e1f03a357), each killed by its own mutant:
+#   (v) Linux only, each its own reaper pass AFTER the main pass: a same-uid
+#       NON-DUMPABLE process whose argv0 is a build tool (sccache, clippy-driver,
+#       then cargo) and whose cmdline does NOT name the worktree keeps an idle
+#       worktree and logs "same-uid <tool>" (kills B1, the emptied process-type
+#       list, and B2, the inverted uid compare); a blind non-tool process whose
+#       argument is "<wt>;" keeps it (path match on the next character not
+#       being [A-Za-z0-9._-]); then with every such process killed, and a blind
+#       process naming only "<wt>-old" alive, the same worktree IS reaped
+#       (skipped with a message on macOS);
+#   (w) CARGO_TARGET_DIR spelled <tmp>/not-yet/../repo/.../<wt>/target (".."
+#       after a component that does not exist, so cd -P cannot resolve it) keeps
+#       the worktree: the value is normalized lexically.
+#
 # Isolation: the reaper runs with HOME set to a sandbox dir (test-sandbox.sh),
 # so its fixed $HOME/.chump/architect-lane.lock resolves inside the sandbox;
 # no env var redirects the lock.
@@ -204,6 +218,7 @@ WT_CACHE_SHUT="$(mk_wt cachewt-shut chump/cachewt-shut)"
 WT_CACHE_HOOK="$(mk_wt cachewt-hook chump/cachewt-hook)"
 WT_ALIAS1="$(mk_wt resilient-1820 chump/resilient-1820-open)"
 WT_ALIAS2="$(mk_wt resilient-1821 chump/resilient-1821-open)"
+WT_DOTDOT="$(mk_wt resilient-1823 chump/resilient-1823-open)"
 
 # (t) cache rows. merged_at is NULL everywhere, so only raw_payload_json says
 # what state the PR is in. json.dumps spacing ("state": "closed") on purpose.
@@ -285,6 +300,14 @@ CTD_ALIAS2_VALUE="$TMP/alias-1821/not-built-yet/.cargo-test-target"
     exec python3 -c 'import time; time.sleep(300)' ) >/dev/null 2>&1 &
 BG_PIDS+=("$!")
 ( cd "$TMP" && CARGO_TARGET_DIR="$CTD_ALIAS2_VALUE" \
+    exec python3 -c 'import time; time.sleep(300)' ) >/dev/null 2>&1 &
+BG_PIDS+=("$!")
+
+# (w) CARGO_TARGET_DIR with ".." after a component that does not exist: cargo's
+# create_dir_all lands it in WT_DOTDOT/target, but cd -P cannot resolve past
+# the missing component. cwd elsewhere; python3 so macOS shows the environment.
+CTD_DOTDOT_VALUE="$TMP/not-yet-1823/../repo/.claude/worktrees/resilient-1823/target"
+( cd "$TMP" && CARGO_TARGET_DIR="$CTD_DOTDOT_VALUE" \
     exec python3 -c 'import time; time.sleep(300)' ) >/dev/null 2>&1 &
 BG_PIDS+=("$!")
 
@@ -390,7 +413,8 @@ nothing_deleted() {
     for w in "$WT_REAP" "$WT_LEASE" "$WT_CWD" "$WT_DISPATCH" "$WT_DIRTY" "$WT_ACTIVE" \
              "$WT_NOPR" "$WT_GHFAIL" "$WT_SUFFIX" "$WT_CTD" "$WT_OPENFILE" "$WT_DEEP" "$OTHER" \
              "$WT_NOGAP" "$WT_LINKTGT" "$NESTED" "$WT_BLIND" "$WT_M13" "$WT_N2" "$WT_N6" \
-             "$WT_CACHE_UNK" "$WT_CACHE_SHUT" "$WT_CACHE_HOOK" "$WT_ALIAS1" "$WT_ALIAS2"; do
+             "$WT_CACHE_UNK" "$WT_CACHE_SHUT" "$WT_CACHE_HOOK" "$WT_ALIAS1" "$WT_ALIAS2" \
+             "$WT_DOTDOT"; do
         [[ -d "$w/target" && -d "$w/.cargo-test-target" ]] || fail "$1: $w build output was deleted"
     done
     [[ -f "$MARK_STALE" && -f "$MARK_FRESH" && -f "$MARK_LIVE" ]] || fail "$1: a marker was deleted"
@@ -624,6 +648,12 @@ no_reap_event "$WT_ALIAS1" "(u) CARGO_TARGET_DIR via alias"
 no_reap_event "$WT_ALIAS2" "(u) not-yet-existing CARGO_TARGET_DIR via alias"
 pass "(u) CARGO_TARGET_DIR via a symlink alias (existing and not yet built) keeps the worktree"
 
+# (w) CARGO_TARGET_DIR with ".." past a missing component → normalized → kept.
+[[ -d "$WT_DOTDOT/target" && -d "$WT_DOTDOT/.cargo-test-target" ]] \
+    || fail "(w) worktree with CARGO_TARGET_DIR spelled <tmp>/not-yet/../<wt>/target was reaped (\"..\" not normalized)"
+no_reap_event "$WT_DOTDOT" "(w) CARGO_TARGET_DIR with .."
+pass "(w) CARGO_TARGET_DIR with \"..\" past a missing component keeps the worktree (normalized)"
+
 # (p) Linux only: same-uid non-dumpable process naming the worktree → kept.
 if [[ -n "$BLIND_PID" ]]; then
     [[ -d "$WT_BLIND/target" && -d "$WT_BLIND/.cargo-test-target" ]] \
@@ -660,5 +690,103 @@ no_reap_event "$WT_M13" "(q) M13 cwd in source tree"
 [[ "$OUT" == *"skip (process cwd inside): $(cd -P "$WT_M13" && pwd -P)"* ]] \
     || fail "(q) M13: the cwd check did not report keeping the worktree"
 pass "(q) M13: safety check off, a process cwd in the source tree keeps the worktree"
+
+# ── (v) Linux only: same-uid blind build tool, cmdline NOT naming the worktree ──
+# Each case is its own reaper pass, after the main pass, on a fresh idle
+# open-PR worktree created here (so the main pass never saw it). The fixture
+# process is python3 exec'd with argv0 set to the tool name and made
+# non-dumpable (prctl PR_SET_DUMPABLE 0): its /proc environ, cwd and fd are
+# unreadable, so only _classd_blind_pid_busy can judge it. Its cmdline is
+# "<tool> -c <script> [args]"; neither the script nor the args name the
+# worktree unless a case says so.
+echo "--- (v) same-uid non-dumpable build tool not naming the worktree (own passes) ---"
+if [[ ! -d /proc/self ]]; then
+    echo "  - (v) SKIPPED: no /proc on this host (macOS); the same-uid blind build-tool fixture runs on Linux only"
+elif [[ $BLIND_IS_BLIND -ne 1 ]]; then
+    echo "  - (v) SKIPPED: a non-dumpable process is readable here (running as root?), so no pid is blind and the same-uid rule cannot be exercised"
+else
+    PY3="$(command -v python3)"
+    BLIND_TOOL_PY='
+import ctypes, sys, time
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(4, 0, 0, 0, 0) != 0:   # PR_SET_DUMPABLE = 4
+    sys.exit(3)
+time.sleep(300)
+'
+    WT_SAMEUID="$(mk_wt resilient-1822 chump/resilient-1822-open)"
+    SAMEUID_REAL="$(cd -P "$WT_SAMEUID" && pwd -P)"
+    SAMEUID_SRC_BEFORE="$(src_sum "$WT_SAMEUID")"
+    stop_blind_tool() {
+        kill "$V_PID" 2>/dev/null || true
+        wait "$V_PID" 2>/dev/null || true
+    }
+    # cmdline_of <pid> — the pid's argv, NUL-separated args joined by spaces.
+    cmdline_of() { tr '\0' ' ' < "/proc/$1/cmdline"; }
+
+    # start_blind_tool <argv0> [arg...] — start the non-dumpable fixture with
+    # cwd elsewhere and no CARGO_TARGET_DIR (unset in the subshell: `env -u`
+    # would re-exec python with the path as argv0); sets V_PID once it is blind.
+    start_blind_tool() {
+        local argv0="$1" _
+        shift
+        ( cd "$TMP" && unset CARGO_TARGET_DIR && exec -a "$argv0" "$PY3" -c "$BLIND_TOOL_PY" "$@" ) >/dev/null 2>&1 &
+        V_PID="$!"
+        BG_PIDS+=("$V_PID")
+        for _ in $(seq 1 50); do
+            kill -0 "$V_PID" 2>/dev/null || fail "(v) the ${argv0} fixture process exited (prctl failed?)"
+            if ! readlink "/proc/${V_PID}/cwd" >/dev/null 2>&1; then
+                return 0
+            fi
+            sleep 0.1
+        done
+        fail "(v) the ${argv0} fixture process never became non-dumpable"
+    }
+
+    for tool in sccache clippy-driver cargo; do
+        start_blind_tool "$tool"
+        V_CMDLINE="$(cmdline_of "$V_PID")"
+        [[ "$V_CMDLINE" == "${tool} -c "* ]] \
+            || fail "(v) the fixture's argv0 is not ${tool}: cmdline is '${V_CMDLINE}'"
+        [[ "$V_CMDLINE" != *resilient-1822* ]] \
+            || fail "(v) the ${tool} fixture's cmdline names the worktree; it must not"
+        OUT="$(run_reaper)" || fail "reaper exited non-zero ((v) ${tool})"
+        echo "$OUT" | sed 's/^/    /'
+        [[ -d "$WT_SAMEUID/target" && -d "$WT_SAMEUID/.cargo-test-target" ]] \
+            || fail "(v) an idle worktree was reaped while a same-uid non-dumpable ${tool} (cmdline not naming it) was running"
+        no_reap_event "$WT_SAMEUID" "(v) same-uid ${tool}"
+        [[ "$OUT" == *"skip (unreadable pid judged busy by cmdline: pid=${V_PID} same-uid ${tool}): ${SAMEUID_REAL}"* ]] \
+            || fail "(v) the keep was not logged as \"pid=${V_PID} same-uid ${tool}\" for ${SAMEUID_REAL}"
+        stop_blind_tool
+        pass "(v) same-uid non-dumpable ${tool} (cmdline does not name the worktree): kept, logged \"same-uid ${tool}\""
+    done
+
+    # Path match: a blind NON-tool process (argv0 python3) whose argument is
+    # "<wt>;" names the worktree (";" is not a path-name character).
+    start_blind_tool python3 "--cfg=${SAMEUID_REAL};"
+    OUT="$(run_reaper)" || fail "reaper exited non-zero ((v) path match)"
+    echo "$OUT" | sed 's/^/    /'
+    [[ -d "$WT_SAMEUID/target" && -d "$WT_SAMEUID/.cargo-test-target" ]] \
+        || fail "(v) a blind process whose argument is \"<wt>;\" did not keep the worktree"
+    [[ "$OUT" == *"skip (unreadable pid judged busy by cmdline: pid=${V_PID} cmdline names ${SAMEUID_REAL}): ${SAMEUID_REAL}"* ]] \
+        || fail "(v) the \"<wt>;\" keep was not logged as \"pid=${V_PID} cmdline names ${SAMEUID_REAL}\""
+    stop_blind_tool
+    pass "(v) a blind process whose argument is \"<wt>;\" names the worktree: kept"
+
+    # Every fixture process killed; only a blind python3 naming "<wt>-old"
+    # ("-" IS a path-name character, so a different path) is alive. The same
+    # worktree is now idle and IS reaped, so the keeps above were the
+    # processes', not some other guard's.
+    start_blind_tool python3 "${SAMEUID_REAL}-old"
+    OUT="$(run_reaper)" || fail "reaper exited non-zero ((v) after kill)"
+    echo "$OUT" | sed 's/^/    /'
+    [[ ! -d "$WT_SAMEUID/target" && ! -d "$WT_SAMEUID/.cargo-test-target" ]] \
+        || fail "(v) with the build-tool fixtures killed (only a \"<wt>-old\" blind pid alive) the idle worktree was NOT reaped"
+    [[ -f "$WT_SAMEUID/main.rs" && "$(src_sum "$WT_SAMEUID")" == "$SAMEUID_SRC_BEFORE" ]] \
+        || fail "(v) reaping the build output changed or removed the source"
+    [[ "$OUT" == *"judged by cmdline: "*"$V_PID"* ]] \
+        || fail "(v) the \"<wt>-old\" blind pid ${V_PID} was not listed in the blind-pid summary line"
+    stop_blind_tool
+    pass "(v) build-tool fixtures killed: the same idle worktree is reaped; a \"<wt>-old\" blind pid does not name it"
+fi
 
 echo "=== all Class-D open-idle tests passed ==="
