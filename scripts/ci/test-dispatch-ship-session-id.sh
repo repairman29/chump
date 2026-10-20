@@ -207,6 +207,105 @@ bot-merge.sh's --dry-run path has preconditions beyond this fixture's reach)"
     fi
 fi
 
+# ── 5. CREDIBLE-1580: auto-merge is default-OFF without --auto-merge ─────────
+#    bot-merge.sh self-armed GitHub auto-merge on the default `internal` lane
+#    even when `chump dispatch` never passed --auto-merge (src/dispatch.rs only
+#    appends the flag when opts.auto_merge is true) — #5613 self-armed 3x in 95
+#    min inside the CREDIBLE-1576 dispatch. The arm decision is now default-OFF
+#    on every lane; the ONLY arming route is an explicit --auto-merge (the
+#    CREDIBLE-1542 review-held path). bot_merge_lane_resolved.auto_merge_requested
+#    is the resolved decision the arm step (bot-merge.sh section 7) gates on, so
+#    asserting it is a behavioral check on a dispatch-shaped run: without the
+#    flag it must resolve to 0 and make zero `gh pr merge` calls. Mutant
+#    (restore the internal-lane default arm) flips it to 1 and this leg fails.
+echo
+echo "[5. CREDIBLE-1580 auto-merge default-OFF without --auto-merge]"
+
+credible_1580_arm_default() {
+    local wt="${TMP}/cred1580-wt"
+    mkdir -p "$wt"
+    (
+        cd "$wt" || exit 1
+        git init -q -b main
+        git config user.email test@example.com
+        git config user.name test
+        echo x > f.txt && git add f.txt && git commit -q -m init
+        git checkout -q -b claude/infra-9999
+        echo y >> f.txt && git add f.txt && git commit -q -m "work for INFRA-9999"
+    ) || return 2
+
+    mkdir -p "${wt}/.chump-locks"
+    cat > "${wt}/.chump-locks/dispatch-infra-9999-1-1.json" <<EOF
+{"session_id":"dispatch-infra-9999-1-1","gap_id":"INFRA-9999","worktree":"${wt}","expires_at":"2099-01-01T00:00:00Z"}
+EOF
+    printf '%s' "dispatch-infra-9999-1-1" > "${wt}/.chump-locks/.wt-session-id"
+
+    local sbin="${TMP}/cred1580-bin"
+    mkdir -p "$sbin"
+    local gh_argv="${TMP}/cred1580-gh-argv.log"
+    : > "$gh_argv"
+    cat > "${sbin}/chump" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" == gap && "$2" == preflight ]] && { echo "[preflight] OK"; exit 0; }
+exit 0
+EOF
+    chmod +x "${sbin}/chump"
+    # Stub gh records every argv so we can prove zero `pr merge` calls.
+    cat > "${sbin}/gh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${gh_argv}"
+exit 1
+EOF
+    chmod +x "${sbin}/gh"
+
+    # auto_merge_requested of the last bot_merge_lane_resolved event ("" if none).
+    _resolved() {
+        grep 'bot_merge_lane_resolved' "$1" 2>/dev/null | tail -1 \
+            | grep -oE '"auto_merge_requested":[01]' | grep -oE '[01]$' || true
+    }
+
+    # Run exactly as `chump dispatch` does: no --auto-merge. The lane-resolved
+    # event is emitted right after arg-parse, so it lands regardless of
+    # bot-merge's eventual exit code; capture with || true.
+    local amb_no="${TMP}/cred1580-amb-no.jsonl"; : > "$amb_no"
+    ( cd "$wt" && PATH="${sbin}:${PATH}" CHUMP_AMBIENT_LOG="$amb_no" \
+        CHUMP_SESSION_ID=dispatch-infra-9999-1-1 \
+        bash "${BOT_MERGE}" --gap INFRA-9999 --dry-run >/dev/null 2>&1 ) || true
+    local got_no; got_no="$(_resolved "$amb_no")"
+    if [[ -z "$got_no" ]]; then
+        return 2   # lane resolution not reached in this env — SKIP (don't false-fail)
+    fi
+    if [[ "$got_no" == "0" ]]; then
+        ok "dispatch-shaped run without --auto-merge resolves auto_merge_requested=0"
+    else
+        fail "dispatch-shaped run without --auto-merge resolved auto_merge_requested=$got_no (self-arm default is back)"
+    fi
+    if grep -qE '(^| )pr merge( |$)' "$gh_argv" 2>/dev/null; then
+        fail "bot-merge made a 'gh pr merge' call without --auto-merge: $(grep 'pr merge' "$gh_argv")"
+    else
+        ok "bot-merge made zero 'gh pr merge' calls without --auto-merge"
+    fi
+
+    # Positive control: the explicit flag still arms (resolves to 1).
+    local amb_yes="${TMP}/cred1580-amb-yes.jsonl"; : > "$amb_yes"
+    ( cd "$wt" && PATH="${sbin}:${PATH}" CHUMP_AMBIENT_LOG="$amb_yes" \
+        CHUMP_SESSION_ID=dispatch-infra-9999-1-1 \
+        bash "${BOT_MERGE}" --gap INFRA-9999 --auto-merge --dry-run >/dev/null 2>&1 ) || true
+    local got_yes; got_yes="$(_resolved "$amb_yes")"
+    if [[ "$got_yes" == "1" ]]; then
+        ok "explicit --auto-merge resolves auto_merge_requested=1 (review-held arming route intact)"
+    elif [[ -n "$got_yes" ]]; then
+        fail "explicit --auto-merge resolved auto_merge_requested=$got_yes (expected 1)"
+    fi
+    return 0
+}
+
+_c1580_rc=0
+credible_1580_arm_default || _c1580_rc=$?
+if [[ "$_c1580_rc" -eq 2 ]]; then
+    echo "SKIP: bot-merge lane resolution not reached in this fixture (CREDIBLE-1580 leg skipped)"
+fi
+
 echo
 if [[ "$FAIL_COUNT" -gt 0 ]]; then
     echo "=== INFRA-8204 tests FAILED ($FAIL_COUNT failure(s)) ==="

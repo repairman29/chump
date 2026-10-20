@@ -809,22 +809,26 @@ case "$LANE" in
         ;;
 esac
 if [[ "$LANE" == "user_facing" ]]; then LANE="user-facing"; fi
-if [[ "$AUTO_MERGE_EXPLICIT" -eq 0 ]]; then
-    case "$LANE" in
-        internal)
-            # Auto-merge-by-default lane (RESILIENT-190 doctrine: lowest
-            # blast radius if wrong). Still subject to the chump-policy
-            # gate below like any other lane.
-            AUTO_MERGE=1
-            ;;
-        user-facing|critical)
-            # No auto-merge unless the caller explicitly opts in via
-            # --auto-merge; the chump-policy gate further blocks critical
-            # by default even when opted in.
-            AUTO_MERGE=0
-            ;;
-    esac
-fi
+# ── CREDIBLE-1580: auto-merge is default-OFF on EVERY lane ──────────────────
+# The ONLY way bot-merge arms GitHub auto-merge is an explicit --auto-merge
+# flag (AUTO_MERGE_EXPLICIT=1, set in the arg loop above). The default is the
+# constant AUTO_MERGE=0 from init — no lane, not even `internal`, self-arms,
+# and there is NO env override (Chief standing rule: a safety input like the
+# arm decision is a constant or a CLI flag, never a CHUMP_* env var).
+#
+# This closes the self-arm hole behind the CREDIBLE-1542 review-held gate: a
+# fresh `chump dispatch` run never passes --auto-merge (src/dispatch.rs only
+# appends it when opts.auto_merge is true), yet INFRA-1767's internal-lane
+# "arm by default" armed every dispatched PR unreviewed — #5613 self-armed
+# three times in 95 minutes inside the CREDIBLE-1576 dispatch. With the
+# default-arm removed, the review organ (CREDIBLE-1542) is the only route that
+# passes --auto-merge, and only after a written APPROVE.
+#
+# The lane normalization above is still load-bearing: the chump-policy gate
+# below refuses the critical lane even when --auto-merge IS passed, and the
+# bot_merge_lane_resolved event records the resolved decision. Only the
+# default-arm assignment is gone. (Supersedes INFRA-1767's internal-lane
+# auto-arm-by-default and the RESILIENT-190 lowest-blast-radius doctrine.)
 printf '{"ts":"%s","kind":"bot_merge_lane_resolved","lane":"%s","auto_merge_requested":%s,"auto_merge_explicit":%s,"session":"%s"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$LANE" "$AUTO_MERGE" "$AUTO_MERGE_EXPLICIT" "${CHUMP_SESSION_ID:-unknown}" \
     >> "${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}" 2>/dev/null || true
