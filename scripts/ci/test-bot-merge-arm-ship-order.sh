@@ -347,6 +347,20 @@ ARM_REPO="$TMP/arm-repo"; mkdir -p "$ARM_REPO/.chump-locks" "$ARM_REPO/.chump"
 printf 'ref: refs/heads/main\n' > "$ARM_REPO/.git"
 export FAKE_REPO="$ARM_REPO"
 
+# CREDIBLE-1576 item 1 (hermetic): the arm-site drives below run bot-merge.sh
+# end-to-end, so they pass through the RESILIENT-073 fleet kill switch
+# (bot-merge refuses with exit 10 unless ${HOME}/.chump/AUTONOMY_LEVEL >= 1). On
+# a CI runner that file is absent → level 0 → bot-merge exits 10 BEFORE any arm
+# site is reached, so the refusal under test is never exercised (the
+# audit-required failure: "recovery gate arm not refused (rc=10 ...)"). Run
+# every end-to-end arm drive under a sandbox HOME carrying AUTONOMY_LEVEL=5,
+# exactly as scripts/ci/census.sh does. This is the approved seam — the REAL
+# code runs under a sandbox HOME, so the real path resolves inside the sandbox;
+# it is NOT an env override of a safety input.
+ARM_HOME="$TMP/arm-home"; mkdir -p "$ARM_HOME/.chump"
+echo 5 > "$ARM_HOME/.chump/AUTONOMY_LEVEL"
+export ARM_HOME
+
 cat > "$ARM_MOCK/gh" <<'GHEOF'
 #!/usr/bin/env bash
 printf 'gh %s\n' "$*" >> "$ARM_CALL_LOG"
@@ -377,9 +391,28 @@ GHEOF
 
 cat > "$ARM_MOCK/chump" <<'CHEOF'
 #!/usr/bin/env bash
+# Records every argv when CHUMP_REC_LOG is set (test fixture only) so the Mode A
+# route test can assert the `gap set --status ready_to_ship` write never fires.
+[ -n "${CHUMP_REC_LOG:-}" ] && printf 'chump %s\n' "$*" >> "$CHUMP_REC_LOG"
 case "${1:-} ${2:-}" in "gap show") echo 'status: open';; "gap list") echo '[]';; esac
 exit 0
 CHEOF
+
+# Stub chump-ship: the CHUMP_SHIP_RUST shim exec's this. Records invocations so
+# the item-4 test can assert it is NEVER exec'd on a gate / uncomputable diff.
+cat > "$ARM_MOCK/chump-ship" <<'CSEOF'
+#!/usr/bin/env bash
+printf 'chump-ship %s\n' "$*" >> "$SHIP_CALL_LOG"
+exit 0
+CSEOF
+
+# Stub chump-coord: Mode A posts to the work-board before the ready_to_ship
+# write; a success here lets the n3 mutant actually reach that write (so the
+# "no ready_to_ship" assertion is not vacuous).
+cat > "$ARM_MOCK/chump-coord" <<'CCEOF'
+#!/usr/bin/env bash
+exit 0
+CCEOF
 
 cat > "$ARM_MOCK/git" <<'GITEOF'
 #!/usr/bin/env bash
@@ -404,7 +437,7 @@ case "$cmd" in
   *) exit 0 ;;
 esac
 GITEOF
-chmod +x "$ARM_MOCK/gh" "$ARM_MOCK/chump" "$ARM_MOCK/git"
+chmod +x "$ARM_MOCK/gh" "$ARM_MOCK/chump" "$ARM_MOCK/git" "$ARM_MOCK/chump-ship" "$ARM_MOCK/chump-coord"
 
 # No bypass/skip env vars are used to drive these flows (the standing rule
 # forbids them). The mocks satisfy every real gate: `chump gap preflight` passes
@@ -423,7 +456,7 @@ chmod +x "$ARM_MOCK/gh" "$ARM_MOCK/chump" "$ARM_MOCK/git"
 # self-armed #5602. Must refuse (exit 2) and NEVER reach `gh pr merge`.
 ARM_CALL_LOG="$TMP/arm-D.log"; : > "$ARM_CALL_LOG"; export ARM_CALL_LOG
 set +e
-_d_out="$( cd "$ARM_REPO" && PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="scripts/ci/x.sh" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+_d_out="$( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="scripts/ci/x.sh" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
     CHUMP_BOT_MERGE_RECOVERY_MODE=1 CHUMP_AMBIENT_LOG="$AMBIENT" \
     bash "$BOT_MERGE" --gap TEST-001 2>&1 )"
 _d_rc=$?
@@ -442,7 +475,7 @@ fi
 # unconditional refusal would block this legitimate arm.
 ARM_CALL_LOG="$TMP/arm-E.log"; : > "$ARM_CALL_LOG"; export ARM_CALL_LOG
 set +e
-( cd "$ARM_REPO" && PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="docs/note.md" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="docs/note.md" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
     CHUMP_BOT_MERGE_RECOVERY_MODE=1 CHUMP_AMBIENT_LOG="$AMBIENT" \
     bash "$BOT_MERGE" --gap TEST-001 --auto-merge ) >/dev/null 2>&1
 _e_rc=$?
@@ -459,7 +492,7 @@ fi
 # Case D, m7 (both dropped).
 ARM_CALL_LOG="$TMP/arm-F.log"; : > "$ARM_CALL_LOG"; export ARM_CALL_LOG
 set +e
-_f_out="$( cd "$ARM_REPO" && PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="scripts/ci/x.sh" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+_f_out="$( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="scripts/ci/x.sh" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
     CHUMP_AMBIENT_LOG="$AMBIENT" CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-F.lock" \
     bash "$BOT_MERGE" --gap TEST-001 --auto-merge --no-local-build 2>&1 )"
 _f_rc=$?
@@ -472,6 +505,115 @@ if [[ "$_f_rc" -eq 2 ]] && printf '%s' "$_f_out" | grep -q 'REFUSED' && ! grep -
 else
     fail "CREDIBLE-1576 item 1: MAIN arm site not refused (rc=$_f_rc, refused=$(printf '%s' "$_f_out" | grep -c 'REFUSED'), merge-calls=$(grep -c 'pr merge' "$ARM_CALL_LOG"))"
 fi
+
+# ── CREDIBLE-1576 item 2: no-flag internal-lane case at the MAIN arm site ─────
+# The MAIN arm guard (bot-merge.sh:~4374) must key off $AUTO_MERGE, NOT
+# $AUTO_MERGE_EXPLICIT. On the internal lane AUTO_MERGE defaults to 1 with NO
+# --auto-merge flag (RESILIENT-190) — the exact default-arm path that self-armed
+# #5602. A mutant that passes $AUTO_MERGE_EXPLICIT (explicit-flag-only) would
+# NOT refuse here because no flag was given. Case F above covers the main site
+# WITH the flag (which an explicit-flag-only mutant still refuses); this case is
+# the one that fires on the internal default. Drive the full per-PR flow with NO
+# --auto-merge flag on a gate diff; must refuse (exit 2 + REFUSED) and NEVER
+# reach `gh pr merge`. Kills n9 (explicit-flag-only at the main site).
+ARM_CALL_LOG="$TMP/arm-G.log"; : > "$ARM_CALL_LOG"; export ARM_CALL_LOG
+set +e
+_g_out="$( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" MOCK_GIT_DIFF_FILES="scripts/ci/x.sh" MOCK_GIT_DIFF_RC=0 REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+    CHUMP_AMBIENT_LOG="$AMBIENT" CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-G.lock" \
+    bash "$BOT_MERGE" --gap TEST-001 --no-local-build 2>&1 )"
+_g_rc=$?
+set -e
+if [[ "$_g_rc" -eq 2 ]] && printf '%s' "$_g_out" | grep -q 'REFUSED' && ! grep -q 'pr merge' "$ARM_CALL_LOG"; then
+    pass "CREDIBLE-1576 item 2: MAIN arm site, internal-lane DEFAULT (no --auto-merge) on gate diff refuses (exit 2 + REFUSED), no gh pr merge [n9]"
+else
+    fail "CREDIBLE-1576 item 2: MAIN arm no-flag internal-lane not refused (rc=$_g_rc, refused=$(printf '%s' "$_g_out" | grep -c 'REFUSED'), merge-calls=$(grep -c 'pr merge' "$ARM_CALL_LOG"))"
+fi
+
+# ── CREDIBLE-1576 item 4: CHUMP_SHIP_RUST exec shim never arms a gate PR ───────
+# With CHUMP_SHIP_RUST=1 the top-of-file shim exec's the Rust chump-ship binary
+# (manual_ship.rs arms WITHOUT the gate guard) — but ONLY when the branch diff is
+# SURE to touch no gate file (classifier rc=1). A gate hit (rc=0) or an
+# uncomputable diff (rc=3, fail-closed) MUST fall through to the guarded bash
+# body and never exec chump-ship. A stub chump-ship on PATH records every exec.
+#   n4  shim always execs   → killed by the gate-diff case (chump-ship NOT run).
+#   n8  shim execs on rc=3  → killed by the uncomputable-diff case.
+# The non-gate case is the positive control: it proves the stub records (so the
+# two negative assertions are not vacuous) and that a clean diff still routes to
+# chump-ship. The gate-diff rc is driven through the ARM_MOCK git's
+# MOCK_GIT_DIFF_* knobs — the same diff the live arm guard reads.
+_shim_run() {  # $1=label $2=diff-files $3=diff-rc ; caller sets SHIP_CALL_LOG
+    local _lbl="$1" _df="$2" _rc="$3"
+    ( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" \
+        MOCK_GIT_DIFF_FILES="$_df" MOCK_GIT_DIFF_RC="$_rc" \
+        REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" CHUMP_AMBIENT_LOG="$AMBIENT" \
+        CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-$_lbl.lock" \
+        CHUMP_SHIP_RUST=1 SHIP_CALL_LOG="$SHIP_CALL_LOG" \
+        bash "$BOT_MERGE" --gap TEST-001 --no-local-build ) >/dev/null 2>&1 || true
+}
+
+SHIP_CALL_LOG="$TMP/ship-gate.log"; : > "$SHIP_CALL_LOG"; export SHIP_CALL_LOG
+_shim_run shim-gate "scripts/ci/x.sh" 0
+if ! grep -q 'chump-ship' "$SHIP_CALL_LOG"; then
+    pass "CREDIBLE-1576 item 4: CHUMP_SHIP_RUST shim does NOT exec chump-ship on a gate diff [n4]"
+else
+    fail "CREDIBLE-1576 item 4: shim exec'd chump-ship on a gate diff — $(cat "$SHIP_CALL_LOG")"
+fi
+
+SHIP_CALL_LOG="$TMP/ship-nongate.log"; : > "$SHIP_CALL_LOG"; export SHIP_CALL_LOG
+_shim_run shim-nongate "docs/note.md" 0
+if grep -q 'chump-ship' "$SHIP_CALL_LOG"; then
+    pass "CREDIBLE-1576 item 4: CHUMP_SHIP_RUST shim DOES exec chump-ship on a clean non-gate diff (positive control)"
+else
+    fail "CREDIBLE-1576 item 4: shim failed to exec chump-ship on a clean diff — negative assertions would be vacuous"
+fi
+
+SHIP_CALL_LOG="$TMP/ship-uncomputable.log"; : > "$SHIP_CALL_LOG"; export SHIP_CALL_LOG
+_shim_run shim-uncomputable "" 1
+if ! grep -q 'chump-ship' "$SHIP_CALL_LOG"; then
+    pass "CREDIBLE-1576 item 4: CHUMP_SHIP_RUST shim fails closed — no exec on an uncomputable diff [n8]"
+else
+    fail "CREDIBLE-1576 item 4: shim exec'd chump-ship on an uncomputable diff (fail-open) — $(cat "$SHIP_CALL_LOG")"
+fi
+
+# ── CREDIBLE-1576 item 3: a gate PR is forced out of Mode A (integrator batch) ─
+# Mode A routes a gap to the chump-integrator daemon, which pushes and arms with
+# --auto, bypassing the per-PR arm guard. A gate-file (or uncomputable) diff must
+# force Mode B BEFORE the Mode A `chump gap set --status ready_to_ship` write, so
+# the PR opens through the guarded per-PR flow instead of being batch-armed. The
+# pre-existing CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH test hook (not a new var)
+# reports the integrator HEALTHY so Mode A is actually REACHED — otherwise
+# INFRA-2523 fail-opens to B first and the CREDIBLE-1576 guard is never the
+# deciding factor. Assert: the diff emits the CREDIBLE-1576 force-B event AND the
+# Mode A ready_to_ship write NEVER happens (recorded via CHUMP_REC_LOG).
+#   n3  Mode A force-B removed    → gate diff stays Mode A → ready_to_ship written.
+#   n7  force-B not fail-closed   → uncomputable diff stays Mode A → ready_to_ship.
+_modea_run() {  # $1=label $2=diff-files $3=diff-rc ; caller sets MODEA_AMB + CHUMP_REC_LOG
+    local _lbl="$1" _df="$2" _rc="$3"
+    ( cd "$ARM_REPO" && HOME="$ARM_HOME" PATH="$ARM_MOCK:$PATH" \
+        MOCK_GIT_DIFF_FILES="$_df" MOCK_GIT_DIFF_RC="$_rc" \
+        REPO_ROOT="$ARM_REPO" MAIN_REPO="$ARM_REPO" \
+        CHUMP_AMBIENT_LOG="$MODEA_AMB" CHUMP_REC_LOG="$CHUMP_REC_LOG" \
+        CHUMP_MERGE_PIPELINE_LOCK_FILE="$TMP/mpl-$_lbl.lock" \
+        CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH=1 \
+        bash "$BOT_MERGE" --gap TEST-001 --auto-merge --no-local-build ) >/dev/null 2>&1 || true
+}
+
+for _ma_case in "modea-gate:scripts/ci/x.sh:0:n3" "modea-uncomputable::1:n7"; do
+    _ma_lbl="${_ma_case%%:*}"; _ma_tmp="${_ma_case#*:}"
+    _ma_df="${_ma_tmp%%:*}"; _ma_tmp="${_ma_tmp#*:}"
+    _ma_rc="${_ma_tmp%%:*}"; _ma_mut="${_ma_tmp##*:}"
+    MODEA_AMB="$TMP/$_ma_lbl.ambient.jsonl"; : > "$MODEA_AMB"
+    CHUMP_REC_LOG="$TMP/$_ma_lbl.chump.log"; : > "$CHUMP_REC_LOG"
+    export MODEA_AMB CHUMP_REC_LOG
+    _modea_run "$_ma_lbl" "$_ma_df" "$_ma_rc"
+    if grep -q '"kind":"bot_merge_mode_failopen"' "$MODEA_AMB" \
+        && grep -q '"note":"CREDIBLE-1576"' "$MODEA_AMB" \
+        && ! grep -q 'ready_to_ship' "$CHUMP_REC_LOG"; then
+        pass "CREDIBLE-1576 item 3: $_ma_lbl diff forces Mode A→B (CREDIBLE-1576), no ready_to_ship write [$_ma_mut]"
+    else
+        fail "CREDIBLE-1576 item 3: $_ma_lbl should force Mode B with no ready_to_ship (failopen=$(grep -c bot_merge_mode_failopen "$MODEA_AMB"), cred1576=$(grep -c 'CREDIBLE-1576' "$MODEA_AMB"), ready_to_ship=$(grep -c ready_to_ship "$CHUMP_REC_LOG")) [$_ma_mut]"
+    fi
+done
 
 # ── CREDIBLE-1576 item 5: static assertions — guard reads NO env (m13), and the
 # gate-file glob list is a SINGLE literal constant (m4). The guard is a safety
