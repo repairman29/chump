@@ -71,6 +71,17 @@ trap 'rm -rf "$TMP"' EXIT
 
 export CHUMP_REPO="$TMP"
 export CHUMP_HOME="$TMP"
+# RESILIENT-1652: CHUMP_HOME stays $TMP across the TMP2/3/4 blocks (only
+# CHUMP_REPO changes, and CHUMP_STATE_DB is left unset so each scenario's
+# reserves stay per-repo), so the farmer readiness gate always resolves oauth +
+# node.env from $TMP/.chump. ONE healthy-node fixture there covers every
+# scenario. chump_test_sandbox_setup is intentionally NOT used here — it would
+# pin CHUMP_STATE_DB and funnel every scenario's reserves into one db, breaking
+# the per-repo pillar counts. No gate loosening, no skip env var.
+export HOME="$TMP" CHUMP_STATE_DIR="$TMP/.chump"
+# shellcheck source=scripts/ci/lib/sandbox-healthy-node.sh
+source "$REPO_ROOT/scripts/ci/lib/sandbox-healthy-node.sh"
+write_sandbox_healthy_node "$TMP"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1

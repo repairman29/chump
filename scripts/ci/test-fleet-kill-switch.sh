@@ -69,6 +69,22 @@ FAKE_HOME="$(mktemp -d)"
 trap 'rm -rf "$FAKE_HOME"' EXIT
 mkdir -p "$FAKE_HOME/.chump"
 
+# RESILIENT-1652: `chump claim` runs the RESILIENT-069 farmer readiness gate
+# BEFORE the AUTONOMY_LEVEL kill switch (src/main.rs claim arm). On a fresh Linux
+# runner the gate reds (no oauth token under HOME=$FAKE_HOME) and the claim prints
+# "farmer status RED" before the kill-switch message Tests 1-4 assert on — so lay
+# down a healthy-node fixture under $FAKE_HOME (the HOME every claim below runs
+# with). The shared function keys on CHUMP_HOME, so set it for the fixture write
+# ONLY and do NOT export it: Test 7 runs bot-merge's `chump gap preflight`, which
+# resolves repo_root from CHUMP_HOME, so CHUMP_HOME must stay unset there (and the
+# claims below already pass HOME=$FAKE_HOME inline, giving chump_state_home =
+# $FAKE_HOME for the oauth + node.env reads). chump_test_sandbox_setup is not
+# usable here for the same reason (it exports CHUMP_HOME/CHUMP_REPO). No gate
+# loosening, no skip env var: an absent/expired token on a real node still reds.
+# shellcheck source=scripts/ci/lib/sandbox-healthy-node.sh
+source "$REPO_ROOT/scripts/ci/lib/sandbox-healthy-node.sh"
+CHUMP_HOME="$FAKE_HOME" write_sandbox_healthy_node "$FAKE_HOME"
+
 AL_FILE="$FAKE_HOME/.chump/AUTONOMY_LEVEL"
 
 # Synthetic ambient log so events land somewhere inspectable.
