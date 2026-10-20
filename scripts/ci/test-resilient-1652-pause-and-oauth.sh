@@ -299,5 +299,88 @@ NCBIN="$TMP/ncbin"; mkdir -p "$NCBIN"; ln -sf "$CHUMP_BIN" "$NCBIN/chump"
 ) || fail "(9) node-converge _nc_paused parity over fixtures (delegation to the Rust predicate broke)"
 ok "(9) node-converge _nc_paused (binary present) delegates to the Rust predicate: paused forms paused; WORK_ENABLED=0 ALONE NOT paused; sentinel paused"
 
+# ── (10) healthy-node-fixture self-test (repair 5, item 4) ────────────────────
+# The ONE shared CI fixture helper (scripts/ci/lib/healthy-node-fixture.sh) must:
+#  (a) write a token the Linux content gate ACCEPTS;
+#  (b) export NO environment variable (it writes EVIDENCE, never env); and
+#  (c) with the environment CLEARED, make the gate read GREEN on the fixture
+#      alone. Kills the mutant where the helper exports CHUMP_FREE_TIER_PROVIDERS
+#      (or any env) instead of writing a token: `env -i` wipes any export so the
+#      gate then has neither a token nor a free-tier signal → RED; and the
+#      export-diff below catches the stray export directly.
+HNF="$REPO_ROOT/scripts/ci/lib/healthy-node-fixture.sh"
+HROOT="$TMP/hnf"; HHOME="$HROOT/home"; HSTATE="$HHOME/.chump"; HREPO="$HROOT/repo"
+mkdir -p "$HHOME" "$HREPO/.chump"
+
+# (b) exports-nothing: in a subshell with the fixture env already set, capture the
+# exported-name set before/after sourcing+calling; the delta must be empty (the
+# helper uses only `local` vars). Also writes the fixture as a side effect.
+EXPORT_DELTA="$(env -i PATH="$STUB:/usr/bin:/bin" HOME="$HHOME" CHUMP_HOME="$HHOME" \
+    CHUMP_STATE_DIR="$HSTATE" CHUMP_REPO="$HREPO" bash -c '
+        before="$(compgen -e | LC_ALL=C sort)"
+        source "'"$HNF"'"
+        write_healthy_node_fixture >/dev/null 2>&1 || { echo "HELPER_FAILED"; exit 0; }
+        after="$(compgen -e | LC_ALL=C sort)"
+        comm -13 <(printf "%s\n" "$before") <(printf "%s\n" "$after")
+    ')"
+[ "$EXPORT_DELTA" != "HELPER_FAILED" ] || fail "(10) helper refused to write the fixture under a clean temp home"
+[ -z "$EXPORT_DELTA" ] || fail "(10) helper EXPORTED env var(s) instead of writing evidence: [$EXPORT_DELTA]"
+
+# evidence lands exactly where the gate reads it (repair 5, item 2): oauth under
+# <state_home>/.chump, node.env in the state dir, heartbeat under repo_root/.chump
+# (farmer_status reads repo_root/.chump/farmer-heartbeat — NOT the node state dir).
+[ -f "$HHOME/.chump/oauth-token.json" ] || fail "(10) oauth token not written under <state_home>/.chump"
+[ -f "$HSTATE/node.env" ]               || fail "(10) node.env not written in the state dir"
+[ -f "$HREPO/.chump/farmer-heartbeat" ] || fail "(10) heartbeat not written where the gate reads it (repo_root/.chump/farmer-heartbeat)"
+
+# (a)+(c) token content accepted AND gate GREEN on the fixture alone, env cleared
+# (no ANTHROPIC_API_KEY, no CHUMP_FREE_TIER_PROVIDERS, no cache — env -i guarantees it).
+HNF_JSON="$(env -i PATH="$STUB:/usr/bin:/bin" HOME="$HHOME" CHUMP_HOME="$HHOME" \
+    CHUMP_STATE_DIR="$HSTATE" CHUMP_REPO="$HREPO" "$CHUMP_BIN" farmer status --json 2>/dev/null)" || true
+python3 - "$HNF_JSON" <<'PY' || fail "(10) gate not GREEN on the helper fixture alone — token content rejected or a stray env leaked"
+import json,sys
+s=json.loads(sys.argv[1])
+assert s["oauth_fresh"] is True, f"oauth_fresh must be True from the fixture token alone: {s}"
+assert s["green"] is True, f"green must be True on the healthy-node fixture alone: {s}"
+PY
+ok "(10) healthy-node-fixture: writes a content-valid token, exports NO env, gate GREEN on the fixture alone (env cleared) — kills the CHUMP_FREE_TIER_PROVIDERS mutant"
+
+# ── (11) SAFETY regression: the helper NEVER touches an inherited CHUMP_STATE_DIR
+#     (repair 5, item 1) ──────────────────────────────────────────────────────
+# On a node the installer EXPORTS CHUMP_STATE_DIR at the REAL state dir. Export it
+# here at a PAUSED sentinel dir and prove that (a) the helper HARD-STOPS (exit 2)
+# rather than write into it, and (b) EVERY wired test the architect reproduced the
+# exploit with (test-state-db-yaml-sync.sh — fast-checks; test-outcome-gate.sh —
+# runs inside `chump preflight`) leaves that dir BYTE-IDENTICAL (node.env +
+# heartbeat untouched), because each exports its OWN temp CHUMP_STATE_DIR first.
+PAUSED="$TMP/paused-real-statedir"; mkdir -p "$PAUSED"
+printf 'export CHUMP_NODE_MODE=paused\nexport CHUMP_RUN_USER=ubuntu\n' > "$PAUSED/node.env"
+printf 'real-durable-heartbeat\n' > "$PAUSED/farmer-heartbeat"
+paused_snapshot() { ( cd "$PAUSED" && find . -type f -exec sha256sum {} + 2>/dev/null | LC_ALL=C sort ); }
+PAUSED_BEFORE="$(paused_snapshot)"
+
+# (a) direct: helper must exit 2 (CHUMP_STATE_DIR != the derived temp state dir)
+#     and write nothing into $PAUSED.
+REG_HOME="$TMP/reg-home"; mkdir -p "$REG_HOME"
+reg_rc=0
+( env -i PATH="$STUB:/usr/bin:/bin" HOME="$REG_HOME" CHUMP_HOME="$REG_HOME" \
+    CHUMP_STATE_DIR="$PAUSED" bash -c 'source "'"$HNF"'"; write_healthy_node_fixture' ) >/dev/null 2>&1 || reg_rc=$?
+[ "$reg_rc" -eq 2 ] || fail "(11a) helper must exit 2 when CHUMP_STATE_DIR points outside the test temp home (got $reg_rc)"
+[ "$(paused_snapshot)" = "$PAUSED_BEFORE" ] || fail "(11a) helper MUTATED the inherited CHUMP_STATE_DIR (node.env/heartbeat not byte-identical)"
+
+# (b) end-to-end: run the two exploit-reproducing wired tests with CHUMP_STATE_DIR
+#     exported at $PAUSED; assert $PAUSED stays byte-identical after each. (These
+#     two don't invoke bot-merge, so they're side-effect-free here; the remaining
+#     wired tests share the SAME helper + guard, so this proves the class.)
+for wt in test-state-db-yaml-sync.sh test-outcome-gate.sh; do
+    env CHUMP_STATE_DIR="$PAUSED" CHUMP_BIN="$CHUMP_BIN" \
+        CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}" \
+        HOME="$TMP/wt-outer-home" \
+        bash "$REPO_ROOT/scripts/ci/$wt" >/dev/null 2>&1 || true
+    [ "$(paused_snapshot)" = "$PAUSED_BEFORE" ] \
+        || fail "(11b) wired test $wt MUTATED the inherited paused CHUMP_STATE_DIR (node.env/heartbeat changed!)"
+done
+ok "(11) safety: helper refuses (exit 2) an inherited real CHUMP_STATE_DIR; it and the exploit-reproducing wired tests leave the paused dir BYTE-IDENTICAL (node.env + heartbeat untouched)"
+
 echo ""
 echo "All RESILIENT-1652 / RESILIENT-1653 pause + oauth tests passed!"
