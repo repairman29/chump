@@ -26,6 +26,15 @@
 
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+
+# ZERO-WASTE-134: the ONE shared cargo target dir — never a path inside the
+# worktree/repo root. Exports CARGO_TARGET_DIR so the binary lookup below and
+# the wired sub-tests all build/read from the same shared dir.
+# shellcheck source=lib/resolve-cargo-target-dir.sh
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/ci/lib/resolve-cargo-target-dir.sh"
+chump_export_cargo_target_dir
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -374,7 +383,6 @@ reg_rc=0
 #     wired tests share the SAME helper + guard, so this proves the class.)
 for wt in test-state-db-yaml-sync.sh test-outcome-gate.sh; do
     env CHUMP_STATE_DIR="$PAUSED" CHUMP_BIN="$CHUMP_BIN" \
-        CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}" \
         HOME="$TMP/wt-outer-home" \
         bash "$REPO_ROOT/scripts/ci/$wt" >/dev/null 2>&1 || true
     [ "$(paused_snapshot)" = "$PAUSED_BEFORE" ] \
