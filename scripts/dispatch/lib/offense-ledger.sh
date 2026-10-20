@@ -35,20 +35,27 @@ classify_auto_block_reason() {
 
 # classify_failing_step LOGPATH -> short token naming WHERE the cycle failed.
 # CREDIBLE-1578: the auto-block note recorded only rc + byte count, so a pipeline
-# defect (the external-repo ~945B pre-agent failures that blocked 27 Olive gaps
-# with no surviving log) was invisible behind a healthy-looking spec. This reads
-# the REAL cycle log and names the step from known markers, falling back to the
-# last non-empty line so there is always a receipt-grounded reason — never just
-# an rc. Output is sanitized to be JSON- and note-safe.
+# defect (the external-repo ~945B pre-agent failures *suspected* to have blocked
+# 27 Olive gaps, with no surviving log) was invisible behind a healthy-looking
+# spec. This reads the REAL cycle log and names the step ONLY from a marker that
+# is literally present in the log, falling back to the last non-empty line so
+# there is always a receipt-grounded reason — never a guessed cause, never just
+# an rc. The specific rc=1 signature behind those 27 Olive blocks is NOT yet
+# decoded from a reproduced cuphead/olive cycle; that live-cycle receipt is
+# carved to a lane-1 follow-up. Output is sanitized to be JSON- and note-safe.
 classify_failing_step() {
     local log="${1:-}"
     [ -n "$log" ] && [ -f "$log" ] || { echo "no_cycle_log"; return 0; }
     local sz
     sz=$(wc -c < "$log" 2>/dev/null | tr -d ' ' || echo 0)
     if [ "${sz:-0}" -lt 10 ]; then echo "empty_log(${sz}B)"; return 0; fi
-    # Known pre-agent failure markers, most-specific first. These are the steps
-    # the external-repo path (`chump improve` / src/improve.rs) fails at BEFORE
-    # any agent edits — the signatures the 945B logs were hiding.
+    # Candidate pre-agent failure markers, most-specific first. These are steps
+    # the external-repo path (`chump improve` / src/improve.rs) can fail at BEFORE
+    # any agent edits — hypothesized signatures for the 945B Olive logs. A step is
+    # named ONLY when its marker is literally present in the log; which (if any) of
+    # these actually blocked the 27 Olive gaps is not yet confirmed from a
+    # reproduced cycle (CREDIBLE-1578 lane-1 follow-up). The classifier never
+    # guesses: absent a marker, it reports the log tail as the receipt.
     if grep -qiE 'no onboard scan found|run .?chump onboard' "$log"; then echo "external_repo:no_onboard_scan"; return 0; fi
     if grep -qiE 'onboard scan contains no proposed gaps' "$log"; then echo "external_repo:empty_scan"; return 0; fi
     if grep -qiE 'git clone .* failed|could not fetch PR branch|git worktree add .* failed|timed out .* waiting for a concurrent clone' "$log"; then echo "external_repo:clone_or_worktree"; return 0; fi
