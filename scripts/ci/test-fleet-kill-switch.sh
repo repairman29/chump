@@ -74,16 +74,22 @@ mkdir -p "$FAKE_HOME/.chump"
 # runner the gate reds (no oauth token under HOME=$FAKE_HOME) and the claim prints
 # "farmer status RED" before the kill-switch message Tests 1-4 assert on — so lay
 # down a healthy-node fixture under $FAKE_HOME (the HOME every claim below runs
-# with). The shared function keys on CHUMP_HOME, so set it for the fixture write
-# ONLY and do NOT export it: Test 7 runs bot-merge's `chump gap preflight`, which
-# resolves repo_root from CHUMP_HOME, so CHUMP_HOME must stay unset there (and the
-# claims below already pass HOME=$FAKE_HOME inline, giving chump_state_home =
-# $FAKE_HOME for the oauth + node.env reads). chump_test_sandbox_setup is not
-# usable here for the same reason (it exports CHUMP_HOME/CHUMP_REPO). No gate
-# loosening, no skip env var: an absent/expired token on a real node still reds.
+# with). repair 6: the fixture function now requires the lib's sandbox marker, so
+# go through chump_test_sandbox_setup "$FAKE_HOME" to create the marker + pin
+# CHUMP_HOME/CHUMP_STATE_DIR, write the fixture while those hold, THEN unset the
+# sandbox env: Test 7 runs bot-merge's `chump gap preflight`, which resolves
+# repo_root from CHUMP_HOME, so CHUMP_HOME must stay unset there (the claims below
+# already pass HOME=$FAKE_HOME inline, giving chump_state_home = $FAKE_HOME for
+# the oauth + node.env reads). We unset by hand rather than chump_test_sandbox_
+# cleanup because cleanup would rm -rf $FAKE_HOME, which Tests 1-9 still need. No
+# gate loosening, no skip env var: an absent/expired token on a real node still reds.
+# shellcheck source=../coord/lib/test-sandbox.sh
+source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
 # shellcheck source=scripts/ci/lib/sandbox-healthy-node.sh
 source "$REPO_ROOT/scripts/ci/lib/sandbox-healthy-node.sh"
-CHUMP_HOME="$FAKE_HOME" write_sandbox_healthy_node "$FAKE_HOME"
+chump_test_sandbox_setup "$FAKE_HOME"
+write_sandbox_healthy_node "$FAKE_HOME"
+unset CHUMP_HOME CHUMP_REPO CHUMP_REPO_ROOT CHUMP_STATE_DB CHUMP_LOCK_DIR CHUMP_STATE_DIR CHUMP_TEST_SANDBOX_MARKER
 
 AL_FILE="$FAKE_HOME/.chump/AUTONOMY_LEVEL"
 
@@ -230,6 +236,70 @@ if [[ -z "$_write_offenders" ]]; then
     ok "Test 9: refresh/provision scripts contain no AUTONOMY_LEVEL write"
 else
     fail "Test 9: found a write into AUTONOMY_LEVEL in:${_write_offenders} — refresh/provision must never clobber the operator's kill switch"
+fi
+
+# ── Test 10: write_sandbox_healthy_node guard refuses non-lib / unsafe sandboxes
+#    (RESILIENT-1652 repair 6). The healthy-node fixture writes a NOT-paused
+#    node.env; if it could be aimed at a real node's state dir it would unpause a
+#    paused node. These three cases kill the mutants the guard exists to stop:
+#      F1 — a caller sets CHUMP_HOME by hand but never ran the lib (no marker);
+#      F2 — a valid lib sandbox whose CHUMP_STATE_DIR is re-pointed at a real dir;
+#      F4 — a symlinked sandbox whose leaf resolves into a real dir.
+#    This test is already wired into CI (ci.yml), so the guard is proven in the
+#    merge gate without adding a new ci.yml step. Each call runs in a subshell
+#    (the guard `exit 2`s on refusal); `|| rc=$?` captures it under `set -e`.
+echo ""
+GUARD_ROOT="$(mktemp -d)"
+trap 'rm -rf "$FAKE_HOME" "$GUARD_ROOT"' EXIT
+
+# F1: caller-set CHUMP_HOME + CHUMP_STATE_DIR, but no chump_test_sandbox_setup,
+# so CHUMP_TEST_SANDBOX_MARKER is absent → refuse, write nothing.
+F1_DIR="$GUARD_ROOT/f1"; mkdir -p "$F1_DIR/.chump"
+F1_BEFORE="$(cd "$F1_DIR" && find . | sort)"
+rc=0
+(
+    export CHUMP_HOME="$F1_DIR" CHUMP_STATE_DIR="$F1_DIR/.chump"
+    unset CHUMP_TEST_SANDBOX_MARKER
+    write_sandbox_healthy_node "$F1_DIR"
+) >/dev/null 2>&1 || rc=$?
+F1_AFTER="$(cd "$F1_DIR" && find . | sort)"
+if [[ "$rc" -eq 2 && "$F1_BEFORE" == "$F1_AFTER" ]]; then
+    ok "Test 10a (F1): refuses caller-set CHUMP_HOME with no lib marker (exit 2, nothing written)"
+else
+    fail "Test 10a (F1): expected exit 2 + no write (rc=$rc)"
+fi
+
+# F2: a valid lib sandbox, but CHUMP_STATE_DIR re-pointed at a real paused node
+# dir after setup → refuse, and the sentinel node.env stays byte-identical.
+F2_SENTINEL="$GUARD_ROOT/real-node"; mkdir -p "$F2_SENTINEL"
+printf 'CHUMP_NODE_MODE=paused\nCHUMP_NODE_WORK_ENABLED=0\n' >"$F2_SENTINEL/node.env"
+F2_BEFORE="$(cd "$F2_SENTINEL" && find . -type f -exec sha256sum {} \; | sort)"
+rc=0
+(
+    chump_test_sandbox_setup "$GUARD_ROOT/f2-sandbox" >/dev/null 2>&1
+    export CHUMP_STATE_DIR="$F2_SENTINEL"   # the dangerous re-point
+    write_sandbox_healthy_node "$GUARD_ROOT/f2-sandbox"
+) >/dev/null 2>&1 || rc=$?
+F2_AFTER="$(cd "$F2_SENTINEL" && find . -type f -exec sha256sum {} \; | sort)"
+if [[ "$rc" -eq 2 && "$F2_BEFORE" == "$F2_AFTER" ]]; then
+    ok "Test 10b (F2): refuses when CHUMP_STATE_DIR != <sandbox>/.chump (exit 2, sentinel unchanged)"
+else
+    fail "Test 10b (F2): expected exit 2 + sentinel unchanged (rc=$rc)"
+fi
+
+# F4: a symlinked sandbox (leaf is a symlink into a real dir) → refuse even
+# though the lib set the marker/CHUMP_HOME/CHUMP_STATE_DIR to the symlink path.
+F4_REAL="$GUARD_ROOT/f4-real"; mkdir -p "$F4_REAL"
+F4_LINK="$GUARD_ROOT/f4-link"; ln -s "$F4_REAL" "$F4_LINK"
+rc=0
+(
+    chump_test_sandbox_setup "$F4_LINK" >/dev/null 2>&1
+    write_sandbox_healthy_node "$F4_LINK"
+) >/dev/null 2>&1 || rc=$?
+if [[ "$rc" -eq 2 ]]; then
+    ok "Test 10c (F4): refuses a symlinked sandbox (exit 2)"
+else
+    fail "Test 10c (F4): expected exit 2 on symlinked sandbox (rc=$rc)"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
