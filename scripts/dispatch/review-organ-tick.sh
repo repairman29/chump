@@ -56,7 +56,15 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 
 # ── CLI args (the test seam; the unit passes NONE of these). ──
 CLAUDE_BIN="claude"
-CHECKOUT="$REPO_ROOT"
+# CREDIBLE-1602 (AC1): the canonical checkout the organ OPERATES on — the one it
+# fetches, reviews against, and resolves its gap store from — is $HOME/chump, NOT
+# REPO_ROOT (the organ's own code location). The systemd unit runs the script
+# FROM the node clone ~/.chumpnode/repo (a standalone clone whose .chump/state.db
+# is a stale copy), so anchoring on REPO_ROOT pins the WRONG store. $HOME is the
+# sanctioned sandbox seam (a test sets HOME so $HOME/chump resolves inside its
+# sandbox); --checkout, which the unit NEVER passes, overrides it for tests that
+# cannot relocate HOME. NEVER an env var on this safety input (Chief 2026-10-20).
+CHECKOUT="$HOME/chump"
 SELF_LOGIN=""          # own-lane skip: a PR authored by this login is not reviewed
 REPO=""                # owner/repo; empty = current checkout's repo
 declare -a ONLY_PRS=()
@@ -100,6 +108,27 @@ MODEL="opus"
 # shellcheck source=scripts/coord/lib/review-hold.sh
 source "$REPO_ROOT/scripts/coord/lib/review-hold.sh"
 
+# CREDIBLE-1602: resolve the gap store through the ONE resolver
+# (scripts/coord/lib/state-store.sh, the exact mirror of crates/chump-store-path
+# that every `chump` GapStore call goes through), NEVER ad hoc from the cwd.
+# ship_merged_gap pins the chump subprocess to this resolved path so the
+# post-merge gap step can never silently retarget a stale store from whatever
+# checkout the organ happens to run in. cuphead 2026-10-21: the organ ran from
+# ~/.chumpnode/repo (a node clone whose own .chump/state.db was a stale 118KB
+# Oct-10 store) and tried to ship DOC-164 there; the gap wasn't in that store so
+# `chump gap ship` failed and was log-and-continued, undercounting the PHASE-R
+# rollup. The one node must carry one store (fleet-doctor single-store check +
+# scripts/coord/archive-stale-gap-store.sh retire the extras).
+#
+# AC1 (review REQUIRED #1): resolve from $CHECKOUT — the CANONICAL checkout
+# ($HOME/chump by default; see CHECKOUT above), NOT $REPO_ROOT (the organ's own
+# code location, which in production is the node clone whose store is stale). The
+# earlier REPO_ROOT anchor converted "silent wrong store" into "loud wrong store"
+# but still never reached the canonical store the AC names.
+# shellcheck source=scripts/coord/lib/state-store.sh
+source "$REPO_ROOT/scripts/coord/lib/state-store.sh"
+ORGAN_GAP_STORE="$(chump_state_db "$CHECKOUT")"
+
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -126,8 +155,13 @@ emit() { printf '%s\n' "$1" >> "$AMBIENT" 2>/dev/null || true; }
 # scanner-anchor: "kind":"review_organ_tick"
 # scanner-anchor: "kind":"pr_review_verdict"
 # scanner-anchor: "kind":"review_organ_label_error"
+# scanner-anchor: "kind":"review_organ_gap_store_miss"
 
 REVIEWED=0; APPROVED=0; CHANGES=0; HELD_MUTANTS=0; ARMED=0; DISPATCHED=0; SKIPPED=0
+# CREDIBLE-1602: set to 1 when the post-merge gap step hits a loud failure (a
+# merged PR whose gap is NOT in the canonical store the organ resolved) so the
+# oneshot exits NON-ZERO instead of log-and-continuing a silent split-brain.
+ORGAN_TICK_FAIL=0
 
 # gate_files_touched <pr> — prints the first gate file the PR changes (rc 0),
 # rc 1 if none, rc 3 if the PR's file list cannot be read (fail closed). Reads
@@ -284,6 +318,21 @@ _label_op_failed() {
     log "WARN: label $op '$lbl' on PR #$pr REFUSED by gh — hold not applied (not silent)"
     emit "$(printf '{"ts":"%s","kind":"review_organ_label_error","pr":%s,"op":"%s","label":"%s"}' \
         "$(ts)" "$pr" "$(json_str "$op")" "$(json_str "$lbl")")"
+}
+
+# approve_clear_holds <pr> <gate_rc> — CREDIBLE-1597: on an APPROVE, ALWAYS clear
+# review-held; clear review-needs-mutants too ONLY when the head touches NO ship
+# gate (gate_rc != 0). A gate-file head KEEPS review-needs-mutants — its mutation
+# rule is still unmet (AC1). This is how a STALE review-needs-mutants from the old
+# pre-CREDIBLE-1590 blanket gate list is finally cleared: the first tick the organ
+# APPROVEs a non-gate head, both holds come off, so review_hold_allows can let the
+# PR arm instead of stranding it held-forever (the bug this slice closes). A
+# removal gh refuses still fails loudly via label_remove (CREDIBLE-1588).
+approve_clear_holds() {
+    local pr="$1" gate_rc="$2"
+    label_remove "$pr" "$REVIEW_HOLD_LABEL"
+    [[ "$gate_rc" != 0 ]] && label_remove "$pr" "$REVIEW_NEEDS_MUTANTS_LABEL"
+    return 0
 }
 
 # dispatch_repair <pr> <head> — exactly ONE repair to the author lane, NEVER with
@@ -500,6 +549,17 @@ process_pr() {
     if prior="$(current_head_verdict "$pr" "$head")"; then
         if [[ "$prior" == APPROVE ]]; then
             log "PR #$pr: current-head verdict already APPROVE — reconciling arming only (no re-review)"
+            # CREDIBLE-1597: a PR that already carries a current-head organ APPROVE
+            # but a STALE review-needs-mutants (from the pre-CREDIBLE-1590 blanket
+            # gate list) is held forever because review_hold_allows counts that
+            # label. Clear the holds here — gated on a LIVE classification of this
+            # head's diff — so a non-gate head drops the stale label and arms, while
+            # a head that really touches a ship gate keeps it. gate_rc 3 (diff
+            # uncomputable) fails closed → treated as a gate → label kept.
+            local igate_rc
+            if gate_files_touched "$pr" >/dev/null 2>&1; then igate_rc=0; else igate_rc=$?; fi
+            [[ "$igate_rc" == 3 ]] && igate_rc=0
+            approve_clear_holds "$pr" "$igate_rc"
             maybe_arm "$pr" "$head"
         else
             log "PR #$pr: current-head verdict already CHANGES REQUIRED — held, no re-review/re-dispatch"
@@ -569,7 +629,10 @@ process_pr() {
 
     if [[ "$verdict" == APPROVE ]]; then
         APPROVED=$((APPROVED+1))
-        label_remove "$pr" "$REVIEW_HOLD_LABEL"
+        # CREDIBLE-1597: on APPROVE clear review-held AND (for a non-gate head)
+        # review-needs-mutants, so a stale blanket-gate label never strands the PR.
+        # gate_rc is this head's live classification (0 = gate → keep the label).
+        approve_clear_holds "$pr" "$gate_rc"
         maybe_arm "$pr" "$head"
     else
         CHANGES=$((CHANGES+1))
@@ -621,10 +684,28 @@ ship_merged_gap() {
         log "PR #$pr: merged but no gap id in branch '$branch' — gap not auto-shipped (reconciler backstop covers a linked PR)"
         return 0
     fi
-    chump gap link-pr "$gap" "$pr" --sha "$head" >/dev/null 2>&1 \
+    # CREDIBLE-1602 (AC4): the post-merge gap step runs against the ONE
+    # canonical store ($ORGAN_GAP_STORE, resolved through state-store.sh) and
+    # FAILS LOUD when the merged PR's gap is NOT in that store — it NEVER
+    # log-and-continues. A merged PR whose gap is absent from the store the
+    # organ resolved means the organ is pointed at the WRONG store (the cuphead
+    # three-store split, CREDIBLE-1602); the old warning-only path let that rot
+    # undetected and undercounted the PHASE-R rollup. Emit a dedicated event and
+    # mark the tick failed so the oneshot exits non-zero and the condition is
+    # paged/observable. Pinning CHUMP_STATE_DB on every chump call keeps cwd from
+    # retargeting a different store mid-step (AC1: resolve through ONE function,
+    # never from cwd).
+    if ! CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap show "$gap" >/dev/null 2>&1; then
+        emit "$(printf '{"ts":"%s","kind":"review_organ_gap_store_miss","pr":%s,"gap":"%s","store":"%s","head":"%s"}' \
+            "$(ts)" "$pr" "$(json_str "$gap")" "$(json_str "$ORGAN_GAP_STORE")" "$(json_str "$head")")"
+        log "FAIL: PR #$pr merged but gap $gap is NOT in the canonical store $ORGAN_GAP_STORE — the organ resolved the WRONG gap store (CREDIBLE-1602). NOT shipping; tick fails loud."
+        ORGAN_TICK_FAIL=1
+        return 1
+    fi
+    CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap link-pr "$gap" "$pr" --sha "$head" >/dev/null 2>&1 \
         || log "WARN: PR #$pr link-pr $gap failed (reconciler FK backstop may miss it)"
-    if chump gap ship "$gap" --closed-pr "$pr" >/dev/null 2>&1; then
-        log "PR #$pr: shipped $gap --closed-pr $pr (organ landing recorded)"
+    if CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap ship "$gap" --closed-pr "$pr" >/dev/null 2>&1; then
+        log "PR #$pr: shipped $gap --closed-pr $pr (organ landing recorded in $ORGAN_GAP_STORE)"
     else
         log "WARN: PR #$pr merged but 'chump gap ship $gap --closed-pr $pr' failed — reconciler backstop must close it"
     fi
@@ -650,4 +731,12 @@ for pr in "${prs[@]}"; do process_pr "$pr"; done
 emit "$(printf '{"ts":"%s","kind":"review_organ_tick","reviewed":%s,"approved":%s,"changes_required":%s,"held_mutants":%s,"armed":%s,"dispatched":%s,"skipped":%s}' \
     "$(ts)" "$REVIEWED" "$APPROVED" "$CHANGES" "$HELD_MUTANTS" "$ARMED" "$DISPATCHED" "$SKIPPED")"
 log "tick done (reviewed=$REVIEWED approved=$APPROVED changes=$CHANGES held_mutants=$HELD_MUTANTS armed=$ARMED dispatched=$DISPATCHED skipped=$SKIPPED)"
+# CREDIBLE-1602 (AC4): a post-merge gap step that could not find its gap in the
+# canonical store already emitted review_organ_gap_store_miss; surface it as a
+# non-zero tick status too, so the oneshot unit's ExecStart fails loud instead
+# of exiting 0 over a silent split-brain.
+if [[ "$ORGAN_TICK_FAIL" -ne 0 ]]; then
+    log "tick FAILED: a post-merge gap step could not resolve its gap in the canonical store (CREDIBLE-1602) — exiting non-zero"
+    exit 1
+fi
 exit 0
