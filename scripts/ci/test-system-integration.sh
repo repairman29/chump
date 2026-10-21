@@ -32,15 +32,14 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 skip() { echo "  SKIP: $1"; SKIP=$((SKIP+1)); }
 
 # RESILIENT-1652: snapshot the live gap store WAL-safely into the isolated repo.
-# state.db is WAL-mode; a plain `cp state.db` misses rows still resident in the
-# -wal sidecar whenever a concurrent reader (e.g. the live fleet on the shared
-# main checkout) holds a read transaction that blocks checkpoint-on-close. The
-# gap this test just reserved then isn't in the copy and `gap ship` reports it
-# "not found" (Assertions 4+5 flaked exactly this way under fleet load; CI
-# runners with no live fleet checkpoint on close and never saw it). `sqlite3
-# .backup` takes a consistent snapshot that includes WAL frames; fall back to
-# copying the -wal sidecar alongside the db (SQLite rebuilds -shm on open) when
-# the sqlite3 CLI is unavailable.
+# Once resolve_state_db points us at the real (often main-checkout) store, that
+# DB is WAL-mode and, on a fleet host, continuously written. A plain
+# `cp state.db` misses rows still resident in the -wal sidecar when a concurrent
+# reader holds a read transaction that blocks checkpoint-on-close — the gap this
+# test just reserved could then be absent from the copy and `gap ship` would
+# report it "not found". `sqlite3 .backup` takes a consistent snapshot that
+# includes WAL frames; fall back to copying the -wal sidecar alongside the db
+# (SQLite rebuilds -shm on open) when the sqlite3 CLI is unavailable.
 snapshot_state_db() {
     local src="$1" dest="$2"
     if command -v sqlite3 >/dev/null 2>&1 && sqlite3 "$src" ".backup '$dest'" 2>/dev/null; then
@@ -51,6 +50,34 @@ snapshot_state_db() {
         cp "$src-wal" "$dest-wal"
     fi
     return 0
+}
+
+# RESILIENT-1652: resolve the gap store path EXACTLY as `chump` does for
+# CHUMP_REPO=$REPO_ROOT, so Assertions 4+5 snapshot the DB `gap reserve`
+# actually wrote to. The old heuristic ($REPO_ROOT/.chump/state.db if present,
+# else the git-common-dir main checkout) diverged from chump's linked-worktree
+# resolution: inside a linked worktree that already holds a STALE local
+# .chump/state.db (e.g. a prior test in the same lane-gate worktree created
+# one), `gap reserve` writes to the MAIN checkout's store while the heuristic
+# copied the stale local file — the just-reserved gap was then missing and
+# `gap ship` reported it "not found, already done, ...". Ask chump directly
+# via `gap store-path --json` (INFRA-8190; present on origin/main); fall back
+# to the main-checkout-first heuristic only for binaries without it.
+resolve_state_db() {
+    local p
+    p="$(CHUMP_REPO="$REPO_ROOT" "$CHUMP" gap store-path --json 2>/dev/null \
+         | python3 -c 'import sys, json; print(json.load(sys.stdin)["path"])' 2>/dev/null)"
+    if [[ -n "$p" ]]; then
+        printf '%s\n' "$p"
+        return 0
+    fi
+    local common
+    common="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo "")"
+    if [[ -n "$common" && "$common" != ".git" ]]; then
+        printf '%s\n' "$(cd "$common/.." && pwd)/.chump/state.db"
+        return 0
+    fi
+    printf '%s\n' "$REPO_ROOT/.chump/state.db"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -335,15 +362,9 @@ echo "--- Assertion 4: gap ship marks status done ---"
         # Use CHUMP_STATE_DB to point to the correct location (handles worktrees correctly).
         mkdir -p "$SHIP_REPO/.chump"
 
-        # Resolve the real state.db location (may be in main checkout if we're in a worktree).
-        REAL_STATE_DB="$REPO_ROOT/.chump/state.db"
-        if [[ ! -f "$REAL_STATE_DB" ]]; then
-            # In a worktree, resolve through git --git-common-dir to find the main checkout.
-            _COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo "")"
-            if [[ -n "$_COMMON_DIR" && "$_COMMON_DIR" != ".git" ]]; then
-                REAL_STATE_DB="$(cd "$_COMMON_DIR/.." && pwd)/.chump/state.db"
-            fi
-        fi
+        # Resolve the store the same way chump does (handles linked worktrees
+        # with a stale local .chump/state.db — see resolve_state_db above).
+        REAL_STATE_DB="$(resolve_state_db)"
 
         if [[ -f "$REAL_STATE_DB" ]]; then
             snapshot_state_db "$REAL_STATE_DB" "$SHIP_REPO/.chump/state.db"
@@ -419,15 +440,9 @@ echo "--- Assertion 5: Idempotent re-ship (ship twice, count events) ---"
         # Use CHUMP_STATE_DB to point to the correct location (handles worktrees correctly).
         mkdir -p "$SHIP_REPO2/.chump"
 
-        # Resolve the real state.db location (may be in main checkout if we're in a worktree).
-        REAL_STATE_DB="$REPO_ROOT/.chump/state.db"
-        if [[ ! -f "$REAL_STATE_DB" ]]; then
-            # In a worktree, resolve through git --git-common-dir to find the main checkout.
-            _COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo "")"
-            if [[ -n "$_COMMON_DIR" && "$_COMMON_DIR" != ".git" ]]; then
-                REAL_STATE_DB="$(cd "$_COMMON_DIR/.." && pwd)/.chump/state.db"
-            fi
-        fi
+        # Resolve the store the same way chump does (handles linked worktrees
+        # with a stale local .chump/state.db — see resolve_state_db above).
+        REAL_STATE_DB="$(resolve_state_db)"
 
         if [[ -f "$REAL_STATE_DB" ]]; then
             snapshot_state_db "$REAL_STATE_DB" "$SHIP_REPO2/.chump/state.db"
