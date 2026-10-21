@@ -171,6 +171,92 @@ done
 grep -q '/root/' "$R1687_T/chown.list" && fail "RESILIENT-1687: chown list leaked a /root path: $(cat "$R1687_T/chown.list")"
 pass "RESILIENT-1687: chown list parsed from the organ scripts covers both heartbeat files + the reaper beat, resolved under /home/ubuntu, no /root leak"
 
+# ── 3c. RESILIENT-1687 (AC6/AC7): the node installer EMITS the tracked heartbeat
+# organ VERBATIM — one source, no inline heredoc. #5639 pre-push review: the
+# installer (scripts/setup/chump-node-install.sh) used to generate its OWN inline
+# node-heartbeat.sh wrapper that had already drifted from the repo copy
+# (${CHUMP_STATE_DIR:-$HOME/.chump} vs $HOME-only). This locks that the installer
+# now installs scripts/ops/node-heartbeat.sh byte-for-byte and that no second
+# (inline) source survives. Killed by a mutant on EITHER side.
+NODE_INSTALL="$REPO_ROOT/scripts/setup/chump-node-install.sh"
+[ -f "$NODE_INSTALL" ] || fail "RESILIENT-1687: node installer missing: $NODE_INSTALL"
+
+# _r1687_one_source <installer-file> -> 0 iff it installs the TRACKED
+# scripts/ops/node-heartbeat.sh into $ORGAN_DIR AND carries NO inline heredoc
+# that regenerates the organ (the drift-prone second source).
+_r1687_one_source() {
+  local f="$1"
+  grep -qE 'tracked_heartbeat=.*scripts/ops/node-heartbeat\.sh' "$f" || return 1
+  grep -qE "install -m755 .*tracked_heartbeat.*ORGAN_DIR/node-heartbeat\.sh" "$f" || return 1
+  if grep -qF "cat > '\$ORGAN_DIR/node-heartbeat.sh'" "$f"; then return 1; fi
+  return 0
+}
+
+# Installer-side mutant: a copy that re-grows the inline heredoc must FAIL the
+# one-source check (proving the check is real) before we trust it on the installer.
+R1687_INST_MUT="$TMP/chump-node-install.inline.sh"
+cp "$NODE_INSTALL" "$R1687_INST_MUT"
+cat >> "$R1687_INST_MUT" <<'MUT'
+__mut_second_source(){ cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
+#!/usr/bin/env bash
+STATE="${CHUMP_STATE_DIR:-$HOME/.chump}"
+HB
+}
+MUT
+_r1687_one_source "$R1687_INST_MUT" \
+  && fail "RESILIENT-1687 mutant: an installer that regenerates node-heartbeat.sh inline must fail the one-source check"
+# The real installer passes.
+_r1687_one_source "$NODE_INSTALL" \
+  || fail "RESILIENT-1687 (AC6): chump-node-install.sh must install the tracked scripts/ops/node-heartbeat.sh with no inline heredoc (one source)"
+
+# Byte-identity: the installer emits via `install -m755 <tracked>`; simulate that
+# exact emission and assert it is byte-for-byte the tracked organ (AC7).
+R1687_EMIT="$TMP/r1687-emit"; mkdir -p "$R1687_EMIT"
+install -m755 "$HEARTBEAT_ORGAN" "$R1687_EMIT/node-heartbeat.sh" \
+  || fail "RESILIENT-1687: could not simulate the installer's node-heartbeat emission"
+cmp -s "$R1687_EMIT/node-heartbeat.sh" "$HEARTBEAT_ORGAN" \
+  || fail "RESILIENT-1687 (AC7): installer-emitted node-heartbeat.sh is not byte-identical to the tracked repo copy"
+# Tracked-side mutant: if the tracked organ drifts by even one byte, the emitted
+# copy no longer matches the canonical — proving the cmp check is a real detector.
+R1687_HB_MUT="$TMP/node-heartbeat.mutant.sh"
+cp "$HEARTBEAT_ORGAN" "$R1687_HB_MUT"
+printf '# RESILIENT-1687 tracked-side mutant\n' >> "$R1687_HB_MUT"
+install -m755 "$R1687_HB_MUT" "$R1687_EMIT/node-heartbeat.sh"
+cmp -s "$R1687_EMIT/node-heartbeat.sh" "$HEARTBEAT_ORGAN" \
+  && fail "RESILIENT-1687 mutant: a byte-edited tracked node-heartbeat.sh must break the installer byte-identity check (AC7 detector proven)"
+pass "RESILIENT-1687 (AC6/AC7): installer installs the tracked node-heartbeat.sh byte-for-byte; no inline second source; mutants on either side killed"
+
+# ── 3d. RESILIENT-1687 (AC4): the /root installs are ARCHIVED (move aside +
+# marker), NEVER deleted, and a path a loaded unit still references is HELD (the
+# "once nothing execs them" precondition). archive-plan is read-only; exercise
+# its three verdicts on a sandbox. The path-boundary scan is mutant-killed inline.
+R1687_AR="$TMP/r1687-archive"; mkdir -p "$R1687_AR/root/.chumpnode" "$R1687_AR/root/.chump" "$R1687_AR/units"
+# a unit that still execs /root/.chumpnode -> that path must be HELD.
+printf '[Service]\nExecStart=/bin/bash %s/root/.chumpnode/organs/x.sh\n' "$R1687_AR" > "$R1687_AR/units/chump-x.service"
+
+_r1687_plan() {
+  bash "$MIGRATE" --archive-plan --scan-dir "$R1687_AR/units" \
+    --archive-path "$R1687_AR/root/.chumpnode" \
+    --archive-path "$R1687_AR/root/.chump" \
+    --archive-path "$R1687_AR/root/.absent"
+}
+R1687_PLAN="$R1687_AR/plan.out"
+_r1687_plan > "$R1687_PLAN" || fail "RESILIENT-1687 (AC4): --archive-plan failed"
+# referenced path -> HELD (never archived while a unit execs it).
+grep -qE "^HELD $R1687_AR/root/\.chumpnode " "$R1687_PLAN" \
+  || fail "RESILIENT-1687 (AC4): a /root install a loaded unit still execs must be HELD; got: $(cat "$R1687_PLAN")"
+# the sibling .chump (unreferenced; NOT falsely held by the .chumpnode substring)
+# -> ARCHIVE to a move-aside path, never deleted.
+grep -qE "^ARCHIVE $R1687_AR/root/\.chump -> $R1687_AR/root/\.chump\.archived-resilient-1687\$" "$R1687_PLAN" \
+  || fail "RESILIENT-1687 (AC4): a clear /root install must be ARCHIVEd (move aside), never deleted; got: $(cat "$R1687_PLAN")"
+grep -qE "^SKIP $R1687_AR/root/\.absent\$" "$R1687_PLAN" \
+  || fail "RESILIENT-1687 (AC4): an absent path must be SKIPped; got: $(cat "$R1687_PLAN")"
+# the plan NEVER proposes a destructive op — archived, not removed.
+if grep -qiE '\b(rm|delete|remove|rmdir)\b' "$R1687_PLAN"; then
+  fail "RESILIENT-1687 (AC4): archive-plan must never propose deleting a /root install; got: $(cat "$R1687_PLAN")"
+fi
+pass "RESILIENT-1687 (AC4): archive-plan HELDs a still-referenced install, ARCHIVEs a clear sibling (no substring false-hold), SKIPs absent — never deletes"
+
 # ── 4. host-rewrite core transforms ──────────────────────────────────────────
 # organ_unit_host_rewrite uses GNU `sed -i` (in-place append/insert), which is
 # how the units are placed on their Linux deploy targets. On a non-GNU sed

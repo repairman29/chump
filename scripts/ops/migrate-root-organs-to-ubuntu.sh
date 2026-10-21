@@ -28,6 +28,15 @@
 # restarts EXACTLY the two units, verifies User=ubuntu + a fresh heartbeat
 # within one 60s interval, and logs the receipt to ~/.chump/paused-timers.txt
 # (un-pause item 8).
+#
+# AC4 — ARCHIVE the /root installs. After apply, the two migrated organs no
+# longer exec /root/.chumpnode|/root/.chump. --archive-plan (read-only) prints,
+# per path, SKIP (absent) / HELD (a loaded unit still references it — the "once
+# nothing execs them" precondition) / ARCHIVE. --archive-root (operator-only,
+# sudo) moves each clear path aside to <path>.archived-resilient-1687-<ts> and
+# drops a <path>.ARCHIVED-RESILIENT-1687.txt marker. It NEVER deletes and
+# refuses any path a loaded unit still references. Paths + scan dirs are
+# explicit-CLI (--archive-path / --scan-dir), the standing-rule seam.
 set -uo pipefail
 
 # ── defaults (production target: cuphead's ubuntu account) ───────────────────
@@ -35,8 +44,20 @@ HOME_DIR="/home/ubuntu"
 RUN_USER="ubuntu"
 REPO_ROOT="/home/ubuntu/chump"
 DROPIN_ROOT="/etc/systemd/system"
-MODE="dry-run"          # dry-run | render-dropin | chown-list | apply
+MODE="dry-run"          # dry-run | render-dropin | chown-list | apply | archive-plan | archive-root
 RENDER_UNIT=""
+
+# ── AC4: archive the /root installs (move aside + marker, NEVER delete) ───────
+# The two root installs the migrated organs leave behind. Archived — not
+# deleted — only AFTER nothing execs them (a loaded systemd unit referencing the
+# path HOLDS the archive). Paths + scan dirs are explicit-CLI (--archive-path /
+# --scan-dir), the standing-rule seam — never a CHUMP_* env; production defaults
+# are the real cuphead /root paths + systemd unit dirs, which tests override by
+# passing sandbox paths as CLI args.
+ARCHIVE_PATHS=(/root/.chumpnode /root/.chump)
+SCAN_DIRS=(/etc/systemd/system /root/.config/systemd/user)
+ARCHIVE_PATHS_SET=0
+SCAN_DIRS_SET=0
 
 # The exact two units this migration touches, mapped to their repo script +
 # ExecStart argv. Keyed by the systemd unit basename (no .service).
@@ -132,6 +153,13 @@ dry_run() {
   while IFS= read -r p; do echo "  chown $RUN_USER:$RUN_USER $p   # (only if it exists)"; done < <(chown_list)
   echo "  systemctl daemon-reload"
   echo "  systemctl restart ${UNITS[*]/%/.service}"
+  echo
+  echo "--- AC4: archive the /root installs (operator runs with sudo, AFTER apply) ---"
+  echo "  # read-only plan first (this PR runs this on --dry-run below):"
+  echo "  $0 --archive-plan"
+  archive_plan | sed 's/^/    /'
+  echo "  # then the root-only move (move aside + marker, never delete):"
+  echo "  sudo $0 --archive-root"
 }
 
 # ── apply (operator-only; needs sudo/root) ───────────────────────────────────
@@ -174,6 +202,67 @@ apply() {
   echo "apply complete; receipt appended to $HOME_DIR/.chump/paused-timers.txt"
 }
 
+# ── AC4: archive the /root installs (move aside + marker, NEVER delete) ───────
+# _archive_referenced_by <path> -> prints the first unit file under SCAN_DIRS
+# that still names <path>, or nothing. A still-referenced path is HELD (the
+# "once nothing execs them" precondition): archiving it would break a live unit.
+_archive_referenced_by() {
+  local path="$1" d hit esc
+  # Match <path> only at a PATH BOUNDARY (followed by /, a quote, whitespace, or
+  # end-of-line) so `/root/.chump` is NOT falsely held by a reference to
+  # `/root/.chumpnode`. Escape regex metachars in the path first.
+  esc="$(printf '%s' "$path" | sed -E 's/[].[*^$(){}+?|\\/]/\\&/g')"
+  for d in "${SCAN_DIRS[@]}"; do
+    [ -d "$d" ] || continue
+    # -l: list matching files. No-match exits 1 (expected) — guarded so
+    # pipefail/`set -e`-callers don't trip.
+    hit="$(grep -rlE -- "${esc}(/|\"|'|[[:space:]]|\$)" "$d" 2>/dev/null | head -1 || true)"
+    [ -n "$hit" ] && { printf '%s' "$hit"; return 0; }
+  done
+  return 1
+}
+
+# archive_plan: READ-ONLY. One line per archive path:
+#   SKIP <path>                       (absent — nothing to archive)
+#   HELD <path> <referencing-unit>    (a loaded unit still execs it)
+#   ARCHIVE <path> -> <archive-path>  (clear — would move aside + marker)
+# Prints the plan and changes NOTHING, so the operator (and tests) can inspect
+# before the root-only move.
+archive_plan() {
+  local p ref arch
+  for p in "${ARCHIVE_PATHS[@]}"; do
+    if [ ! -e "$p" ]; then echo "SKIP $p"; continue; fi
+    if ref="$(_archive_referenced_by "$p")"; then
+      echo "HELD $p $ref"
+    else
+      arch="${p}.archived-resilient-1687"
+      echo "ARCHIVE $p -> $arch"
+    fi
+  done
+}
+
+# archive_root: operator-only (root). Moves each clear path aside to
+# <path>.archived-resilient-1687-<ts> and drops a marker at
+# <path>.ARCHIVED-RESILIENT-1687.txt. NEVER deletes; refuses (die) any path a
+# loaded unit still references.
+archive_root() {
+  local p ref ts arch marker
+  [ "$(id -u)" = 0 ] || die "--archive-root must run as root (sudo); this is the operator un-pause step"
+  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  for p in "${ARCHIVE_PATHS[@]}"; do
+    if [ ! -e "$p" ]; then echo "skip (absent): $p"; continue; fi
+    if ref="$(_archive_referenced_by "$p")"; then
+      die "refuse to archive $p: a loaded systemd unit still references it ($ref). Migrate/disable those units first (the 'once nothing execs them' precondition)."
+    fi
+    arch="${p}.archived-resilient-1687-${ts}"
+    mv "$p" "$arch"
+    marker="${p}.ARCHIVED-RESILIENT-1687.txt"
+    printf 'RESILIENT-1687: %s archived to %s on %s.\nThe two live root organs (chump-fleet-health-sentinel, chump-node-heartbeat)\nwere migrated to User=%s running the repo copies; nothing execs this path any\nlonger. ARCHIVED, NOT DELETED — never remove this; it is the rollback copy.\n' \
+      "$p" "$arch" "$ts" "$RUN_USER" > "$marker"
+    echo "archived $p -> $arch (marker: $marker)"
+  done
+}
+
 # ── args ─────────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -185,6 +274,13 @@ while [[ $# -gt 0 ]]; do
     --apply)       MODE="apply" ;;
     --chown-list)  MODE="chown-list" ;;
     --render-dropin) MODE="render-dropin"; RENDER_UNIT="${2:-}"; shift ;;
+    --archive-plan) MODE="archive-plan" ;;
+    --archive-root) MODE="archive-root" ;;
+    # repeatable explicit-CLI seams (first occurrence resets the production default)
+    --archive-path) if [ "$ARCHIVE_PATHS_SET" = 0 ]; then ARCHIVE_PATHS=(); ARCHIVE_PATHS_SET=1; fi
+                    ARCHIVE_PATHS+=("$2"); shift ;;
+    --scan-dir)     if [ "$SCAN_DIRS_SET" = 0 ]; then SCAN_DIRS=(); SCAN_DIRS_SET=1; fi
+                    SCAN_DIRS+=("$2"); shift ;;
     -h|--help)     sed -n '2,40p' "$0"; exit 0 ;;
     *) die "unknown flag: $1" ;;
   esac
@@ -197,4 +293,6 @@ case "$MODE" in
   render-dropin) [ -n "$RENDER_UNIT" ] || die "--render-dropin needs a unit name"
                  render_dropin "${RENDER_UNIT%.service}" ;;
   apply)         apply ;;
+  archive-plan)  archive_plan ;;
+  archive-root)  archive_root ;;
 esac
