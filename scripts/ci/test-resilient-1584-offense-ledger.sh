@@ -64,12 +64,12 @@ else
 fi
 
 # CREDIBLE-1578: an auto-block must NAME the failing step and KEEP the cycle log
-# (path in the note + event), not just rc + byte count. Replays a SYNTHETIC
-# external-repo signature — a hypothesized ~945B pre-agent failure (`chump improve`
-# could not find an onboard scan). NOTE: this is a fabricated fixture, NOT a
-# reproduced Olive cycle; the live-cycle receipt that would confirm the real 27-gap
-# signature is carved to a lane-1 follow-up. This block proves the recording
-# machinery (AC2); the faithfulness guard below proves it never lies about the log.
+# (path in the note + event), not just rc + byte count. This block exercises the
+# recording machinery (AC2) with a small inline UNIT fixture of the no_onboard_scan
+# signature — it is deliberately synthetic and only drives offense_maybe_block's
+# note/event/preserve wiring; it is NOT the AC1 reproduction receipt. The AC1 receipt
+# (a real reproduced rc=1 cycle produced by the `chump improve` binary) is G8 below.
+# The faithfulness guards (G6/G7) prove the classifier never lies about the log.
 G5=CREDIBLE-1578-EXTERNAL
 rm -f "$TMP/chump-calls.log" "$TMP/ambient.jsonl"
 rm -rf "$TMP/.chump-locks/offense/logs"
@@ -163,6 +163,38 @@ if [ "$_step7b" = "decompose_precheck" ]; then
     ok "CREDIBLE-1578: a real decompose failure is still named decompose_precheck"
 else
     fail "CREDIBLE-1578: decompose failure not classified (got '$_step7b')"
+fi
+
+# CREDIBLE-1578 AC1 (reproduced-cycle receipt): the review's blocking attack was
+# that the rc=1 cause was ASSERTED off a hand-written fixture, never demonstrated.
+# This guard feeds classify_failing_step a log that is NOT hand-written: it is the
+# verbatim stdout+stderr of the real `chump improve repairman29/olive` binary driven
+# to its pre-agent rc=1 bail, committed at scripts/ci/fixtures/. Reproduce it with:
+#   gh_stub=$(mktemp -d); printf '#!/usr/bin/env bash\nexit 1\n' > "$gh_stub/gh"; chmod +x "$gh_stub/gh"
+#   mkdir -p /tmp/credible-1578-repro/repairman29-olive/clone
+#   HOME=$gh_stub/home CHUMP_IMPROVE_GH_BIN=$gh_stub/gh \
+#     chump improve repairman29/olive --mode guest --clone-dir /tmp/credible-1578-repro/repairman29-olive/clone
+#   # -> rc=1, ~348B; last line is the production `no onboard scan found` bail (src/improve.rs:801).
+# This reproduces ONE concrete rc=1 pre-agent mechanism (no_onboard_scan) against the
+# real repo name via production code — materially stronger than a synthetic fixture.
+# It does NOT prove this mechanism accounts for all 27 historical Olive blocks: those
+# logs did not survive (the exact hole AC2 closes), so the full historical decode
+# still needs live Olive runs and remains carved. The guard proves the recorded WHY
+# is derived from a genuine reproduced cycle, not an assertion.
+G8=CREDIBLE-1578-REPRODUCED
+_rlog="$REPO_SRC/scripts/ci/fixtures/credible-1578-reproduced-no-scan-cycle.log"
+if [ -f "$_rlog" ] \
+   && grep -Fq '[improve] mode=DRY-RUN repo=repairman29/olive' "$_rlog" \
+   && grep -Fq 'no onboard scan found' "$_rlog"; then
+    ok "CREDIBLE-1578: AC1 receipt is a real reproduced cycle (binary banner + verbatim bail present)"
+else
+    fail "CREDIBLE-1578: AC1 receipt is not a genuine reproduced cycle log"
+fi
+_step8="$(classify_failing_step "$_rlog")"
+if [ "$_step8" = "external_repo:no_onboard_scan" ]; then
+    ok "CREDIBLE-1578: classifier names the failing step from the REAL reproduced log"
+else
+    fail "CREDIBLE-1578: classifier did not name the step from the reproduced log (got '$_step8')"
 fi
 
 echo "pass=$PASS fail=$FAIL"; [ "$FAIL" -eq 0 ]

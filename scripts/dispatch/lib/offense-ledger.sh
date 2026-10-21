@@ -40,21 +40,28 @@ classify_auto_block_reason() {
 # spec. This reads the REAL cycle log and names the step ONLY from a marker that
 # is literally present in the log, falling back to the last non-empty line so
 # there is always a receipt-grounded reason — never a guessed cause, never just
-# an rc. The specific rc=1 signature behind those 27 Olive blocks is NOT yet
-# decoded from a reproduced cuphead/olive cycle; that live-cycle receipt is
-# carved to a lane-1 follow-up. Output is sanitized to be JSON- and note-safe.
+# an rc. One concrete rc=1 pre-agent mechanism (no_onboard_scan) IS reproduced
+# against the real repo name via the `chump improve` binary — receipt committed at
+# scripts/ci/fixtures/credible-1578-reproduced-no-scan-cycle.log (test G8). Whether
+# that mechanism accounts for ALL 27 historical Olive blocks cannot be confirmed:
+# those logs did not survive (the exact hole this ledger closes), so the full
+# historical decode still needs live Olive runs and is carved to a lane-1 follow-up.
+# Output is sanitized to be JSON- and note-safe.
 classify_failing_step() {
     local log="${1:-}"
     [ -n "$log" ] && [ -f "$log" ] || { echo "no_cycle_log"; return 0; }
     local sz
     sz=$(wc -c < "$log" 2>/dev/null | tr -d ' ' || echo 0)
     if [ "${sz:-0}" -lt 10 ]; then echo "empty_log(${sz}B)"; return 0; fi
-    # Candidate pre-agent failure markers, most-specific first. These are steps
-    # the external-repo path (`chump improve` / src/improve.rs) can fail at BEFORE
-    # any agent edits — hypothesized signatures for the 945B Olive logs. A step is
-    # named ONLY when its marker is literally present in the log; which (if any) of
-    # these actually blocked the 27 Olive gaps is not yet confirmed from a
-    # reproduced cycle (CREDIBLE-1578 lane-1 follow-up). The classifier never
+    # Pre-agent failure markers, most-specific first. These are steps the
+    # external-repo path (`chump improve` / src/improve.rs) can fail at BEFORE any
+    # agent edits. The first — no_onboard_scan — is a REPRODUCED rc=1 cycle (the
+    # `chump improve` binary bails at src/improve.rs:801; receipt committed at
+    # scripts/ci/fixtures/credible-1578-reproduced-no-scan-cycle.log, test G8); the
+    # others remain candidate signatures. A step is named ONLY when its marker is
+    # literally present in the log; which (if any) of these blocked the 27 historical
+    # Olive gaps is not confirmed — those logs did not survive, so the full decode
+    # needs live Olive runs (CREDIBLE-1578 lane-1 follow-up). The classifier never
     # guesses: absent a marker, it reports the log tail as the receipt.
     if grep -qiE 'no onboard scan found|run .?chump onboard' "$log"; then echo "external_repo:no_onboard_scan"; return 0; fi
     if grep -qiE 'onboard scan contains no proposed gaps' "$log"; then echo "external_repo:empty_scan"; return 0; fi
