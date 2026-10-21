@@ -156,6 +156,7 @@ emit() { printf '%s\n' "$1" >> "$AMBIENT" 2>/dev/null || true; }
 # scanner-anchor: "kind":"pr_review_verdict"
 # scanner-anchor: "kind":"review_organ_label_error"
 # scanner-anchor: "kind":"review_organ_gap_store_miss"
+# scanner-anchor: "kind":"review_organ_gap_ship_failed"
 
 REVIEWED=0; APPROVED=0; CHANGES=0; HELD_MUTANTS=0; ARMED=0; DISPATCHED=0; SKIPPED=0
 # CREDIBLE-1602: set to 1 when the post-merge gap step hits a loud failure (a
@@ -264,13 +265,15 @@ PROMPT
     printf '%s' "$pf"
 }
 
-# post_verdict <pr> <verdict APPROVE|CHANGES_REQUIRED> <head> <mutants-line> <body-file> <gate-list-version>
+# post_verdict <pr> <verdict APPROVE|CHANGES_REQUIRED> <head> <mutants-line> <body-file> <gate-list-version> <patch-id>
 # Posts a comment whose FIRST line is exactly the verdict and that ends with the
 # verdict too (AC1), embedding head + mutants (AC5). When a gate-list-version is
 # given (ONLY the mechanical gate-file hold passes it, CREDIBLE-1592), stamp it so
-# a later tick can detect a list change and re-evaluate the head.
+# a later tick can detect a list change and re-evaluate the head. When a patch-id
+# is given (CREDIBLE-1599), stamp it so a later tick can recognise an updated head
+# (new sha, same PR-diff content) and re-arm without a fresh model review.
 post_verdict() {
-    local pr="$1" verdict="$2" head="$3" mutants="$4" body_file="${5:-}" gate_list_version="${6:-}"
+    local pr="$1" verdict="$2" head="$3" mutants="$4" body_file="${5:-}" gate_list_version="${6:-}" patch_id="${7:-}"
     local vstr; [[ "$verdict" == APPROVE ]] && vstr="VERDICT: APPROVE" || vstr="VERDICT: CHANGES REQUIRED"
     local cfile; cfile="$(mktemp)"
     {
@@ -279,6 +282,7 @@ post_verdict() {
         printf 'head: %s\n' "$head"
         printf 'mutants: %s\n' "$mutants"
         [[ -n "$gate_list_version" ]] && printf 'gate-list-version: %s\n' "$gate_list_version"
+        [[ -n "$patch_id" ]] && printf 'patch-id: %s\n' "$patch_id"
         if [[ -n "$body_file" && -r "$body_file" ]]; then
             printf '\n---\n'; sed -n '1,400p' "$body_file"
         fi
@@ -460,6 +464,75 @@ pr_diff_patch_id() {
     printf '%s' "$id"
 }
 
+# approved_patch_id <pr> — CREDIBLE-1599. Prints the PR-diff patch-id recorded on
+# the organ's most-recent APPROVE comment (the `patch-id: <id>` line post_verdict
+# stamps), rc 1 (no output) when the organ has posted no APPROVE carrying a patch-id.
+# Only the ORGAN trusted login ($ORGAN_LOGIN) is read — a forged APPROVE from any
+# other account is ignored (anyone can comment on a public PR), exactly as
+# current_head_verdict / review_hold_allows do. This is how the next tick knows an
+# updated head (new sha from update-branch / the rebase) carries the SAME content as
+# an already-reviewed head: the approved patch-id survives the head move. Fail
+# closed: empty trusted login or unreadable comments payload → rc 1.
+approved_patch_id() {
+    local pr="$1" payload
+    [[ -n "$ORGAN_LOGIN" ]] || return 1
+    payload="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
+        --json comments 2>/dev/null || true)"
+    [[ -n "$payload" ]] || return 1
+    TRUSTED_AUTHOR="$ORGAN_LOGIN" python3 -c '
+import json, os, re, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+trusted = (os.environ.get("TRUSTED_AUTHOR","") or "").strip().lower()
+if not trusted:
+    sys.exit(1)
+verd = re.compile(r"^[ \t]*VERDICT:[ \t]*APPROVE[ \t]*$", re.I | re.M)
+pidmark = re.compile(r"^[ \t]*patch-id:[ \t]*([0-9a-fA-F]{12,40})", re.I | re.M)
+cands = []
+for c in d.get("comments") or []:
+    b = c.get("body","") if isinstance(c, dict) else str(c)
+    author = ""
+    if isinstance(c, dict):
+        a = c.get("author") or {}
+        if isinstance(a, dict):
+            author = (a.get("login") or "")
+    if author.strip().lower() != trusted:
+        continue
+    if not verd.search(b or ""):
+        continue
+    pm = pidmark.search(b or "")
+    if not pm:
+        continue
+    cands.append((c.get("createdAt","") if isinstance(c, dict) else "", pm.group(1).lower()))
+if not cands:
+    sys.exit(1)
+cands.sort(key=lambda t: t[0])
+print(cands[-1][1]); sys.exit(0)
+' "$payload"
+}
+
+# pr_touches_rust <pr> — exit 0 when the PR changes any Rust build input
+# (*.rs / Cargo.toml / Cargo.lock / anything under workspace-hack/), exit 1 when the
+# PR is shell-only, exit 3 when the file list cannot be read (fail closed → caller
+# treats as Rust and holds). Reads the file list via gh (no local head ref needed),
+# the same way gate_files_touched does, so an unfetched head never misclassifies.
+pr_touches_rust() {
+    local pr="$1" files f
+    files="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
+        --json files --jq '.files[].path' 2>/dev/null)" || return 3
+    [[ -n "$files" ]] || return 3
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            *.rs|Cargo.toml|Cargo.lock|*/Cargo.toml|*/Cargo.lock|workspace-hack/*|*/workspace-hack/*)
+                return 0 ;;
+        esac
+    done <<< "$files"
+    return 1
+}
+
 # mutant_record_satisfies <pr> <head> <expected-patch-id> — CREDIBLE-1600. Exit 0
 # ONLY when a mutant-capable review RECORD for THIS exact patch-id is present on
 # the PR under the organ marker format. (<head> is accepted for call-site symmetry
@@ -574,12 +647,39 @@ process_pr() {
     fi
 
     local run_dir; run_dir="$(mktemp -d)"
+
+    # CREDIBLE-1599: the current head has no organ verdict (the idempotency check
+    # above fell through). If a prior organ APPROVE recorded a PR-diff patch-id
+    # EQUAL to this head's PR-diff patch-id, the content is unchanged from an
+    # already-reviewed head — the branch was merely updated by update-branch or the
+    # shell-only rebase (new sha, same `git diff origin/main...HEAD | git patch-id
+    # --stable`). Re-stamp APPROVE for the new head and arm WITHOUT spending a fresh
+    # model review (AC2). A DIFFERING patch-id falls through to a full review below.
+    local patch_id approved_pid
+    patch_id="$(pr_diff_patch_id "$pr")"
+    if [[ -n "$patch_id" ]]; then
+        approved_pid="$(approved_patch_id "$pr" 2>/dev/null || true)"
+        if [[ -n "$approved_pid" && "$patch_id" == "$approved_pid"* ]]; then
+            log "PR #$pr: head ${head:0:12} has no verdict but its PR-diff patch-id ${patch_id:0:12} equals an approved head → re-arming WITHOUT a new model review (branch was updated)"
+            post_verdict "$pr" APPROVE "$head" \
+                "re-approved after a branch update — PR-diff content unchanged (patch-id ${patch_id:0:12}); no new model review" \
+                "" "" "$patch_id"
+            local rgate_rc
+            if gate_files_touched "$pr" >/dev/null 2>&1; then rgate_rc=0; else rgate_rc=$?; fi
+            [[ "$rgate_rc" == 3 ]] && rgate_rc=0
+            approve_clear_holds "$pr" "$rgate_rc"
+            APPROVED=$((APPROVED+1))
+            maybe_arm "$pr" "$head"
+            rm -rf "$run_dir"; return 0
+        fi
+    fi
+
     local gate_hit="" gate_rc
     if gate_hit="$(gate_files_touched "$pr" 2>/dev/null)"; then gate_rc=0; else gate_rc=$?; fi
     # A diff we cannot compute is fail-closed: treat as a gate change.
     if [[ "$gate_rc" == 3 ]]; then gate_hit="(diff uncomputable — fail closed)"; gate_rc=0; fi
 
-    local verdict mutants patch_id
+    local verdict mutants
     if [[ "$gate_rc" == 0 && "$REVIEW_MUTANT_RUNNER_AVAILABLE" != "1" ]]; then
         # Gate-file PR, no sandboxed mutant runner. CREDIBLE-1600: the organ can
         # still clear the hold when a mutant-capable review RECORD for THIS exact
@@ -587,7 +687,7 @@ process_pr() {
         # trusted login. It then runs its OWN model review and arms on model
         # APPROVE PLUS that record — never the record alone (the arm path still
         # gates on review_hold_allows reading back the organ's written APPROVE).
-        patch_id="$(pr_diff_patch_id "$pr")"
+        # patch_id was already computed at the top of this fresh path (CREDIBLE-1599).
         if mutant_record_satisfies "$pr" "$head" "$patch_id"; then
             log "PR #$pr: gate-file with a trusted mutant-capable record for patch-id ${patch_id:0:12} → running model review (arms on model APPROVE + record)"
             # The record satisfies the mutant requirement — clear a prior MECHANICAL
@@ -631,7 +731,10 @@ process_pr() {
     [[ -n "$mutants" ]] || mutants="NOT RUN — read-only reviewer"
     REVIEWED=$((REVIEWED+1))
 
-    post_verdict "$pr" "$verdict" "$head" "$mutants" "$body_file"
+    # CREDIBLE-1599: stamp the PR-diff patch-id on the verdict so a later tick can
+    # recognise an updated head (new sha, same diff content) after update-branch /
+    # the shell-only rebase and re-arm it WITHOUT a fresh model review.
+    post_verdict "$pr" "$verdict" "$head" "$mutants" "$body_file" "" "$patch_id"
 
     if [[ "$verdict" == APPROVE ]]; then
         APPROVED=$((APPROVED+1))
@@ -664,6 +767,44 @@ maybe_arm() {
     if ! review_hold_allows "$pr" "$head" "$REPO" "review-organ" "$ORGAN_LOGIN"; then
         log "PR #$pr: review_hold_allows held it (no current-head organ APPROVE / hold label) — not arming"; return 0
     fi
+    # CREDIBLE-1599: an organ-APPROVEd head that is BEHIND or DIRTY never lands — the
+    # head-pinned merge below fails against strict up-to-date branch protection and
+    # the organ used to just WARN and leave the branch stale forever (receipt: #5630
+    # / #5627 / #5623 sat approved-but-unlanded for hours). Reconcile the branch
+    # FIRST, then let the NEXT tick arm the updated head (its PR-diff patch-id is
+    # unchanged, so it re-arms without a fresh review — see process_pr / AC2):
+    #   * BEHIND  → update-branch (merge base into the branch) with expected_head_sha
+    #               so a concurrent head move aborts the update instead of racing it.
+    #   * DIRTY   → if the PR is shell-only (no .rs / Cargo.* / workspace-hack), the
+    #               shell-only rebase repair (gh pr update-branch --rebase) — NEVER a
+    #               merge; a Rust DIRTY PR is HELD (a rebase would corrupt Cargo.lock /
+    #               workspace-hack and needs manual resolution), with a named reason.
+    local mss
+    mss="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || true)"
+    case "$mss" in
+        BEHIND)
+            # gh api needs owner/repo in the path; when --repo was not passed, the
+            # {owner}/{repo} placeholders resolve from the checkout's git remote.
+            local slug="$REPO"; [[ -n "$slug" ]] || slug='{owner}/{repo}'
+            log "PR #$pr: APPROVEd head ${head:0:12} is BEHIND base → update-branch (expected_head_sha=${head:0:12}); next tick arms the updated head"
+            GH api --method PUT "repos/${slug}/pulls/${pr}/update-branch" -f "expected_head_sha=${head}" >/dev/null 2>&1 \
+                && log "PR #$pr: update-branch requested" \
+                || log "WARN: PR #$pr update-branch failed (head moved past expected_head_sha, or conflict)"
+            return 0 ;;
+        DIRTY)
+            local rust_rc
+            if pr_touches_rust "$pr"; then rust_rc=0; else rust_rc=$?; fi
+            if [[ "$rust_rc" == 1 ]]; then
+                log "PR #$pr: APPROVEd head ${head:0:12} is DIRTY and shell-only → dispatching the shell-only rebase (gh pr update-branch --rebase, never a merge)"
+                GH pr update-branch "$pr" ${REPO:+--repo "$REPO"} --rebase >/dev/null 2>&1 \
+                    && log "PR #$pr: shell-only rebase requested" \
+                    || log "WARN: PR #$pr shell-only rebase failed (genuine conflict — author repair needed)"
+            else
+                log "PR #$pr: APPROVEd head ${head:0:12} is DIRTY and touches Rust (.rs/Cargo.*/workspace-hack) — HELD, no auto-rebase of a Rust conflict (Cargo.lock/workspace-hack need manual resolution)"
+                label_add "$pr" "$REVIEW_HOLD_LABEL"
+            fi
+            return 0 ;;
+    esac
     if ! verified_green "$pr" "$head"; then
         log "PR #$pr: not verified-green for head ${head:0:12} — not arming (head may have moved)"; return 0
     fi
@@ -701,19 +842,43 @@ ship_merged_gap() {
     # paged/observable. Pinning CHUMP_STATE_DB on every chump call keeps cwd from
     # retargeting a different store mid-step (AC1: resolve through ONE function,
     # never from cwd).
-    if ! CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap show "$gap" >/dev/null 2>&1; then
+    #
+    # CREDIBLE-1604 (AC1): CHUMP_STATE_DB pins the STORE, but `chump gap ship`'s
+    # INFRA-2423 auto-fetch runs `git fetch/pull` in the GapStore's repo_root,
+    # which `chump` derives from CHUMP_REPO/CHUMP_HOME/cwd — NOT from
+    # CHUMP_STATE_DB. In production the organ runs FROM the node checkout
+    # (~/.chumpnode/repo), so the auto-fetch targeted that clone — which carries a
+    # standing local edit (docs/process/STASHED_BRANCHES.md) and lags main — and
+    # refused ("local main is N commits behind origin/main; cannot auto-pull with
+    # uncommitted changes"), leaving every organ landing's gap open (cuphead
+    # 2026-10-21, #5624 et al.). Pin CHUMP_REPO to the CANONICAL checkout
+    # ($CHECKOUT) on every post-merge chump call so the auto-fetch runs against the
+    # clean, current canonical repo, never the node-checkout cwd. This is the
+    # same sanctioned-constant pin as CHUMP_STATE_DB (resolved from the $HOME
+    # sandbox seam / --checkout CLI arg, NEVER a tunable env read on a safety
+    # input; Chief 2026-10-20), not an env knob the systemd unit passes.
+    if ! CHUMP_REPO="$CHECKOUT" CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap show "$gap" >/dev/null 2>&1; then
         emit "$(printf '{"ts":"%s","kind":"review_organ_gap_store_miss","pr":%s,"gap":"%s","store":"%s","head":"%s"}' \
             "$(ts)" "$pr" "$(json_str "$gap")" "$(json_str "$ORGAN_GAP_STORE")" "$(json_str "$head")")"
         log "FAIL: PR #$pr merged but gap $gap is NOT in the canonical store $ORGAN_GAP_STORE — the organ resolved the WRONG gap store (CREDIBLE-1602). NOT shipping; tick fails loud."
         ORGAN_TICK_FAIL=1
         return 1
     fi
-    CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap link-pr "$gap" "$pr" --sha "$head" >/dev/null 2>&1 \
+    CHUMP_REPO="$CHECKOUT" CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap link-pr "$gap" "$pr" --sha "$head" >/dev/null 2>&1 \
         || log "WARN: PR #$pr link-pr $gap failed (reconciler FK backstop may miss it)"
-    if CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap ship "$gap" --closed-pr "$pr" >/dev/null 2>&1; then
+    # CREDIBLE-1604 (AC4): a ship REFUSAL (e.g. the auto-fetch still blocks, or a
+    # proof-of-merge guard trips) now FAILS LOUD — emit review_organ_gap_ship_failed
+    # and mark the tick failed so the oneshot exits non-zero — instead of the old
+    # WARN that let every organ landing silently leave its gap open and undercount
+    # the PHASE-R rollup. It is NEVER a WARN anymore.
+    if CHUMP_REPO="$CHECKOUT" CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap ship "$gap" --closed-pr "$pr" >/dev/null 2>&1; then
         log "PR #$pr: shipped $gap --closed-pr $pr (organ landing recorded in $ORGAN_GAP_STORE)"
     else
-        log "WARN: PR #$pr merged but 'chump gap ship $gap --closed-pr $pr' failed — reconciler backstop must close it"
+        emit "$(printf '{"ts":"%s","kind":"review_organ_gap_ship_failed","pr":%s,"gap":"%s","store":"%s","checkout":"%s","head":"%s"}' \
+            "$(ts)" "$pr" "$(json_str "$gap")" "$(json_str "$ORGAN_GAP_STORE")" "$(json_str "$CHECKOUT")" "$(json_str "$head")")"
+        log "FAIL: PR #$pr merged but 'chump gap ship $gap --closed-pr $pr' was REFUSED against $CHECKOUT — the organ landing left its gap open (CREDIBLE-1604). Tick fails loud."
+        ORGAN_TICK_FAIL=1
+        return 1
     fi
 }
 
@@ -737,12 +902,13 @@ for pr in "${prs[@]}"; do process_pr "$pr"; done
 emit "$(printf '{"ts":"%s","kind":"review_organ_tick","reviewed":%s,"approved":%s,"changes_required":%s,"held_mutants":%s,"armed":%s,"dispatched":%s,"skipped":%s}' \
     "$(ts)" "$REVIEWED" "$APPROVED" "$CHANGES" "$HELD_MUTANTS" "$ARMED" "$DISPATCHED" "$SKIPPED")"
 log "tick done (reviewed=$REVIEWED approved=$APPROVED changes=$CHANGES held_mutants=$HELD_MUTANTS armed=$ARMED dispatched=$DISPATCHED skipped=$SKIPPED)"
-# CREDIBLE-1602 (AC4): a post-merge gap step that could not find its gap in the
-# canonical store already emitted review_organ_gap_store_miss; surface it as a
+# CREDIBLE-1602/1604 (AC4): a post-merge gap step that could not find its gap in
+# the canonical store (review_organ_gap_store_miss) or had its ship REFUSED
+# (review_organ_gap_ship_failed) already emitted its event; surface it as a
 # non-zero tick status too, so the oneshot unit's ExecStart fails loud instead
-# of exiting 0 over a silent split-brain.
+# of exiting 0 over a silently-unshipped landing.
 if [[ "$ORGAN_TICK_FAIL" -ne 0 ]]; then
-    log "tick FAILED: a post-merge gap step could not resolve its gap in the canonical store (CREDIBLE-1602) — exiting non-zero"
+    log "tick FAILED: a post-merge gap step could not resolve its gap in the canonical store or was refused shipping (CREDIBLE-1602/1604) — exiting non-zero"
     exit 1
 fi
 exit 0
