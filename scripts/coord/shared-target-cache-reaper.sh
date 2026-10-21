@@ -91,6 +91,7 @@ emit() {
 
 skip() {  # <human-reason> <ambient-reason-token>
   echo "[shared-target-cache-reaper] skipped: $1"
+  # scanner-anchor: "kind":"shared_target_incremental_reap_skipped"
   emit "\"kind\":\"shared_target_incremental_reap_skipped\",\"target\":\"$TARGET\",\"reason\":\"$2\""
   exit 0
 }
@@ -190,6 +191,7 @@ mapfile -t INCR < <(find "$TARGET" -type d -name incremental -prune 2>/dev/null)
 if (( ${#INCR[@]} == 0 )); then
   release_locks
   echo "[shared-target-cache-reaper] ${TARGET}: no incremental caches to reap — leaving target intact"
+  # scanner-anchor: "kind":"shared_target_incremental_reap_skipped"
   emit "\"kind\":\"shared_target_incremental_reap_skipped\",\"target\":\"$TARGET\",\"reason\":\"no_incremental_dirs\""
   exit 0
 fi
@@ -198,6 +200,7 @@ if (( EXECUTE == 0 )); then
   release_locks
   echo "[shared-target-cache-reaper] DRY-RUN: would reap ${#INCR[@]} incremental dir(s) under ${TARGET} (${reason}); re-run with --execute:"
   printf '    %s\n' "${INCR[@]}"
+  # scanner-anchor: "kind":"shared_target_incremental_reap_dryrun"
   emit "\"kind\":\"shared_target_incremental_reap_dryrun\",\"target\":\"$TARGET\",\"incremental_dirs\":${#INCR[@]},\"target_gb\":$cur_gb,\"free_gb\":$avail_gb"
   exit 0
 fi
@@ -214,4 +217,5 @@ freed=$(( cur_gb - after_gb )); (( freed < 0 )) && freed=0
 release_locks
 
 echo "[shared-target-cache-reaper] reaped ${reaped} incremental dir(s) under ${TARGET} (~${freed}G freed, target preserved)"
+# scanner-anchor: "kind":"shared_target_incremental_reaped"
 emit "\"kind\":\"shared_target_incremental_reaped\",\"target\":\"$TARGET\",\"incremental_dirs\":$reaped,\"freed_gb_approx\":$freed,\"target_gb_before\":$cur_gb"
