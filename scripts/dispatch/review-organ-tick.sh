@@ -56,7 +56,15 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 
 # ── CLI args (the test seam; the unit passes NONE of these). ──
 CLAUDE_BIN="claude"
-CHECKOUT="$REPO_ROOT"
+# CREDIBLE-1602 (AC1): the canonical checkout the organ OPERATES on — the one it
+# fetches, reviews against, and resolves its gap store from — is $HOME/chump, NOT
+# REPO_ROOT (the organ's own code location). The systemd unit runs the script
+# FROM the node clone ~/.chumpnode/repo (a standalone clone whose .chump/state.db
+# is a stale copy), so anchoring on REPO_ROOT pins the WRONG store. $HOME is the
+# sanctioned sandbox seam (a test sets HOME so $HOME/chump resolves inside its
+# sandbox); --checkout, which the unit NEVER passes, overrides it for tests that
+# cannot relocate HOME. NEVER an env var on this safety input (Chief 2026-10-20).
+CHECKOUT="$HOME/chump"
 SELF_LOGIN=""          # own-lane skip: a PR authored by this login is not reviewed
 REPO=""                # owner/repo; empty = current checkout's repo
 declare -a ONLY_PRS=()
@@ -111,9 +119,15 @@ source "$REPO_ROOT/scripts/coord/lib/review-hold.sh"
 # `chump gap ship` failed and was log-and-continued, undercounting the PHASE-R
 # rollup. The one node must carry one store (fleet-doctor single-store check +
 # scripts/coord/archive-stale-gap-store.sh retire the extras).
+#
+# AC1 (review REQUIRED #1): resolve from $CHECKOUT — the CANONICAL checkout
+# ($HOME/chump by default; see CHECKOUT above), NOT $REPO_ROOT (the organ's own
+# code location, which in production is the node clone whose store is stale). The
+# earlier REPO_ROOT anchor converted "silent wrong store" into "loud wrong store"
+# but still never reached the canonical store the AC names.
 # shellcheck source=scripts/coord/lib/state-store.sh
 source "$REPO_ROOT/scripts/coord/lib/state-store.sh"
-ORGAN_GAP_STORE="$(chump_state_db "$REPO_ROOT")"
+ORGAN_GAP_STORE="$(chump_state_db "$CHECKOUT")"
 
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true

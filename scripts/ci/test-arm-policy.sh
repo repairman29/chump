@@ -712,9 +712,16 @@ grep -qE 'state\.db|sqlite3' "$ORGLOG.chump" && bad "organ CREDIBLE-1598 AC1: cl
 # FAILS LOUD (review_organ_gap_store_miss + non-zero tick) when the gap is not in
 # that store.
 echo "[d/gap-store] CREDIBLE-1602: post-merge gap step pins the canonical store + fails loud on a miss"
-# The exact store the organ MUST pin: the ONE resolver's answer for the organ's
-# own REPO_ROOT, computed here independently so the assertion is machine-agnostic.
-ORG_EXPECTED_STORE="$( ( source "$REPO_ROOT/scripts/coord/lib/state-store.sh"; chump_state_db "$REPO_ROOT" ) 2>/dev/null )"
+# The exact store the organ MUST pin: the ONE resolver's answer for the CANONICAL
+# CHECKOUT the organ is told to operate on (--checkout $D/checkout here, the test
+# seam the systemd unit never passes), computed here independently so the
+# assertion is machine-agnostic. AC1 (review REQUIRED #1): the organ resolves the
+# store from $CHECKOUT, NOT from $REPO_ROOT (its own code location) — $D/checkout
+# is a DIFFERENT, divergent checkout from REPO_ROOT, so a store that matches it
+# proves the resolve is checkout-anchored, not REPO_ROOT-anchored. A faithful
+# production-topology case (organ code in a standalone node clone, canonical via
+# $HOME/chump) follows below.
+ORG_EXPECTED_STORE="$( ( source "$REPO_ROOT/scripts/coord/lib/state-store.sh"; chump_state_db "$D/checkout" ) 2>/dev/null )"
 
 # AC5: run the organ FROM A NODE-CHECKOUT cwd (its own .chump/state.db) and
 # assert the post-merge chump calls were pinned to the canonical store, NOT the
@@ -733,6 +740,38 @@ fi
 [[ "$ship_store" != "$NODE_CWD_STORE" && "$ship_store" != "<unset>" ]] \
     && ok "organ CREDIBLE-1602 AC5: pinned store is NOT the node-checkout cwd store ($NODE_CWD_STORE) and NOT unset" \
     || bad "organ CREDIBLE-1602 AC5: pinned store leaked from cwd or was unset (store='$ship_store')"
+
+# AC5 (review REQUIRED #3): FAITHFUL production topology. The earlier case pins
+# the store via --checkout; this one exercises the PRODUCTION DEFAULT with NO
+# --checkout, so the store must come from $HOME/chump — the sanctioned sandbox
+# seam. Here the organ's own code checkout ($REPO_ROOT, the real worktree) resolves
+# to a DIFFERENT store than the canonical the organ must write ($SBXHOME/chump).
+# This is the production split the earlier (tautological) assertion could not
+# catch: the organ ships from a node-checkout cwd, its code lives at REPO_ROOT
+# (whose store is divergent), yet it must write the $HOME/chump store. Assert the
+# ship store == $HOME/chump store AND != REPO_ROOT's store AND != the cwd store.
+# MUTANT (killed here): revert ORGAN_GAP_STORE to chump_state_db "$REPO_ROOT" →
+# the ship store becomes REPO_ROOT's divergent store and both asserts below fail.
+SBXHOME="$D/sbxhome"; mkdir -p "$SBXHOME"
+git init -q "$SBXHOME/chump" >/dev/null 2>&1; mkdir -p "$SBXHOME/chump/.chump"
+SBX_CANON_STORE="$( ( source "$REPO_ROOT/scripts/coord/lib/state-store.sh"; chump_state_db "$SBXHOME/chump" ) 2>/dev/null )"
+REPO_ROOT_STORE="$( ( source "$REPO_ROOT/scripts/coord/lib/state-store.sh"; chump_state_db "$REPO_ROOT" ) 2>/dev/null )"
+: >"$ORGLOG.store"; : >"$ORGLOG.chump"; : >"$D/amb.jsonl"
+echo '{"labels":[],"comments":[]}' >"$ORGCMT"
+# NO --checkout: production default CHECKOUT=$HOME/chump; HOME points at the
+# sandbox so $HOME/chump is the controlled canonical. cwd is the node checkout.
+( cd "$D/nodeco" && export PATH="$D/bin:$PATH" HOME="$SBXHOME" \
+    CHUMP_AMBIENT_LOG="$D/amb.jsonl" ORG_GAP_SHOW_RC=0
+  bash "$ORGAN" --claude-bin "$D/bin/claude" --pr 203 ) >/dev/null 2>&1 || true
+prod_store="$(grep -E $'\tgap ship CREDIBLE-9203' "$ORGLOG.store" 2>/dev/null | head -1 | cut -f1)"
+if [[ -n "$SBX_CANON_STORE" && "$prod_store" == "$SBX_CANON_STORE" ]]; then
+    ok "organ CREDIBLE-1602 AC5 (prod topology): no --checkout → gap ship pinned the \$HOME/chump store ($SBX_CANON_STORE)"
+else
+    bad "organ CREDIBLE-1602 AC5 (prod topology): gap ship store='$prod_store' expected \$HOME/chump store='$SBX_CANON_STORE' (resolved from REPO_ROOT?)"
+fi
+[[ -n "$prod_store" && "$prod_store" != "$REPO_ROOT_STORE" && "$prod_store" != "$NODE_CWD_STORE" && "$prod_store" != "<unset>" ]] \
+    && ok "organ CREDIBLE-1602 AC5 (prod topology): pinned store is NOT the organ's own code checkout store ($REPO_ROOT_STORE) nor the cwd store" \
+    || bad "organ CREDIBLE-1602 AC5 (prod topology): pinned store leaked from REPO_ROOT/cwd or was unset (store='$prod_store' repo_root_store='$REPO_ROOT_STORE')"
 
 # AC4: when the merged PR's gap is NOT in the resolved store (ORG_GAP_SHOW_RC=1),
 # the organ must FAIL LOUD — emit review_organ_gap_store_miss, NOT ship, and exit
