@@ -241,10 +241,16 @@ fi
 # ── Test 10: write_sandbox_healthy_node guard refuses non-lib / unsafe sandboxes
 #    (RESILIENT-1652 repair 6). The healthy-node fixture writes a NOT-paused
 #    node.env; if it could be aimed at a real node's state dir it would unpause a
-#    paused node. These three cases kill the mutants the guard exists to stop:
-#      F1 — a caller sets CHUMP_HOME by hand but never ran the lib (no marker);
-#      F2 — a valid lib sandbox whose CHUMP_STATE_DIR is re-pointed at a real dir;
-#      F4 — a symlinked sandbox whose leaf resolves into a real dir.
+#    paused node. These cases kill the mutants the guard exists to stop:
+#      F1  — a caller sets CHUMP_HOME by hand but never ran the lib (no marker);
+#      F2  — a valid lib sandbox whose CHUMP_STATE_DIR is re-pointed at a real dir;
+#      F4  — a symlinked sandbox whose leaf resolves into a real dir;
+#      E3b — the symlinked sandbox passed with a trailing slash ("L/"), which a
+#            bare `-L` would FOLLOW and miss (pwd -P resolution catches it);
+#      E3c — the same symlink passed as "L/." (a "." leaf), likewise caught;
+#      F4b — a real sandbox whose .chump LEAF is a symlink into a real dir;
+#      M2  — a marker left over from sandbox A while CHUMP_HOME + CHUMP_STATE_DIR
+#            are hand-set to B (the marker!=arg check must still refuse).
 #    This test is already wired into CI (ci.yml), so the guard is proven in the
 #    merge gate without adding a new ci.yml step. Each call runs in a subshell
 #    (the guard `exit 2`s on refusal); `|| rc=$?` captures it under `set -e`.
@@ -289,6 +295,10 @@ fi
 
 # F4: a symlinked sandbox (leaf is a symlink into a real dir) → refuse even
 # though the lib set the marker/CHUMP_HOME/CHUMP_STATE_DIR to the symlink path.
+# The stand-in real dir must be UNCHANGED by the guard: the 3 node files the
+# fixture ever writes (oauth-token.json/node.env/farmer-heartbeat) must not have
+# leaked into it. (setup legitimately mkdir's .chump there through the symlink;
+# the guard — which refuses — writes none of those three.)
 F4_REAL="$GUARD_ROOT/f4-real"; mkdir -p "$F4_REAL"
 F4_LINK="$GUARD_ROOT/f4-link"; ln -s "$F4_REAL" "$F4_LINK"
 rc=0
@@ -296,10 +306,85 @@ rc=0
     chump_test_sandbox_setup "$F4_LINK" >/dev/null 2>&1
     write_sandbox_healthy_node "$F4_LINK"
 ) >/dev/null 2>&1 || rc=$?
-if [[ "$rc" -eq 2 ]]; then
-    ok "Test 10c (F4): refuses a symlinked sandbox (exit 2)"
+if [[ "$rc" -eq 2 && ! -e "$F4_REAL/.chump/oauth-token.json" \
+      && ! -e "$F4_REAL/.chump/node.env" && ! -e "$F4_REAL/.chump/farmer-heartbeat" ]]; then
+    ok "Test 10c (F4): refuses a symlinked sandbox (exit 2, real target unwritten)"
 else
-    fail "Test 10c (F4): expected exit 2 on symlinked sandbox (rc=$rc)"
+    fail "Test 10c (F4): expected exit 2 + real target unwritten (rc=$rc)"
+fi
+
+# E3b: the SAME symlinked sandbox passed with a TRAILING SLASH ("L/"). A bare
+# `-L "L/"` FOLLOWS the slash and reports "not a symlink", so the lib is set up
+# WITH the trailing-slash form (marker/CHUMP_HOME/CHUMP_STATE_DIR all equal it)
+# to force the symlink branch — not the marker branch — to fire. pwd -P strips
+# the slash and still resolves the symlinked leaf → refuse.
+E3_REAL="$GUARD_ROOT/e3-real"; mkdir -p "$E3_REAL"
+E3_LINK="$GUARD_ROOT/e3-link"; ln -s "$E3_REAL" "$E3_LINK"
+rc=0
+(
+    chump_test_sandbox_setup "$E3_LINK/" >/dev/null 2>&1
+    write_sandbox_healthy_node "$E3_LINK/"
+) >/dev/null 2>&1 || rc=$?
+if [[ "$rc" -eq 2 && ! -e "$E3_REAL/.chump/oauth-token.json" \
+      && ! -e "$E3_REAL/.chump/node.env" && ! -e "$E3_REAL/.chump/farmer-heartbeat" ]]; then
+    ok "Test 10d (E3b): refuses a symlinked sandbox passed as 'L/' (exit 2, real target unwritten)"
+else
+    fail "Test 10d (E3b): expected exit 2 + real target unwritten on 'L/' (rc=$rc)"
+fi
+
+# E3c: the same symlink passed as "L/." (a "." leaf). The strip leaves the "."
+# leaf, which pwd -P resolution refuses as unverifiable → refuse.
+rc=0
+(
+    chump_test_sandbox_setup "$E3_LINK/." >/dev/null 2>&1
+    write_sandbox_healthy_node "$E3_LINK/."
+) >/dev/null 2>&1 || rc=$?
+if [[ "$rc" -eq 2 && ! -e "$E3_REAL/.chump/oauth-token.json" \
+      && ! -e "$E3_REAL/.chump/node.env" && ! -e "$E3_REAL/.chump/farmer-heartbeat" ]]; then
+    ok "Test 10e (E3c): refuses a symlinked sandbox passed as 'L/.' (exit 2, real target unwritten)"
+else
+    fail "Test 10e (E3c): expected exit 2 + real target unwritten on 'L/.' (rc=$rc)"
+fi
+
+# F4b: a REAL sandbox dir whose .chump LEAF is a symlink into a real dir. The
+# sandbox leaf passes, but the .chump leaf must be refused (pwd -P on .chump),
+# and the real .chump target must not receive the node files. The symlink is
+# created BEFORE setup so setup's `mkdir -p <sandbox>/.chump` is a no-op on it.
+F4B_SANDBOX="$GUARD_ROOT/f4b-sandbox"; mkdir -p "$F4B_SANDBOX"
+F4B_REAL="$GUARD_ROOT/f4b-chump-real"; mkdir -p "$F4B_REAL"
+ln -s "$F4B_REAL" "$F4B_SANDBOX/.chump"
+rc=0
+(
+    chump_test_sandbox_setup "$F4B_SANDBOX" >/dev/null 2>&1
+    write_sandbox_healthy_node "$F4B_SANDBOX"
+) >/dev/null 2>&1 || rc=$?
+if [[ "$rc" -eq 2 && ! -e "$F4B_REAL/oauth-token.json" \
+      && ! -e "$F4B_REAL/node.env" && ! -e "$F4B_REAL/farmer-heartbeat" ]]; then
+    ok "Test 10f (F4b): refuses a symlinked .chump leaf (exit 2, real target unwritten)"
+else
+    fail "Test 10f (F4b): expected exit 2 + real target unwritten on symlinked .chump (rc=$rc)"
+fi
+
+# M2: a marker left over from sandbox A, but CHUMP_HOME + CHUMP_STATE_DIR
+# hand-set to a DIFFERENT dir B. B is a fully valid-looking sandbox (real
+# B/.chump exists) so that WITHOUT the marker!=arg check the guard would write
+# into B — the refusal here is proof the marker guard (not some other branch)
+# fires. B must be unchanged.
+M2_A="$GUARD_ROOT/m2-a"
+M2_B="$GUARD_ROOT/m2-b"; mkdir -p "$M2_B/.chump"
+M2_B_BEFORE="$(cd "$M2_B" && find . | sort)"
+rc=0
+(
+    chump_test_sandbox_setup "$M2_A" >/dev/null 2>&1   # marker := A
+    export CHUMP_HOME="$M2_B"
+    export CHUMP_STATE_DIR="$M2_B/.chump"              # B now looks valid…
+    write_sandbox_healthy_node "$M2_B"                 # …but marker is still A
+) >/dev/null 2>&1 || rc=$?
+M2_B_AFTER="$(cd "$M2_B" && find . | sort)"
+if [[ "$rc" -eq 2 && "$M2_B_BEFORE" == "$M2_B_AFTER" ]]; then
+    ok "Test 10g (M2): refuses a stale marker from a different sandbox (exit 2, B unchanged)"
+else
+    fail "Test 10g (M2): expected exit 2 + B unchanged (rc=$rc)"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
