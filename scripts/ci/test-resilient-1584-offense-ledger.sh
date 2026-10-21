@@ -197,4 +197,36 @@ else
     fail "CREDIBLE-1578: classifier did not name the step from the reproduced log (got '$_step8')"
 fi
 
+# CREDIBLE-1578 (round-3 review, Required item 4 — carve materialized): the ACs this
+# shell / commit-only slice does NOT deliver (AC3 Rust fix, AC4 re-triage, the AC1
+# historical 945B decode) must be a REAL in-diff record mapping each to a tracking
+# gap, not prose the reviewer cannot discover. This guard asserts the committed carve
+# manifest exists and, for every carved AC, (a) cites a tracking gap of valid ID form
+# and (b) is marked CARVED — never silently re-marked delivered/PASS while the work is
+# still deferred. (Form only: that each cited gap is a real open row is reviewer-
+# verifiable with `chump gap show <ID>` — INFRA-8091 / INFRA-8606 open, CREDIBLE-1578
+# the remainder — and recorded in the salvage body; the test stays hermetic.)
+G9=CREDIBLE-1578-CARVE
+_man="$REPO_SRC/scripts/ci/fixtures/credible-1578-carve-manifest.txt"
+_g9ok=1
+if [ -f "$_man" ]; then
+    for _ac in AC1-decode AC3 AC4; do
+        _line=""
+        while IFS= read -r _l; do
+            case "$_l" in "${_ac}|"*) _line="$_l"; break ;; esac
+        done < "$_man"
+        _status="$(printf '%s' "$_line" | cut -d'|' -f2)"
+        _gapid="$(printf '%s' "$_line" | cut -d'|' -f3)"
+        [ "$_status" = "CARVED" ] || _g9ok=0
+        case "$_gapid" in [A-Z]*-[0-9]*) : ;; *) _g9ok=0 ;; esac
+    done
+else
+    _g9ok=0
+fi
+if [ "$_g9ok" = 1 ]; then
+    ok "CREDIBLE-1578: carve is materialized — each undelivered AC cites a tracking gap, none marked delivered"
+else
+    fail "CREDIBLE-1578: carve manifest missing/incomplete — a carved AC lacks a tracking gap or is mis-marked delivered"
+fi
+
 echo "pass=$PASS fail=$FAIL"; [ "$FAIL" -eq 0 ]
