@@ -855,6 +855,22 @@ run_organ_seeded_1594
 [[ ! -s "$ORGLOG.merges" ]] \
     && ok "organ CREDIBLE-1594 AC5: genuine CHANGES (real blocker) stays held — not re-reviewed" \
     || bad "organ CREDIBLE-1594 AC5: genuine CHANGES was wrongly re-reviewed/merged (merges: $(cat "$ORGLOG.merges"))"
+# Negative control 2 — the REAL-BLOCKER DISAGREEMENT branch (pins the guard at
+# review-organ-tick.sh:362-365). A parse-downgrade that carries a REAL blocker:
+# the organ wrapped CHANGES around an embedded model VERDICT: APPROVE (internal
+# disagreement → reaches the all-none guard) but the embedded blockers line names
+# a real defect, so it is NOT a stale parse artifact — it stays HELD, not
+# re-reviewed, not merged. Unlike negative control 1 (embedded CHANGES, all
+# VERDICT lines agree → short-circuits at len(set(hits))==1 and never reaches the
+# guard), this case has hits=[CHANGES,APPROVE,CHANGES] so the guard DOES run with
+# a real blocker. MUTANT (killed here): widening the guard to re-review every
+# disagreement (`if blines and all(...)` → `if True:`) would exit 1 → 203
+# re-reviews → stub APPROVEs → merge appears, failing this check.
+seed_cmt_1594 "$RH1594" 'exit code change, no pinning test' APPROVE
+run_organ_seeded_1594
+[[ ! -s "$ORGLOG.merges" ]] \
+    && ok "organ CREDIBLE-1594 AC5: parse-downgrade WITH a real blocker stays held — not re-reviewed" \
+    || bad "organ CREDIBLE-1594 AC5: real-blocker downgrade was wrongly re-reviewed/merged (merges: $(cat "$ORGLOG.merges"))"
 echo '{"labels":[],"comments":[]}' >"$ORGCMT"  # restore clean state for later blocks
 
 # CREDIBLE-1590 AC1/AC2: a PR whose ONLY gate-adjacent change is a scripts/ci
