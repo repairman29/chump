@@ -531,11 +531,11 @@ PY
   "label create") printf 'LABELCREATE %s\n' "$a" >>"$ORGLOG.labels"; exit 0;;
   "pr edit")
     echo "EDIT $a" >>"$ORGLOG.edits"
-    # CREDIBLE-1588 fixture: when ORG_REJECT_LABEL=1, gh REFUSES an --add-label
-    # (an unknown label the repo lacks — the pre-fix silent-noop surface). The
-    # organ must REPORT the refusal (WARN log + review_organ_label_error), not
-    # swallow it with `|| true`.
-    if [[ -n "${ORG_REJECT_LABEL:-}" && "$a" == *"--add-label"* ]]; then exit 1; fi
+    # CREDIBLE-1588 fixture: when ORG_REJECT_LABEL=1, gh REFUSES both --add-label
+    # AND --remove-label (the pre-fix silent-noop surface — a label op the repo
+    # cannot satisfy). The organ must REPORT the refusal (WARN log +
+    # review_organ_label_error) for EITHER op, not swallow it with `|| true`.
+    if [[ -n "${ORG_REJECT_LABEL:-}" && ( "$a" == *"--add-label"* || "$a" == *"--remove-label"* ) ]]; then exit 1; fi
     exit 0;;
   "pr merge") echo "MERGE $a" >>"$ORGLOG.merges"; exit 0;;
 esac
@@ -661,6 +661,21 @@ organ_run --pr 201
 grep -q '"kind":"review_organ_label_error"' "$D/amb.jsonl" \
     && bad "organ CREDIBLE-1588: emitted review_organ_label_error even though gh accepted the label op" \
     || ok "organ CREDIBLE-1588: no label-error event when gh accepts the label op (no false positive)"
+
+# AC2 (remove half): a refused --remove-label must ALSO fail loudly, symmetrically
+# with label_add. PR 203 is the APPROVE path → the organ runs
+# label_remove review-held; the stub refuses it. The organ must emit a
+# review_organ_label_error with "op":"remove" naming review-held. MUTANT (killed
+# here): restore `… || true` on label_remove → the refusal is swallowed → NO
+# event → this fails.
+: >"$D/amb.jsonl"
+ORG_REJECT_LABEL=1 organ_run --pr 203
+grep -q '"kind":"review_organ_label_error".*"op":"remove"' "$D/amb.jsonl" \
+    && ok "organ CREDIBLE-1588 AC2: refused label_remove emits review_organ_label_error op=remove (fails loudly)" \
+    || bad "organ CREDIBLE-1588 AC2: refused label_remove was swallowed (no op=remove review_organ_label_error event)"
+grep -q '"kind":"review_organ_label_error".*"label":"review-held"' "$D/amb.jsonl" \
+    && ok "organ CREDIBLE-1588 AC2: the refused remove op names review-held" \
+    || bad "organ CREDIBLE-1588 AC2: no review-held label name in the remove label-error event"
 
 # CREDIBLE-1590 AC1/AC2: a PR whose ONLY gate-adjacent change is a scripts/ci
 # test is REVIEWED by the model — scripts/ci is NOT a ship gate (the organ IS the
