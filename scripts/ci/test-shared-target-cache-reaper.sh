@@ -17,6 +17,16 @@
 #      removed in RESILIENT-1680) — budget/target come from CLI args only.
 #   9. disk-pressure-reaper.sh still wires the reaper in before its ≥50GB
 #      early-exit (proactive, not tier-gated).
+#  10. DEFAULT gate fires: with NO --target/--floor-gb/--budget-gb (the exact
+#      invocation the organ-manifest + disk-pressure-reaper pass, `--execute`
+#      only), the reaper reaps the fixture at the sandbox default target
+#      ($HOME/.cargo/chump-shared-target) once du/df (shadowed on PATH) cross
+#      the FLOOR_GB_DEFAULT/BUDGET_GB_DEFAULT constants. This pins the ONLY gate
+#      production actually uses — flipping the defaults to never-fire is caught.
+#  11. DEFAULT under-threshold: same defaults-only invocation, du/df report the
+#      target small + disk plentiful → nothing-to-do, nothing deleted.
+#  12. unknown CLI arg fails CLOSED: a bogus flag exits 2 and deletes nothing
+#      (a mistyped threshold flag must not be swallowed into a silent-default run).
 #
 # No real multi-GB dir and no real build: the reaper runs under a SANDBOX HOME
 # (scripts/coord/lib/test-sandbox.sh) so its fixed ~/.chump/architect-lane*.lock
@@ -48,6 +58,8 @@ AMB="$WORK/ambient.jsonl"
 BIN="$WORK/bin"; mkdir -p "$BIN"
 BUILD_FLAG="$WORK/build-alive"      # present → stub pgrep reports a live build
 ADMIT_REFUSE="$WORK/admit-refuse"   # present → stub chump admit cargo refuses
+DU_DF_MODE="$WORK/du-df-mode"       # contents "trigger"|"safe" → stub du/df lie;
+                                    # absent → stubs exec the real du/df (inert).
 
 # stub pgrep: reports a build process alive ONLY while $BUILD_FLAG exists.
 cat > "$BIN/pgrep" <<PGREP
@@ -72,6 +84,36 @@ fi
 exit 0
 CHUMP
 chmod +x "$BIN/chump"
+
+# stub du/df: when $DU_DF_MODE holds "trigger" they report the target huge /
+# disk scarce so the reaper's DEFAULT budget/floor constants fire; "safe"
+# reports the target tiny / disk plentiful so neither default trigger fires.
+# Absent → exec the real du/df, so every CLI-driven case above is unaffected.
+REAL_DU="$(command -v du)"
+REAL_DF="$(command -v df)"
+cat > "$BIN/du" <<DU
+#!/usr/bin/env bash
+mode=""; [[ -e "$DU_DF_MODE" ]] && mode="\$(cat "$DU_DF_MODE" 2>/dev/null)"
+p=""; for a in "\$@"; do p="\$a"; done
+case "\$mode" in
+  trigger) printf '99G\t%s\n' "\$p"; exit 0 ;;
+  safe)    printf '1G\t%s\n' "\$p"; exit 0 ;;
+esac
+exec "$REAL_DU" "\$@"
+DU
+chmod +x "$BIN/du"
+cat > "$BIN/df" <<DF
+#!/usr/bin/env bash
+mode=""; [[ -e "$DU_DF_MODE" ]] && mode="\$(cat "$DU_DF_MODE" 2>/dev/null)"
+case "\$mode" in
+  trigger) echo "Filesystem 1G-blocks Used Avail Use% Mounted"
+           echo "/dev/stub 100G 95G 10G 91% /"; exit 0 ;;
+  safe)    echo "Filesystem 1G-blocks Used Avail Use% Mounted"
+           echo "/dev/stub 1000G 1G 999G 1% /"; exit 0 ;;
+esac
+exec "$REAL_DF" "\$@"
+DF
+chmod +x "$BIN/df"
 
 # Sandbox HOME so the reaper's fixed lane-lock paths resolve inside the sandbox.
 SANDBOX_HOME="$WORK/home"
@@ -127,6 +169,19 @@ run_reaper() {
       CHUMP_REPO_ROOT="$WORK" \
       bash "$REAPER" --target "$t" "$@" 2>&1
 }
+
+# run_reaper_defaults [extra args...] — real reaper with NO --target/threshold
+# args, i.e. the exact defaults-only invocation production passes.
+run_reaper_defaults() {
+  env HOME="$SANDBOX_HOME" \
+      PATH="$BIN:$PATH" \
+      CHUMP_AMBIENT_LOG="$AMB" \
+      CHUMP_REPO_ROOT="$WORK" \
+      bash "$REAPER" "$@" 2>&1
+}
+
+# The sandbox default target the reaper resolves when no --target is passed.
+DEFAULT_TARGET="$SANDBOX_HOME/.cargo/chump-shared-target"
 
 # ── 1. over budget, idle, EXECUTE → incrementals reaped, target preserved ────
 echo "== 1. EXECUTE: reap incremental dirs, preserve the target =="
@@ -249,6 +304,39 @@ if [[ -n "$reaper_call_line" && -n "$early_exit_line" ]] && (( reaper_call_line 
 else
   fail "reaper must run before the ≥50GB early-exit (call=$reaper_call_line exit=$early_exit_line)"
 fi
+
+# ── 10. DEFAULT gate fires (the only gate production uses) ───────────────────
+echo "== 10. defaults-only invocation reaps when du/df cross the default budget/floor =="
+: > "$AMB"; rm -f "$BUILD_FLAG" "$ADMIT_REFUSE"
+make_target "$DEFAULT_TARGET"
+echo trigger > "$DU_DF_MODE"                       # du→99G (>15 budget), df→10G (<25 floor)
+OUT="$(run_reaper_defaults --execute)"; rc=$?
+rm -f "$DU_DF_MODE"
+(( rc == 0 )) && pass "defaults-only execute exits 0" || fail "should exit 0, got $rc: $OUT"
+incrementals_gone "$DEFAULT_TARGET" && pass "DEFAULT budget/floor triggered the reap (no CLI thresholds)" || fail "default gate did not fire — defaults never-fire would survive: $OUT"
+keeps_intact "$DEFAULT_TARGET" && pass "default-target root + non-incremental output preserved" || fail "default reap removed non-incremental output / the target root"
+grep -q '"kind":"shared_target_incremental_reaped"' "$AMB" && pass "emitted reaped event on default gate" || fail "missing reaped event on default gate"
+
+# ── 11. DEFAULT under-threshold → nothing to do ──────────────────────────────
+echo "== 11. defaults-only invocation does nothing when target small + disk fine =="
+: > "$AMB"; rm -f "$BUILD_FLAG" "$ADMIT_REFUSE"
+make_target "$DEFAULT_TARGET"
+echo safe > "$DU_DF_MODE"                           # du→1G (<15 budget), df→999G (>25 floor)
+OUT="$(run_reaper_defaults --execute)"; rc=$?
+rm -f "$DU_DF_MODE"
+(( rc == 0 )) && pass "defaults-only under-threshold exits 0" || fail "should exit 0, got $rc: $OUT"
+[[ "$OUT" == *"nothing to do"* ]] && pass "reported nothing to do under the defaults" || fail "did not report nothing to do: $OUT"
+incrementals_intact "$DEFAULT_TARGET" && pass "nothing deleted when neither default trigger fires" || fail "deleted something under the defaults with no trigger"
+
+# ── 12. unknown CLI arg fails closed (exit 2, nothing deleted) ───────────────
+echo "== 12. a bogus flag exits 2 and deletes nothing =="
+: > "$AMB"; rm -f "$BUILD_FLAG" "$ADMIT_REFUSE"
+T="$WORK/t12"; make_target "$T"
+echo trigger > "$DU_DF_MODE"   # if exit 2 were dropped the --execute reaper WOULD reap
+OUT="$(run_reaper "$T" --execute --bogus)"; rc=$?
+rm -f "$DU_DF_MODE"
+(( rc == 2 )) && pass "unknown arg exits 2 (fail-closed)" || fail "unknown arg should exit 2, got $rc: $OUT"
+incrementals_intact "$T" && pass "nothing deleted on a bad arg" || fail "a bad arg deleted an incremental dir — fail-open"
 
 echo ""
 if (( fails == 0 )); then echo "PASS test-shared-target-cache-reaper"; exit 0
