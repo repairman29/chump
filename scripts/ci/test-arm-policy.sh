@@ -675,6 +675,11 @@ printf '%s\t%s\n' "${CHUMP_STATE_DB:-<unset>}" "$*" >>"$ORGLOG.store"
 # behind node-checkout cwd and refuses.
 printf '%s\t%s\n' "${CHUMP_REPO:-<unset>}" "$*" >>"$ORGLOG.repo"
 if [[ "${1:-} ${2:-}" == "gap show" ]]; then exit "${ORG_GAP_SHOW_RC:-0}"; fi
+# CREDIBLE-1604 (AC4, ship-refusal): model a REFUSED `chump gap ship` (e.g. the
+# INFRA-2423 auto-fetch still blocks, or a proof-of-merge guard trips). The organ
+# must then FAIL LOUD (emit review_organ_gap_ship_failed + non-zero tick), never
+# the old WARN. Default rc 0 so the happy-path ship/link-pr assertions still pass.
+if [[ "${1:-} ${2:-}" == "gap ship" ]]; then exit "${ORG_GAP_SHIP_RC:-0}"; fi
 exit 0
 CHUMPSTUB
 chmod +x "$D/bin/chump"
@@ -853,6 +858,24 @@ grep -qE '^chump gap ship ' "$ORGLOG.chump" 2>/dev/null \
 [[ "$ORGAN_RC" -ne 0 ]] \
     && ok "organ CREDIBLE-1602 AC4: tick exited non-zero ($ORGAN_RC) on a store miss" \
     || bad "organ CREDIBLE-1602 AC4: tick exited 0 on a store miss (should fail loud)"
+
+# CREDIBLE-1604 (AC4, ship-refusal): the gap IS in the resolved store (gap show rc
+# 0) but `chump gap ship` is REFUSED (ORG_GAP_SHIP_RC=1 — e.g. the auto-fetch still
+# blocks or a proof-of-merge guard trips). The organ must FAIL LOUD — emit
+# review_organ_gap_ship_failed AND exit the tick non-zero — NOT the old WARN that
+# left the gap open and undercounted the PHASE-R rollup. MUTANT (killed here):
+# revert the ship `else` branch to the old WARN-only (drop the emit +
+# ORGAN_TICK_FAIL=1 + return 1) → no event is emitted and the tick exits 0; both
+# assertions below fail.
+ORG_GAP_SHOW_RC=0 ORG_GAP_SHIP_RC=1 organ_run_rc "$D/nodeco" --pr 203
+grep -q '"kind":"review_organ_gap_ship_failed"' "$D/amb.jsonl" 2>/dev/null \
+    && ok "organ CREDIBLE-1604 AC4: a REFUSED gap ship emits review_organ_gap_ship_failed" \
+    || bad "organ CREDIBLE-1604 AC4: no review_organ_gap_ship_failed on a ship refusal (amb: $(tr '\n' '|' <"$D/amb.jsonl" 2>/dev/null))"
+[[ "$ORGAN_RC" -ne 0 ]] \
+    && ok "organ CREDIBLE-1604 AC4: tick exited non-zero ($ORGAN_RC) on a ship refusal" \
+    || bad "organ CREDIBLE-1604 AC4: tick exited 0 on a ship refusal (should fail loud)"
+# Reset the stub knob so later organ runs (verified_green cases below) ship cleanly.
+ORG_GAP_SHIP_RC=0
 
 # verified_green BEHAVIORAL pinning (CREDIBLE-1542 / CREDIBLE-1595 review REQUIRED).
 # The arm gate is APPROVE (read from the comment) AND verified-green for the exact
