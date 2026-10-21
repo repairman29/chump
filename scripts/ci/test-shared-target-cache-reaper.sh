@@ -27,6 +27,14 @@
 #      target small + disk plentiful → nothing-to-do, nothing deleted.
 #  12. unknown CLI arg fails CLOSED: a bogus flag exits 2 and deletes nothing
 #      (a mistyped threshold flag must not be swallowed into a silent-default run).
+#  13. FLOOR-only DEFAULT gate: du→under budget but df→under the default floor,
+#      defaults-only invocation → the reap fires driven SOLELY by under_floor
+#      (reason is the floor, not the budget). Isolates the floor trigger so
+#      dropping the under_floor arm or flipping FLOOR_GB_DEFAULT→0 is caught.
+#  14. BUDGET-only DEFAULT gate: du→over budget but df→above the default floor,
+#      defaults-only → the reap fires driven SOLELY by over_budget (reason is the
+#      budget, not the floor). Isolates the budget trigger so flipping
+#      BUDGET_GB_DEFAULT→huge is caught. 13+14 together pin each OR'd trigger.
 #
 # No real multi-GB dir and no real build: the reaper runs under a SANDBOX HOME
 # (scripts/coord/lib/test-sandbox.sh) so its fixed ~/.chump/architect-lane*.lock
@@ -86,8 +94,12 @@ CHUMP
 chmod +x "$BIN/chump"
 
 # stub du/df: when $DU_DF_MODE holds "trigger" they report the target huge /
-# disk scarce so the reaper's DEFAULT budget/floor constants fire; "safe"
-# reports the target tiny / disk plentiful so neither default trigger fires.
+# disk scarce so BOTH of the reaper's DEFAULT budget/floor constants fire; "safe"
+# reports the target tiny / disk plentiful so NEITHER default trigger fires.
+# "budget" reports the target huge but disk plentiful → ONLY over_budget fires
+# (floor miss); "floor" reports the target tiny but disk scarce → ONLY
+# under_floor fires (budget miss). The budget/floor modes isolate each of the
+# two OR'd default triggers so a mutant that drops/disables one is caught.
 # Absent → exec the real du/df, so every CLI-driven case above is unaffected.
 REAL_DU="$(command -v du)"
 REAL_DF="$(command -v df)"
@@ -98,6 +110,8 @@ p=""; for a in "\$@"; do p="\$a"; done
 case "\$mode" in
   trigger) printf '99G\t%s\n' "\$p"; exit 0 ;;
   safe)    printf '1G\t%s\n' "\$p"; exit 0 ;;
+  budget)  printf '99G\t%s\n' "\$p"; exit 0 ;;
+  floor)   printf '1G\t%s\n' "\$p"; exit 0 ;;
 esac
 exec "$REAL_DU" "\$@"
 DU
@@ -110,6 +124,10 @@ case "\$mode" in
            echo "/dev/stub 100G 95G 10G 91% /"; exit 0 ;;
   safe)    echo "Filesystem 1G-blocks Used Avail Use% Mounted"
            echo "/dev/stub 1000G 1G 999G 1% /"; exit 0 ;;
+  budget)  echo "Filesystem 1G-blocks Used Avail Use% Mounted"
+           echo "/dev/stub 1000G 1G 999G 1% /"; exit 0 ;;
+  floor)   echo "Filesystem 1G-blocks Used Avail Use% Mounted"
+           echo "/dev/stub 100G 95G 10G 91% /"; exit 0 ;;
 esac
 exec "$REAL_DF" "\$@"
 DF
@@ -337,6 +355,42 @@ OUT="$(run_reaper "$T" --execute --bogus)"; rc=$?
 rm -f "$DU_DF_MODE"
 (( rc == 2 )) && pass "unknown arg exits 2 (fail-closed)" || fail "unknown arg should exit 2, got $rc: $OUT"
 incrementals_intact "$T" && pass "nothing deleted on a bad arg" || fail "a bad arg deleted an incremental dir — fail-open"
+
+# ── 13. FLOOR-only default gate: under_floor alone drives the reap ────────────
+# du→1G (< BUDGET_GB_DEFAULT 15, budget MISS) but df→10G avail (< FLOOR_GB_DEFAULT
+# 25, floor FIRE). Defaults-only invocation (no CLI thresholds) so this isolates
+# the DEFAULT floor trigger: dropping the under_floor arm (M1) or flipping
+# FLOOR_GB_DEFAULT→0 (M2) makes this reap NOT fire → caught. This is the exact
+# RESILIENT-1635 "disk tight but target under the size budget" scenario.
+echo "== 13. FLOOR-only: under_floor alone (budget miss) triggers the reap =="
+: > "$AMB"; rm -f "$BUILD_FLAG" "$ADMIT_REFUSE"
+make_target "$DEFAULT_TARGET"
+echo floor > "$DU_DF_MODE"                          # du→1G (<15 budget), df→10G (<25 floor)
+OUT="$(run_reaper_defaults --execute)"; rc=$?
+rm -f "$DU_DF_MODE"
+(( rc == 0 )) && pass "floor-only defaults execute exits 0" || fail "should exit 0, got $rc: $OUT"
+[[ "$OUT" == *"free disk under floor"* ]] && pass "reap reason is the floor (not the budget)" || fail "reap was not driven by the floor trigger: $OUT"
+[[ "$OUT" == *"over budget"* ]] && fail "budget was reported over when the target is under budget: $OUT" || pass "budget correctly NOT over (floor is the sole trigger)"
+incrementals_gone "$DEFAULT_TARGET" && pass "under_floor alone drove the reap (M1/M2 would not fire here)" || fail "floor trigger did not fire — under_floor arm unpinned: $OUT"
+keeps_intact "$DEFAULT_TARGET" && pass "target root + non-incremental output preserved under floor-only reap" || fail "floor-only reap removed non-incremental output / the target root"
+grep -q '"kind":"shared_target_incremental_reaped"' "$AMB" && pass "emitted reaped event on the floor-only gate" || fail "missing reaped event on the floor-only gate"
+
+# ── 14. BUDGET-only default gate: over_budget alone drives the reap ───────────
+# du→99G (> BUDGET_GB_DEFAULT 15, budget FIRE) but df→999G avail (> FLOOR_GB_DEFAULT
+# 25, floor MISS). Defaults-only so this isolates the DEFAULT budget trigger:
+# flipping BUDGET_GB_DEFAULT→huge (M3) makes this reap NOT fire → caught.
+echo "== 14. BUDGET-only: over_budget alone (floor miss) triggers the reap =="
+: > "$AMB"; rm -f "$BUILD_FLAG" "$ADMIT_REFUSE"
+make_target "$DEFAULT_TARGET"
+echo budget > "$DU_DF_MODE"                         # du→99G (>15 budget), df→999G (>25 floor)
+OUT="$(run_reaper_defaults --execute)"; rc=$?
+rm -f "$DU_DF_MODE"
+(( rc == 0 )) && pass "budget-only defaults execute exits 0" || fail "should exit 0, got $rc: $OUT"
+[[ "$OUT" == *"over budget"* ]] && pass "reap reason is the budget (not the floor)" || fail "reap was not driven by the budget trigger: $OUT"
+[[ "$OUT" == *"free disk under floor"* ]] && fail "floor was reported under when disk is plentiful: $OUT" || pass "floor correctly NOT under (budget is the sole trigger)"
+incrementals_gone "$DEFAULT_TARGET" && pass "over_budget alone drove the reap (M3 would not fire here)" || fail "budget trigger did not fire — over_budget unpinned: $OUT"
+keeps_intact "$DEFAULT_TARGET" && pass "target root + non-incremental output preserved under budget-only reap" || fail "budget-only reap removed non-incremental output / the target root"
+grep -q '"kind":"shared_target_incremental_reaped"' "$AMB" && pass "emitted reaped event on the budget-only gate" || fail "missing reaped event on the budget-only gate"
 
 echo ""
 if (( fails == 0 )); then echo "PASS test-shared-target-cache-reaper"; exit 0
