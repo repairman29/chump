@@ -202,10 +202,12 @@ fi
 # historical 945B decode) must be a REAL in-diff record mapping each to a tracking
 # gap, not prose the reviewer cannot discover. This guard asserts the committed carve
 # manifest exists and, for every carved AC, (a) cites a tracking gap of valid ID form
-# and (b) is marked CARVED — never silently re-marked delivered/PASS while the work is
-# still deferred. (Form only: that each cited gap is a real open row is reviewer-
-# verifiable with `chump gap show <ID>` — INFRA-8091 / INFRA-8606 open, CREDIBLE-1578
-# the remainder — and recorded in the salvage body; the test stays hermetic.)
+# (b) is marked CARVED — never silently re-marked delivered/PASS while the work is
+# still deferred — and (c) is a DISTINCT follow-up, never the parent gap CREDIBLE-1578
+# itself (r4 Required item 1: a gate AC deferred to its own parent gap is not delivered;
+# AC1-decode now carves to CREDIBLE-1593). (Form only: that each cited gap is a real
+# open row is reviewer-verifiable with `chump gap show <ID>` — INFRA-8091 / INFRA-8606 /
+# CREDIBLE-1593 open — and recorded in the salvage body; the test stays hermetic.)
 G9=CREDIBLE-1578-CARVE
 _man="$REPO_SRC/scripts/ci/fixtures/credible-1578-carve-manifest.txt"
 _g9ok=1
@@ -219,6 +221,10 @@ if [ -f "$_man" ]; then
         _gapid="$(printf '%s' "$_line" | cut -d'|' -f3)"
         [ "$_status" = "CARVED" ] || _g9ok=0
         case "$_gapid" in [A-Z]*-[0-9]*) : ;; *) _g9ok=0 ;; esac
+        # PR #5615 review r4, Required item 1: a gate AC may not be carved to its
+        # own parent gap (CREDIBLE-1578) — deferring an AC to the very gap it gates
+        # is not delivery. The tracking gap must be a DISTINCT follow-up.
+        [ "$_gapid" = "CREDIBLE-1578" ] && _g9ok=0
     done
 else
     _g9ok=0
