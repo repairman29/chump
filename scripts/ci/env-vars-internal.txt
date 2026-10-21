@@ -3679,11 +3679,8 @@ CHUMP_WORKER_SINGLE_TICK
 CHUMPD_BIN
 
 # ── RESILIENT-1634: architect / ATC tick organ (scripts/dispatch/architect-tick.sh) ──
+# Only two env reads remain (STANDING RULE 2026-10-20 / AC6): the kill switch and
+# the exact-name-validated model. Every safety input (timeout, disk floor,
+# budget, state dir, claude binary, handoff source) is pinned in code.
 CHUMP_ARCHITECT_TICK_ENABLED
-CHUMP_ARCHITECT_TICK_TIMEOUT_S
-CHUMP_ARCHITECT_TICK_MIN_DISK_G
 CHUMP_ARCHITECT_TICK_MODEL
-CHUMP_ARCHITECT_TICK_BUDGET_USD
-CHUMP_ARCHITECT_TICK_CLAUDE_BIN
-CHUMP_ARCHITECT_HOME
-CHUMP_ARCHITECT_HANDOFF_GLOB
