@@ -553,6 +553,7 @@ case "$1 $2" in
       case "$pr" in
         201) echo ".github/workflows/ci.yml" ;;
         205) echo "scripts/ci/test-example-1590.sh" ;;
+        210|211|212|213|214) echo "scripts/git-hooks/pre-push" ;;  # CREDIBLE-1600 gate file
         *)   echo "src/foo.rs" ;;
       esac
       exit 0
@@ -571,7 +572,19 @@ case "$1 $2" in
     if [[ "$a" == *isCrossRepository* ]]; then [[ "$pr" == 202 ]] && echo true || echo false; exit 0; fi
     if [[ "$a" == *headRefName* ]]; then echo "claude/credible-9${pr}-x"; exit 0; fi
     exit 0;;
-  "pr diff") { [[ "$pr" == 204 || "$pr" == 206 ]] && echo "FORCE_CHANGES diff"; } || echo "clean diff"; exit 0;;
+  "pr diff")
+    case "$pr" in
+      210|211|212|213)
+        # CREDIBLE-1600: a REAL, clean unified diff → a non-empty STABLE patch-id
+        # (git patch-id needs diff-shaped input); the stub model APPROVEs it.
+        printf 'diff --git a/scripts/git-hooks/pre-push b/scripts/git-hooks/pre-push\nindex aaaaaaa..bbbbbbb 100755\n--- a/scripts/git-hooks/pre-push\n+++ b/scripts/git-hooks/pre-push\n@@ -1,2 +1,3 @@\n #!/usr/bin/env bash\n set -e\n+echo credible-1600\n' ;;
+      214)
+        # CREDIBLE-1600: a REAL unified diff carrying FORCE_CHANGES → stub model CHANGES.
+        printf 'diff --git a/scripts/git-hooks/pre-push b/scripts/git-hooks/pre-push\nindex ccccccc..ddddddd 100755\n--- a/scripts/git-hooks/pre-push\n+++ b/scripts/git-hooks/pre-push\n@@ -1,2 +1,3 @@\n #!/usr/bin/env bash\n set -e\n+echo FORCE_CHANGES\n' ;;
+      204|206) echo "FORCE_CHANGES diff" ;;
+      *) echo "clean diff" ;;
+    esac
+    exit 0;;
   "pr comment")
     bf=""; for ((i=1;i<=$#;i++)); do [[ "${!i}" == "--body-file" ]] && { j=$((i+1)); bf="${!j}"; }; done
     cp "$bf" "$ORGLOG.cmt.$pr" 2>/dev/null
@@ -590,19 +603,75 @@ PY
     # cannot satisfy). The organ must REPORT the refusal (WARN log +
     # review_organ_label_error) for EITHER op, not swallow it with `|| true`.
     if [[ -n "${ORG_REJECT_LABEL:-}" && ( "$a" == *"--add-label"* || "$a" == *"--remove-label"* ) ]]; then exit 1; fi
+    # CREDIBLE-1597 fixture: a label op gh ACCEPTS mutates the PR's label set in
+    # ORGCMT, so a later labels,comments read (review_hold_allows) reflects it —
+    # the same as real gh. This lets a test prove that removing a stale
+    # review-needs-mutants actually unblocks the arm gate, and that keeping a
+    # gate-file label keeps the PR held. No-op on labels not present.
+    addlbl=""; rmlbl=""
+    for ((i=1;i<=$#;i++)); do
+      case "${!i}" in
+        --add-label)    j=$((i+1)); addlbl="${!j}" ;;
+        --remove-label) j=$((i+1)); rmlbl="${!j}" ;;
+      esac
+    done
+    if [[ -n "$addlbl" || -n "$rmlbl" ]]; then
+      ADD="$addlbl" RM="$rmlbl" python3 - "$ORGCMT" <<'PYEDIT'
+import json, os, sys
+p = sys.argv[1]
+try:
+    d = json.load(open(p))
+except Exception:
+    d = {"labels": [], "comments": []}
+labels = [l.get("name") if isinstance(l, dict) else l for l in (d.get("labels") or [])]
+add = os.environ.get("ADD", ""); rm = os.environ.get("RM", "")
+if add and add not in labels:
+    labels.append(add)
+if rm:
+    labels = [l for l in labels if l != rm]
+d["labels"] = [{"name": l} for l in labels]
+json.dump(d, open(p, "w"))
+PYEDIT
+    fi
     exit 0;;
   "pr merge") echo "MERGE $a" >>"$ORGLOG.merges"; exit 0;;
 esac
 exit 0
 GH3
 chmod +x "$D/bin/gh"
-printf '#!/usr/bin/env bash\necho "chump $*" >>"$ORGLOG.chump"\nexit 0\n' >"$D/bin/chump"; chmod +x "$D/bin/chump"
+# CREDIBLE-1602: the stub chump also records the store the organ pinned
+# (CHUMP_STATE_DB) for each call, and models whether the gap is PRESENT in that
+# store via `gap show`. Default present (rc 0) so the CREDIBLE-1598 ship/link-pr
+# assertions below still exercise the full path; a case sets ORG_GAP_SHOW_RC=1 to
+# model a store that lacks the gap (the three-store split this gap closes).
+cat >"$D/bin/chump" <<'CHUMPSTUB'
+#!/usr/bin/env bash
+echo "chump $*" >>"$ORGLOG.chump"
+printf '%s\t%s\n' "${CHUMP_STATE_DB:-<unset>}" "$*" >>"$ORGLOG.store"
+if [[ "${1:-} ${2:-}" == "gap show" ]]; then exit "${ORG_GAP_SHOW_RC:-0}"; fi
+exit 0
+CHUMPSTUB
+chmod +x "$D/bin/chump"
 mkdir -p "$D/checkout"; git init -q "$D/checkout" >/dev/null 2>&1
 export ORGLOG="$D/org.log" ORGCMT="$D/cmt.json"
 organ_run() { # <pr> [extra args...]
-    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; echo '{"labels":[],"comments":[]}' >"$ORGCMT"
+    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; : >"$ORGLOG.store"; : >"$D/amb.jsonl"
+    echo '{"labels":[],"comments":[]}' >"$ORGCMT"
     ( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
       bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" "$@" ) >/dev/null 2>&1 || true
+}
+# CREDIBLE-1602: same as organ_run but returns the tick's EXIT CODE (AC4 asserts a
+# post-merge gap-store miss fails the tick non-zero). Launch cwd is a scratch
+# node-checkout dir so the run models the organ running from a node checkout.
+ORGAN_RC=0
+organ_run_rc() { # <launch-cwd> <pr> [extra args...]
+    local cwd="$1"; shift
+    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; : >"$ORGLOG.store"; : >"$D/amb.jsonl"
+    echo '{"labels":[],"comments":[]}' >"$ORGCMT"
+    ORGAN_RC=0
+    # `|| ORGAN_RC=$?` keeps the deliberately-non-zero tick from tripping set -e.
+    ( cd "$cwd" && export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
+      bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" "$@" ) >/dev/null 2>&1 || ORGAN_RC=$?
 }
 
 # AC3: APPROVE on a clean non-gate PR → HEAD-PINNED squash merge, never --auto.
@@ -612,11 +681,113 @@ if grep -qE '^MERGE pr merge 203 --squash --match-head-commit deadbeef' "$ORGLOG
 else bad "organ AC3: no head-pinned merge for APPROVEd PR 203 (merges: $(cat "$ORGLOG.merges"))"; fi
 grep -q -- '--auto' "$ORGLOG.merges" && bad "organ AC3: merge used --auto (left auto-merge on)" \
     || ok "organ AC3: merge never used --auto (no auto-merge window)"
+# CREDIBLE-1598 AC1/AC3: a head-pinned merge must close its gap THROUGH `chump
+# gap` so an organ landing never leaves the gap open + PHASE-R undercounting.
+# PR 203's head branch is claude/credible-9203-x → gap CREDIBLE-9203. The organ
+# must (a) write the typed gap_prs link and (b) ship with the merged PR as
+# closed_pr — both via `chump gap`, never a direct state.db write. MUTANT (killed
+# here): delete the `chump gap ship …` line in ship_merged_gap (review-organ-tick.sh)
+# → the gap is never shipped and this fails.
+grep -qE '^chump gap ship CREDIBLE-9203 --closed-pr 203( |$)' "$ORGLOG.chump" \
+    && ok "organ CREDIBLE-1598 AC1/AC3: merged PR 203 ships its gap (chump gap ship CREDIBLE-9203 --closed-pr 203)" \
+    || bad "organ CREDIBLE-1598 AC1/AC3: merged PR 203 did NOT ship its gap (chump calls: $(tr '\n' '|' <"$ORGLOG.chump"))"
+grep -qE '^chump gap link-pr CREDIBLE-9203 203 ' "$ORGLOG.chump" \
+    && ok "organ CREDIBLE-1598 AC1: merged PR 203 writes the typed gap_prs link (chump gap link-pr CREDIBLE-9203 203) so the reconciler FK backstop sees it" \
+    || bad "organ CREDIBLE-1598 AC1: merged PR 203 did NOT write a gap_prs link (chump calls: $(tr '\n' '|' <"$ORGLOG.chump"))"
+grep -qE 'state\.db|sqlite3' "$ORGLOG.chump" && bad "organ CREDIBLE-1598 AC1: close path touched state.db directly (must go through chump gap)" \
+    || ok "organ CREDIBLE-1598 AC1: close path never writes state.db directly (routes through chump gap)"
 # AC1: the posted verdict comment first AND last line is exactly the verdict.
 [[ "$(sed -n '1p' "$ORGLOG.cmt.203")" == "VERDICT: APPROVE" ]] && ok "organ AC1: comment first line is exactly VERDICT: APPROVE" \
     || bad "organ AC1: comment first line not VERDICT: APPROVE ($(sed -n '1p' "$ORGLOG.cmt.203" 2>/dev/null))"
 [[ "$(tail -1 "$ORGLOG.cmt.203")" == "VERDICT: APPROVE" ]] && ok "organ AC1: comment ends in VERDICT: APPROVE" \
     || bad "organ AC1: comment does not end in VERDICT: APPROVE"
+
+# ── CREDIBLE-1602: the post-merge gap step resolves the ONE canonical store and
+# fails loud on a store miss ─────────────────────────────────────────────────
+# cuphead ran the organ from a node checkout whose own .chump/state.db was a
+# stale copy; `chump gap ship` ran against the WRONG store, failed, and was
+# log-and-continued. The organ now resolves ORGAN_GAP_STORE through the ONE
+# resolver (scripts/coord/lib/state-store.sh), pins CHUMP_STATE_DB on every
+# post-merge chump call so the launch cwd cannot retarget a stale store, and
+# FAILS LOUD (review_organ_gap_store_miss + non-zero tick) when the gap is not in
+# that store.
+echo "[d/gap-store] CREDIBLE-1602: post-merge gap step pins the canonical store + fails loud on a miss"
+# The exact store the organ MUST pin: the ONE resolver's answer for the CANONICAL
+# CHECKOUT the organ is told to operate on (--checkout $D/checkout here, the test
+# seam the systemd unit never passes), computed here independently so the
+# assertion is machine-agnostic. AC1 (review REQUIRED #1): the organ resolves the
+# store from $CHECKOUT, NOT from $REPO_ROOT (its own code location) — $D/checkout
+# is a DIFFERENT, divergent checkout from REPO_ROOT, so a store that matches it
+# proves the resolve is checkout-anchored, not REPO_ROOT-anchored. A faithful
+# production-topology case (organ code in a standalone node clone, canonical via
+# $HOME/chump) follows below.
+ORG_EXPECTED_STORE="$( ( source "$REPO_ROOT/scripts/coord/lib/state-store.sh"; chump_state_db "$D/checkout" ) 2>/dev/null )"
+
+# AC5: run the organ FROM A NODE-CHECKOUT cwd (its own .chump/state.db) and
+# assert the post-merge chump calls were pinned to the canonical store, NOT the
+# cwd store. MUTANT (killed here): drop the `CHUMP_STATE_DB="$ORGAN_GAP_STORE"`
+# pin (or resolve from cwd) → the stub records <unset> / the cwd store and this
+# fails.
+mkdir -p "$D/nodeco/.chump"; git init -q "$D/nodeco" >/dev/null 2>&1
+NODE_CWD_STORE="$D/nodeco/.chump/state.db"
+ORG_GAP_SHOW_RC=0 organ_run_rc "$D/nodeco" --pr 203
+ship_store="$(grep -E $'\tgap ship CREDIBLE-9203' "$ORGLOG.store" 2>/dev/null | head -1 | cut -f1)"
+if [[ -n "$ORG_EXPECTED_STORE" && "$ship_store" == "$ORG_EXPECTED_STORE" ]]; then
+    ok "organ CREDIBLE-1602 AC5: from a node-checkout cwd, gap ship was pinned to the canonical store ($ORG_EXPECTED_STORE via state-store.sh)"
+else
+    bad "organ CREDIBLE-1602 AC5: gap ship store='$ship_store' expected='$ORG_EXPECTED_STORE' (pin dropped or resolved from cwd?)"
+fi
+[[ "$ship_store" != "$NODE_CWD_STORE" && "$ship_store" != "<unset>" ]] \
+    && ok "organ CREDIBLE-1602 AC5: pinned store is NOT the node-checkout cwd store ($NODE_CWD_STORE) and NOT unset" \
+    || bad "organ CREDIBLE-1602 AC5: pinned store leaked from cwd or was unset (store='$ship_store')"
+
+# AC5 (review REQUIRED #3): FAITHFUL production topology. The earlier case pins
+# the store via --checkout; this one exercises the PRODUCTION DEFAULT with NO
+# --checkout, so the store must come from $HOME/chump — the sanctioned sandbox
+# seam. Here the organ's own code checkout ($REPO_ROOT, the real worktree) resolves
+# to a DIFFERENT store than the canonical the organ must write ($SBXHOME/chump).
+# This is the production split the earlier (tautological) assertion could not
+# catch: the organ ships from a node-checkout cwd, its code lives at REPO_ROOT
+# (whose store is divergent), yet it must write the $HOME/chump store. Assert the
+# ship store == $HOME/chump store AND != REPO_ROOT's store AND != the cwd store.
+# MUTANT (killed here): revert ORGAN_GAP_STORE to chump_state_db "$REPO_ROOT" →
+# the ship store becomes REPO_ROOT's divergent store and both asserts below fail.
+SBXHOME="$D/sbxhome"; mkdir -p "$SBXHOME"
+git init -q "$SBXHOME/chump" >/dev/null 2>&1; mkdir -p "$SBXHOME/chump/.chump"
+SBX_CANON_STORE="$( ( source "$REPO_ROOT/scripts/coord/lib/state-store.sh"; chump_state_db "$SBXHOME/chump" ) 2>/dev/null )"
+REPO_ROOT_STORE="$( ( source "$REPO_ROOT/scripts/coord/lib/state-store.sh"; chump_state_db "$REPO_ROOT" ) 2>/dev/null )"
+: >"$ORGLOG.store"; : >"$ORGLOG.chump"; : >"$D/amb.jsonl"
+echo '{"labels":[],"comments":[]}' >"$ORGCMT"
+# NO --checkout: production default CHECKOUT=$HOME/chump; HOME points at the
+# sandbox so $HOME/chump is the controlled canonical. cwd is the node checkout.
+( cd "$D/nodeco" && export PATH="$D/bin:$PATH" HOME="$SBXHOME" \
+    CHUMP_AMBIENT_LOG="$D/amb.jsonl" ORG_GAP_SHOW_RC=0
+  bash "$ORGAN" --claude-bin "$D/bin/claude" --pr 203 ) >/dev/null 2>&1 || true
+prod_store="$(grep -E $'\tgap ship CREDIBLE-9203' "$ORGLOG.store" 2>/dev/null | head -1 | cut -f1)"
+if [[ -n "$SBX_CANON_STORE" && "$prod_store" == "$SBX_CANON_STORE" ]]; then
+    ok "organ CREDIBLE-1602 AC5 (prod topology): no --checkout → gap ship pinned the \$HOME/chump store ($SBX_CANON_STORE)"
+else
+    bad "organ CREDIBLE-1602 AC5 (prod topology): gap ship store='$prod_store' expected \$HOME/chump store='$SBX_CANON_STORE' (resolved from REPO_ROOT?)"
+fi
+[[ -n "$prod_store" && "$prod_store" != "$REPO_ROOT_STORE" && "$prod_store" != "$NODE_CWD_STORE" && "$prod_store" != "<unset>" ]] \
+    && ok "organ CREDIBLE-1602 AC5 (prod topology): pinned store is NOT the organ's own code checkout store ($REPO_ROOT_STORE) nor the cwd store" \
+    || bad "organ CREDIBLE-1602 AC5 (prod topology): pinned store leaked from REPO_ROOT/cwd or was unset (store='$prod_store' repo_root_store='$REPO_ROOT_STORE')"
+
+# AC4: when the merged PR's gap is NOT in the resolved store (ORG_GAP_SHOW_RC=1),
+# the organ must FAIL LOUD — emit review_organ_gap_store_miss, NOT ship, and exit
+# the tick non-zero. MUTANT (killed here): restore the warning-only path (drop the
+# `gap show` guard / the ORGAN_TICK_FAIL exit) → no event, ship is attempted, and
+# the tick exits 0; all three assertions below fail.
+ORG_GAP_SHOW_RC=1 organ_run_rc "$D/nodeco" --pr 203
+grep -q '"kind":"review_organ_gap_store_miss"' "$D/amb.jsonl" 2>/dev/null \
+    && ok "organ CREDIBLE-1602 AC4: gap-not-in-store emits review_organ_gap_store_miss" \
+    || bad "organ CREDIBLE-1602 AC4: no review_organ_gap_store_miss emitted (amb: $(tr '\n' '|' <"$D/amb.jsonl" 2>/dev/null))"
+grep -qE '^chump gap ship ' "$ORGLOG.chump" 2>/dev/null \
+    && bad "organ CREDIBLE-1602 AC4: organ still ran 'chump gap ship' after a store miss (must bail before shipping)" \
+    || ok "organ CREDIBLE-1602 AC4: organ did NOT ship after a store miss (bailed loud, never log-and-continue)"
+[[ "$ORGAN_RC" -ne 0 ]] \
+    && ok "organ CREDIBLE-1602 AC4: tick exited non-zero ($ORGAN_RC) on a store miss" \
+    || bad "organ CREDIBLE-1602 AC4: tick exited 0 on a store miss (should fail loud)"
 
 # verified_green BEHAVIORAL pinning (CREDIBLE-1542 / CREDIBLE-1595 review REQUIRED).
 # The arm gate is APPROVE (read from the comment) AND verified-green for the exact
@@ -746,6 +917,124 @@ grep -qiE '^mutants: NOT RUN' "$ORGLOG.cmt.201" && ok "organ AC5: verdict carrie
 [[ "$(sed -n '1p' "$ORGLOG.cmt.201")" == "VERDICT: CHANGES REQUIRED" ]] && ok "organ AC5: gate-file verdict is CHANGES REQUIRED (not APPROVE)" \
     || bad "organ AC5: gate-file verdict was not CHANGES REQUIRED"
 [[ -s "$ORGLOG.merges" ]] && bad "organ AC5: a gate-file PR was merged" || ok "organ AC5: gate-file PR not merged"
+
+# ── CREDIBLE-1600: a gate-file PR CAN land when a mutant-capable review RECORD for
+# THIS exact PR-diff patch-id is posted under the organ marker format by the
+# trusted login. The organ accepts the record ONLY when its patch-id equals the
+# current PR diff patch-id (git diff origin/main...HEAD | git patch-id --stable)
+# AND it names at least one mutant AND it is authored by the trusted login; it then
+# runs its OWN model review and arms on model APPROVE PLUS the record — never the
+# record alone (fail closed on every other case). Each refusal + the accept path is
+# driven with stub gh + stub claude and killed by a named mutant on the organ.
+echo "[d/CREDIBLE-1600] gate-file PR + mutant-capable record for the current patch-id clears the hold"
+GFHEAD=deadbeef1234567890abcdef1234567890abcdef
+# The patch-id the organ computes for each PR's diff (same pipeline as the organ:
+# gh pr diff | git patch-id --stable). 210/211/212/213 share one clean diff; 214 is
+# the FORCE_CHANGES diff, so its id differs.
+GFPID="$("$D/bin/gh" pr diff 210 2>/dev/null | git patch-id --stable 2>/dev/null | awk 'NR==1{print $1}')"
+GFPID214="$("$D/bin/gh" pr diff 214 2>/dev/null | git patch-id --stable 2>/dev/null | awk 'NR==1{print $1}')"
+{ [[ "$GFPID" =~ ^[0-9a-f]{40}$ && "$GFPID214" =~ ^[0-9a-f]{40}$ && "$GFPID" != "$GFPID214" ]] \
+    && ok "CREDIBLE-1600: PR-diff patch-ids computed (stable, non-empty, distinct for the FORCE_CHANGES diff)"; } \
+    || bad "CREDIBLE-1600: patch-id fixture wrong (clean=$GFPID force=$GFPID214)"
+GFVER="$( source "$REPO_ROOT/scripts/coord/lib/ship-gate-files.sh"; chump_ship_gate_list_version )"
+
+# seed_gf_cmt <rec-author> <rec-head> <rec-patch-id> <names-mutants 1|0> <with-prior-hold 1|0> <hold-version>
+# Writes ORGCMT with an optional prior MECHANICAL gate-file hold (organbot, stamped,
+# with review-held+review-needs-mutants labels) followed by a NEWER record comment.
+seed_gf_cmt() {
+    RA="$1" RH="$2" RP="$3" RM="$4" WH="$5" HV="$6" python3 - "$ORGCMT" <<'PY'
+import json, os, sys
+ra=os.environ["RA"]; rh=os.environ["RH"]; rp=os.environ["RP"]
+rm=os.environ["RM"]; wh=os.environ["WH"]; hv=os.environ.get("HV","")
+comments=[]; labels=[]
+if wh=="1":
+    comments.append({"body":("VERDICT: CHANGES REQUIRED\n"
+        "head: %s\n"
+        "mutants: NOT RUN — gate-file change (scripts/git-hooks/pre-push) needs a mutant-capable reviewer; labeled review-needs-mutants\n"
+        "gate-list-version: %s\n"
+        "VERDICT: CHANGES REQUIRED" % (rh, hv)),
+        "author":{"login":"organbot"},"createdAt":"2026-10-21T01:00:00Z"})
+    labels=[{"name":"review-held"},{"name":"review-needs-mutants"}]
+rec=["mutant-capable review record (CREDIBLE-1600)","head: %s"%rh,"patch-id: %s"%rp]
+if rm=="1":
+    rec+=["M1 KILLED","M2 KILLED","M3 SURVIVED — pre-existing loose test, filed CREDIBLE-1601"]
+comments.append({"body":"\n".join(rec),"author":{"login":ra},"createdAt":"2026-10-21T02:00:00Z"})
+json.dump({"labels":labels,"comments":comments},open(sys.argv[1],"w"))
+PY
+}
+# run_gf <pr> — one organ tick on <pr> WITHOUT resetting the seeded ORGCMT.
+run_gf() { : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; rm -f "$ORGLOG.cmt.$1"
+    ( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
+      bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" --pr "$1" ) >/dev/null 2>&1 || true; }
+
+# ACCEPT PATH (PR 210): a prior MECHANICAL hold exists AND a newer trusted record
+# for the current patch-id arrives. The organ re-evaluates, clears the mutant hold
+# label, runs its model review (clean diff → APPROVE) and arms head-pinned. This is
+# the real production scenario (hold posted first, record posted after). MUTANT
+# (killed here): make mutant_record_satisfies always fail → the organ re-posts the
+# mechanical hold and never merges → the merge assert below fails.
+seed_gf_cmt organbot "$GFHEAD" "$GFPID" 1 1 "$GFVER"
+run_gf 210
+grep -q '^MERGE pr merge 210 --squash --match-head-commit deadbeef' "$ORGLOG.merges" \
+    && ok "CREDIBLE-1600 ACCEPT: gate-file PR + valid record for the current patch-id → model APPROVE armed head-pinned (mutant: record never accepted)" \
+    || bad "CREDIBLE-1600 ACCEPT: valid record did not arm 210 (merges: $(cat "$ORGLOG.merges"))"
+grep -q 'remove-label review-needs-mutants' "$ORGLOG.edits" \
+    && ok "CREDIBLE-1600 ACCEPT: the record clears a prior review-needs-mutants hold (so the arm is not blocked)" \
+    || bad "CREDIBLE-1600 ACCEPT: review-needs-mutants not cleared on the record path (edits: $(cat "$ORGLOG.edits"))"
+grep -q 'add-label review-needs-mutants' "$ORGLOG.edits" \
+    && bad "CREDIBLE-1600 ACCEPT: the organ re-held the record-backed PR for mutants" \
+    || ok "CREDIBLE-1600 ACCEPT: the organ did not re-apply review-needs-mutants on the record path"
+[[ "$(sed -n '1p' "$ORGLOG.cmt.210" 2>/dev/null)" == "VERDICT: APPROVE" ]] \
+    && ok "CREDIBLE-1600 ACCEPT: the organ ran its OWN model review (posted VERDICT: APPROVE), it did not arm on the record alone" \
+    || bad "CREDIBLE-1600 ACCEPT: no model APPROVE verdict posted for 210 (first line: $(sed -n '1p' "$ORGLOG.cmt.210" 2>/dev/null))"
+
+# REFUSAL 1 — MISMATCHED patch-id (PR 211): a record naming a DIFFERENT patch-id is
+# ignored (fail closed) → held for mutants, never model-reviewed, never merged.
+# MUTANT (killed here): accept any patch-id (drop the `expect.startswith(...)`
+# compare) → the record is accepted → clean diff → model APPROVE → 211 merges →
+# the no-merge assert fails.
+seed_gf_cmt organbot "$GFHEAD" ffffffffffffffffffffffffffffffffffffffff 1 0 ""
+run_gf 211
+{ [[ ! -s "$ORGLOG.merges" ]] && grep -q 'add-label review-needs-mutants' "$ORGLOG.edits"; } \
+    && ok "CREDIBLE-1600 REFUSAL mismatched-patch-id: wrong patch-id ignored → held for mutants, not merged (mutant: accept a mismatched patch-id)" \
+    || bad "CREDIBLE-1600 REFUSAL mismatched-patch-id: wrong patch-id was accepted (merges: $(cat "$ORGLOG.merges"); edits: $(cat "$ORGLOG.edits"))"
+
+# REFUSAL 2 — NO MUTANT LINES (PR 212): a record with the right patch-id but that
+# names NO mutant (no KILLED/SURVIVED line) is ignored → held, not merged. MUTANT
+# (killed here): drop the `mutline.search(...)` check → the empty record is accepted
+# → model APPROVE → 212 merges → the no-merge assert fails.
+seed_gf_cmt organbot "$GFHEAD" "$GFPID" 0 0 ""
+run_gf 212
+{ [[ ! -s "$ORGLOG.merges" ]] && grep -q 'add-label review-needs-mutants' "$ORGLOG.edits"; } \
+    && ok "CREDIBLE-1600 REFUSAL no-mutants: a record naming no mutant is ignored → held, not merged (mutant: accept a record with no mutant lines)" \
+    || bad "CREDIBLE-1600 REFUSAL no-mutants: a mutant-less record was accepted (merges: $(cat "$ORGLOG.merges"); edits: $(cat "$ORGLOG.edits"))"
+
+# REFUSAL 3 — UNTRUSTED AUTHOR (PR 213): a valid-looking record (right patch-id, real
+# mutant lines) from a NON-organ account is a forgery and is ignored → held, not
+# merged. MUTANT (killed here): drop the `author == trusted` filter → the forged
+# record is accepted → model APPROVE → 213 merges → the no-merge assert fails.
+seed_gf_cmt mallory "$GFHEAD" "$GFPID" 1 0 ""
+run_gf 213
+{ [[ ! -s "$ORGLOG.merges" ]] && grep -q 'add-label review-needs-mutants' "$ORGLOG.edits"; } \
+    && ok "CREDIBLE-1600 REFUSAL untrusted-author: a record from a non-organ account is ignored → held, not merged (mutant: trust any author)" \
+    || bad "CREDIBLE-1600 REFUSAL untrusted-author: a forged record was accepted (merges: $(cat "$ORGLOG.merges"); edits: $(cat "$ORGLOG.edits"))"
+
+# NEVER ARMS ON THE RECORD ALONE (PR 214): a fully VALID record is present, but the
+# organ's own model review returns CHANGES (the 214 diff carries FORCE_CHANGES). The
+# PR must NOT merge (the record is necessary, not sufficient — the model APPROVE is
+# also required) and the organ dispatches exactly ONE repair. MUTANT (killed here):
+# arm directly on a valid record (skip the model review in the record branch) → 214
+# merges despite the model CHANGES → the no-merge assert fails.
+seed_gf_cmt organbot "$GFHEAD" "$GFPID214" 1 0 ""
+run_gf 214
+[[ ! -s "$ORGLOG.merges" ]] \
+    && ok "CREDIBLE-1600 record-alone: valid record + model CHANGES → NOT merged (mutant: arm without the model APPROVE)" \
+    || bad "CREDIBLE-1600 record-alone: a valid record armed 214 without a model APPROVE (merges: $(cat "$ORGLOG.merges"))"
+ndisp1600="$(grep -c 'chump dispatch' "$ORGLOG.chump" 2>/dev/null || true)"; ndisp1600="${ndisp1600:-0}"
+[[ "$ndisp1600" == 1 ]] \
+    && ok "CREDIBLE-1600 record-alone: model CHANGES on a record-backed gate-file PR → exactly one repair dispatched" \
+    || bad "CREDIBLE-1600 record-alone: expected 1 repair dispatch, got $ndisp1600 ($(cat "$ORGLOG.chump"))"
+echo '{"labels":[],"comments":[]}' >"$ORGCMT"  # restore clean state for later blocks
 
 # ── CREDIBLE-1588: the organ creates its hold labels every tick (idempotently)
 # and a label op gh REFUSES fails LOUDLY (log + event), never silently. Before
@@ -1006,6 +1295,131 @@ PY
 ndisp3="$(grep -c 'chump dispatch' "$ORGLOG.chump" 2>/dev/null || true)"; ndisp3="${ndisp3:-0}"
 [[ "$ndisp3" == 1 ]] && ok "organ idempotency: forged APPROVE did NOT short-circuit review (organ re-reviewed → 1 repair)" \
     || bad "organ idempotency: forged APPROVE short-circuited the review (dispatches=$ndisp3, want 1)"
+
+# ── CREDIBLE-1592: a MECHANICAL gate-file hold (mutants NOT RUN, no model review)
+# records the gate-list version it was decided under. When the current list
+# differs (e.g. CREDIBLE-1590 narrowed it so this head no longer touches a gate),
+# the organ RE-EVALUATES that head next tick. A REAL model CHANGES REQUIRED carries
+# no version stamp and is still NEVER re-reviewed on the same head. Each direction
+# is killed by a mutant (always-reuse; never-reuse). PR 207 now resolves to a
+# non-gate file list (stub default src/foo.rs), so a re-eval runs a model review.
+echo "[d/CREDIBLE-1592] stale mechanical hold re-evaluated; real CHANGES held"
+CURVER="$( source "$REPO_ROOT/scripts/coord/lib/ship-gate-files.sh"; chump_ship_gate_list_version )"
+[[ -n "$CURVER" ]] && ok "CREDIBLE-1592: gate-list version computed from the shared constant" \
+    || bad "CREDIBLE-1592: chump_ship_gate_list_version produced nothing"
+
+seed_cmt() { # <body> — one organbot-authored current-head verdict comment
+    python3 - "$ORGCMT" "$1" <<'PY'
+import json, sys
+json.dump({"labels": [{"name": "review-held"}],
+           "comments": [{"body": sys.argv[2], "author": {"login": "organbot"},
+                         "createdAt": "2026-10-20T00:00:00Z"}]}, open(sys.argv[1], "w"))
+PY
+}
+run_207() { ( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
+    bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" --pr 207 ) >/dev/null 2>&1 || true; }
+
+# (A) held under a STALE list version → re-reviewed this tick (a new verdict is
+# posted). MUTANT (always-reuse): drop the version-diff check in
+# current_head_verdict and this head short-circuits forever → no cmt.207.
+: >"$ORGLOG.merges"; : >"$ORGLOG.chump"; rm -f "$ORGLOG.cmt.207"
+seed_cmt "VERDICT: CHANGES REQUIRED
+head: $IHEAD
+mutants: NOT RUN — gate-file change (.github/workflows/ci.yml) needs a mutant-capable reviewer
+gate-list-version: STALE-$CURVER-x
+VERDICT: CHANGES REQUIRED"
+run_207
+[[ -e "$ORGLOG.cmt.207" ]] \
+    && ok "CREDIBLE-1592: mechanical hold under a STALE list version → re-reviewed (new verdict posted)" \
+    || bad "CREDIBLE-1592: stale mechanical hold NOT re-reviewed (always-reuse bug)"
+
+# (B) held under the CURRENT list version → still reused, not re-reviewed. MUTANT
+# (re-review on any stamp): re-review whenever the stamp is present → re-posts.
+: >"$ORGLOG.merges"; : >"$ORGLOG.chump"; rm -f "$ORGLOG.cmt.207"
+seed_cmt "VERDICT: CHANGES REQUIRED
+head: $IHEAD
+mutants: NOT RUN — gate-file change (.github/workflows/ci.yml) needs a mutant-capable reviewer
+gate-list-version: $CURVER
+VERDICT: CHANGES REQUIRED"
+run_207
+[[ ! -e "$ORGLOG.cmt.207" ]] \
+    && ok "CREDIBLE-1592: mechanical hold under the CURRENT list version → reused (no re-review)" \
+    || bad "CREDIBLE-1592: current-version mechanical hold was re-reviewed (version-compare bug)"
+
+# (C) a REAL model CHANGES REQUIRED (no gate-list-version stamp) → NEVER re-reviewed
+# or re-dispatched on the same head. MUTANT (never-reuse): always re-review a
+# CHANGES head and this re-posts / re-dispatches.
+: >"$ORGLOG.merges"; : >"$ORGLOG.chump"; rm -f "$ORGLOG.cmt.207"
+seed_cmt "VERDICT: CHANGES REQUIRED
+head: $IHEAD
+blockers: exit code change, no test
+mutants: flipped exit 2->0, test passed
+VERDICT: CHANGES REQUIRED"
+run_207
+[[ ! -e "$ORGLOG.cmt.207" ]] \
+    && ok "CREDIBLE-1592: real model CHANGES REQUIRED (no stamp) → not re-reviewed" \
+    || bad "CREDIBLE-1592: real model CHANGES REQUIRED was re-reviewed (never-reuse bug)"
+ndisp4="$(grep -c 'chump dispatch' "$ORGLOG.chump" 2>/dev/null || true)"; ndisp4="${ndisp4:-0}"
+[[ "$ndisp4" == 0 ]] && ok "CREDIBLE-1592: real model CHANGES REQUIRED → not re-dispatched" \
+    || bad "CREDIBLE-1592: real model CHANGES REQUIRED re-dispatched ($ndisp4)"
+
+# AC3: the version comes from the shared constant, never a CHUMP_* env var.
+grep -qE 'GATE_LIST_VERSION="\$\(chump_ship_gate_list_version\)"' "$ORGAN" \
+    && ok "CREDIBLE-1592: organ derives the version from the shared constant (not an env var)" \
+    || bad "CREDIBLE-1592: organ does not derive the version from chump_ship_gate_list_version"
+grep -qE 'CHUMP_[A-Z_]*GATE_(LIST_)?VERSION' "$ORGAN" "$SGF" \
+    && bad "CREDIBLE-1592: a CHUMP_* env override for the gate-list version exists (safety-input bypass)" \
+    || ok "CREDIBLE-1592: no CHUMP_* env override for the gate-list version"
+
+# ── CREDIBLE-1597: the organ clears a STALE review-needs-mutants on APPROVE so a
+# PR it later approves is no longer held forever. A PR carrying a current-head
+# organ APPROVE plus the pre-CREDIBLE-1590 blanket review-needs-mutants label is
+# re-evaluated on this tick: a NON-gate head drops the stale label and ARMS; a
+# head that really touches a ship gate KEEPS the label and does NOT arm (its
+# mutation rule is still unmet). The stub mutates ORGCMT labels on an accepted
+# label op (like real gh), so review_hold_allows reads the post-removal label set.
+echo "[CREDIBLE-1597] stale review-needs-mutants cleared on a non-gate APPROVE; kept on a gate APPROVE"
+C1597_HEAD=deadbeef1234567890abcdef1234567890abcdef
+seed_stale_mutants_1597() { # <pr-head> — labels:[review-needs-mutants] + current-head organ APPROVE
+    HEAD1597="$1" python3 - "$ORGCMT" <<'PY'
+import json, os, sys
+head = os.environ["HEAD1597"]
+body = "VERDICT: APPROVE\nhead: %s\nblockers: none\nmutants: ok\nVERDICT: APPROVE" % head
+json.dump({"labels": [{"name": "review-needs-mutants"}],
+           "comments": [{"body": body, "author": {"login": "organbot"}, "createdAt": "2026-10-20T00:00:00Z"}]},
+          open(sys.argv[1], "w"))
+PY
+}
+run_organ_seeded_1597() { # <pr> — run the organ WITHOUT resetting the seeded ORGCMT
+    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"
+    ( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
+      bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" --pr "$1" ) >/dev/null 2>&1 || true
+}
+# (a) NON-gate stranded PR (203 → src/foo.rs): the stale label is removed and the
+# PR arms on verified green. MUTANT (killed here): approve_clear_holds never
+# removes review-needs-mutants → the label persists in ORGCMT → review_hold_allows
+# HOLDS → no remove-label edit AND no merge.
+seed_stale_mutants_1597 "$C1597_HEAD"
+run_organ_seeded_1597 203
+grep -q -- '--remove-label review-needs-mutants' "$ORGLOG.edits" \
+    && ok "organ CREDIBLE-1597: non-gate APPROVE removes stale review-needs-mutants (mutant: never remove)" \
+    || bad "organ CREDIBLE-1597: non-gate APPROVE did NOT remove review-needs-mutants ($(cat "$ORGLOG.edits"))"
+grep -q '^MERGE pr merge 203 --squash --match-head-commit' "$ORGLOG.merges" \
+    && ok "organ CREDIBLE-1597: non-gate PR arms once the stale label is cleared (verified green)" \
+    || bad "organ CREDIBLE-1597: non-gate PR did not arm after clearing stale label (merges: $(cat "$ORGLOG.merges"))"
+# (b) GATE-file stranded PR (201 → .github/workflows/ci.yml): the label is KEPT
+# (mutation rule unmet) and the PR does NOT arm. MUTANT (killed here):
+# approve_clear_holds removes review-needs-mutants regardless of gate → ORGCMT
+# loses the label → review_hold_allows passes → a gate-file PR merges blind.
+seed_stale_mutants_1597 "$C1597_HEAD"
+run_organ_seeded_1597 201
+grep -q -- '--remove-label review-needs-mutants' "$ORGLOG.edits" \
+    && bad "organ CREDIBLE-1597: gate-file APPROVE wrongly removed review-needs-mutants (mutant: always remove)" \
+    || ok "organ CREDIBLE-1597: gate-file APPROVE keeps review-needs-mutants (mutation rule unmet)"
+[[ ! -s "$ORGLOG.merges" ]] \
+    && ok "organ CREDIBLE-1597: gate-file PR does NOT arm while review-needs-mutants held" \
+    || bad "organ CREDIBLE-1597: a gate-file PR armed despite review-needs-mutants (merges: $(cat "$ORGLOG.merges"))"
+echo '{"labels":[],"comments":[]}' >"$ORGCMT"  # restore clean state for later blocks
 
 # Structural arm-site gate: the organ's arm path is guarded by the fail-closed
 # predicate and is head-pinned; it must NOT contain a `gh pr merge … --auto`.

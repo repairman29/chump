@@ -1668,6 +1668,125 @@ check_node_env_no_export() {
     fi
 }
 
+# ── Check 21 (CREDIBLE-1568/1570): load-aware dead-man installed + alive ──────
+# RESILIENT-1611's node-level dead-man was "shipped != installed" (code-on-disk
+# on zero nodes) AND silent when healthy (nothing could prove it alive). This
+# check closes both: RED when chump-load-aware-deadman.timer is missing/inactive
+# on a systemd host, OR when the last deadman_tick heartbeat in ambient.jsonl is
+# older than 5 minutes — so a node that lacks the organ, or whose dead-man has
+# gone dark, is a paged/observable condition instead of a silent hole.
+# The 5-minute staleness threshold is fixed, not env-tunable (it is a safety
+# input): the timer runs every 60s, so 5 minutes is five missed ticks.
+check_load_aware_deadman() {
+    # CREDIBLE-1570 (AC3): read the SAME canonical node log the installed
+    # dead-man writes. The dead-man lives in ~/.local/bin and cannot know
+    # $REPO_ROOT, so it defaults to $HOME/chump/.chump-locks/ambient.jsonl; this
+    # reader must resolve identically or a healthy node false-REDs. On the main
+    # checkout $REPO_ROOT already IS $HOME/chump, so this is equivalent there and
+    # strictly more correct from a worktree. Derived from $HOME (not a CHUMP_*
+    # path env default) so a sandbox-HOME test exercises the real default.
+    local amb="${CHUMP_AMBIENT_LOG:-$HOME/chump/.chump-locks/ambient.jsonl}"
+    local timer="chump-load-aware-deadman.timer"
+    local stale_s=300   # 5 minutes — RED past this (AC: older than 5 minutes)
+
+    # Non-systemd node legitimately has no timer — not applicable, skip.
+    if ! command -v systemctl >/dev/null 2>&1; then
+        register_check "load-aware-deadman" "skip" "systemctl unavailable — not a systemd host, dead-man not applicable" ""
+        return
+    fi
+
+    # 1. Timer must be installed and active.
+    if ! systemctl --user is-active --quiet "$timer" 2>/dev/null; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer missing or inactive — the RESILIENT-1611 node dead-man is not installed/running on this node (shipped != installed)" \
+            "bash scripts/setup/install-load-aware-deadman.sh; systemctl --user status $timer"
+        return
+    fi
+
+    # 2. Heartbeat must be fresh (newest deadman_tick within $stale_s).
+    if [[ ! -f "$amb" ]]; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but no ambient.jsonl at $amb to read a deadman_tick heartbeat from — cannot prove the dead-man is alive" \
+            "ls -l $amb; systemctl --user status $timer"
+        return
+    fi
+    local tick_line ts last_tick
+    tick_line="$(grep '"kind":"deadman_tick"' "$amb" 2>/dev/null | tail -1 || true)"
+    if [[ -z "$tick_line" ]]; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but no deadman_tick heartbeat ever seen in $amb — the dead-man is not emitting its liveness signal" \
+            "journalctl --user -u $timer --no-pager | tail; systemctl --user status $timer"
+        return
+    fi
+    ts="$(printf '%s' "$tick_line" | grep -oE '"ts":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    last_tick="$(date -u -d "$ts" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s 2>/dev/null || echo 0)"
+    if [[ -z "$last_tick" || "$last_tick" -eq 0 ]]; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but the newest deadman_tick timestamp ('$ts') could not be parsed — heartbeat freshness unknown" \
+            "tail $amb; journalctl --user -u $timer --no-pager | tail"
+        return
+    fi
+    local now_ts age
+    now_ts="$(date -u +%s)"
+    age=$(( now_ts - last_tick ))
+    if (( age >= stale_s )); then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but last deadman_tick was ${age}s ago (threshold ${stale_s}s) — the dead-man has gone dark (heartbeat stale)" \
+            "journalctl --user -u $timer --no-pager | tail; systemctl --user restart $timer"
+        return
+    fi
+    register_check "load-aware-deadman" "pass" \
+        "$timer active, last deadman_tick ${age}s ago (threshold ${stale_s}s)" ""
+}
+
+# ── Check 22 (CREDIBLE-1602): ONE canonical gap store per node ────────────────
+# cuphead 2026-10-21 carried THREE live state.db on one node (the 41MB store the
+# architect+reconciler actually wrote, a stale ~/.chump Oct-19 store, and the
+# node clone's stale Oct-10 store). The review organ, resolving its store from
+# the node-checkout cwd, shipped a gap against the WRONG one and failed. A node
+# must carry exactly ONE live gap store (PHASE-R R4). A store that has been
+# RETIRED is renamed aside and marked with a CHUMP_STORE_ARCHIVED marker in its
+# .chump dir (scripts/coord/archive-stale-gap-store.sh); a marked archive does
+# NOT count. A worktree's .chump/state.db SYMLINK into the canonical checkout is
+# not a separate store and never counts (only real files are counted). Scanned
+# from $HOME — NOT a CHUMP_* path env, so a sandbox-HOME test exercises the real
+# default; the ephemeral/cache/backup trees under $HOME are pruned so test
+# fixtures under ~/tmp never false-RED a node.
+check_single_store() {
+    if ! command -v find >/dev/null 2>&1; then
+        register_check "single-store" "skip" "find unavailable — cannot scan for node gap stores" ""
+        return
+    fi
+    local scan_root="$HOME"
+    if [[ -z "$scan_root" || ! -d "$scan_root" ]]; then
+        register_check "single-store" "skip" "\$HOME ('$scan_root') is not a directory — cannot scan for node gap stores" ""
+        return
+    fi
+    local -a stores=()
+    local f d
+    # Real files named state.db at */.chump/state.db, bounded to depth 4 (reaches
+    # ~/.chump, ~/<repo>/.chump, ~/.chumpnode/repo/.chump) with the ephemeral
+    # trees pruned. -type f excludes worktree symlinks; the per-file loop then
+    # drops any store sitting next to a CHUMP_STORE_ARCHIVED marker.
+    while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        d="$(dirname "$f")"
+        [[ -e "$d/CHUMP_STORE_ARCHIVED" ]] && continue
+        stores+=("$f")
+    done < <(find "$scan_root" -maxdepth 4 \
+        \( -type d \( -name tmp -o -name '.cache' -o -name 'node_modules' -o -name '*-backup' -o -name '.cargo' -o -name '.rustup' \) -prune \) -o \
+        \( -type f -name state.db -path '*/.chump/state.db' -print \) 2>/dev/null)
+    local n="${#stores[@]}"
+    if (( n > 1 )); then
+        register_check "single-store" "fail" \
+            "node has $n live gap stores (must be exactly ONE): $(printf '%s;' "${stores[@]}") — split-brain: a process that resolves its store from cwd/node.env can ship a gap against the wrong one (CREDIBLE-1602)" \
+            "keep the canonical store; retire each extra with: scripts/coord/archive-stale-gap-store.sh <path> --reason <why> --canonical <canonical-store>  (renames it aside + writes the CHUMP_STORE_ARCHIVED marker this check honors)"
+    else
+        register_check "single-store" "pass" \
+            "exactly $n live gap store(s) on this node (0 or 1 is healthy; CHUMP_STORE_ARCHIVED-marked archives and symlinked worktree stores are not counted)" ""
+    fi
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -1698,6 +1817,8 @@ check_fetch_refspec_single_branch
 check_second_scope
 check_admission_ceiling
 check_node_env_no_export
+check_load_aware_deadman
+check_single_store
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

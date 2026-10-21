@@ -5285,14 +5285,17 @@ events:
   # ── CREDIBLE-1550: merged-PR-LINK closure (typed gap_prs FK, queue-drain) ───
   - kind: gap_closed_from_merged_pr
     effect_metric: self
-    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-links (CREDIBLE-1550)
-    trigger: open gap that a typed gap_prs row links to a MERGED PR
-      but whose canonical state.db row was never flipped to done (closed_pr NULL)
-      — the async-merge ghost class that --check-closure-drift (needs closed_pr)
-      and --check-already-satisfied (no-op cycle-log signal only) both miss.
-      CREDIBLE-1550 (Phase R R2) replaced the former PR-title match with the
-      gap_prs FK as the ONLY closure proof (a title falsely closed CREDIBLE-1492
-      from a docs PR and CREDIBLE-1520 from its AC1-only slice).
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-links
+      (gap_prs FK pass, CREDIBLE-1550; head-branch pass, CREDIBLE-1598)
+    trigger: open gap that a MERGED PR covers but whose canonical state.db row was
+      never flipped to done (closed_pr NULL) — the async-merge ghost class that
+      --check-closure-drift (needs closed_pr) and --check-already-satisfied (no-op
+      cycle-log signal only) both miss. Two closure proofs, both non-title —
+      CREDIBLE-1550 banned the PR-title match after a title falsely closed
+      CREDIBLE-1492 from a docs PR and CREDIBLE-1520 from its AC1-only slice. The
+      proofs are the typed gap_prs FK (via field absent) and, as a backstop for a
+      merge that never wrote the FK, the PR's lane HEAD BRANCH
+      (via=head_branch, CREDIBLE-1598).
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
   # ── CREDIBLE-1552: fail-closed + report-only companions (PARTIAL heuristic
@@ -14468,6 +14471,15 @@ events:
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, message]
 
+  - kind: deadman_tick
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/load-aware-deadman.sh (CREDIBLE-1568/1570)
+    emitter_paths: [scripts/ops/load-aware-deadman.sh]
+    trigger: per-run liveness heartbeat from the load-aware node dead-man, emitted on EVERY run (even a fully-healthy one that killed nothing) so the organ's presence can be verified remotely; fleet-doctor reads the newest deadman_tick and goes RED when the timer is missing or the heartbeat is older than 5 minutes
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, message]
+
   - kind: olive_monitor_baseline_initialized
     status: active
     effect_metric: self
@@ -14620,5 +14632,23 @@ events:
     fields_required: [ts, kind, pr, op, label]
     expected_volume: "near-zero; any occurrence means a hold label op failed and a review hold may not have applied"
     # payload: {ts: string, kind: "review_organ_label_error", pr: number, op: "add"|"remove", label: string}
+
+  - kind: review_organ_gap_store_miss
+    effect_metric: credible
+    emitter: scripts/dispatch/review-organ-tick.sh (CREDIBLE-1602)
+    # scanner-anchor: "kind":"review_organ_gap_store_miss"
+    trigger: >
+      The review organ merged a PR head-pinned but the merged PR's gap was NOT
+      present in the canonical gap store the organ resolved through the ONE
+      resolver (scripts/coord/lib/state-store.sh) — i.e. the organ is pointed at
+      the WRONG state.db (the cuphead three-store split, where the organ ran from
+      a node checkout whose own .chump/state.db was a stale copy). The post-merge
+      gap step now FAILS LOUD (this event plus a non-zero tick status) instead of
+      log-and-continuing, so the split is paged/observable and the PHASE-R rollup
+      is not silently undercounted.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, gap, store, head]
+    expected_volume: "0 on a healthy single-store node; non-zero only during a gap-store split-brain"
+    # payload: {ts: string, kind: "review_organ_gap_store_miss", pr: number, gap: string, store: string, head: string}
 
   # ── INFRA-2156 (META-125/C5): chump consensus ask ───────────────────────────

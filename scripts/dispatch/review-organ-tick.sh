@@ -7,12 +7,19 @@
 # ONE bounded tick. For each open PR whose CURRENT head has no verdict yet:
 #   (a) skip drafts, fork PRs (never arm a fork), and own-lane PRs;
 #   (b) if the diff touches a GATE FILE and no sandboxed mutant runner exists,
-#       the organ cannot satisfy the mutation rule (AC5), so it posts
-#       VERDICT: CHANGES REQUIRED with `mutants: NOT RUN …` and labels the PR
-#       `review-needs-mutants` — it never APPROVEs a gate-file PR blind
-#       (repair item 8). It does NOT dispatch an author repair for this state
-#       (nothing for the author to fix; it is awaiting a mutant-capable
-#       reviewer);
+#       the organ cannot satisfy the mutation rule read-only. CREDIBLE-1600: it
+#       can still clear the hold when a mutant-capable review RECORD for THIS
+#       exact PR-diff patch-id has been posted under the organ marker format by
+#       the trusted login (`head: <sha>`, `patch-id: <id>`, a line per mutant
+#       stating KILLED or SURVIVED). The organ accepts that record ONLY when its
+#       patch-id equals the current head PR diff patch-id and it names at least
+#       one mutant and it was authored by the trusted login — otherwise it is
+#       ignored (fail closed). With a valid record the organ runs its OWN model
+#       review and arms on model APPROVE PLUS that record (never the record
+#       alone). WITHOUT a valid record it posts VERDICT: CHANGES REQUIRED with
+#       `mutants: NOT RUN …` and labels the PR `review-needs-mutants` — it never
+#       APPROVEs a gate-file PR blind (repair item 8) and does NOT dispatch an
+#       author repair for this state (it is awaiting a mutant-capable reviewer);
 #   (c) otherwise run the independent delta review READ-ONLY via
 #       scripts/dispatch/review-ro-claude.sh (no write tools, scoped reads,
 #       minimal env, token-scrubbed output — AC2) and parse exactly ONE verdict
@@ -49,7 +56,15 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 
 # ── CLI args (the test seam; the unit passes NONE of these). ──
 CLAUDE_BIN="claude"
-CHECKOUT="$REPO_ROOT"
+# CREDIBLE-1602 (AC1): the canonical checkout the organ OPERATES on — the one it
+# fetches, reviews against, and resolves its gap store from — is $HOME/chump, NOT
+# REPO_ROOT (the organ's own code location). The systemd unit runs the script
+# FROM the node clone ~/.chumpnode/repo (a standalone clone whose .chump/state.db
+# is a stale copy), so anchoring on REPO_ROOT pins the WRONG store. $HOME is the
+# sanctioned sandbox seam (a test sets HOME so $HOME/chump resolves inside its
+# sandbox); --checkout, which the unit NEVER passes, overrides it for tests that
+# cannot relocate HOME. NEVER an env var on this safety input (Chief 2026-10-20).
+CHECKOUT="$HOME/chump"
 SELF_LOGIN=""          # own-lane skip: a PR authored by this login is not reviewed
 REPO=""                # owner/repo; empty = current checkout's repo
 declare -a ONLY_PRS=()
@@ -77,6 +92,11 @@ cd "$REPO_ROOT" || { echo "[review-organ] cannot cd repo root" >&2; exit 1; }
 # shellcheck source=scripts/coord/lib/ship-gate-files.sh
 source "$REPO_ROOT/scripts/coord/lib/ship-gate-files.sh"
 REVIEW_GATE_FILE_GLOBS=("${CHUMP_SHIP_GATE_GLOBS[@]}")
+# The gate-list version a mechanical hold is stamped with (CREDIBLE-1592). Comes
+# from the shared constant via chump_ship_gate_list_version — NEVER an env var.
+# When the list changes, a head held under the old list is re-evaluated; a real
+# model CHANGES REQUIRED carries no such stamp and is never re-reviewed.
+GATE_LIST_VERSION="$(chump_ship_gate_list_version)"
 # A sandboxed mutant runner does not exist yet; until it does, gate-file PRs are
 # held for a mutant-capable reviewer (repair item 8). This is a CONSTANT, not an
 # env read — flipping it on without a real runner would defeat the mutation rule.
@@ -87,6 +107,27 @@ MODEL="opus"
 
 # shellcheck source=scripts/coord/lib/review-hold.sh
 source "$REPO_ROOT/scripts/coord/lib/review-hold.sh"
+
+# CREDIBLE-1602: resolve the gap store through the ONE resolver
+# (scripts/coord/lib/state-store.sh, the exact mirror of crates/chump-store-path
+# that every `chump` GapStore call goes through), NEVER ad hoc from the cwd.
+# ship_merged_gap pins the chump subprocess to this resolved path so the
+# post-merge gap step can never silently retarget a stale store from whatever
+# checkout the organ happens to run in. cuphead 2026-10-21: the organ ran from
+# ~/.chumpnode/repo (a node clone whose own .chump/state.db was a stale 118KB
+# Oct-10 store) and tried to ship DOC-164 there; the gap wasn't in that store so
+# `chump gap ship` failed and was log-and-continued, undercounting the PHASE-R
+# rollup. The one node must carry one store (fleet-doctor single-store check +
+# scripts/coord/archive-stale-gap-store.sh retire the extras).
+#
+# AC1 (review REQUIRED #1): resolve from $CHECKOUT — the CANONICAL checkout
+# ($HOME/chump by default; see CHECKOUT above), NOT $REPO_ROOT (the organ's own
+# code location, which in production is the node clone whose store is stale). The
+# earlier REPO_ROOT anchor converted "silent wrong store" into "loud wrong store"
+# but still never reached the canonical store the AC names.
+# shellcheck source=scripts/coord/lib/state-store.sh
+source "$REPO_ROOT/scripts/coord/lib/state-store.sh"
+ORGAN_GAP_STORE="$(chump_state_db "$CHECKOUT")"
 
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true
@@ -114,8 +155,13 @@ emit() { printf '%s\n' "$1" >> "$AMBIENT" 2>/dev/null || true; }
 # scanner-anchor: "kind":"review_organ_tick"
 # scanner-anchor: "kind":"pr_review_verdict"
 # scanner-anchor: "kind":"review_organ_label_error"
+# scanner-anchor: "kind":"review_organ_gap_store_miss"
 
 REVIEWED=0; APPROVED=0; CHANGES=0; HELD_MUTANTS=0; ARMED=0; DISPATCHED=0; SKIPPED=0
+# CREDIBLE-1602: set to 1 when the post-merge gap step hits a loud failure (a
+# merged PR whose gap is NOT in the canonical store the organ resolved) so the
+# oneshot exits NON-ZERO instead of log-and-continuing a silent split-brain.
+ORGAN_TICK_FAIL=0
 
 # gate_files_touched <pr> — prints the first gate file the PR changes (rc 0),
 # rc 1 if none, rc 3 if the PR's file list cannot be read (fail closed). Reads
@@ -218,11 +264,13 @@ PROMPT
     printf '%s' "$pf"
 }
 
-# post_verdict <pr> <verdict APPROVE|CHANGES_REQUIRED> <head> <mutants-line> <body-file>
+# post_verdict <pr> <verdict APPROVE|CHANGES_REQUIRED> <head> <mutants-line> <body-file> <gate-list-version>
 # Posts a comment whose FIRST line is exactly the verdict and that ends with the
-# verdict too (AC1), embedding head + mutants (AC5).
+# verdict too (AC1), embedding head + mutants (AC5). When a gate-list-version is
+# given (ONLY the mechanical gate-file hold passes it, CREDIBLE-1592), stamp it so
+# a later tick can detect a list change and re-evaluate the head.
 post_verdict() {
-    local pr="$1" verdict="$2" head="$3" mutants="$4" body_file="${5:-}"
+    local pr="$1" verdict="$2" head="$3" mutants="$4" body_file="${5:-}" gate_list_version="${6:-}"
     local vstr; [[ "$verdict" == APPROVE ]] && vstr="VERDICT: APPROVE" || vstr="VERDICT: CHANGES REQUIRED"
     local cfile; cfile="$(mktemp)"
     {
@@ -230,6 +278,7 @@ post_verdict() {
         printf '🤖 independent review organ (CREDIBLE-1542) — read-only, no write tools.\n'
         printf 'head: %s\n' "$head"
         printf 'mutants: %s\n' "$mutants"
+        [[ -n "$gate_list_version" ]] && printf 'gate-list-version: %s\n' "$gate_list_version"
         if [[ -n "$body_file" && -r "$body_file" ]]; then
             printf '\n---\n'; sed -n '1,400p' "$body_file"
         fi
@@ -271,17 +320,39 @@ _label_op_failed() {
         "$(ts)" "$pr" "$(json_str "$op")" "$(json_str "$lbl")")"
 }
 
+# approve_clear_holds <pr> <gate_rc> — CREDIBLE-1597: on an APPROVE, ALWAYS clear
+# review-held; clear review-needs-mutants too ONLY when the head touches NO ship
+# gate (gate_rc != 0). A gate-file head KEEPS review-needs-mutants — its mutation
+# rule is still unmet (AC1). This is how a STALE review-needs-mutants from the old
+# pre-CREDIBLE-1590 blanket gate list is finally cleared: the first tick the organ
+# APPROVEs a non-gate head, both holds come off, so review_hold_allows can let the
+# PR arm instead of stranding it held-forever (the bug this slice closes). A
+# removal gh refuses still fails loudly via label_remove (CREDIBLE-1588).
+approve_clear_holds() {
+    local pr="$1" gate_rc="$2"
+    label_remove "$pr" "$REVIEW_HOLD_LABEL"
+    [[ "$gate_rc" != 0 ]] && label_remove "$pr" "$REVIEW_NEEDS_MUTANTS_LABEL"
+    return 0
+}
+
 # dispatch_repair <pr> <head> — exactly ONE repair to the author lane, NEVER with
+# derive_gap_from_branch <branch> — prints the gap id a lane branch encodes, or
+# nothing. Every real lane branch is `claude/<gap-lowercase>-…` (e.g.
+# claude/credible-1542); the legacy `chump/<GAP>-…` form and a bare gap id are
+# also accepted. The match is case-insensitive via [A-Za-z] and the derived id is
+# upper-cased (CREDIBLE-1542 review: the old `[A-Z]+` regex matched no real
+# branch). Shared by dispatch_repair (CHANGES path) and ship_merged_gap
+# (CREDIBLE-1598 merge path) so the two never drift.
+derive_gap_from_branch() {
+    printf '%s' "$1" | sed -nE 's#^(chump/|claude/)?([A-Za-z]+-[0-9]+).*#\2#p' | tr '[:lower:]' '[:upper:]'
+}
+
 # --auto-merge (AC4 / repair item 9). Derives the gap from the head branch name
-# and dispatches it; if no gap can be derived, logs and skips. Every real lane
-# branch is `claude/<gap-lowercase>-…` (e.g. claude/credible-1542); the legacy
-# `chump/<GAP>-…` form and a bare gap id are also accepted. The match is
-# case-insensitive via [A-Za-z] and the derived id is upper-cased for `chump
-# dispatch` (CREDIBLE-1542 review: the old `[A-Z]+` regex matched no real branch).
+# and dispatches it; if no gap can be derived, logs and skips.
 dispatch_repair() {
     local pr="$1" head="$2" branch gap
     branch="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} --json headRefName --jq '.headRefName' 2>/dev/null || true)"
-    gap="$(printf '%s' "$branch" | sed -nE 's#^(chump/|claude/)?([A-Za-z]+-[0-9]+).*#\2#p' | tr '[:lower:]' '[:upper:]')"
+    gap="$(derive_gap_from_branch "$branch")"
     if [[ -z "$gap" ]]; then
         log "PR #$pr: CHANGES REQUIRED but no gap id in branch '$branch' — no repair dispatched"
         return 0
@@ -305,7 +376,7 @@ current_head_verdict() {
     payload="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
         --json comments 2>/dev/null || true)"
     [[ -n "$payload" ]] || return 1
-    HEAD_SHA="$head" TRUSTED_AUTHOR="$ORGAN_LOGIN" python3 -c '
+    HEAD_SHA="$head" TRUSTED_AUTHOR="$ORGAN_LOGIN" GATE_LIST_VERSION="$GATE_LIST_VERSION" python3 -c '
 import json, os, re, sys
 try:
     d = json.loads(sys.argv[1])
@@ -337,6 +408,16 @@ if not cands:
     sys.exit(1)
 cands.sort(key=lambda t: t[0])
 body = cands[-1][1]
+# CREDIBLE-1592: a MECHANICAL gate-file hold stamps the gate-list version it was
+# decided under. If the list has since changed, that hold is stale — treat THIS
+# head as having no current verdict (rc 1) so the organ re-evaluates it. A real
+# model verdict carries no gate-list-version stamp and is therefore never
+# re-reviewed on the same head.
+glv = re.compile(r"^[ \t]*gate-list-version:[ \t]*(\S+)", re.I | re.M)
+gm = glv.search(body)
+cur = (os.environ.get("GATE_LIST_VERSION","") or "").strip()
+if gm and cur and gm.group(1).strip() != cur:
+    sys.exit(1)
 hits = [("APPROVE" if m.group(1).upper().startswith("APPROVE") else "CHANGES_REQUIRED")
         for m in verd.finditer(body)]
 if not hits:
@@ -363,6 +444,81 @@ blines = list(blocker.finditer(body))
 if blines and all(_blockers_none(m.group(1)) for m in blines):
     sys.exit(1)  # parse-downgrade → re-review this head
 print("CHANGES_REQUIRED"); sys.exit(0)
+' "$payload"
+}
+
+# pr_diff_patch_id <pr> — the STABLE patch-id of the PR's current diff, exactly as
+# AC1 specifies: `git diff origin/main...HEAD | git patch-id --stable`. `gh pr diff`
+# returns the three-dot (merge-base) diff — the same content as that git diff — and
+# `git patch-id` hashes only the hunk content (independent of context line numbers),
+# so the two ids are identical. Using gh keeps this consistent with
+# build_prompt_file and needs no local head ref. Prints the 40-hex id, or nothing
+# when the diff is empty/uncomputable (→ a record can never match → fail closed).
+pr_diff_patch_id() {
+    local pr="$1" id=""
+    id="$(GH pr diff "$pr" ${REPO:+--repo "$REPO"} 2>/dev/null | git patch-id --stable 2>/dev/null | awk 'NR==1{print $1}')" || true
+    printf '%s' "$id"
+}
+
+# mutant_record_satisfies <pr> <head> <expected-patch-id> — CREDIBLE-1600. Exit 0
+# ONLY when a mutant-capable review RECORD for THIS exact patch-id is present on
+# the PR under the organ marker format:
+#   * authored by the ORGAN trusted login ($ORGAN_LOGIN) — a record from any other
+#     account is a forgery (anyone can comment on a public PR) and is ignored;
+#   * carries a `patch-id: <id>` line whose id equals the current PR diff patch-id
+#     (the full computed id starts with the recorded id, >=12 hex, so a 12-hex
+#     short form in a receipt is accepted; a differing id never matches);
+#   * names at least one mutant — a line stating an outcome KILLED or SURVIVED.
+# A record is NOT a model verdict: it carries no `VERDICT:` line, so it never
+# short-circuits current_head_verdict nor satisfies review_hold_allows on its own —
+# the organ still runs its OWN model review and arms on model APPROVE PLUS this
+# record, never the record alone. Fail closed: an empty expected patch-id, an empty
+# trusted login, an unreadable comments payload, or no matching record → return 1.
+mutant_record_satisfies() {
+    local pr="$1" head="$2" pid="$3" payload
+    [[ -n "$pid" ]] || return 1
+    payload="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
+        --json comments 2>/dev/null || true)"
+    [[ -n "$payload" ]] || return 1
+    HEAD_SHA="$head" EXPECT_PID="$pid" TRUSTED_AUTHOR="$ORGAN_LOGIN" python3 -c '
+import json, os, re, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+head    = (os.environ.get("HEAD_SHA","")  or "").lower()
+expect  = (os.environ.get("EXPECT_PID","") or "").strip().lower()
+trusted = (os.environ.get("TRUSTED_AUTHOR","") or "").strip().lower()
+if not trusted or not expect:
+    sys.exit(1)   # trust nobody / no computable patch-id → fail closed
+headmark = re.compile(r"^[ \t]*head:[ \t]*([0-9a-fA-F]{7,40})", re.I | re.M)
+pidmark  = re.compile(r"^[ \t]*patch-id:[ \t]*([0-9a-fA-F]{12,40})", re.I | re.M)
+mutline  = re.compile(r"\b(KILLED|SURVIVED)\b")
+for c in d.get("comments") or []:
+    b = c.get("body","") if isinstance(c, dict) else str(c)
+    author = ""
+    if isinstance(c, dict):
+        a = c.get("author") or {}
+        if isinstance(a, dict):
+            author = (a.get("login") or "")
+    # Only the organ trusted login is a trusted mutant-capable reviewer.
+    if author.strip().lower() != trusted:
+        continue
+    hm = headmark.search(b or "")
+    if not hm or not head.startswith(hm.group(1).lower()):
+        continue
+    pm = pidmark.search(b or "")
+    if not pm:
+        continue
+    # The recorded patch-id must equal the current PR diff patch-id: the full
+    # computed id starts with the recorded id (or they are equal).
+    if not expect.startswith(pm.group(1).lower()):
+        continue
+    # A record that names no mutant (no KILLED/SURVIVED outcome line) is ignored.
+    if not mutline.search(b or ""):
+        continue
+    sys.exit(0)
+sys.exit(1)
 ' "$payload"
 }
 
@@ -393,6 +549,17 @@ process_pr() {
     if prior="$(current_head_verdict "$pr" "$head")"; then
         if [[ "$prior" == APPROVE ]]; then
             log "PR #$pr: current-head verdict already APPROVE — reconciling arming only (no re-review)"
+            # CREDIBLE-1597: a PR that already carries a current-head organ APPROVE
+            # but a STALE review-needs-mutants (from the pre-CREDIBLE-1590 blanket
+            # gate list) is held forever because review_hold_allows counts that
+            # label. Clear the holds here — gated on a LIVE classification of this
+            # head's diff — so a non-gate head drops the stale label and arms, while
+            # a head that really touches a ship gate keeps it. gate_rc 3 (diff
+            # uncomputable) fails closed → treated as a gate → label kept.
+            local igate_rc
+            if gate_files_touched "$pr" >/dev/null 2>&1; then igate_rc=0; else igate_rc=$?; fi
+            [[ "$igate_rc" == 3 ]] && igate_rc=0
+            approve_clear_holds "$pr" "$igate_rc"
             maybe_arm "$pr" "$head"
         else
             log "PR #$pr: current-head verdict already CHANGES REQUIRED — held, no re-review/re-dispatch"
@@ -406,16 +573,34 @@ process_pr() {
     # A diff we cannot compute is fail-closed: treat as a gate change.
     if [[ "$gate_rc" == 3 ]]; then gate_hit="(diff uncomputable — fail closed)"; gate_rc=0; fi
 
-    local verdict mutants
+    local verdict mutants patch_id
     if [[ "$gate_rc" == 0 && "$REVIEW_MUTANT_RUNNER_AVAILABLE" != "1" ]]; then
-        # Gate-file PR, no mutant runner: hold for a mutant-capable reviewer (AC5).
-        verdict="CHANGES_REQUIRED"
-        mutants="NOT RUN — gate-file change ($gate_hit) needs a mutant-capable reviewer; labeled review-needs-mutants"
-        post_verdict "$pr" "$verdict" "$head" "$mutants"
-        label_add "$pr" "$REVIEW_NEEDS_MUTANTS_LABEL"
-        label_add "$pr" "$REVIEW_HOLD_LABEL"
-        HELD_MUTANTS=$((HELD_MUTANTS+1)); REVIEWED=$((REVIEWED+1))
-        rm -rf "$run_dir"; return 0
+        # Gate-file PR, no sandboxed mutant runner. CREDIBLE-1600: the organ can
+        # still clear the hold when a mutant-capable review RECORD for THIS exact
+        # PR-diff patch-id has been posted under the organ marker format by the
+        # trusted login. It then runs its OWN model review and arms on model
+        # APPROVE PLUS that record — never the record alone (the arm path still
+        # gates on review_hold_allows reading back the organ's written APPROVE).
+        patch_id="$(pr_diff_patch_id "$pr")"
+        if mutant_record_satisfies "$pr" "$head" "$patch_id"; then
+            log "PR #$pr: gate-file with a trusted mutant-capable record for patch-id ${patch_id:0:12} → running model review (arms on model APPROVE + record)"
+            # The record satisfies the mutant requirement — clear a prior MECHANICAL
+            # review-needs-mutants hold so it can no longer keep the arm blocked.
+            label_remove "$pr" "$REVIEW_NEEDS_MUTANTS_LABEL"
+            # fall through to the independent model review below; do NOT hold.
+        else
+            # No valid record: hold for a mutant-capable reviewer (AC5, fail closed).
+            verdict="CHANGES_REQUIRED"
+            mutants="NOT RUN — gate-file change ($gate_hit) needs a mutant-capable reviewer; labeled review-needs-mutants"
+            # Stamp the gate-list version (CREDIBLE-1592): this hold is MECHANICAL
+            # (no model review). If the list later changes so this head no longer
+            # touches a gate, the next tick re-evaluates instead of reusing forever.
+            post_verdict "$pr" "$verdict" "$head" "$mutants" "" "$GATE_LIST_VERSION"
+            label_add "$pr" "$REVIEW_NEEDS_MUTANTS_LABEL"
+            label_add "$pr" "$REVIEW_HOLD_LABEL"
+            HELD_MUTANTS=$((HELD_MUTANTS+1)); REVIEWED=$((REVIEWED+1))
+            rm -rf "$run_dir"; return 0
+        fi
     fi
 
     # ── Independent read-only review (AC2). ──
@@ -444,7 +629,10 @@ process_pr() {
 
     if [[ "$verdict" == APPROVE ]]; then
         APPROVED=$((APPROVED+1))
-        label_remove "$pr" "$REVIEW_HOLD_LABEL"
+        # CREDIBLE-1597: on APPROVE clear review-held AND (for a non-gate head)
+        # review-needs-mutants, so a stale blanket-gate label never strands the PR.
+        # gate_rc is this head's live classification (0 = gate → keep the label).
+        approve_clear_holds "$pr" "$gate_rc"
         maybe_arm "$pr" "$head"
     else
         CHANGES=$((CHANGES+1))
@@ -475,8 +663,52 @@ maybe_arm() {
     fi
     log "PR #$pr: APPROVE for head ${head:0:12} + verified green → head-pinned squash merge (no auto-merge)"
     GH pr merge "$pr" ${REPO:+--repo "$REPO"} --squash --match-head-commit "$head" >/dev/null 2>&1 \
-        && { ARMED=$((ARMED+1)); log "PR #$pr: merged head-pinned"; } \
+        && { ARMED=$((ARMED+1)); log "PR #$pr: merged head-pinned"; ship_merged_gap "$pr" "$head"; } \
         || log "WARN: PR #$pr head-pinned merge did not succeed (head moved or not mergeable)"
+}
+
+# ship_merged_gap <pr> <head> — CREDIBLE-1598. A head-pinned merge that stops at
+# `gh pr merge` leaves the PR's gap `open` with closed_pr NULL, so every organ
+# landing undercounts the PHASE-R rollup (receipt: #5620 merged CREDIBLE-1592 at
+# 04:44Z, gap left open, reconciler reported "clean"). After a merge lands, map
+# the PR back to its gap via the head branch and close it THROUGH `chump gap`
+# (never a direct state.db write): first write the typed gap_prs link (idempotent,
+# CREDIBLE-1520) so the closure reconciler's FK backstop can also see it, then
+# ship with the merged PR as closed_pr. A failure is logged, not fatal — the
+# gap-closure reconciler's head-branch pass is the durable backstop.
+ship_merged_gap() {
+    local pr="$1" head="$2" branch gap
+    branch="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} --json headRefName --jq '.headRefName' 2>/dev/null || true)"
+    gap="$(derive_gap_from_branch "$branch")"
+    if [[ -z "$gap" ]]; then
+        log "PR #$pr: merged but no gap id in branch '$branch' — gap not auto-shipped (reconciler backstop covers a linked PR)"
+        return 0
+    fi
+    # CREDIBLE-1602 (AC4): the post-merge gap step runs against the ONE
+    # canonical store ($ORGAN_GAP_STORE, resolved through state-store.sh) and
+    # FAILS LOUD when the merged PR's gap is NOT in that store — it NEVER
+    # log-and-continues. A merged PR whose gap is absent from the store the
+    # organ resolved means the organ is pointed at the WRONG store (the cuphead
+    # three-store split, CREDIBLE-1602); the old warning-only path let that rot
+    # undetected and undercounted the PHASE-R rollup. Emit a dedicated event and
+    # mark the tick failed so the oneshot exits non-zero and the condition is
+    # paged/observable. Pinning CHUMP_STATE_DB on every chump call keeps cwd from
+    # retargeting a different store mid-step (AC1: resolve through ONE function,
+    # never from cwd).
+    if ! CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap show "$gap" >/dev/null 2>&1; then
+        emit "$(printf '{"ts":"%s","kind":"review_organ_gap_store_miss","pr":%s,"gap":"%s","store":"%s","head":"%s"}' \
+            "$(ts)" "$pr" "$(json_str "$gap")" "$(json_str "$ORGAN_GAP_STORE")" "$(json_str "$head")")"
+        log "FAIL: PR #$pr merged but gap $gap is NOT in the canonical store $ORGAN_GAP_STORE — the organ resolved the WRONG gap store (CREDIBLE-1602). NOT shipping; tick fails loud."
+        ORGAN_TICK_FAIL=1
+        return 1
+    fi
+    CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap link-pr "$gap" "$pr" --sha "$head" >/dev/null 2>&1 \
+        || log "WARN: PR #$pr link-pr $gap failed (reconciler FK backstop may miss it)"
+    if CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap ship "$gap" --closed-pr "$pr" >/dev/null 2>&1; then
+        log "PR #$pr: shipped $gap --closed-pr $pr (organ landing recorded in $ORGAN_GAP_STORE)"
+    else
+        log "WARN: PR #$pr merged but 'chump gap ship $gap --closed-pr $pr' failed — reconciler backstop must close it"
+    fi
 }
 
 # ── list of PRs to process ──
@@ -499,4 +731,12 @@ for pr in "${prs[@]}"; do process_pr "$pr"; done
 emit "$(printf '{"ts":"%s","kind":"review_organ_tick","reviewed":%s,"approved":%s,"changes_required":%s,"held_mutants":%s,"armed":%s,"dispatched":%s,"skipped":%s}' \
     "$(ts)" "$REVIEWED" "$APPROVED" "$CHANGES" "$HELD_MUTANTS" "$ARMED" "$DISPATCHED" "$SKIPPED")"
 log "tick done (reviewed=$REVIEWED approved=$APPROVED changes=$CHANGES held_mutants=$HELD_MUTANTS armed=$ARMED dispatched=$DISPATCHED skipped=$SKIPPED)"
+# CREDIBLE-1602 (AC4): a post-merge gap step that could not find its gap in the
+# canonical store already emitted review_organ_gap_store_miss; surface it as a
+# non-zero tick status too, so the oneshot unit's ExecStart fails loud instead
+# of exiting 0 over a silent split-brain.
+if [[ "$ORGAN_TICK_FAIL" -ne 0 ]]; then
+    log "tick FAILED: a post-merge gap step could not resolve its gap in the canonical store (CREDIBLE-1602) — exiting non-zero"
+    exit 1
+fi
 exit 0
