@@ -668,6 +668,12 @@ cat >"$D/bin/chump" <<'CHUMPSTUB'
 #!/usr/bin/env bash
 echo "chump $*" >>"$ORGLOG.chump"
 printf '%s\t%s\n' "${CHUMP_STATE_DB:-<unset>}" "$*" >>"$ORGLOG.store"
+# CREDIBLE-1604: also record the repo root the organ pinned (CHUMP_REPO) per
+# call. `chump gap ship`'s INFRA-2423 auto-fetch runs git in the GapStore's
+# repo_root — derived from CHUMP_REPO/cwd, NOT CHUMP_STATE_DB — so the organ must
+# pin CHUMP_REPO to the canonical checkout or the auto-fetch hits the dirty,
+# behind node-checkout cwd and refuses.
+printf '%s\t%s\n' "${CHUMP_REPO:-<unset>}" "$*" >>"$ORGLOG.repo"
 if [[ "${1:-} ${2:-}" == "gap show" ]]; then exit "${ORG_GAP_SHOW_RC:-0}"; fi
 exit 0
 CHUMPSTUB
@@ -675,7 +681,7 @@ chmod +x "$D/bin/chump"
 mkdir -p "$D/checkout"; git init -q "$D/checkout" >/dev/null 2>&1
 export ORGLOG="$D/org.log" ORGCMT="$D/cmt.json"
 organ_run() { # <pr> [extra args...]
-    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; : >"$ORGLOG.store"; : >"$D/amb.jsonl"
+    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; : >"$ORGLOG.store"; : >"$ORGLOG.repo"; : >"$D/amb.jsonl"
     echo '{"labels":[],"comments":[]}' >"$ORGCMT"
     ( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl"
       bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" "$@" ) >/dev/null 2>&1 || true
@@ -686,7 +692,7 @@ organ_run() { # <pr> [extra args...]
 ORGAN_RC=0
 organ_run_rc() { # <launch-cwd> <pr> [extra args...]
     local cwd="$1"; shift
-    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; : >"$ORGLOG.store"; : >"$D/amb.jsonl"
+    : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$ORGLOG.edits"; : >"$ORGLOG.store"; : >"$ORGLOG.repo"; : >"$D/amb.jsonl"
     echo '{"labels":[],"comments":[]}' >"$ORGCMT"
     ORGAN_RC=0
     # `|| ORGAN_RC=$?` keeps the deliberately-non-zero tick from tripping set -e.
@@ -792,6 +798,45 @@ fi
 [[ -n "$prod_store" && "$prod_store" != "$REPO_ROOT_STORE" && "$prod_store" != "$NODE_CWD_STORE" && "$prod_store" != "<unset>" ]] \
     && ok "organ CREDIBLE-1602 AC5 (prod topology): pinned store is NOT the organ's own code checkout store ($REPO_ROOT_STORE) nor the cwd store" \
     || bad "organ CREDIBLE-1602 AC5 (prod topology): pinned store leaked from REPO_ROOT/cwd or was unset (store='$prod_store' repo_root_store='$REPO_ROOT_STORE')"
+
+# ── CREDIBLE-1604: the post-merge gap step runs against the CANONICAL REPO ROOT,
+# never the node-checkout cwd ─────────────────────────────────────────────────
+# CHUMP_STATE_DB pins the STORE, but `chump gap ship`'s INFRA-2423 auto-fetch runs
+# `git fetch/pull` in the GapStore's repo_root, which chump derives from
+# CHUMP_REPO/cwd — NOT CHUMP_STATE_DB. cuphead 2026-10-21: the organ ran from the
+# node checkout ~/.chumpnode/repo, which carried a standing local edit
+# (docs/process/STASHED_BRANCHES.md) and lagged main, so the auto-fetch refused
+# ("local main is N commits behind … cannot auto-pull with uncommitted changes")
+# and every organ landing left its gap open. Model that EXACT condition: a
+# node-checkout cwd that is DIRTY (a tracked, modified file) and assert the organ
+# pinned CHUMP_REPO to the canonical checkout ($D/checkout via --checkout), so the
+# real auto-fetch would run there (clean+current), never the dirty cwd.
+# MUTANT (killed here): drop the `CHUMP_REPO="$CHECKOUT"` pin on the post-merge
+# chump calls → the stub records <unset>, the auto-fetch falls back to the dirty
+# node-checkout cwd, and the two asserts below fail.
+echo "[d/gap-store] CREDIBLE-1604: post-merge gap step pins the canonical repo root (auto-fetch never hits the dirty node cwd)"
+# Make the node-checkout cwd genuinely dirty with a tracked, modified file —
+# mirroring the production ` M docs/process/STASHED_BRANCHES.md` that blocked the
+# auto-fetch. (Being "behind" is the auto-fetch's other input; the seam assertion
+# below — repo pinned to canonical — is what proves the real fetch avoids this cwd.)
+mkdir -p "$D/nodeco/docs/process"
+echo "seed" >"$D/nodeco/docs/process/STASHED_BRANCHES.md"
+git -C "$D/nodeco" add -A >/dev/null 2>&1
+git -C "$D/nodeco" -c user.email=t@t -c user.name=t commit -q -m seed >/dev/null 2>&1
+echo "standing local edit" >>"$D/nodeco/docs/process/STASHED_BRANCHES.md"  # now ` M …` dirty
+git -C "$D/nodeco" diff --quiet HEAD 2>/dev/null \
+    && bad "organ CREDIBLE-1604: node-checkout cwd fixture is NOT dirty (test cannot model the blocked auto-fetch)" \
+    || ok "organ CREDIBLE-1604: node-checkout cwd fixture is dirty (models the blocked auto-fetch)"
+ORG_GAP_SHOW_RC=0 organ_run_rc "$D/nodeco" --pr 203
+ship_repo="$(grep -E $'\tgap ship CREDIBLE-9203' "$ORGLOG.repo" 2>/dev/null | head -1 | cut -f1)"
+if [[ "$ship_repo" == "$D/checkout" ]]; then
+    ok "organ CREDIBLE-1604: from a dirty node-checkout cwd, gap ship pinned CHUMP_REPO to the canonical checkout ($D/checkout)"
+else
+    bad "organ CREDIBLE-1604: gap ship CHUMP_REPO='$ship_repo' expected the canonical checkout '$D/checkout' (pin dropped → auto-fetch would hit the dirty cwd)"
+fi
+[[ "$ship_repo" != "$D/nodeco" && "$ship_repo" != "<unset>" ]] \
+    && ok "organ CREDIBLE-1604: pinned repo is NOT the dirty node-checkout cwd ($D/nodeco) and NOT unset" \
+    || bad "organ CREDIBLE-1604: pinned repo leaked from cwd or was unset (repo='$ship_repo') — the auto-fetch would run against the dirty, behind node checkout"
 
 # AC4: when the merged PR's gap is NOT in the resolved store (ORG_GAP_SHOW_RC=1),
 # the organ must FAIL LOUD — emit review_organ_gap_store_miss, NOT ship, and exit
