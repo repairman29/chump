@@ -638,8 +638,11 @@ elif variant == "miss-required":
     # drop the required "verified" check entirely (isolates the presence test).
     checks = [c for c in checks if c["name"] != "verified"]
 elif variant == "in-progress":
-    # one check still running (not COMPLETED).
-    checks[5] = {"status": "IN_PROGRESS", "conclusion": "", "name": "cargo-test"}
+    # one check still running (not COMPLETED). conclusion is SUCCESS so the status
+    # gate (status != COMPLETED → fail closed) is the SOLE hold reason — this
+    # isolates the "accept a non-COMPLETED status" mutant; an empty conclusion
+    # would instead be caught by the conclusion gate (already covered by fail-nonreq).
+    checks[5] = {"status": "IN_PROGRESS", "conclusion": "SUCCESS", "name": "cargo-test"}
 print(json.dumps({"statusCheckRollup": checks, "headRefOid": os.environ["VG_HEAD"]}))
 '
 }
