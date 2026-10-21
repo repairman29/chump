@@ -250,6 +250,53 @@ STUB
         ((FAILED++))
     fi
 
+    # Test 15 (CREDIBLE-1570, AC3 default-path reconciliation): with
+    # CHUMP_AMBIENT_LOG UNSET, the dead-man's write path and fleet-doctor's read
+    # path must resolve to the SAME canonical node log. Cases A-D above stub both
+    # sides onto one CHUMP_AMBIENT_LOG file — they prove the freshness logic but
+    # NOT the default wiring. This case exercises the real default end-to-end
+    # under a sandbox HOME (the standing safety-input test-seam: real code,
+    # sandbox HOME, no env override of the path): the dead-man writes its tick,
+    # then the check reads the SAME default path and goes GREEN. A regression that
+    # diverges the two defaults (the original bug: writer $HOME/.chump-locks vs
+    # reader $REPO_ROOT/.chump-locks) fails here even though Cases A-D stay green.
+    SANDBOX_HOME="$(mktemp -d)"
+    CANON_AMBIENT="$SANDBOX_HOME/chump/.chump-locks/ambient.jsonl"
+    mkdir -p "$SANDBOX_HOME/chump/.chump-locks"
+
+    # Writer: real dead-man under sandbox HOME, DRY_RUN=1 (kill-switch class —
+    # can only make it safer, never kills on the CI box), CHUMP_AMBIENT_LOG unset
+    # → it must default to $HOME/chump/.chump-locks/ambient.jsonl.
+    env -u CHUMP_AMBIENT_LOG HOME="$SANDBOX_HOME" CHUMP_DEADMAN_DRY_RUN=1 \
+        bash "$DEADMAN_SCRIPT" >/dev/null 2>&1 || true
+    if grep -q '"kind":"deadman_tick"' "$CANON_AMBIENT" 2>/dev/null; then
+        log "OK: dead-man default write path is \$HOME/chump/.chump-locks/ambient.jsonl (CHUMP_AMBIENT_LOG unset)"
+    else
+        fail "dead-man did not write deadman_tick to the canonical node log \$HOME/chump/.chump-locks/ambient.jsonl with CHUMP_AMBIENT_LOG unset (AC3 default write path)"
+        ((FAILED++))
+    fi
+
+    # Reader: real fleet-doctor check under the SAME sandbox HOME, stub systemctl
+    # active, CHUMP_AMBIENT_LOG unset → it must resolve the SAME canonical log and
+    # see the writer's tick (→ pass). Proves write/read defaults reconcile.
+    RES="$(STUB_DEADMAN_ACTIVE=1 PATH="$STUBDIR:$PATH" HOME="$SANDBOX_HOME" DOCTOR="$DOCTOR" \
+        env -u CHUMP_AMBIENT_LOG bash -c '
+            set -uo pipefail
+            export FLEET_DOCTOR_SOURCED=1
+            # shellcheck disable=SC1090
+            source "$DOCTOR"
+            CHECKS=(); STATUSES=(); DETAILS=(); REMEDIES=(); PASS_COUNT=0; FAIL_COUNT=0
+            check_load_aware_deadman
+            printf "%s\t%s\n" "${STATUSES[-1]:-}" "${DETAILS[-1]:-}"
+        ')"
+    if [[ "${RES%%$'\t'*}" == "pass" ]]; then
+        log "OK: fleet-doctor default read path matches the dead-man default write path (AC3 reconciled end-to-end)"
+    else
+        fail "fleet-doctor check did not see the dead-man's deadman_tick on the default (unset-env) path — write/read defaults diverge (AC3), got: $RES"
+        ((FAILED++))
+    fi
+    rm -rf "$SANDBOX_HOME"
+
     rm -rf "$FD_TMP"
 fi
 

@@ -1678,7 +1678,14 @@ check_node_env_no_export() {
 # The 5-minute staleness threshold is fixed, not env-tunable (it is a safety
 # input): the timer runs every 60s, so 5 minutes is five missed ticks.
 check_load_aware_deadman() {
-    local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    # CREDIBLE-1570 (AC3): read the SAME canonical node log the installed
+    # dead-man writes. The dead-man lives in ~/.local/bin and cannot know
+    # $REPO_ROOT, so it defaults to $HOME/chump/.chump-locks/ambient.jsonl; this
+    # reader must resolve identically or a healthy node false-REDs. On the main
+    # checkout $REPO_ROOT already IS $HOME/chump, so this is equivalent there and
+    # strictly more correct from a worktree. Derived from $HOME (not a CHUMP_*
+    # path env default) so a sandbox-HOME test exercises the real default.
+    local amb="${CHUMP_AMBIENT_LOG:-$HOME/chump/.chump-locks/ambient.jsonl}"
     local timer="chump-load-aware-deadman.timer"
     local stale_s=300   # 5 minutes — RED past this (AC: older than 5 minutes)
 

@@ -59,7 +59,16 @@ DRY_RUN="${CHUMP_DEADMAN_DRY_RUN:-0}"
 LOAD_STATE="$STATE_DIR/deadman-load.state"
 MEM_STATE="$STATE_DIR/deadman-mem.state"
 SSH_STATE="$STATE_DIR/deadman-ssh.state"
-AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$STATE_DIR/../.chump-locks/ambient.jsonl}"
+# Canonical node ambient log (CREDIBLE-1570, AC3): this organ is installed to
+# ~/.local/bin, so it CANNOT self-locate the repo the way in-repo organs do
+# ($SCRIPT_DIR/../.. would be $HOME). It must default to the SAME canonical node
+# log that fleet-doctor's check_load_aware_deadman reads, or every healthy node
+# false-REDs. That canonical log is $HOME/chump/.chump-locks/ambient.jsonl — the
+# repo-root log every other organ heartbeat lands in — derived from $HOME (not a
+# CHUMP_* path env default, per the standing safety-input rule) so a sandbox-HOME
+# test exercises the real default. The old $STATE_DIR/../.chump-locks default
+# resolved to $HOME/.chump-locks — a DIFFERENT directory the check never reads.
+AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$HOME/chump/.chump-locks/ambient.jsonl}"
 
 log() {
     printf '%s [load-aware-deadman] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
