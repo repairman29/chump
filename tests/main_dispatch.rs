@@ -617,3 +617,117 @@ fn node_is_paused_ignores_env_override_r7() {
         stderr(&out)
     );
 }
+
+// ── RESILIENT-1653 AC1: `chump node pause|resume` arg handling ─────────────────
+// An unknown flag is a usage error (exit 2), NEVER a pause with a default
+// reason; `--reason` without a value is exit 2; `--dry-run` makes ZERO writes.
+// These were asserted by no CI test, so the M-B (unknown-flag → default pause)
+// and M-C (--dry-run writes) mutants survived. `run()` exports
+// CHUMP_STATE_DIR = <dir>/.chump; the pause verb resolves node.env at
+// <state_dir>/node.env and the node pause sentinel at
+// node_pause::node_sentinel_path = <state_dir>/.chump/fleet-paused, i.e.
+// <dir>/.chump/node.env and <dir>/.chump/.chump/fleet-paused.
+
+#[test]
+fn node_pause_unknown_flag_exits_2_no_pause_written() {
+    // M-B: an unknown flag must be a usage error (exit 2), NEVER a silent pause
+    // with the default reason.
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump")).unwrap();
+    let out = run(dir.path(), &["node", "pause", "--bogus"]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "node pause must exit 2 on an unknown flag (stderr: {})",
+        stderr(&out)
+    );
+    // And it must NOT have paused: no node.env, no node pause sentinel written.
+    assert!(
+        !dir.path().join(".chump/node.env").exists(),
+        "an unknown flag must not write node.env"
+    );
+    assert!(
+        !dir.path().join(".chump/.chump/fleet-paused").exists(),
+        "an unknown flag must not write the node pause sentinel"
+    );
+}
+
+#[test]
+fn node_pause_reason_without_value_exits_2() {
+    // M-B variant: `--reason` with no following value is a usage error (exit 2),
+    // never a pause with a default reason.
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump")).unwrap();
+    let out = run(dir.path(), &["node", "pause", "--reason"]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "node pause --reason with no value must exit 2 (stderr: {})",
+        stderr(&out)
+    );
+    assert!(
+        !dir.path().join(".chump/node.env").exists(),
+        "a usage error must not write node.env"
+    );
+    assert!(
+        !dir.path().join(".chump/.chump/fleet-paused").exists(),
+        "a usage error must not write the node pause sentinel"
+    );
+}
+
+#[test]
+fn node_pause_dry_run_makes_zero_writes() {
+    // M-C: `--dry-run` must make ZERO writes — no node.env, no sentinel.
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump")).unwrap();
+    let out = run(dir.path(), &["node", "pause", "--dry-run"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "node pause --dry-run must exit 0 (stderr: {})",
+        stderr(&out)
+    );
+    assert!(
+        !dir.path().join(".chump/node.env").exists(),
+        "--dry-run must NOT write node.env"
+    );
+    assert!(
+        !dir.path().join(".chump/.chump/fleet-paused").exists(),
+        "--dry-run must NOT write the node pause sentinel"
+    );
+}
+
+#[test]
+fn node_resume_dry_run_leaves_pause_untouched() {
+    // M-C (resume side): `resume --dry-run` must leave node.env + the node pause
+    // sentinel exactly as they were (it must NOT flip node.env to work-ready or
+    // remove the sentinel).
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".chump/.chump")).unwrap();
+    fs::write(
+        dir.path().join(".chump/node.env"),
+        "CHUMP_NODE_MODE=paused\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join(".chump/.chump/fleet-paused"),
+        "REASON=maintenance\n",
+    )
+    .unwrap();
+    let out = run(dir.path(), &["node", "resume", "--dry-run"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "node resume --dry-run must exit 0 (stderr: {})",
+        stderr(&out)
+    );
+    let node_env = fs::read_to_string(dir.path().join(".chump/node.env")).unwrap();
+    assert!(
+        node_env.contains("CHUMP_NODE_MODE=paused"),
+        "--dry-run must NOT rewrite node.env to work-ready: {node_env:?}"
+    );
+    assert!(
+        dir.path().join(".chump/.chump/fleet-paused").exists(),
+        "--dry-run must NOT remove the node pause sentinel"
+    );
+}

@@ -220,29 +220,14 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
         // token reads 45h "stale"). Judge by CONTENT: present + non-empty +
         // plausible token shape + future expiry IF one is present. A missing /
         // empty / expired token is a genuine RED (claude -p cannot authenticate).
-        match std::fs::read_to_string(&token_path) {
-            Ok(body) => {
-                return match oauth_token_json_content_verdict(&body, now_ms()) {
-                    Some(true) => true,
-                    _ => {
-                        reasons.push(
-                            "~/.chump/oauth-token.json token is empty / malformed / expired \
-                             (claude -p has no usable CLAUDE_CODE_OAUTH_TOKEN)"
-                                .to_string(),
-                        );
-                        false
-                    }
-                };
-            }
-            Err(_) => {
-                reasons.push(
-                    "~/.chump/oauth-token.json missing (claude -p has no CLAUDE_CODE_OAUTH_TOKEN \
-                     source and no api-key / cache / free-tier / .credentials.json signal)"
-                        .to_string(),
-                );
-                return false;
-            }
-        }
+        // The raw read result is handed to a pure helper so BOTH the present-file
+        // content arm and the missing-file `Err` RED arm are unit-testable without
+        // touching the host fs/env (the M-A pin).
+        return linux_oauth_token_file_verdict(
+            std::fs::read_to_string(&token_path),
+            now_ms(),
+            reasons,
+        );
     } else if token_path.exists() {
         // macOS path UNCHANGED (RESILIENT-1636): the Keychain mirror's mtime.
         // cfg!(...) (not #[cfg]) keeps this arm compiled on every platform so
@@ -256,6 +241,48 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
 
     // No positive signal of trouble — fail-open (non-Linux, token absent).
     true
+}
+
+/// RESILIENT-1652 (task 2): pure verdict for the Linux
+/// `~/.chump/oauth-token.json` fallback — the file `claude -p` reads
+/// `CLAUDE_CODE_OAUTH_TOKEN` from on a Linux node. Takes the RAW
+/// `std::fs::read_to_string` result so BOTH arms are deterministically
+/// unit-testable without touching the host fs/env:
+///   * `Ok(body)` is judged by CONTENT via [`oauth_token_json_content_verdict`]
+///     (present + non-empty + `sk-`-shaped + future expiry ⇒ fresh); any other
+///     content is a RED (empty / malformed / expired);
+///   * `Err(_)` (missing / unreadable) is a genuine RED — `claude -p` has no
+///     `CLAUDE_CODE_OAUTH_TOKEN` source, and NOTHING above gave a signal.
+///
+/// Mirrors the inline arms it replaced byte-for-byte, including the pushed RED
+/// reasons. This is the M-A pin: the `Err` arm must return `false`, NEVER
+/// fail-open to `true`.
+fn linux_oauth_token_file_verdict(
+    read: std::io::Result<String>,
+    now_ms: i64,
+    reasons: &mut Vec<String>,
+) -> bool {
+    match read {
+        Ok(body) => match oauth_token_json_content_verdict(&body, now_ms) {
+            Some(true) => true,
+            _ => {
+                reasons.push(
+                    "~/.chump/oauth-token.json token is empty / malformed / expired \
+                     (claude -p has no usable CLAUDE_CODE_OAUTH_TOKEN)"
+                        .to_string(),
+                );
+                false
+            }
+        },
+        Err(_) => {
+            reasons.push(
+                "~/.chump/oauth-token.json missing (claude -p has no CLAUDE_CODE_OAUTH_TOKEN \
+                 source and no api-key / cache / free-tier / .credentials.json signal)"
+                    .to_string(),
+            );
+            false
+        }
+    }
 }
 
 /// RESILIENT-1652 (task 2): pure CONTENT verdict for the Linux
@@ -1113,6 +1140,45 @@ mod tests {
             oauth_token_json_content_verdict(r#"{"claudeAiOauth":{"accessToken":"sk-ant-x"}}"#, 1),
             Some(true)
         );
+    }
+
+    #[test]
+    fn linux_missing_oauth_token_reds() {
+        // RESILIENT-1652 (task 2): on a Linux node `~/.chump/oauth-token.json` IS
+        // the credential `claude -p` reads CLAUDE_CODE_OAUTH_TOKEN from; a MISSING
+        // file (and no api-key / cache / free-tier / .credentials.json signal
+        // above) is a genuine RED, NOT a fail-open green. Pins the M-A mutant: the
+        // `Err(_)` arm in the Linux fallback must return false, never true.
+        let mut reasons = Vec::new();
+        let missing =
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no such file or directory");
+        assert!(
+            !linux_oauth_token_file_verdict(Err(missing), now_ms(), &mut reasons),
+            "a missing oauth-token.json must RED — claude -p has no token source"
+        );
+        assert!(
+            reasons.iter().any(|r| r.contains("missing")),
+            "the RED reason must explain the token is missing: {reasons:?}"
+        );
+        // A present, valid env token still reads fresh through the SAME helper
+        // (so the refactor is behaviour-identical, not a one-way RED).
+        reasons.clear();
+        assert!(
+            linux_oauth_token_file_verdict(
+                Ok(r#"{"token":"sk-ant-oat01-x"}"#.to_string()),
+                1,
+                &mut reasons
+            ),
+            "a present, sk-shaped token must read fresh"
+        );
+        assert!(reasons.is_empty(), "a fresh token pushes no reason");
+        // A present-but-empty token reds through the content verdict (not the
+        // missing-file arm).
+        assert!(!linux_oauth_token_file_verdict(
+            Ok(r#"{"token":""}"#.to_string()),
+            1,
+            &mut reasons
+        ));
     }
 
     // ── RESILIENT-1636: paused-node reporting ────────────────────────────────
