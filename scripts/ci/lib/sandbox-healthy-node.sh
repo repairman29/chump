@@ -30,14 +30,43 @@
 #   - CHUMP_STATE_DIR equals <argument>/.chump — the node.env the gate reads
 #     resolves from CHUMP_STATE_DIR, so an inherited/re-pointed CHUMP_STATE_DIR
 #     (F2) must never be treated as "the sandbox";
-#   - neither the sandbox leaf nor its .chump leaf is a symlink (F4) — an
-#     ancestor symlink (macOS /var→/private/var under mktemp) is fine, so this
-#     checks the leaf with -L, not a full pwd -P equality that would falsely
-#     refuse every macOS sandbox.
+#   - neither the sandbox leaf nor its .chump leaf is a symlink (F4/F4b) — the
+#     leaf is resolved with pwd -P (see _sandbox_leaf_is_symlink): trailing
+#     slashes are stripped, a "."/".." leaf is rejected, and the physical leaf
+#     (cd + pwd -P) is compared against the physical PARENT (cd + pwd -P) plus
+#     the leaf basename. That compares only the LEAF against the symlink, so an
+#     ancestor symlink (macOS /var→/private/var under mktemp) is fine — both
+#     sides resolve the same parent — while a symlinked leaf passed as "L", "L/"
+#     or "L/." (forms a bare `-L` would FOLLOW and miss) is caught.
 #
 # Usage (AFTER chump_test_sandbox_setup "$SANDBOX"):
 #   source "$REPO_ROOT/scripts/ci/lib/sandbox-healthy-node.sh"
 #   write_sandbox_healthy_node "$SANDBOX"
+
+# _sandbox_leaf_is_symlink <path> — true (0) when the FINAL path component is a
+# symlink, resolving robustly so trailing-slash / "L/." forms can't slip past.
+# A bare `-L "$p"` FOLLOWS a trailing slash ("L/") or a "L/." form and so misses
+# a symlinked leaf; this strips trailing slashes, refuses a "."/".." leaf
+# (unverifiable), then compares the physical leaf (cd + pwd -P, which resolves a
+# symlinked leaf to its target) against <physical-parent>/<leaf>. Returns 0
+# (treat as unsafe) when the leaf is a symlink, is "."/"..", or when either dir
+# cannot be entered; returns 1 ONLY for a plain real dir whose physical path is
+# exactly <physical-parent>/<leaf> (so an ancestor symlink is NOT a false hit).
+_sandbox_leaf_is_symlink() {
+    local path="$1"
+    # strip trailing slashes (keep a bare "/" intact)
+    while [ "${path%/}" != "$path" ] && [ -n "${path%/}" ]; do path="${path%/}"; done
+    local leaf
+    leaf="$(basename -- "$path")"
+    case "$leaf" in
+        .|..|/) return 0 ;;   # a "."/".." leaf can't be verified → unsafe
+    esac
+    local parent_phys leaf_phys
+    parent_phys="$(cd "$(dirname -- "$path")" 2>/dev/null && pwd -P)" || return 0
+    leaf_phys="$(cd "$path" 2>/dev/null && pwd -P)" || return 0
+    [ "$leaf_phys" != "$parent_phys/$leaf" ]
+}
+
 write_sandbox_healthy_node() {
     local sandbox="${1:-}"
     local refuse=""
@@ -51,8 +80,10 @@ record this dir — call chump_test_sandbox_setup first (dir did not come from t
     elif [ "${CHUMP_STATE_DIR:-}" != "$sandbox/.chump" ]; then
         refuse="CHUMP_STATE_DIR ('${CHUMP_STATE_DIR:-}') is not <sandbox>/.chump — \
 the gate's node.env would resolve elsewhere"
-    elif [ -L "$sandbox" ] || [ -L "$sandbox/.chump" ]; then
-        refuse="sandbox or its .chump is a symlink — refusing to write through it"
+    elif _sandbox_leaf_is_symlink "$sandbox"; then
+        refuse="the sandbox leaf is a symlink (pwd -P resolved) — refusing to write through it"
+    elif _sandbox_leaf_is_symlink "$sandbox/.chump"; then
+        refuse="the .chump leaf is a symlink (pwd -P resolved) — refusing to write through it"
     fi
     if [ -n "$refuse" ]; then
         echo "[sandbox-healthy-node] REFUSING (exit 2): $refuse" >&2
