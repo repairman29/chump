@@ -88,7 +88,7 @@ mkdir -p "$FIX/scripts/ci" "$FIX/scripts/coord" "$FIX/scripts/dispatch" \
 cat > "$FIX/scripts/coord/fk-ok-closer.sh" <<'FK'
 #!/usr/bin/env bash
 set -euo pipefail
-gh pr list --state merged --json number,title --jq '.[].number' | while read -r num; do
+command gh pr list --state merged --json number,title --jq '.[].number' | while read -r num; do
     # Parse the title only for a human-readable log line (display, not close).
     title="$(gh pr view "$num" --json title --jq '.title')"
     echo "processing PR #$num ($title)"
