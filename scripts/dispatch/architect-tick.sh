@@ -154,7 +154,8 @@ filter_carried() {
         # whitelist: keep only safe characters (the `-` is last so it is not a range).
         val="$(printf '%s' "$val" | LC_ALL=C tr -cd 'A-Za-z0-9 .,:=/+_%#-')"
         lc="${val,,}"
-        if [[ "$lc" == *"gh pr merge"* || "$lc" == *"--admin"* || "$lc" == *"no-verify"* \
+        if [[ "$lc" == *"gh pr merge"* || "$lc" == *"no-verify"* \
+           || "$lc" == *"--admin"* \
            || "$lc" == *"git push"* || "$lc" == *"arm-policy"* || "$lc" == *"--auto"* \
            || "$lc" == *"bot-merge"* || "$lc" == *"_skip"* || "$lc" == *"_bypass"* \
            || "$lc" == *"chump_"* || "$lc" == *"oauth"* || "$lc" == *"_token"* \
