@@ -74,6 +74,14 @@
 #                        CHUMP_MAX_CONCURRENT_CARGO_JOBS: env > node.env >
 #                        max(1, nproc/2), the src/admit.rs precedence). Counts
 #                        with the same pgrep -f patterns `chump admit` uses.
+#   21. cargo-storage   — RESILIENT-1670 (RESILIENT-1657 item a'): RED when
+#                        readlink -f of CARGO_HOME, CARGO_TARGET_DIR or the
+#                        sccache dir lands on a block device whose `lsblk -no
+#                        TRAN` is `usb` or whose RM (removable) flag is 1 — the
+#                        closetjunky failure mode where ~/.cargo + the build
+#                        target lived on a USB flash stick and writeback stalls
+#                        wedged the whole node. Each path on a fixed disk, or
+#                        absent, passes.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
@@ -1668,6 +1676,241 @@ check_node_env_no_export() {
     fi
 }
 
+# ── Check 21 (CREDIBLE-1568/1570): load-aware dead-man installed + alive ──────
+# RESILIENT-1611's node-level dead-man was "shipped != installed" (code-on-disk
+# on zero nodes) AND silent when healthy (nothing could prove it alive). This
+# check closes both: RED when chump-load-aware-deadman.timer is missing/inactive
+# on a systemd host, OR when the last deadman_tick heartbeat in ambient.jsonl is
+# older than 5 minutes — so a node that lacks the organ, or whose dead-man has
+# gone dark, is a paged/observable condition instead of a silent hole.
+# The 5-minute staleness threshold is fixed, not env-tunable (it is a safety
+# input): the timer runs every 60s, so 5 minutes is five missed ticks.
+check_load_aware_deadman() {
+    # CREDIBLE-1570 (AC3): read the SAME canonical node log the installed
+    # dead-man writes. The dead-man lives in ~/.local/bin and cannot know
+    # $REPO_ROOT, so it defaults to $HOME/chump/.chump-locks/ambient.jsonl; this
+    # reader must resolve identically or a healthy node false-REDs. On the main
+    # checkout $REPO_ROOT already IS $HOME/chump, so this is equivalent there and
+    # strictly more correct from a worktree. Derived from $HOME (not a CHUMP_*
+    # path env default) so a sandbox-HOME test exercises the real default.
+    local amb="${CHUMP_AMBIENT_LOG:-$HOME/chump/.chump-locks/ambient.jsonl}"
+    local timer="chump-load-aware-deadman.timer"
+    local stale_s=300   # 5 minutes — RED past this (AC: older than 5 minutes)
+
+    # Non-systemd node legitimately has no timer — not applicable, skip.
+    if ! command -v systemctl >/dev/null 2>&1; then
+        register_check "load-aware-deadman" "skip" "systemctl unavailable — not a systemd host, dead-man not applicable" ""
+        return
+    fi
+
+    # 1. Timer must be installed and active.
+    if ! systemctl --user is-active --quiet "$timer" 2>/dev/null; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer missing or inactive — the RESILIENT-1611 node dead-man is not installed/running on this node (shipped != installed)" \
+            "bash scripts/setup/install-load-aware-deadman.sh; systemctl --user status $timer"
+        return
+    fi
+
+    # 2. Heartbeat must be fresh (newest deadman_tick within $stale_s).
+    if [[ ! -f "$amb" ]]; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but no ambient.jsonl at $amb to read a deadman_tick heartbeat from — cannot prove the dead-man is alive" \
+            "ls -l $amb; systemctl --user status $timer"
+        return
+    fi
+    local tick_line ts last_tick
+    tick_line="$(grep '"kind":"deadman_tick"' "$amb" 2>/dev/null | tail -1 || true)"
+    if [[ -z "$tick_line" ]]; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but no deadman_tick heartbeat ever seen in $amb — the dead-man is not emitting its liveness signal" \
+            "journalctl --user -u $timer --no-pager | tail; systemctl --user status $timer"
+        return
+    fi
+    ts="$(printf '%s' "$tick_line" | grep -oE '"ts":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    last_tick="$(date -u -d "$ts" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s 2>/dev/null || echo 0)"
+    if [[ -z "$last_tick" || "$last_tick" -eq 0 ]]; then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but the newest deadman_tick timestamp ('$ts') could not be parsed — heartbeat freshness unknown" \
+            "tail $amb; journalctl --user -u $timer --no-pager | tail"
+        return
+    fi
+    local now_ts age
+    now_ts="$(date -u +%s)"
+    age=$(( now_ts - last_tick ))
+    if (( age >= stale_s )); then
+        register_check "load-aware-deadman" "fail" \
+            "$timer active but last deadman_tick was ${age}s ago (threshold ${stale_s}s) — the dead-man has gone dark (heartbeat stale)" \
+            "journalctl --user -u $timer --no-pager | tail; systemctl --user restart $timer"
+        return
+    fi
+    register_check "load-aware-deadman" "pass" \
+        "$timer active, last deadman_tick ${age}s ago (threshold ${stale_s}s)" ""
+}
+
+# ── Check 22 (CREDIBLE-1602): ONE canonical gap store per node ────────────────
+# cuphead 2026-10-21 carried THREE live state.db on one node (the 41MB store the
+# architect+reconciler actually wrote, a stale ~/.chump Oct-19 store, and the
+# node clone's stale Oct-10 store). The review organ, resolving its store from
+# the node-checkout cwd, shipped a gap against the WRONG one and failed. A node
+# must carry exactly ONE live gap store (PHASE-R R4). A store that has been
+# RETIRED is renamed aside and marked with a CHUMP_STORE_ARCHIVED marker in its
+# .chump dir (scripts/coord/archive-stale-gap-store.sh); a marked archive does
+# NOT count. A worktree's .chump/state.db SYMLINK into the canonical checkout is
+# not a separate store and never counts (only real files are counted). Scanned
+# from $HOME — NOT a CHUMP_* path env, so a sandbox-HOME test exercises the real
+# default; the ephemeral/cache/backup trees under $HOME are pruned so test
+# fixtures under ~/tmp never false-RED a node.
+check_single_store() {
+    if ! command -v find >/dev/null 2>&1; then
+        register_check "single-store" "skip" "find unavailable — cannot scan for node gap stores" ""
+        return
+    fi
+    local scan_root="$HOME"
+    if [[ -z "$scan_root" || ! -d "$scan_root" ]]; then
+        register_check "single-store" "skip" "\$HOME ('$scan_root') is not a directory — cannot scan for node gap stores" ""
+        return
+    fi
+    local -a stores=()
+    local f d
+    # Real files named state.db at */.chump/state.db, bounded to depth 4 (reaches
+    # ~/.chump, ~/<repo>/.chump, ~/.chumpnode/repo/.chump) with the ephemeral
+    # trees pruned. -type f excludes worktree symlinks; the per-file loop then
+    # drops any store sitting next to a CHUMP_STORE_ARCHIVED marker.
+    while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        d="$(dirname "$f")"
+        [[ -e "$d/CHUMP_STORE_ARCHIVED" ]] && continue
+        stores+=("$f")
+    done < <(find "$scan_root" -maxdepth 4 \
+        \( -type d \( -name tmp -o -name '.cache' -o -name 'node_modules' -o -name '*-backup' -o -name '.cargo' -o -name '.rustup' \) -prune \) -o \
+        \( -type f -name state.db -path '*/.chump/state.db' -print \) 2>/dev/null)
+    local n="${#stores[@]}"
+    if (( n > 1 )); then
+        register_check "single-store" "fail" \
+            "node has $n live gap stores (must be exactly ONE): $(printf '%s;' "${stores[@]}") — split-brain: a process that resolves its store from cwd/node.env can ship a gap against the wrong one (CREDIBLE-1602)" \
+            "keep the canonical store; retire each extra with: scripts/coord/archive-stale-gap-store.sh <path> --reason <why> --canonical <canonical-store>  (renames it aside + writes the CHUMP_STORE_ARCHIVED marker this check honors)"
+    else
+        register_check "single-store" "pass" \
+            "exactly $n live gap store(s) on this node (0 or 1 is healthy; CHUMP_STORE_ARCHIVED-marked archives and symlinked worktree stores are not counted)" ""
+    fi
+}
+
+# Helper for check_cargo_storage_fixed_disk: pull one KEY="value" field out of a
+# single `lsblk -Pno` pairs line (pairs mode is alignment-safe even when a
+# column such as a partition's TRAN is empty).
+_fd_pairs_val() {
+    # $1 = key, $2 = pairs line. Prepend a space and require one before the key
+    # so PKNAME="" does not satisfy a lookup for NAME (substring collision).
+    printf ' %s\n' "$2" | sed -n "s/.* ${1}=\"\\([^\"]*\\)\".*/\\1/p"
+}
+
+# ── Check 21 (RESILIENT-1670 / RESILIENT-1657 item a'): cargo + sccache storage
+# must sit on a fixed disk, never a removable or USB-transport block device ───
+# closetjunky wedged three times in five days because its ENTIRE ~/.cargo
+# (CARGO_HOME) and the 25G build target lived on a 32G USB flash stick
+# (readlink -f ~/.cargo = /mnt/cjdata1/cargo; lsblk TRAN=usb, RM=1). Every
+# cargo build streamed gigabytes of random writes to a thumb drive, writeback
+# backed up past vm.dirty_ratio, every writer blocked in D state, sshd and
+# tailscaled stalled, and the node "died" with no OOM. This invariant catches
+# that class before the node wedges: CARGO_HOME, CARGO_TARGET_DIR and the
+# sccache dir must each resolve (readlink -f) to a fixed device or not exist at
+# all — never to a device whose `lsblk -no TRAN` is `usb` or whose RM flag is 1.
+#
+# Uses only readlink + lsblk (no df/findmnt), so the ci test stubs exactly those
+# two commands via PATH. Path→device mapping is a longest-mountpoint-prefix
+# match against the `lsblk -P` table; TRAN is a whole-disk property, so a
+# matched partition's parent (PKNAME) row is consulted for transport.
+check_cargo_storage_fixed_disk() {
+    if ! command -v lsblk >/dev/null 2>&1; then
+        register_check "cargo-storage" "skip" \
+            "lsblk not available (not a Linux block-device host)" ""
+        return
+    fi
+
+    # The three real cargo/sccache paths, by their genuine env names + cargo
+    # defaults. These are the audited inputs themselves, not a test seam.
+    local cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+    local specs=("CARGO_HOME=$cargo_home")
+    [[ -n "${CARGO_TARGET_DIR:-}" ]] && specs+=("CARGO_TARGET_DIR=$CARGO_TARGET_DIR")
+    specs+=("SCCACHE_DIR=${SCCACHE_DIR:-$HOME/.cache/sccache}")
+
+    # One block-device snapshot (pairs mode = alignment-safe with empty columns).
+    local table
+    table="$(lsblk -Pno NAME,PKNAME,TRAN,RM,MOUNTPOINT 2>/dev/null || true)"
+
+    local offenders="" checked="" spec label path resolved
+    for spec in "${specs[@]}"; do
+        label="${spec%%=*}"
+        path="${spec#*=}"
+        [[ -z "$path" ]] && continue
+        # Absent is explicitly fine (AC 5: "resolve to the internal SSD or absent").
+        [[ -e "$path" ]] || { checked="$checked ${label}:absent"; continue; }
+        resolved="$(readlink -f "$path" 2>/dev/null || printf '%s' "$path")"
+
+        # Longest-mountpoint-prefix match against the block-device table.
+        local best_mnt="" best_name="" best_pk="" best_rm="" best_tran=""
+        local line mnt
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            mnt="$(_fd_pairs_val MOUNTPOINT "$line")"
+            [[ -z "$mnt" || "$mnt" == "[SWAP]" ]] && continue
+            # ${mnt%/} strips a trailing slash so the root mount "/" yields the
+            # glob "/*" (matches any absolute path) instead of "//*" (matches none).
+            if [[ "$resolved" == "$mnt" || "$resolved" == "${mnt%/}"/* ]]; then
+                if (( ${#mnt} > ${#best_mnt} )); then
+                    best_mnt="$mnt"
+                    best_name="$(_fd_pairs_val NAME "$line")"
+                    best_pk="$(_fd_pairs_val PKNAME "$line")"
+                    best_rm="$(_fd_pairs_val RM "$line")"
+                    best_tran="$(_fd_pairs_val TRAN "$line")"
+                fi
+            fi
+        done <<< "$table"
+
+        if [[ -z "$best_name" ]]; then
+            # No block device claims this path (tmpfs/overlay/unknown) — can't
+            # prove it removable, so don't fail on it.
+            checked="$checked ${label}:unknown-dev"
+            continue
+        fi
+
+        # TRAN lives on the whole disk; a matched partition's parent (PKNAME)
+        # row carries the transport (and the removable flag).
+        local tran="$best_tran" disk="$best_name" pline pname prm
+        if [[ -n "$best_pk" ]]; then
+            disk="$best_pk"
+            while IFS= read -r pline; do
+                [[ -z "$pline" ]] && continue
+                pname="$(_fd_pairs_val NAME "$pline")"
+                if [[ "$pname" == "$best_pk" ]]; then
+                    tran="$(_fd_pairs_val TRAN "$pline")"
+                    prm="$(_fd_pairs_val RM "$pline")"
+                    [[ "$prm" == "1" ]] && best_rm="1"
+                    break
+                fi
+            done <<< "$table"
+        fi
+
+        if [[ "$tran" == "usb" || "$best_rm" == "1" ]]; then
+            local flags=""
+            [[ "$tran" == "usb" ]] && flags="TRAN=usb"
+            [[ "$best_rm" == "1" ]] && flags="${flags:+$flags,}RM=1"
+            offenders="$offenders ${label}=${path} (readlink -f=${resolved}, /dev/${disk}, ${flags})"
+        else
+            checked="$checked ${label}:/dev/${disk}(fixed)"
+        fi
+    done
+
+    if [[ -n "$offenders" ]]; then
+        register_check "cargo-storage" "fail" \
+            "cargo/sccache storage on a removable or USB device (RESILIENT-1657 item a'):$offenders" \
+            "move CARGO_HOME, CARGO_TARGET_DIR and the sccache dir onto an internal/fixed disk and retire the removable media; on closetjunky ~/.cargo belongs on the SSD and target+sccache must not live on the USB sticks"
+    else
+        register_check "cargo-storage" "pass" \
+            "cargo/sccache storage on a fixed disk or absent:${checked:- (none set)}" ""
+    fi
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -1698,6 +1941,9 @@ check_fetch_refspec_single_branch
 check_second_scope
 check_admission_ceiling
 check_node_env_no_export
+check_load_aware_deadman
+check_single_store
+check_cargo_storage_fixed_disk
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

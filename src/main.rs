@@ -174,6 +174,7 @@ mod interrupt_notify;
 mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an autonomy defect
 mod introspect_tool;
 mod node_mode; // RESILIENT-1614: node pause/resume commands (enforce paused mode as invariant)
+mod node_pause; // RESILIENT-1652/1653: the ONE paused predicate (farmer gate + pause detector)
 mod scan; // INFRA-1882: chump scan <repo-path> — repo takeover opener (2026 demo #2)
 pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
@@ -1668,7 +1669,10 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("node")
         && !matches!(
             args.get(2).map(String::as_str),
-            Some("pause") | Some("resume")
+            // RESILIENT-1652/1653: `is-paused` is the node-mode read verb, handled
+            // by the pause/resume block below — NOT chump_provision. Exclude it
+            // here or it would hit the provision CLI and exit 2 as unknown.
+            Some("pause") | Some("resume") | Some("is-paused")
         )
     {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
@@ -2312,18 +2316,46 @@ async fn main() -> Result<()> {
             }
         };
 
-        // RESILIENT-069: farmer readiness gate — admit no NEW (valid) claims
-        // until the farmer is lights-on again. Runs AFTER format validation
-        // (CREDIBLE-291) so a farmer blip never masks a bad-request error.
+        // RESILIENT-069 + RESILIENT-1636: farmer readiness gate. Admit no NEW
+        // claims until the farmer is lights-on — BUT do not re-gate the ship
+        // step of work a dispatch/chain lane already claimed. bot-merge
+        // re-invokes `chump claim` to re-enter the worktree whose lease the
+        // dispatch already holds; on a paused node that re-claim used to die at
+        // the gate (every dispatch shipped only via salvage). The admission
+        // decision (re-entry vs NEW claim) lives in Rust (R6 invariant), keyed
+        // on a live lease for (gap, CHUMP_SESSION_ID). Runs AFTER format
+        // validation (CREDIBLE-291) so a farmer blip never masks a bad-request.
         if !farmer_gate_bypass {
-            let fs = farmer_status::compute(&repo_root);
-            if !fs.green {
-                eprintln!("chump claim: farmer status RED — no new claims admitted.");
-                for r in &fs.reasons {
-                    eprintln!("  - {r}");
+            let env_session = std::env::var("CHUMP_SESSION_ID").ok();
+            match farmer_status::claim_admission(
+                &repo_root,
+                &claim_args.gap_id,
+                env_session.as_deref(),
+            ) {
+                farmer_status::ClaimAdmission::Green => {}
+                farmer_status::ClaimAdmission::ReentryAdmit { note } => {
+                    // Print to STDOUT so bot-merge / `chump dispatch` can surface
+                    // the admission reason (AC: bot-merge prints to stdout).
+                    println!("chump claim: {note}");
                 }
-                eprintln!("Run `chump farmer status` for detail. Bypass: --skip-farmer-gate");
-                std::process::exit(1);
+                farmer_status::ClaimAdmission::Refuse { status } => {
+                    // Print the refusal reason to BOTH stdout (so bot-merge /
+                    // `chump dispatch` carry it in their reason field) and stderr.
+                    let header = if status.paused {
+                        "chump claim: farmer PAUSED — no new claims admitted."
+                    } else {
+                        "chump claim: farmer status RED — no new claims admitted."
+                    };
+                    println!("{header}");
+                    eprintln!("{header}");
+                    for r in &status.reasons {
+                        println!("  - {r}");
+                        eprintln!("  - {r}");
+                    }
+                    println!("Run `chump farmer status` for detail.");
+                    eprintln!("Run `chump farmer status` for detail. Bypass: --skip-farmer-gate");
+                    std::process::exit(1);
+                }
             }
         }
         match atomic_claim::run_claim(claim_args) {
@@ -3491,35 +3523,94 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("node") {
         let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
 
-        if subcmd == "--help" || subcmd == "help" || subcmd == "-h" {
-            println!("Usage: chump node pause --reason \"<reason>\"");
-            println!("       chump node resume");
+        // RESILIENT-1653: one usage printer shared by `node --help`, `node pause
+        // --help`, and `node resume --help`. --help/--dry-run make ZERO writes.
+        let print_node_usage = || {
+            println!("Usage: chump node pause [--reason \"<reason>\"] [--dry-run]");
+            println!("       chump node resume [--dry-run]");
+            println!("       chump node is-paused   (exit 0 paused, 1 not paused; no writes)");
             println!();
             println!("Pause and resume the node. When paused, work organs (node-converge,");
             println!("organ-reconcile, organ-deploy, paramedic, process-organ-heal,");
             println!("self-doctor, worker loop) check the mode first and exit 0 without");
             println!("installing, enabling, or restarting anything.");
             println!();
-            println!("Pause writes CHUMP_NODE_MODE=paused to node.env + a .chump/fleet-paused");
-            println!("sentinel with reason and actor, then emits kind=node_paused.");
+            println!("Pause writes CHUMP_NODE_MODE=paused to node.env, writes the node pause");
+            println!("sentinel <state_dir>/.chump/fleet-paused (carrying REASON=), and emits");
+            println!("kind=node_paused. That node sentinel is a DIFFERENT file from the");
+            println!("ci-health-gate kill switch <repo>/.chump/fleet-paused (a HARD RED), so a");
+            println!("verb-paused node still ships already-claimed work (RESILIENT-1652/1653).");
             println!();
-            println!("Resume reverses it: writes CHUMP_NODE_MODE=work-ready, removes the");
-            println!("sentinel, and emits kind=node_resumed.");
+            println!("Resume writes CHUMP_NODE_MODE=work-ready, removes the node pause sentinel,");
+            println!("and emits kind=node_resumed.");
+            println!();
+            println!("--help prints this; --dry-run makes no writes.");
             println!();
             println!("Examples:");
             println!("  chump node pause --reason \"maintenance window\"");
             println!("  chump node resume");
+        };
+
+        if subcmd == "--help" || subcmd == "help" || subcmd == "-h" {
+            print_node_usage();
             return Ok(());
         }
 
         match subcmd {
             "pause" => {
-                let reason = args
+                // RESILIENT-1653 AC1: --help prints usage (zero writes); an
+                // unknown flag is a usage error (exit 2), NEVER a pause with a
+                // default reason; --dry-run makes no writes.
+                let rest = &args[3..];
+                if rest
                     .iter()
-                    .position(|a| a == "--reason")
-                    .and_then(|i| args.get(i + 1))
-                    .map(|s| s.as_str())
-                    .unwrap_or("operator requested");
+                    .any(|a| a == "--help" || a == "-h" || a == "help")
+                {
+                    print_node_usage();
+                    return Ok(());
+                }
+                let mut reason: Option<String> = None;
+                let mut dry_run = false;
+                let mut i = 0;
+                while i < rest.len() {
+                    match rest[i].as_str() {
+                        "--dry-run" => {
+                            dry_run = true;
+                            i += 1;
+                        }
+                        "--reason" => match rest.get(i + 1) {
+                            Some(v) if !v.starts_with("--") => {
+                                reason = Some(v.clone());
+                                i += 2;
+                            }
+                            _ => {
+                                eprintln!("chump node pause: --reason requires a value");
+                                eprintln!(
+                                    "Usage: chump node pause [--reason \"<reason>\"] [--dry-run]"
+                                );
+                                std::process::exit(2);
+                            }
+                        },
+                        other => {
+                            eprintln!("chump node pause: unknown flag '{other}'");
+                            eprintln!(
+                                "Usage: chump node pause [--reason \"<reason>\"] [--dry-run]"
+                            );
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                let reason = reason.unwrap_or_else(|| "operator requested".to_string());
+                let reason = reason.as_str();
+                if dry_run {
+                    println!("[dry-run] would pause node with reason: {reason}");
+                    println!(
+                        "[dry-run] would set CHUMP_NODE_MODE=paused in node.env, write the node \
+                         pause sentinel <state_dir>/.chump/fleet-paused (REASON=), and emit \
+                         kind=node_paused (NOT the <repo>/.chump kill switch; no writes performed)"
+                    );
+                    return Ok(());
+                }
 
                 let state = match node_mode::NodeModeState::new(None) {
                     Ok(s) => s,
@@ -3560,6 +3651,36 @@ async fn main() -> Result<()> {
                 }
             }
             "resume" => {
+                // RESILIENT-1653 AC1: --help prints usage (zero writes); an
+                // unknown flag is a usage error (exit 2); --dry-run makes no
+                // writes. resume takes no positional args or --reason.
+                let rest = &args[3..];
+                if rest
+                    .iter()
+                    .any(|a| a == "--help" || a == "-h" || a == "help")
+                {
+                    print_node_usage();
+                    return Ok(());
+                }
+                let mut dry_run = false;
+                for a in rest {
+                    match a.as_str() {
+                        "--dry-run" => dry_run = true,
+                        other => {
+                            eprintln!("chump node resume: unknown flag '{other}'");
+                            eprintln!("Usage: chump node resume [--dry-run]");
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                if dry_run {
+                    println!(
+                        "[dry-run] would resume node: set CHUMP_NODE_MODE=work-ready in \
+                         node.env and emit kind=node_resumed (no writes performed)"
+                    );
+                    return Ok(());
+                }
+
                 let state = match node_mode::NodeModeState::new(None) {
                     Ok(s) => s,
                     Err(e) => {
@@ -3584,9 +3705,51 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            "is-paused" => {
+                // RESILIENT-1652/1653 (task 3): a READ-ONLY predicate verb —
+                // exit 0 = paused, exit 1 = not paused, NO writes. node-converge's
+                // `_nc_paused` calls this so the shell honours the ONE Rust
+                // predicate instead of its own divergent rule. --help prints
+                // usage (exit 0); any other flag is a usage error (exit 2) so it
+                // is never confused with the 0/1 pause verdict.
+                let rest = &args[3..];
+                // CREDIBLE-015: keep the help detection off a single
+                // `--help || … help` line (use matches!, no `||`) so the
+                // unknown-flag error eprintln below — a legitimate stderr error
+                // path — isn't misread by the help-consistency heuristic as a
+                // --help block that should use println.
+                let wants_help = rest
+                    .iter()
+                    .any(|a| matches!(a.as_str(), "--help" | "-h" | "help"));
+                if wants_help {
+                    print_node_usage();
+                    return Ok(());
+                }
+                if let Some(bad) = rest.iter().find(|a| a.starts_with('-')) {
+                    eprintln!("chump node is-paused: unknown flag '{bad}'");
+                    eprintln!("Usage: chump node is-paused   (exit 0 paused, 1 not paused)");
+                    std::process::exit(2);
+                }
+                let state = match node_mode::NodeModeState::new(None) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("chump node is-paused: {e:#}");
+                        std::process::exit(2);
+                    }
+                };
+                match state.is_paused() {
+                    Ok(true) => std::process::exit(0),
+                    Ok(false) => std::process::exit(1),
+                    Err(e) => {
+                        eprintln!("chump node is-paused: {e:#}");
+                        std::process::exit(2);
+                    }
+                }
+            }
             _ => {
-                eprintln!("Usage: chump node pause --reason \"<reason>\"");
-                eprintln!("       chump node resume");
+                eprintln!("Usage: chump node pause [--reason \"<reason>\"] [--dry-run]");
+                eprintln!("       chump node resume [--dry-run]");
+                eprintln!("       chump node is-paused");
                 std::process::exit(2);
             }
         }

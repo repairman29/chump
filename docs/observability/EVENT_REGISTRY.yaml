@@ -5285,14 +5285,17 @@ events:
   # ── CREDIBLE-1550: merged-PR-LINK closure (typed gap_prs FK, queue-drain) ───
   - kind: gap_closed_from_merged_pr
     effect_metric: self
-    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-links (CREDIBLE-1550)
-    trigger: open gap that a typed gap_prs row links to a MERGED PR
-      but whose canonical state.db row was never flipped to done (closed_pr NULL)
-      — the async-merge ghost class that --check-closure-drift (needs closed_pr)
-      and --check-already-satisfied (no-op cycle-log signal only) both miss.
-      CREDIBLE-1550 (Phase R R2) replaced the former PR-title match with the
-      gap_prs FK as the ONLY closure proof (a title falsely closed CREDIBLE-1492
-      from a docs PR and CREDIBLE-1520 from its AC1-only slice).
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-links
+      (gap_prs FK pass, CREDIBLE-1550; head-branch pass, CREDIBLE-1598)
+    trigger: open gap that a MERGED PR covers but whose canonical state.db row was
+      never flipped to done (closed_pr NULL) — the async-merge ghost class that
+      --check-closure-drift (needs closed_pr) and --check-already-satisfied (no-op
+      cycle-log signal only) both miss. Two closure proofs, both non-title —
+      CREDIBLE-1550 banned the PR-title match after a title falsely closed
+      CREDIBLE-1492 from a docs PR and CREDIBLE-1520 from its AC1-only slice. The
+      proofs are the typed gap_prs FK (via field absent) and, as a backstop for a
+      merge that never wrote the FK, the PR's lane HEAD BRANCH
+      (via=head_branch, CREDIBLE-1598).
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
   # ── CREDIBLE-1552: fail-closed + report-only companions (PARTIAL heuristic
@@ -6452,6 +6455,26 @@ events:
       uses a much larger budget (default 600s) because a full test run
       legitimately takes minutes.
 
+  # ── RESILIENT-1668 (RESILIENT-1656 slice): refs/stash-only fast path ──────
+  - kind: prepush_stash_only
+    effect_metric: resilient
+    emitter: scripts/git-hooks/pre-push refs/stash-only fast path (RESILIENT-1668)
+    trigger: a push whose every updated ref is under refs/stash/ (decided from
+      the hook's stdin ref list alone) — the fmt/clippy/test and branch/claim
+      guards are skipped, and only the origin-protecting scans (secret,
+      report-only publish-guard, large-file) run
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, refs, scans]
+    docs: |
+      refs is a comma-joined list of the refs/stash/* remote refs in the
+      push; scans lists the origin-protecting scans that still ran. The fast
+      path is decided SOLELY from the pushed refspec — no env var can enable
+      it for a branch push (RESILIENT-1656 AC5). A secret or an over-100-MiB
+      blob in the stash content still refuses the push; the publish-guard is
+      report-only. Emitted from git-hooks/, which is outside the event-registry
+      coverage scanner's PROD_PATHS, so it is also listed in
+      scripts/ci/event-registry-reserved.txt.
+
   # ── INFRA-1372: pre-push HEAD-drift detection ─────────────────────────────
   - kind: prepush_head_drift
     effect_metric: resilient
@@ -7190,15 +7213,18 @@ events:
   - kind: cargo_target_reaped
     effect_metric: self
     emitter: >
-      scripts/ops/cargo-target-reaper.sh (INFRA-1250 + INFRA-1170 + RESILIENT-1620)
+      scripts/ops/cargo-target-reaper.sh (INFRA-1250 + INFRA-1170 + RESILIENT-1620 + RESILIENT-1635)
     trigger: >
       cargo-target-reaper.sh reaped a stale fingerprint dir, rlib, fleet
       target directory, or an orphaned /tmp/chump-*/target/ whose originating
       git worktree is no longer registered. RESILIENT-1620 Class D (class:"D")
       reaps target/ + .cargo-test-target/ of a lease-less dispatch worktree
-      under .claude/worktrees whose branch PR is merged/closed. Failure events
-      (cargo lock active, rm failure) also use this kind with an error +
-      failure_class field.
+      under .claude/worktrees whose branch PR is merged/closed; RESILIENT-1635
+      extends Class D to an OPEN-PR worktree that is idle (no running dispatch
+      for its gap, clean source tree, no bot-merge/dispatch activity in 2h) and
+      to stale bot-merge-active-dispatch-*.path markers older than the
+      RESILIENT-1609 grace (also class:"D"). Failure events (cargo lock active,
+      rm failure) also use this kind with an error + failure_class field.
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, path]
     fields_optional: [bytes_freed, age_days, dry_run, worktree_gone, error, failure_class, class, worktree, branch]
@@ -14455,6 +14481,15 @@ events:
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, message]
 
+  - kind: deadman_tick
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/load-aware-deadman.sh (CREDIBLE-1568/1570)
+    emitter_paths: [scripts/ops/load-aware-deadman.sh]
+    trigger: per-run liveness heartbeat from the load-aware node dead-man, emitted on EVERY run (even a fully-healthy one that killed nothing) so the organ's presence can be verified remotely; fleet-doctor reads the newest deadman_tick and goes RED when the timer is missing or the heartbeat is older than 5 minutes
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, message]
+
   - kind: olive_monitor_baseline_initialized
     status: active
     effect_metric: self
@@ -14591,5 +14626,112 @@ events:
     expected_volume: "high during the shadow observation window; trends down as vote discipline lands"
     status: shadow
     # payload: {pr: number, corr_id: string, verdict: "NO_PASSED", mode: "shadow", gap_id: string, proposal_type: "AdminMergeProposal", ts: string}
+
+  # ── CREDIBLE-1588: review-organ label op refused ────────────────────────────
+  - kind: review_organ_label_error
+    effect_metric: credible
+    emitter: scripts/dispatch/review-organ-tick.sh (CREDIBLE-1588)
+    # scanner-anchor: "kind":"review_organ_label_error"
+    trigger: >
+      Emitted when the review organ's label_add/label_remove is REFUSED by gh
+      (e.g. the hold label does not exist in the repo). Before CREDIBLE-1588 the
+      `… || true` swallowed this, so a hold the merged organ relies on no-oped
+      silently. The organ now reports every refused label op loudly (this event
+      plus a WARN log) so a broken hold is visible instead of invisible.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, pr, op, label]
+    expected_volume: "near-zero; any occurrence means a hold label op failed and a review hold may not have applied"
+    # payload: {ts: string, kind: "review_organ_label_error", pr: number, op: "add"|"remove", label: string}
+
+  - kind: review_organ_gap_store_miss
+    effect_metric: credible
+    emitter: scripts/dispatch/review-organ-tick.sh (CREDIBLE-1602)
+    # scanner-anchor: "kind":"review_organ_gap_store_miss"
+    trigger: >
+      The review organ merged a PR head-pinned but the merged PR's gap was NOT
+      present in the canonical gap store the organ resolved through the ONE
+      resolver (scripts/coord/lib/state-store.sh) — i.e. the organ is pointed at
+      the WRONG state.db (the cuphead three-store split, where the organ ran from
+      a node checkout whose own .chump/state.db was a stale copy). The post-merge
+      gap step now FAILS LOUD (this event plus a non-zero tick status) instead of
+      log-and-continuing, so the split is paged/observable and the PHASE-R rollup
+      is not silently undercounted.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, gap, store, head]
+    expected_volume: "0 on a healthy single-store node; non-zero only during a gap-store split-brain"
+    # payload: {ts: string, kind: "review_organ_gap_store_miss", pr: number, gap: string, store: string, head: string}
+
+  - kind: review_organ_gap_ship_failed
+    effect_metric: credible
+    emitter: scripts/dispatch/review-organ-tick.sh (CREDIBLE-1604)
+    # scanner-anchor: "kind":"review_organ_gap_ship_failed"
+    trigger: >
+      The review organ merged a PR head-pinned, resolved its gap in the canonical
+      store, but `chump gap ship --closed-pr` was REFUSED against the canonical
+      checkout (e.g. the INFRA-2423 auto-fetch still blocks, or a proof-of-merge
+      guard trips). Before CREDIBLE-1604 this was a WARN that let every organ
+      landing silently leave its gap open and undercount the PHASE-R rollup
+      (cuphead 2026-10-21, #5624 et al. — the ship ran against the node-checkout
+      cwd whose standing docs/process/STASHED_BRANCHES.md edit blocked the
+      auto-fetch). The post-merge gap step now FAILS LOUD (this event plus a
+      non-zero tick status) instead of log-and-continuing.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, gap, store, checkout, head]
+    expected_volume: "0 on a healthy node; non-zero only when a merged PR's gap could not be shipped"
+    # payload: {ts: string, kind: "review_organ_gap_ship_failed", pr: number, gap: string, store: string, checkout: string, head: string}
+
+  - kind: orphan_branch_manifest_pr
+    effect_metric: zero_waste
+    emitter: scripts/coord/orphan-branch-sweeper.sh (CREDIBLE-1604)
+    # scanner-anchor: "kind":"orphan_branch_manifest_pr"
+    trigger: >
+      The orphan-branch-sweeper stashed one or more unmerged stale branches and
+      recorded their rows in docs/process/STASHED_BRANCHES.md through an ephemeral
+      worktree + PR (CREDIBLE-1604 AC2), rather than appending to the live
+      checkout in place. This keeps the node checkout free of a standing tracked
+      edit that would otherwise block the review organ's post-merge
+      `chump gap ship` auto-fetch.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, branch, rows, sweep_run_id]
+    expected_volume: "one per sweep run that stashed at least one branch (default in-tree manifest)"
+    # payload: {ts: string, kind: "orphan_branch_manifest_pr", branch: string, rows: number, sweep_run_id: string}
+
+  # ── RESILIENT-1680: shared cargo target incremental-cache reaper ─────────────
+  - kind: shared_target_incremental_reaped
+    effect_metric: disk_free_gb
+    emitter: scripts/coord/shared-target-cache-reaper.sh (RESILIENT-1680)
+    trigger: >-
+      The shared cargo target cache was over its size budget or free disk was
+      under the floor, no build was in progress, chump admit cargo admitted and
+      both architect lane locks were free, so the reaper deleted every
+      rebuildable incremental/ dir under the target (never the target itself).
+    consumers: [disk-audit, ops-audit]
+    fields_required: [ts, kind, target, incremental_dirs, freed_gb_approx, target_gb_before]
+    expected_volume: "0-N per node per disk-pressure-reaper tick when the cache is hot"
+    status: stable
+  - kind: shared_target_incremental_reap_dryrun
+    effect_metric: disk_free_gb
+    emitter: scripts/coord/shared-target-cache-reaper.sh (RESILIENT-1680)
+    trigger: >-
+      The shared cargo target reaper ran without --execute while a reap was
+      warranted (over budget or under the disk floor) and all guards passed: it
+      reports which incremental/ dirs it would reap but deletes nothing.
+    consumers: [disk-audit, ops-audit]
+    fields_required: [ts, kind, target, incremental_dirs, target_gb, free_gb]
+    expected_volume: "0-N per node per dry-run tick when the cache is hot"
+    status: stable
+  - kind: shared_target_incremental_reap_skipped
+    effect_metric: disk_free_gb
+    emitter: scripts/coord/shared-target-cache-reaper.sh (RESILIENT-1680)
+    trigger: >-
+      A reap of the shared cargo target was warranted but a guard refused it: a
+      cargo/rustc/cargo-nextest/rustdoc build was in progress, chump admit cargo
+      refused, one of the two architect lane locks was held, a required tool
+      (flock/chump) was absent, or there were no incremental/ dirs to reap. The
+      reason token is carried on the event; nothing was deleted.
+    consumers: [disk-audit, ops-audit]
+    fields_required: [ts, kind, target, reason]
+    expected_volume: "0-N per node per tick while a build or lane holder is active"
+    status: stable
 
   # ── INFRA-2156 (META-125/C5): chump consensus ask ───────────────────────────
