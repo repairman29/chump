@@ -9943,6 +9943,7 @@ mod tests {
         store
             .claim(&id, "sess-1686", "/worktrees/test", 3600)
             .unwrap();
+        store.link_pr(&id, 4242, "landed").unwrap();
 
         let porcelain = || -> String {
             String::from_utf8_lossy(&git(&["status", "--porcelain", "--untracked-files=no"]).stdout)
