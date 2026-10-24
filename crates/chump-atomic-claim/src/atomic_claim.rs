@@ -878,10 +878,13 @@ fn run_claim_lease_only(args: ClaimArgs) -> Result<ClaimReport> {
         .session_id
         .clone()
         .unwrap_or_else(|| derive_session_id(&args.gap_id));
+    #[cfg(not(test))]
     let explicit_lock_dir = std::env::var("CHUMP_LOCK_DIR")
         .ok()
         .filter(|s| !s.trim().is_empty())
         .map(PathBuf::from);
+    #[cfg(test)]
+    let explicit_lock_dir: Option<PathBuf> = None;
     let lock_dir = explicit_lock_dir
         .clone()
         .unwrap_or_else(|| args.repo_root.join(".chump-locks"));

@@ -662,8 +662,8 @@ def _resolve_chump_bin() -> str:
     shared_candidates = [
         home / ".cargo" / "chump-shared-target" / "release" / "chump",
         home / ".cargo" / "chump-shared-target" / "debug" / "chump",
-        Path("/home/ubuntu/chump/target/release/chump"),
-        Path("/home/ubuntu/chump/target/debug/chump"),
+        home / "chump" / "target" / "release" / "chump",
+        home / "chump" / "target" / "debug" / "chump",
         home / ".cargo" / "bin" / "chump",
     ]
     existing = []
