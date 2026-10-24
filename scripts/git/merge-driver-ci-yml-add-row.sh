@@ -62,24 +62,42 @@ _emit_ambient() {
     >> "$amb" 2>/dev/null || true
 }
 
-# Last resort before giving up: try the YAML-aware step-union merge. On
-# success it rewrites $OURS in place and we exit 0. On failure, emit the
-# fallback-measurement event and exit 1 (unchanged historical behavior).
-give_up() {
-  local reason="$1"
-  if [[ -x "$YAML_FALLBACK" || -f "$YAML_FALLBACK" ]] && command -v python3 > /dev/null 2>&1; then
-    if python3 "$YAML_FALLBACK" "$ANCESTOR" "$OURS" "$THEIRS" 2>/dev/null; then
-      exit 0
-    fi
-  fi
-  _emit_ambient "merge_driver_fallback" "$reason"
-  exit 1
-}
-
 # Sanity checks
 if [[ ! -f "$ANCESTOR" ]] || [[ ! -f "$OURS" ]] || [[ ! -f "$THEIRS" ]]; then
   exit 1
 fi
+
+_ours_backup=$(mktemp)
+cp "$OURS" "$_ours_backup"
+trap 'rm -f "$_ours_backup" "${_diff_theirs:-}"' EXIT
+
+# Last resort before giving up: try the YAML-aware step-union merge. On
+# success it rewrites $OURS in place and we exit 0. On failure, restore
+# $OURS, emit the fallback-measurement event, and exit 1.
+give_up() {
+  local reason="$1"
+  cp "$_ours_backup" "$OURS" 2>/dev/null || true
+  if [[ -x "$YAML_FALLBACK" || -f "$YAML_FALLBACK" ]] && command -v python3 > /dev/null 2>&1; then
+    if python3 "$YAML_FALLBACK" "$ANCESTOR" "$OURS" "$THEIRS" 2>/dev/null        && python3 "$YAML_FALLBACK" --verify-merged "$ANCESTOR" "$_ours_backup" "$THEIRS" "$OURS" 2>/dev/null; then
+      exit 0
+    fi
+  fi
+  cp "$_ours_backup" "$OURS" 2>/dev/null || true
+  _emit_ambient "merge_driver_fallback" "$reason"
+  exit 1
+}
+
+# CREDIBLE-1545 AC1: Never exit 0 unless every step from both ours and theirs
+# is retained in $OURS as valid YAML.
+verify_or_fallback() {
+  local reason="$1"
+  if [[ -x "$YAML_FALLBACK" || -f "$YAML_FALLBACK" ]] && command -v python3 > /dev/null 2>&1; then
+    if ! python3 "$YAML_FALLBACK" --verify-merged "$ANCESTOR" "$_ours_backup" "$THEIRS" "$OURS" 2>/dev/null; then
+      give_up "$reason"
+    fi
+  fi
+  exit 0
+}
 
 ancestor_lines=$(wc -l < "$ANCESTOR")
 ours_lines=$(wc -l < "$OURS")
@@ -126,15 +144,15 @@ if [[ $_pure_append -eq 0 ]]; then
   # Count +/- lines (excluding the ---/+++ headers).
   _adds=$(grep -cE '^\+[^+]' "$_diff_theirs" 2>/dev/null) || _adds=0
   _dels=$(grep -cE '^-[^-]' "$_diff_theirs" 2>/dev/null) || _dels=0
-  if [[ "$_adds" -eq 0 ]]; then
-    # Theirs added nothing — keep ours, success.
-    rm -f "$_diff_theirs"
-    exit 0
-  fi
   if [[ "$_dels" -gt 0 ]]; then
     # Theirs has real edits/deletes; can't safely patch.
     rm -f "$_diff_theirs"
     give_up "theirs_has_deletes"
+  fi
+  if [[ "$_adds" -eq 0 ]]; then
+    # Theirs added nothing — verify step retention before keeping ours.
+    rm -f "$_diff_theirs"
+    verify_or_fallback "theirs_added_nothing_step_check"
   fi
   # ADD-ONLY diff. Try two strategies in order:
   #   (a) patch --fuzz=3 — handles case where ours+theirs added at different
@@ -152,6 +170,12 @@ if [[ $_pure_append -eq 0 ]]; then
     rm -f "$_diff_theirs"
     give_up "patch_and_union_both_failed"
   fi
+  rm -f "$_diff_theirs"
+  if [[ -x "$YAML_FALLBACK" || -f "$YAML_FALLBACK" ]] && command -v python3 > /dev/null 2>&1; then
+    if ! python3 "$YAML_FALLBACK" --verify-merged "$ANCESTOR" "$_ours_backup" "$THEIRS" "$OURS" 2>/dev/null; then
+      give_up "patch_or_union_dropped_step"
+    fi
+  fi
   _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
   if [[ -n "$_repo" ]]; then
     _amb="${CHUMP_AMBIENT_LOG:-$_repo/.chump-locks/ambient.jsonl}"
@@ -161,7 +185,6 @@ if [[ $_pure_append -eq 0 ]]; then
         >> "$_amb" 2>/dev/null || true
     fi
   fi
-  rm -f "$_diff_theirs"
   exit 0
 fi
 
@@ -169,8 +192,8 @@ fi
 theirs_tail=$(tail -n +"$((ancestor_lines + 1))" "$THEIRS")
 
 if [[ -z "$theirs_tail" ]]; then
-  # Theirs appended nothing; keep ours as-is.
-  exit 0
+  # Theirs appended nothing; verify step retention before keeping ours.
+  verify_or_fallback "empty_theirs_tail_step_check"
 fi
 
 # INFRA-1199: validate that every '- name:' step in theirs_tail has a
@@ -207,7 +230,7 @@ if ! validate_step_bodies "$theirs_tail"; then
   give_up "orphan_step_no_body"
 fi
 
-# Safe to merge: append theirs' new steps to ours.
+# Safe to merge: append theirs' new steps to ours, then verify step retention.
 printf '%s\n%s\n' "$(cat "$OURS")" "$theirs_tail" > "$MERGE_FILE"
 
-exit 0
+verify_or_fallback "pure_append_step_check"
