@@ -582,6 +582,8 @@ if generate_path:
 # un-ignored `cargo audit` step (which belongs to cargo-audit-nightly.yml).
 def check_release_plz_test_scope(wf_file: pathlib.Path) -> tuple[bool, str]:
     if not wf_file.exists():
+        if not sibling_ymls:
+            return True, "release-plz.yml absent in synthetic ci.yml-only fixture"
         return False, "release-plz.yml missing"
     txt = wf_file.read_text(encoding="utf-8")
     if "cargo test --workspace" in txt:
