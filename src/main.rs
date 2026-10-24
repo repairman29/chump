@@ -23631,7 +23631,6 @@ fn validate_gap_mutation_args(
                 "--skip-obs-acs",
                 "--why",
             ];
-            let has_flag_domain = rest.iter().any(|a| a == "--domain");
             let mut i = 0usize;
             while i < rest.len() {
                 let tok = rest[i].as_str();
@@ -23649,10 +23648,6 @@ fn validate_gap_mutation_args(
                 } else if tok.starts_with('-') {
                     return Err(format!(
                         "chump gap reserve: unknown flag {tok:?}\n{GAP_RESERVE_USAGE}"
-                    ));
-                } else if has_flag_domain {
-                    return Err(format!(
-                        "chump gap reserve: unexpected positional argument {tok:?} when --domain is used\n{GAP_RESERVE_USAGE}"
                     ));
                 } else {
                     i += 1;
