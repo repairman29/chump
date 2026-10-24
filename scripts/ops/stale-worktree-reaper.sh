@@ -560,9 +560,10 @@ process_worktree() {
         */\.claude/worktrees/*) ;;
         /tmp/chump-*) ;;
         /tmp/*)
-            # INFRA-2339: accept any /tmp/* when it comes from a broad-scan source.
+            [[ "$wt_path" == "$REPO_ROOT" ]] && return 0
+            # INFRA-2339: accept any /tmp/* when it comes from a broad-scan or tmp_chump source.
             case "$wt_source" in
-                git-list|rescue-pattern|tmp-age) ;;
+                tmp_chump|git-list|rescue-pattern|tmp-age) ;;
                 *)
                     if [[ -n "${CHUMP_WORKTREE_BASE:-}" && "$wt_path" == "${CHUMP_WORKTREE_BASE%/}/"* ]]; then
                         :
