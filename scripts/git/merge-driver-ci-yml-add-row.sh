@@ -609,8 +609,8 @@ def main():
                 with open(p_ours, "r", encoding="utf-8") as f:
                     final_text = f.read()
     else:
-        if not merged_by_job and ours_unified == anc_unified:
-            sys.exit(1)
+        # INFRA-1199 / validate_step_bodies: when theirs is identical to ancestor
+        # outside steps: (no-op or step-only merge), ours_unified is the complete result.
         final_text = ours_unified
 
     if not verify_merged_steps(ancestor_text, ours_text, theirs_text, final_text):
