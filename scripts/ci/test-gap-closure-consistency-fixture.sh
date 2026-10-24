@@ -164,9 +164,124 @@ check "CREDIBLE-1571 AC2: premature-closure organ lives at scripts/ops/premature
 check "CREDIBLE-1571 AC2: run-local-ci.sh no longer invokes premature-closure organ" bash -c "! grep -q 'test-gap-closure-consistency\|premature-closure-watch' '$REPO_ROOT/scripts/ci/run-local-ci.sh'"
 check "CREDIBLE-1571 AC2: premature-closure-watch.sh does not use CHUMP_ALLOW_RECYCLE" bash -c "! grep -q 'CHUMP_ALLOW_RECYCLE' '$GATE'"
 
-CHUMP_BIN="${CHUMP_BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
-if ! command -v "$CHUMP_BIN" >/dev/null 2>&1 && [[ ! -x "$CHUMP_BIN" ]]; then
-  CHUMP_BIN="chump"
+CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+if [[ ! -x "$CHUMP_BIN" ]]; then
+  if false; then
+    :
+  else
+    # In audit.yml shards, the Rust workspace is not compiled. Provide a
+    # SQLite-backed chump CLI shim inside $TMPDIR_TEST/shim-bin/chump so the
+    # functional sandbox/reopen proofs run deterministically without requiring
+    # a cargo build inside audit-shard.
+    mkdir -p "$TMPDIR_TEST/shim-bin"
+    CHUMP_BIN="$TMPDIR_TEST/shim-bin/chump"
+    cat > "$CHUMP_BIN" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+DB="${CHUMP_STATE_DB:-${CHUMP_STATE_DIR:-${CHUMP_REPO:-.}/.chump}/state.db}"
+mkdir -p "$(dirname "$DB")"
+sqlite3 "$DB" "CREATE TABLE IF NOT EXISTS gaps (id TEXT PRIMARY KEY, domain TEXT DEFAULT '', title TEXT DEFAULT '', status TEXT DEFAULT 'open', priority TEXT DEFAULT 'P2', effort TEXT DEFAULT 'm', closed_pr INTEGER, closed_date TEXT DEFAULT '', notes TEXT DEFAULT ''); CREATE TABLE IF NOT EXISTS gap_prs (gap_id TEXT, pr_number INTEGER, head_sha TEXT, opened_at INTEGER DEFAULT 0, state TEXT DEFAULT 'open', multi_ok INTEGER DEFAULT 0);" 2>/dev/null || true
+if [[ "${1:-}" == "gap" ]]; then
+  shift
+  sub="${1:-}"
+  shift || true
+  case "$sub" in
+    reserve)
+      dom="TEST"; title="fixture"; prio="P3"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --domain) dom="$2"; shift 2 ;;
+          --title) title="$2"; shift 2 ;;
+          --priority) prio="$2"; shift 2 ;;
+          *) shift ;;
+        esac
+      done
+      cnt=$(sqlite3 "$DB" "SELECT COUNT(*) + 901 FROM gaps WHERE domain='$dom';")
+      id="${dom}-${cnt}"
+      sqlite3 "$DB" "INSERT OR REPLACE INTO gaps (id, domain, title, status, priority) VALUES ('$id', '$dom', '$title', 'open', '$prio');"
+      echo "$id"
+      exit 0
+      ;;
+    set)
+      id="$1"; shift
+      st=""; reason=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --status) st="$2"; shift 2 ;;
+          --reason) reason="$2"; shift 2 ;;
+          *) shift ;;
+        esac
+      done
+      if [[ "$st" == "in_progress" ]]; then
+        sqlite3 "$DB" "UPDATE gaps SET status='in_progress', closed_pr=NULL, closed_date='' WHERE id='$id';"
+      else
+        sqlite3 "$DB" "UPDATE gaps SET status='$st' WHERE id='$id';"
+      fi
+      exit 0
+      ;;
+    link-pr)
+      id="$1"; pr="$2"; shift 2
+      sha=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --sha) sha="$2"; shift 2 ;;
+          *) shift ;;
+        esac
+      done
+      sqlite3 "$DB" "INSERT OR REPLACE INTO gap_prs (gap_id, pr_number, head_sha) VALUES ('$id', $pr, '$sha');"
+      exit 0
+      ;;
+    ship)
+      id="$1"; shift
+      pr="0"
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --closed-pr) pr="$2"; shift 2 ;;
+          *) shift ;;
+        esac
+      done
+      sqlite3 "$DB" "UPDATE gaps SET status='done', closed_pr=$pr WHERE id='$id';"
+      mkdir -p "${CHUMP_REPO:-.}/docs/gaps"
+      printf 'id: %s
+status: done
+closed_pr: %s
+' "$id" "$pr" > "${CHUMP_REPO:-.}/docs/gaps/${id}.yaml"
+      echo "shipped $id"
+      exit 0
+      ;;
+    close)
+      id=""
+      reason=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --reason) reason="$2"; shift 2 ;;
+          --*) shift ;;
+          *) [[ -z "$id" ]] && id="$1"; shift ;;
+        esac
+      done
+      case "$reason" in
+        superseded|wontfix|obsolete|duplicate) ;;
+        *) exit 1 ;;
+      esac
+      sqlite3 "$DB" "UPDATE gaps SET status='$reason', notes=notes || ' [$reason]' WHERE id='$id';"
+      exit 0
+      ;;
+    show)
+      id="$1"
+      row=$(sqlite3 "$DB" "SELECT id, status, COALESCE(closed_pr,''), COALESCE(notes,'') FROM gaps WHERE id='$id';")
+      IFS='|' read -r gid gst gpr gnotes <<< "$row"
+      echo "- id: $gid"
+      echo "  status: $gst"
+      [[ -n "$gpr" ]] && echo "  closed_pr: $gpr"
+      [[ -n "$gnotes" ]] && echo "  notes: $gnotes"
+      exit 0
+      ;;
+  esac
+fi
+exit 0
+SHIM
+    chmod +x "$CHUMP_BIN"
+  fi
 fi
 
 # AC2 functional proof: --auto-fix reopens a prematurely-closed gap without CHUMP_ALLOW_RECYCLE

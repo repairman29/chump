@@ -280,7 +280,8 @@ run_forward_check() {
         if [[ "$EMIT_ALERT" -eq 1 ]]; then
             local ids_json="$(printf '"%s",' "${drift_ids[@]}" | sed 's/,$//')"
             local note="${#drift_ids[@]} done gap(s) have closed_pr set but PR not merged"
-            # scanner-anchor (CREDIBLE-1571): "kind":"gap_drift_premature_close" "kind":"gap_closure_check_gh_unavailable"
+            # scanner-anchor (CREDIBLE-1571): "kind":"gap_drift_premature_close"
+            # scanner-anchor (CREDIBLE-1571): "kind":"gap_closure_check_gh_unavailable"
             emit_alert "gap_drift_premature_close" '"ids":['"$ids_json"'],"note":"'"$note"'"'
             info "Emitted gap_drift_premature_close ALERT"
         fi
