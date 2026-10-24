@@ -703,7 +703,6 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
                 "--session",
                 session_id,
                 "--lease-only",
-                "--skip-farmer-gate",
             ],
             env=env,
             stdout=subprocess.DEVNULL,
