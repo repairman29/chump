@@ -3126,7 +3126,8 @@ impl GapStore {
         // merge, checkout, reset, worktree write, or `cargo build --release`).
         // The canonical node checkout moves only through the deploy/refresh
         // organ or the operator.
-        // scanner-anchor (RESILIENT-1645, historical INFRA-2423): "kind":"ship_autofetch_pulled" "kind":"ship_autofetch_blocked_dirty"
+        // scanner-anchor (RESILIENT-1645, historical INFRA-2423): "kind":"ship_autofetch_pulled"
+        // scanner-anchor (RESILIENT-1645, historical INFRA-2423): "kind":"ship_autofetch_blocked_dirty"
         if self.repo_root.join(".git").exists() {
             // Fetch quietly; failure is non-fatal (offline or no remote).
             let _ = std::process::Command::new("git")
