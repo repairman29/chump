@@ -490,9 +490,18 @@ def main():
 
     if theirs_unified != anc_unified:
         # `theirs` also has edits outside `steps:` (e.g. a nearby comment).
+        # Refuse if non-comment YAML lines outside `steps:` were modified by
+        # theirs (INFRA-1205: path-filter / outputs: edits must not be spliced).
+        def _non_comment_lines(lines_list):
+            return [
+                ln for ln in lines_list
+                if ln.strip() and not ln.lstrip().startswith("#")
+            ]
         anc_u_lines = anc_unified.splitlines(keepends=True)
         ours_u_lines = ours_unified.splitlines(keepends=True)
         theirs_u_lines = theirs_unified.splitlines(keepends=True)
+        if _non_comment_lines(theirs_u_lines) != _non_comment_lines(anc_u_lines):
+            sys.exit(1)
         line_merged = None
         if len(anc_u_lines) == len(ours_u_lines) == len(theirs_u_lines):
             merged_u = []
