@@ -126,7 +126,7 @@ jobs:
         # Never commit a catalog that fails its own schema / receipt checks.
         run: bash scripts/ci/test-capabilities-registry.sh
 
-      - name: Commit and open PR (content changed only, CREDIBLE-1564)
+      - name: Commit and push (content changed only)
         if: steps.after.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
