@@ -343,8 +343,14 @@ wt_has_unpushed_commits() {
     # Repo has no remote-tracking refs at all (e.g. local-only git init fixture):
     # if branched off local main/master with 0 commits ahead, treat as clean;
     # otherwise HEAD is unpushed local work.
-    if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] &&        git -C "$wt_path" rev-parse --verify --quiet refs/heads/main >/dev/null 2>&1; then
-        ahead="$(git -C "$wt_path" rev-list --count refs/heads/main..HEAD 2>/dev/null || echo 0)"
+    local local_base=""
+    if git -C "$wt_path" rev-parse --verify --quiet refs/heads/main >/dev/null 2>&1; then
+        local_base="refs/heads/main"
+    elif git -C "$wt_path" rev-parse --verify --quiet refs/heads/master >/dev/null 2>&1; then
+        local_base="refs/heads/master"
+    fi
+    if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" && -n "$local_base" ]]; then
+        ahead="$(git -C "$wt_path" rev-list --count "${local_base}..HEAD" 2>/dev/null || echo 0)"
         if [[ "${ahead:-0}" -gt 0 ]]; then
             WT_UNPUSHED_COUNT="$ahead"
             WT_UNPUSHED_DETAIL="head_not_on_remote"
