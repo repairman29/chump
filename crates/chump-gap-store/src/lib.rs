@@ -1747,11 +1747,31 @@ impl GapStore {
             )
             .ok();
 
+        // CREDIBLE-1571 (Phase R R1): a done row in a git repo whose closed_pr > 0
+        // does NOT resolve to a landing receipt on origin/main is a premature
+        // closure (not a landed ship). Route its reopen through the receipt-gated
+        // writer without requiring CHUMP_ALLOW_RECYCLE and retract its stale
+        // closed_pr / closed_date fields.
+        let premature_closure_reopen = cur_meta
+            .as_ref()
+            .is_some_and(|(cur_status, _, _)| cur_status == "done")
+            && matches!(fields.status.as_deref(), Some("open" | "in_progress"))
+            && self
+                .conn
+                .query_row("SELECT closed_pr FROM gaps WHERE id=?", [gap_id], |row| {
+                    row.get::<_, Option<i64>>(0)
+                })
+                .ok()
+                .flatten()
+                .filter(|&pr| pr > 0)
+                .is_some_and(|pr| !self.landing_receipt_resolves(gap_id, pr));
+
         if let Some((cur_status, cur_title, cur_description)) = cur_meta.as_ref() {
             // Guard (1) — recycled-ID
             if cur_status == "done" {
                 if let Some(new_status) = fields.status.as_deref() {
                     if new_status != "done"
+                        && !premature_closure_reopen
                         && std::env::var("CHUMP_ALLOW_RECYCLE").as_deref() != Ok("1")
                     {
                         bail!(
@@ -1811,8 +1831,9 @@ impl GapStore {
         // (so this can't quietly rewrite shipping history without operator
         // authorization) and only when the caller didn't explicitly supply a
         // new closed_pr/closed_date in the same call.
-        let auto_clear_closure = fields.status.as_deref() == Some("open")
-            && std::env::var("CHUMP_ALLOW_RECYCLE").as_deref() == Ok("1")
+        let auto_clear_closure = (premature_closure_reopen
+            || (fields.status.as_deref() == Some("open")
+                && std::env::var("CHUMP_ALLOW_RECYCLE").as_deref() == Ok("1")))
             && fields.closed_pr.is_none()
             && fields.closed_date.is_none();
 
@@ -3117,15 +3138,17 @@ impl GapStore {
         // Cost: real claims that already existed were treated as
         // already-done and skipped; ~3 wasted compute-hours.
         //
-        // INFRA-2423: auto-fetch origin/main before the proof-of-merge check
-        // so that a stale local main does not cause a spurious failure.
-        // If local main is behind and the working tree is clean, auto-pull
-        // with --ff-only. If dirty, emit a clear error and bail — the caller
-        // must stash or commit before shipping. No bypass env var is needed.
-        //
-        // The webhook path also lands here: receiver calls ship() with
-        // closed_pr set and the merge commit on main from the webhook's
-        // `pull_request.merge_commit_sha` is what git log finds.
+        // INFRA-2423 / RESILIENT-1645: auto-fetch origin/main before the
+        // proof-of-merge check so that a stale local ref does not cause a
+        // spurious failure. Per RESILIENT-1645 (Phase R R4), ship() is strictly
+        // fetch-only: it reads origin/main through `git fetch` + `git rev-list`
+        // / `rev-parse` (`verify_proof_of_merge` and `proof_of_merge_sha` read
+        // `origin/main` directly) and NEVER mutates the node checkout (no pull,
+        // merge, checkout, reset, worktree write, or `cargo build --release`).
+        // The canonical node checkout moves only through the deploy/refresh
+        // organ or the operator.
+        // scanner-anchor (RESILIENT-1645, historical INFRA-2423): "kind":"ship_autofetch_pulled"
+        // scanner-anchor (RESILIENT-1645, historical INFRA-2423): "kind":"ship_autofetch_blocked_dirty"
         if self.repo_root.join(".git").exists() {
             // Fetch quietly; failure is non-fatal (offline or no remote).
             let _ = std::process::Command::new("git")
@@ -3135,8 +3158,8 @@ impl GapStore {
                 .stdout(std::process::Stdio::null())
                 .status();
 
-            // Count commits behind after the fetch.
-            let behind: u64 = std::process::Command::new("git")
+            // Read-only behind probe (ancestry inspection only; never pulls).
+            let _behind: u64 = std::process::Command::new("git")
                 .args(["rev-list", "--count", "main..origin/main"])
                 .current_dir(&self.repo_root)
                 .output()
@@ -3144,181 +3167,6 @@ impl GapStore {
                 .filter(|o| o.status.success())
                 .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
                 .unwrap_or(0);
-
-            if behind > 0 {
-                // Check whether the working tree is clean (unstaged or staged changes).
-                let dirty = std::process::Command::new("git")
-                    .args(["diff", "--quiet", "HEAD"])
-                    .current_dir(&self.repo_root)
-                    .status()
-                    .map(|s| !s.success())
-                    .unwrap_or(false);
-
-                if dirty {
-                    // Emit ambient event so fleet-brief / watchdogs can surface
-                    // this as a friction signal. Best-effort: never fail caller.
-                    {
-                        use std::io::Write as _;
-                        let ts = unix_to_iso_full(unix_now());
-                        let line = format!(
-                            "{{\"ts\":\"{ts}\",\"kind\":\"ship_autofetch_blocked_dirty\",\
-                             \"gap_id\":\"{gap_id}\",\"behind\":{behind}}}\n"
-                        );
-                        let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
-                        if let Ok(mut f) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(&amb)
-                        {
-                            let _ = f.write_all(line.as_bytes());
-                        }
-                    }
-                    bail!(
-                        "INFRA-2423 AUTO-FETCH: local main is {behind} commits behind \
-                         origin/main; cannot auto-pull with uncommitted changes. \
-                         Please `git stash` or commit first, then retry `chump gap ship`."
-                    );
-                } else {
-                    // Clean tree — pull fast-forward silently and emit ambient
-                    // event so curators can observe auto-pull frequency.
-                    let _ = std::process::Command::new("git")
-                        .args(["pull", "--ff-only", "origin", "main", "--quiet"])
-                        .current_dir(&self.repo_root)
-                        .stderr(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .status();
-                    {
-                        use std::io::Write as _;
-                        let ts = unix_to_iso_full(unix_now());
-                        let line = format!(
-                            "{{\"ts\":\"{ts}\",\"kind\":\"ship_autofetch_pulled\",\
-                             \"gap_id\":\"{gap_id}\",\"behind\":{behind}}}\n"
-                        );
-                        let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
-                        if let Ok(mut f) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(&amb)
-                        {
-                            let _ = f.write_all(line.as_bytes());
-                        }
-                    }
-
-                    // RESILIENT-492: after a successful pull, rebuild the
-                    // release binary so a stale binary can never ship silently.
-                    // Capture stdout/stderr to build.log in the repo root and
-                    // abort the ship if the build fails. Only applies to a
-                    // real Cargo workspace — auto-fetch/auto-pull test
-                    // fixtures use plain git repos with no Cargo.toml, and
-                    // ship() must stay usable against those without dragging
-                    // in a cargo dependency.
-                    if self.repo_root.join("Cargo.toml").exists() {
-                        let build_output = std::process::Command::new("cargo")
-                            .args(["build", "--release"])
-                            .current_dir(&self.repo_root)
-                            .output()
-                            .context("RESILIENT-492: failed to spawn `cargo build --release`")?;
-
-                        {
-                            use std::io::Write as _;
-                            let build_log = self.repo_root.join("build.log");
-                            if let Ok(mut f) = std::fs::File::create(&build_log) {
-                                let _ = f.write_all(&build_output.stdout);
-                                let _ = f.write_all(&build_output.stderr);
-                            }
-                        }
-
-                        if !build_output.status.success() {
-                            bail!(
-                                "RESILIENT-492: cargo build --release failed with {:?} after \
-                                 auto-pull for {gap_id} — see build.log in repo root for details",
-                                build_output.status.code()
-                            );
-                        }
-
-                        eprintln!("cargo build --release completed with exit code 0");
-
-                        // RESILIENT-493: atomically swap the freshly built
-                        // binary into the path this `chump` organ is actually
-                        // running from, so RESILIENT-492's rebuild reaches the
-                        // process executing it, not just target/release/ on
-                        // disk. Write-to-temp + rename is atomic on the same
-                        // filesystem: any failure (missing build artifact,
-                        // cross-filesystem rename, permission error) leaves
-                        // the previous binary at the target path untouched
-                        // and executable — the organ keeps serving the OLD
-                        // binary rather than a half-written one.
-                        let built_bin = self.repo_root.join("target").join("release").join("chump");
-                        if let (Ok(target_bin), true) =
-                            (std::env::current_exe(), built_bin.exists())
-                        {
-                            // Never swap a binary onto itself (e.g. running
-                            // directly out of target/release/chump in a dev
-                            // checkout) — that's a no-op, not a failure.
-                            let same_binary = std::fs::canonicalize(&built_bin)
-                                .ok()
-                                .zip(std::fs::canonicalize(&target_bin).ok())
-                                .is_some_and(|(a, b)| a == b);
-                            if !same_binary {
-                                let tmp_bin = target_bin.with_extension("new");
-                                let swap_result =
-                                    std::fs::copy(&built_bin, &tmp_bin).and_then(|_| {
-                                        #[cfg(unix)]
-                                        {
-                                            use std::os::unix::fs::PermissionsExt as _;
-                                            std::fs::set_permissions(
-                                                &tmp_bin,
-                                                std::fs::Permissions::from_mode(0o755),
-                                            )?;
-                                        }
-                                        std::fs::rename(&tmp_bin, &target_bin)
-                                    });
-
-                                match swap_result {
-                                    Ok(()) => {
-                                        eprintln!(
-                                            "RESILIENT-493: atomic binary swap OK — {} \
-                                             now running the freshly built binary",
-                                            target_bin.display()
-                                        );
-                                    }
-                                    Err(e) => {
-                                        // Best-effort cleanup of the temp
-                                        // file; the rename either never
-                                        // happened or already consumed it, so
-                                        // target_bin (the previous binary) is
-                                        // still intact and executable — AC #3.
-                                        let _ = std::fs::remove_file(&tmp_bin);
-                                        use std::io::Write as _;
-                                        let ts = unix_to_iso_full(unix_now());
-                                        let err_escaped = e.to_string().replace('"', "'");
-                                        let line = format!(
-                                            "{{\"ts\":\"{ts}\",\"kind\":\"binary_swap_failed\",\
-                                             \"gap_id\":\"{gap_id}\",\"error\":\"{err_escaped}\"}}\n"
-                                        );
-                                        let amb = self
-                                            .repo_root
-                                            .join(".chump-locks")
-                                            .join("ambient.jsonl");
-                                        if let Ok(mut f) = std::fs::OpenOptions::new()
-                                            .create(true)
-                                            .append(true)
-                                            .open(&amb)
-                                        {
-                                            let _ = f.write_all(line.as_bytes());
-                                        }
-                                        eprintln!(
-                                            "RESILIENT-493: atomic binary swap FAILED ({e}) — \
-                                             {} remains the previous binary, unaffected",
-                                            target_bin.display()
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         if !verify_proof_of_merge(&self.repo_root, gap_id, closed_pr) {
@@ -5261,20 +5109,113 @@ impl GapStore {
     /// The caller is responsible for backing up the existing state.db before
     /// calling this (typically rename to state.db.bak).
     pub fn restore_from_state_sql(&mut self, sql_path: &Path) -> Result<usize> {
-        let file = Self::load_state_sql(sql_path)?;
-
-        // Clear existing data so the restore is a full replacement, not a merge.
-        self.conn
-            .execute("DELETE FROM gaps", [])
-            .context("clearing gaps table before restore")?;
-
-        let mut inserted = 0usize;
-        for g in &file.gaps {
-            self.insert_or_replace_gap_row(g)
-                .with_context(|| format!("inserting gap {} during restore", g.id))?;
-            inserted += 1;
+        let text = std::fs::read_to_string(sql_path)
+            .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
+        let trimmed = text.trim_start();
+        if trimmed.is_empty() {
+            bail!("state.sql at {} is empty", sql_path.display());
         }
-        Ok(inserted)
+
+        // RESILIENT-1651: support both YAML gap dumps (`gaps:\n- id: ...` or bare
+        // `- id: ...` produced by `chump gap dump` / `backlog-sync --writer`) and
+        // raw SQLite `.dump` SQL scripts (`PRAGMA` / `BEGIN` / `CREATE TABLE` /
+        // `INSERT INTO`).
+        let looks_like_sql = {
+            let first_non_comment = trimmed
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with("--"))
+                .unwrap_or("");
+            let upper = first_non_comment.to_ascii_uppercase();
+            upper.starts_with("PRAGMA ")
+                || upper.starts_with("BEGIN ")
+                || upper == "BEGIN;"
+                || upper.starts_with("CREATE ")
+                || upper.starts_with("INSERT ")
+                || upper.starts_with("DELETE ")
+        };
+
+        if looks_like_sql {
+            self.conn
+                .execute("DELETE FROM gaps", [])
+                .context("clearing gaps table before SQL restore")?;
+            let normalized: String = text
+                .lines()
+                .map(|line| {
+                    let t = line.trim_start();
+                    if t.starts_with("CREATE TABLE ")
+                        && !t.starts_with("CREATE TABLE IF NOT EXISTS ")
+                    {
+                        line.replacen("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1)
+                    } else if t.starts_with("CREATE INDEX ")
+                        && !t.starts_with("CREATE INDEX IF NOT EXISTS ")
+                    {
+                        line.replacen("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS ", 1)
+                    } else if t.starts_with("CREATE UNIQUE INDEX ")
+                        && !t.starts_with("CREATE UNIQUE INDEX IF NOT EXISTS ")
+                    {
+                        line.replacen(
+                            "CREATE UNIQUE INDEX ",
+                            "CREATE UNIQUE INDEX IF NOT EXISTS ",
+                            1,
+                        )
+                    } else if t.starts_with("CREATE TRIGGER ")
+                        && !t.starts_with("CREATE TRIGGER IF NOT EXISTS ")
+                    {
+                        line.replacen("CREATE TRIGGER ", "CREATE TRIGGER IF NOT EXISTS ", 1)
+                    } else if t.starts_with("INSERT INTO ") {
+                        line.replacen("INSERT INTO ", "INSERT OR REPLACE INTO ", 1)
+                    } else if t == "DELETE FROM sqlite_sequence;" {
+                        String::new()
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            self.conn
+                .execute_batch(&normalized)
+                .with_context(|| format!("executing SQL dump in {}", sql_path.display()))?;
+            let count: i64 = self
+                .conn
+                .query_row("SELECT COUNT(*) FROM gaps", [], |r| r.get(0))
+                .context("counting restored gaps")?;
+            return Ok(count as usize);
+        }
+
+        let file = Self::parse_state_sql_yaml(&text)
+            .with_context(|| format!("parsing YAML in {}", sql_path.display()))?;
+
+        // Wrap full-table replacement in a transaction so 14k+ rows restore
+        // atomically and in <100ms instead of 14k individual fsyncs.
+        self.conn
+            .execute_batch("BEGIN IMMEDIATE;")
+            .context("starting restore transaction")?;
+        let res: Result<usize> = (|| {
+            self.conn
+                .execute("DELETE FROM gaps", [])
+                .context("clearing gaps table before restore")?;
+            let mut inserted = 0usize;
+            for g in &file.gaps {
+                self.insert_or_replace_gap_row(g)
+                    .with_context(|| format!("inserting gap {} during restore", g.id))?;
+                inserted += 1;
+            }
+            let _ = self.upsert_repos_from_skills(&file.gaps);
+            Ok(inserted)
+        })();
+        match res {
+            Ok(n) => {
+                self.conn
+                    .execute_batch("COMMIT;")
+                    .context("committing restore transaction")?;
+                Ok(n)
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
     }
 
     fn load_state_sql(sql_path: &Path) -> Result<YamlGapsFile> {
@@ -5284,13 +5225,316 @@ impl GapStore {
             .with_context(|| format!("parsing YAML in {}", sql_path.display()))
     }
 
-    /// Parse the YAML body of a `.chump/state.sql` dump (despite the `.sql`
-    /// extension it is a YAML gaps list, not SQL — see [`Self::load_state_sql`])
-    /// from an in-memory string. Split out of `load_state_sql` so
-    /// [`Self::canonical_max_id`] can parse `git show registry/main:.chump/state.sql`
-    /// output directly, without a temp-file round trip.
+    /// Parse the YAML body of a `.chump/state.sql` dump (either `gaps:\n- id: ...`
+    /// mapping or a bare `- id: ...` YAML sequence).
     fn parse_state_sql_yaml(text: &str) -> Result<YamlGapsFile> {
-        serde_yaml::from_str(text).context("parsing state.sql YAML")
+        let trimmed = text.trim_start();
+        if trimmed.starts_with('-') {
+            let wrapped = format!("gaps:\n{text}");
+            serde_yaml::from_str(&wrapped).context("parsing bare YAML gap list")
+        } else {
+            serde_yaml::from_str(text).context("parsing state.sql YAML")
+        }
+    }
+
+    /// RESILIENT-1651 AC2: load gaps from an explicit file or directory path,
+    /// returning `(YamlGapsFile, failed_count)`. Never silently falls back to
+    /// another directory when given a specific file path, and refuses a missing
+    /// path.
+    fn load_yaml_from_explicit_path(yaml_path: &Path) -> Result<(YamlGapsFile, usize)> {
+        if !yaml_path.exists() {
+            bail!("YAML path '{}' does not exist", yaml_path.display());
+        }
+        if yaml_path.is_file() {
+            let content = std::fs::read_to_string(yaml_path)
+                .with_context(|| format!("reading {}", yaml_path.display()))?;
+            if content.trim().is_empty() {
+                return Ok((YamlGapsFile { gaps: Vec::new() }, 0));
+            }
+            match Self::parse_state_sql_yaml(&content) {
+                Ok(f) => return Ok((f, 0)),
+                Err(e) => {
+                    eprintln!(
+                        "chump gap import: malformed YAML in {}: {e}",
+                        yaml_path.display()
+                    );
+                    return Ok((YamlGapsFile { gaps: Vec::new() }, 1));
+                }
+            }
+        }
+        if yaml_path.is_dir() {
+            let per_file_dir = if yaml_path.join("docs").join("gaps").is_dir() {
+                yaml_path.join("docs").join("gaps")
+            } else if yaml_path.join("docs").join("gaps.yaml").is_file() {
+                return Self::load_yaml_from_explicit_path(
+                    &yaml_path.join("docs").join("gaps.yaml"),
+                );
+            } else {
+                yaml_path.to_path_buf()
+            };
+            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
+                .with_context(|| format!("reading {}", per_file_dir.display()))?
+                .flatten()
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s == "yaml" || s == "yml")
+                        .unwrap_or(false)
+                })
+                .collect();
+            dir_entries.sort_by_key(|e| e.file_name());
+            let mut gaps: Vec<YamlGap> = Vec::new();
+            let mut failed = 0usize;
+            for entry in &dir_entries {
+                let content = std::fs::read_to_string(entry.path())
+                    .with_context(|| format!("reading {}", entry.path().display()))?;
+                if content.trim().is_empty() {
+                    continue;
+                }
+                match Self::parse_state_sql_yaml(&content) {
+                    Ok(f) => gaps.extend(f.gaps),
+                    Err(e) => {
+                        eprintln!(
+                            "chump gap import: SKIPPING malformed {}: {e}",
+                            entry.path().display()
+                        );
+                        failed += 1;
+                    }
+                }
+            }
+            return Ok((YamlGapsFile { gaps }, failed));
+        }
+        bail!(
+            "YAML path '{}' is neither a file nor a directory",
+            yaml_path.display()
+        )
+    }
+
+    /// RESILIENT-1651 AC2: import gaps from an explicit file or directory path,
+    /// returning `(inserted, skipped, backfilled, blocked_by_similarity, failed)`.
+    pub fn import_from_yaml_path_with_similarity(
+        &self,
+        yaml_path: &Path,
+        repo_root: &Path,
+        block_threshold: Option<f64>,
+    ) -> Result<(usize, usize, usize, usize, usize)> {
+        let (file, failed) = Self::load_yaml_from_explicit_path(yaml_path)?;
+
+        let mut existing_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        {
+            let mut stmt = self.conn.prepare("SELECT id FROM gaps")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            for r in rows.flatten() {
+                existing_ids.insert(r);
+            }
+        }
+
+        let mut skip_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut blocked_log: Vec<(String, String, String, f64)> = Vec::new();
+        if let Some(threshold) = block_threshold {
+            let mut accepted_in_batch: Vec<(String, String)> = Vec::new();
+            for g in &file.gaps {
+                if existing_ids.contains(&g.id) || g.title.trim().is_empty() {
+                    continue;
+                }
+                let mut top_match: Option<(String, String, f64)> = None;
+                if let Ok(cands) = self.similarity_candidates(&g.title, 1, 30) {
+                    if let Some((top_id, top_title, _status, top_score)) = cands.first() {
+                        if top_id != &g.id && *top_score >= threshold {
+                            top_match = Some((top_id.clone(), top_title.clone(), *top_score));
+                        }
+                    }
+                }
+                for (prev_id, prev_title) in &accepted_in_batch {
+                    let sc = Self::title_jaccard(&g.title, prev_title);
+                    if sc >= threshold && top_match.as_ref().map(|m| sc > m.2).unwrap_or(true) {
+                        top_match = Some((prev_id.clone(), prev_title.clone(), sc));
+                    }
+                }
+                match top_match {
+                    Some((top_id, top_title, score)) => {
+                        skip_ids.insert(g.id.clone());
+                        blocked_log.push((g.id.clone(), top_id, top_title, score));
+                    }
+                    None => {
+                        accepted_in_batch.push((g.id.clone(), g.title.clone()));
+                    }
+                }
+            }
+        }
+
+        if !blocked_log.is_empty() {
+            let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+            if let Some(parent) = ambient_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let ts = unix_now();
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&ambient_path)
+            {
+                use std::io::Write;
+                for (proposed_id, top_id, top_title, score) in &blocked_log {
+                    let safe_title = top_title.replace(['"', '\\'], "");
+                    let _ = writeln!(
+                        f,
+                        r#"{{"ts":{ts},"kind":"gap_import_similarity_block","proposed_id":"{proposed_id}","top_match_id":"{top_id}","top_match_title":"{safe_title}","score":{score:.4}}}"#
+                    );
+                }
+            }
+        }
+
+        let mut inserted = 0usize;
+        let mut skipped = 0usize;
+        let mut backfilled = 0usize;
+
+        for g in &file.gaps {
+            if skip_ids.contains(&g.id) {
+                continue;
+            }
+            let ac = match &g.acceptance_criteria {
+                Some(v) => normalize_string_list(v),
+                None => String::new(),
+            };
+            let deps = match &g.depends_on {
+                Some(v) => {
+                    let json: serde_json::Value =
+                        serde_json::from_str(&v.to_string()).unwrap_or(serde_json::Value::Null);
+                    normalize_string_list(&json)
+                }
+                None => String::new(),
+            };
+            let notes = g
+                .notes
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let source_doc = g
+                .source_doc
+                .as_ref()
+                .map(yaml_value_to_loose_string)
+                .unwrap_or_default();
+            let opened_date = g
+                .opened_date
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let closed_date = g
+                .closed_date
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
+            let skills_required = g
+                .skills_required
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let preferred_backend = g
+                .preferred_backend
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let preferred_machine = g
+                .preferred_machine
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let estimated_minutes = g
+                .estimated_minutes
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let required_model = g
+                .required_model
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let outcome_id: Option<String> = g
+                .outcome_id
+                .as_ref()
+                .map(yaml_value_to_string)
+                .filter(|s| !s.is_empty());
+            let evidence: Option<String> = g
+                .evidence
+                .as_ref()
+                .map(yaml_value_to_string)
+                .filter(|s| !s.is_empty());
+            let created_at = unix_now();
+
+            let changed = self.conn.execute(
+                "INSERT OR IGNORE INTO gaps(id,domain,title,description,priority,effort,status,
+                    acceptance_criteria,depends_on,notes,source_doc,created_at,
+                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                    preferred_machine,estimated_minutes,required_model,outcome_id,evidence)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+                params![
+                    g.id,
+                    g.domain,
+                    g.title,
+                    g.description,
+                    g.priority,
+                    g.effort,
+                    g.status,
+                    ac,
+                    deps,
+                    notes,
+                    source_doc,
+                    created_at,
+                    opened_date,
+                    closed_date,
+                    closed_pr,
+                    skills_required,
+                    preferred_backend,
+                    preferred_machine,
+                    estimated_minutes,
+                    required_model,
+                    outcome_id,
+                    evidence,
+                ],
+            )?;
+            if changed > 0 {
+                inserted += 1;
+            } else {
+                skipped += 1;
+                if let Some(pr) = closed_pr {
+                    let bf = self.conn.execute(
+                        "UPDATE gaps SET closed_pr = ?1 WHERE id = ?2 AND closed_pr IS NULL",
+                        params![pr, g.id],
+                    )?;
+                    backfilled += bf;
+                }
+                if g.status == "done" {
+                    let receipt =
+                        chump_ship::ImportedReceipt::new(g.id.clone(), "yaml_sync".to_string());
+                    if receipt.validate().is_ok() {
+                        if let Ok(receipt_json) = serde_json::to_string(&receipt) {
+                            let transitioned = self.finalize_status_done(
+                                &g.id,
+                                closed_pr,
+                                receipt_json,
+                                LeaseCleanup::All,
+                                DoneExtras::ReceiptOnly,
+                                "yaml_backfill",
+                            )?;
+                            if transitioned {
+                                if !closed_date.is_empty() {
+                                    self.conn.execute(
+                                        "UPDATE gaps SET closed_date=?1 WHERE id=?2",
+                                        params![closed_date, g.id],
+                                    )?;
+                                }
+                                backfilled += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let _ = self.upsert_repos_from_skills(&file.gaps);
+        Ok((inserted, skipped, backfilled, blocked_log.len(), failed))
     }
 
     /// Extract the highest numeric suffix among `gaps[].id` values matching
@@ -8079,8 +8323,8 @@ mod auto_fetch_tests {
         );
         let err_msg = format!("{:?}", result.unwrap_err());
         assert!(
-            err_msg.contains("cannot auto-pull with uncommitted changes"),
-            "Scenario B: expected dirty-tree message; got: {err_msg}"
+            err_msg.contains("PROOF-OF-MERGE"),
+            "Scenario B: expected proof-of-merge rejection without touching dirty tree; got: {err_msg}"
         );
     }
 
@@ -8123,11 +8367,57 @@ mod auto_fetch_tests {
         git(scratch_dir.path(), &["commit", "--quiet", "-m", &msg]);
         git(scratch_dir.path(), &["push", "--quiet", "origin", "main"]);
 
-        // Local is clean and behind — ship() should auto-pull then succeed.
+        let head_before = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout;
+        let lock_path = repo.join("Cargo.lock");
+        let hack_dir = repo.join("workspace-hack");
+        std::fs::create_dir_all(&hack_dir).unwrap();
+        let hack_path = hack_dir.join("Cargo.toml");
+        std::fs::write(&lock_path, b"# lock-sentinel\n").unwrap();
+        std::fs::write(&hack_path, b"# hack-sentinel\n").unwrap();
+        let index_before = std::fs::read(repo.join(".git/index")).unwrap();
+
+        // RESILIENT-1645: local is behind origin/main — ship() fetches
+        // origin/main, verifies proof-of-merge against origin/main, succeeds,
+        // and leaves local HEAD, index, working tree, Cargo.lock, and
+        // workspace-hack/Cargo.toml byte-unchanged (never pulls or builds).
         let result = store.ship(&gap_id, "test-session", None);
         assert!(
             result.is_ok(),
-            "Scenario A: expected Ok after auto-pull on clean+behind; got: {result:?}"
+            "Scenario A: expected Ok after fetch-only on behind repo; got: {result:?}"
+        );
+        let head_after = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout;
+        assert_eq!(
+            head_before, head_after,
+            "RESILIENT-1645 AC1/AC2: ship() must not move local HEAD when origin/main is ahead"
+        );
+        assert!(
+            !repo.join("landed.txt").exists(),
+            "RESILIENT-1645 AC1/AC2: origin/main's landed.txt must not be pulled into local working tree"
+        );
+        let index_after = std::fs::read(repo.join(".git/index")).unwrap();
+        assert_eq!(
+            index_before, index_after,
+            "RESILIENT-1645 AC2: .git/index must be byte-unchanged after ship()"
+        );
+        assert_eq!(
+            std::fs::read(&lock_path).unwrap(),
+            b"# lock-sentinel\n",
+            "RESILIENT-1645 AC5: Cargo.lock must be byte-unchanged after ship()"
+        );
+        assert_eq!(
+            std::fs::read(&hack_path).unwrap(),
+            b"# hack-sentinel\n",
+            "RESILIENT-1645 AC5: workspace-hack/Cargo.toml must be byte-unchanged after ship()"
         );
     }
 
@@ -13032,6 +13322,119 @@ meta:
     }
 
     #[test]
+    #[serial_test::serial(recycle_bypass_env)]
+    fn credible1571_reopen_premature_closure_without_allow_recycle() {
+        std::env::remove_var("CHUMP_ALLOW_RECYCLE");
+        let dir = tempfile::tempdir().unwrap();
+        let origin = dir.path().join("origin.git");
+        let repo = dir.path().join("repo");
+        std::process::Command::new("git")
+            .args(["init", "--bare", "-q", origin.to_str().unwrap()])
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args([
+                "clone",
+                "-q",
+                origin.to_str().unwrap(),
+                repo.to_str().unwrap(),
+            ])
+            .status()
+            .unwrap();
+        for (k, v) in [("user.email", "t@t.t"), ("user.name", "t")] {
+            std::process::Command::new("git")
+                .args(["config", k, v])
+                .current_dir(&repo)
+                .status()
+                .unwrap();
+        }
+        std::process::Command::new("git")
+            .args(["checkout", "-q", "-B", "main"])
+            .current_dir(&repo)
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args([
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "feat: landed (#4242)",
+            ])
+            .current_dir(&repo)
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["push", "-q", "origin", "main"])
+            .current_dir(&repo)
+            .status()
+            .unwrap();
+
+        let store = GapStore::open(&repo).unwrap();
+        let premature_id = store
+            .reserve("CREDIBLE", "prematurely closed gap", "P2", "s")
+            .unwrap();
+        // Force a premature done state in SQLite (simulating unmerged closed_pr=99999).
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET status='done', closed_pr=99999, closed_date='2026-10-24' WHERE id=?1",
+                [&premature_id],
+            )
+            .unwrap();
+
+        // Reopen to in_progress WITHOUT CHUMP_ALLOW_RECYCLE must succeed and clear closed_pr.
+        store
+            .set_fields(
+                &premature_id,
+                GapFieldUpdate {
+                    status: Some("in_progress".into()),
+                    ..Default::default()
+                },
+            )
+            .expect(
+                "premature closure (unmerged closed_pr) must reopen without CHUMP_ALLOW_RECYCLE",
+            );
+        let (st, cpr, cdate): (String, Option<i64>, String) = store
+            .conn
+            .query_row(
+                "SELECT status, closed_pr, closed_date FROM gaps WHERE id=?1",
+                [&premature_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(st, "in_progress");
+        assert_eq!(cpr, None);
+        assert_eq!(cdate, "");
+
+        // Conversely, a gap whose closed_pr (4242) DID land on origin/main must STILL be refused without CHUMP_ALLOW_RECYCLE.
+        let landed_id = store.reserve("CREDIBLE", "landed gap", "P2", "s").unwrap();
+        store
+            .set_fields(
+                &landed_id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(4242),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let err = store
+            .set_fields(
+                &landed_id,
+                GapFieldUpdate {
+                    status: Some("in_progress".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("INFRA-456 recycled-ID"),
+            "landed gap must still require CHUMP_ALLOW_RECYCLE, got: {err}"
+        );
+    }
+
+    #[test]
     fn set_hijack_guard_rejects_title_rewrite() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "original-title", "P2", "s").unwrap();
@@ -14419,6 +14822,102 @@ mod reconcile_terminal_tests {
                 .reconcile_terminal_from(&GapStore::db_path(a.path()))
                 .unwrap(),
             0
+        );
+    }
+
+    /// RESILIENT-1651 AC1: `dump_yaml` -> `restore_from_state_sql` round-trips
+    /// wrapped (`gaps:`), bare sequence (`- id:`), and SQLite `.dump` (`INSERT INTO gaps`)
+    /// formats without losing rows or metadata.
+    #[test]
+    fn resilient1651_restore_from_state_sql_roundtrips_dump_yaml_and_sql() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        store
+            .conn_for_test()
+            .execute(
+                "INSERT INTO gaps (id, domain, title, status, priority, effort, notes, closed_pr, closed_date, acceptance_criteria)
+                 VALUES ('RESILIENT-9901', 'RESILIENT', 'Roundtrip gap alpha', 'done', 'P1', 's', 'alpha notes', 1234, '2026-10-24', '[\"ac1\",\"ac2\"]')",
+                [],
+            )
+            .unwrap();
+        store
+            .conn_for_test()
+            .execute(
+                "INSERT INTO gaps (id, domain, title, status, priority, effort, notes)
+                 VALUES ('RESILIENT-9902', 'RESILIENT', 'Roundtrip gap beta', 'open', 'P2', 'm', 'beta notes')",
+                [],
+            )
+            .unwrap();
+        let dumped = store.dump_yaml().unwrap();
+        let sql_path = dir.path().join(".chump").join("state.sql");
+        std::fs::write(&sql_path, &dumped).unwrap();
+        drop(store);
+
+        let dir2 = tempfile::tempdir().unwrap();
+        let mut restored = GapStore::open(dir2.path()).unwrap();
+        let count = restored.restore_from_state_sql(&sql_path).unwrap();
+        assert_eq!(count, 2);
+        let r1 = restored.get("RESILIENT-9901").unwrap().unwrap();
+        assert_eq!(r1.status, "done");
+        assert_eq!(r1.closed_pr, Some(1234));
+        assert_eq!(r1.closed_date, "2026-10-24");
+        assert_eq!(r1.notes.trim(), "alpha notes");
+        assert!(r1.acceptance_criteria.contains("ac1") && r1.acceptance_criteria.contains("ac2"));
+
+        // Also test SQLite .dump SQL statements
+        let sql_dump = "BEGIN TRANSACTION;\nINSERT INTO gaps (id, domain, title, status, priority, effort) VALUES ('RESILIENT-9903', 'RESILIENT', 'From SQL dump', 'open', 'P1', 'xs');\nCOMMIT;\n";
+        let sql_dump_path = dir2.path().join("dump.sql");
+        std::fs::write(&sql_dump_path, sql_dump).unwrap();
+        let count_sql = restored.restore_from_state_sql(&sql_dump_path).unwrap();
+        assert_eq!(count_sql, 1);
+        assert!(restored.get("RESILIENT-9903").unwrap().is_some());
+    }
+
+    /// RESILIENT-1651 AC2: `import_from_yaml_path_with_similarity` imports from the
+    /// caller-supplied file path (even when relative or outside `docs/gaps`) and
+    /// does not fall back to `docs/gaps/*.yaml`.
+    #[test]
+    fn resilient1651_import_from_yaml_path_honours_explicit_file_and_ignores_docs_gaps() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        let docs_gaps = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&docs_gaps).unwrap();
+        std::fs::write(
+            docs_gaps.join("DEC-999.yaml"),
+            "id: DEC-999\ndomain: DEC\ntitle: Decoy gap in docs/gaps that must not be read\nstatus: open\n",
+        )
+        .unwrap();
+
+        let custom_dir = dir.path().join("custom");
+        std::fs::create_dir_all(&custom_dir).unwrap();
+        let explicit_file = custom_dir.join("explicit.yaml");
+        std::fs::write(
+            &explicit_file,
+            "gaps:\n- id: EXP-001\n  domain: EXP\n  title: Explicit YAML file import target\n  status: open\n",
+        )
+        .unwrap();
+
+        let (inserted, _skipped, _backfilled, _blocked, failed) = store
+            .import_from_yaml_path_with_similarity(&explicit_file, dir.path(), None)
+            .unwrap();
+        assert_eq!(inserted, 1);
+        assert_eq!(failed, 0);
+        assert!(
+            store.get("EXP-001").unwrap().is_some(),
+            "EXP-001 from explicit file must be imported"
+        );
+        assert!(
+            store.get("DEC-999").unwrap().is_none(),
+            "DEC-999 from docs/gaps must NOT be imported when --yaml <file> is passed"
+        );
+
+        // Missing path must fail loudly
+        let missing = custom_dir.join("nonexistent.yaml");
+        assert!(
+            store
+                .import_from_yaml_path_with_similarity(&missing, dir.path(), None)
+                .is_err(),
+            "nonexistent --yaml path must return Err"
         );
     }
 }
