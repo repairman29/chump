@@ -5659,15 +5659,29 @@ impl GapStore {
                     backfilled += bf;
                 }
                 if g.status == "done" {
-                    let sbf = self.conn.execute(
-                        "UPDATE gaps SET
-                            status = 'done',
-                            closed_date = CASE WHEN closed_date = '' THEN ?1 ELSE closed_date END,
-                            closed_pr   = COALESCE(closed_pr, ?2)
-                         WHERE id = ?3 AND status != 'done'",
-                        params![closed_date, closed_pr, g.id],
-                    )?;
-                    backfilled += sbf;
+                    let receipt =
+                        chump_ship::ImportedReceipt::new(g.id.clone(), "yaml_sync".to_string());
+                    if receipt.validate().is_ok() {
+                        if let Ok(receipt_json) = serde_json::to_string(&receipt) {
+                            let transitioned = self.finalize_status_done(
+                                &g.id,
+                                closed_pr,
+                                receipt_json,
+                                LeaseCleanup::All,
+                                DoneExtras::ReceiptOnly,
+                                "yaml_backfill",
+                            )?;
+                            if transitioned {
+                                if !closed_date.is_empty() {
+                                    self.conn.execute(
+                                        "UPDATE gaps SET closed_date=?1 WHERE id=?2",
+                                        params![closed_date, g.id],
+                                    )?;
+                                }
+                                backfilled += 1;
+                            }
+                        }
+                    }
                 }
             }
         }
