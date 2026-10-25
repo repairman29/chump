@@ -20711,6 +20711,7 @@ async fn main() -> Result<()> {
             worktree: String::new(),
             gap_id: None,
             pending_new_gap: None,
+            branch: None,
         };
         // Resolve gap_id for the ambient event before release
         let release_gap_id = active

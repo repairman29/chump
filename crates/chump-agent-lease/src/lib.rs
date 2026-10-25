@@ -179,6 +179,11 @@ pub struct Lease {
     /// Reserved ID (INFRA-021) before the gap row exists on `main` / in the DB.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_new_gap: Option<PendingNewGap>,
+    /// CREDIBLE-1566: optional explicit branch recorded by a repair dispatch of
+    /// an existing PR so Guard 5 / `verify-claim-branch` validates against the
+    /// PR's actual head branch without needing an `Off-Rails-Bypass:` trailer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
 }
 
 impl Lease {
@@ -450,6 +455,7 @@ pub fn claim_paths(paths: &[&str], ttl_secs: u64, purpose: &str) -> Result<Lease
         worktree: std::env::var("CHUMP_WORKTREE_NAME").unwrap_or_default(),
         gap_id: None,
         pending_new_gap: None,
+        branch: None,
     };
 
     let target = lease_path_for(&session_id)?;
@@ -464,8 +470,25 @@ pub fn claim_paths(paths: &[&str], ttl_secs: u64, purpose: &str) -> Result<Lease
 /// [`gap_id_is_claimed_by_other`] can detect concurrent work without reading
 /// `docs/gaps.yaml`.
 pub fn claim_gap(gap_id: &str, paths: &[&str], ttl_secs: u64, purpose: &str) -> Result<Lease> {
+    claim_gap_with_branch(gap_id, paths, ttl_secs, purpose, None)
+}
+
+/// Claim paths, record `gap_id`, and optionally record an explicit `branch`
+/// (CREDIBLE-1566: used by repair dispatches so Guard 5 / `verify-claim-branch`
+/// accepts the PR's head branch without a bypass trailer).
+pub fn claim_gap_with_branch(
+    gap_id: &str,
+    paths: &[&str],
+    ttl_secs: u64,
+    purpose: &str,
+    branch: Option<&str>,
+) -> Result<Lease> {
     let mut lease = claim_paths(paths, ttl_secs, purpose)?;
     lease.gap_id = Some(gap_id.to_string());
+    lease.branch = branch
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string);
     let target = lease_path_for(&lease.session_id)?;
     let bytes = serde_json::to_vec_pretty(&lease)?;
     atomic_write(&target, &bytes)?;
@@ -733,6 +756,7 @@ mod tests {
             worktree: String::new(),
             gap_id: Some("INFRA-5758".into()),
             pending_new_gap: None,
+            branch: None,
         };
         let json = serde_json::to_string(&lease).unwrap();
         let back: Lease = serde_json::from_str(&json).unwrap();
@@ -898,6 +922,7 @@ mod tests {
                 title: "t".into(),
                 domain: "TEST".into(),
             }),
+            branch: None,
         };
         fs::write(&path, serde_json::to_vec_pretty(&lease).unwrap()).unwrap();
 

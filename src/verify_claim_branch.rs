@@ -131,7 +131,16 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
     let branch_match = leases
         .iter()
         .filter_map(|l| l.gap_id.as_ref().map(|g| (l, g)))
-        .find(|(_, gap_id)| expected_branch(gap_id) == current_branch);
+        .find(|(lease, gap_id)| {
+            // CREDIBLE-1566: honor an explicit repair branch recorded on the lease
+            // before falling back to the default `chump/<gap-id>-claim` convention.
+            if let Some(explicit) = lease.branch.as_deref() {
+                if explicit.eq_ignore_ascii_case(current_branch) {
+                    return true;
+                }
+            }
+            expected_branch(gap_id) == current_branch
+        });
 
     if let Some((lease, gap_id)) = branch_match {
         let _ = lease; // branch already matches expected — OK regardless of session_id
@@ -148,7 +157,12 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
         .find(|l| l.session_id == session_id && l.gap_id.is_some())
     {
         let gap_id = mine.gap_id.clone().unwrap();
-        let expected = expected_branch(&gap_id);
+        let expected = mine
+            .branch
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_else(|| expected_branch(&gap_id));
         return Verdict::Mismatch {
             gap_id,
             current: current_branch.to_string(),
@@ -316,6 +330,30 @@ mod tests {
             worktree: "".to_string(),
             gap_id: gap_id.map(|s| s.to_string()),
             pending_new_gap: None,
+            branch: None,
+        }
+    }
+
+    #[test]
+    fn credible1566_repair_lease_with_explicit_branch_matches_pr_head() {
+        let mut l = lease("s1", Some("INFRA-8597"));
+        l.branch = Some("claude/infra-8595".to_string());
+        let leases = vec![l];
+        match verify("claude/infra-8595", "s1", &leases) {
+            Verdict::Ok { gap_id } => assert_eq!(gap_id, "INFRA-8597"),
+            _ => panic!("expected Ok when lease records explicit repair branch"),
+        }
+        match verify("claude/wrong-branch", "s1", &leases) {
+            Verdict::Mismatch {
+                gap_id,
+                current,
+                expected,
+            } => {
+                assert_eq!(gap_id, "INFRA-8597");
+                assert_eq!(current, "claude/wrong-branch");
+                assert_eq!(expected, "claude/infra-8595");
+            }
+            _ => panic!("expected Mismatch naming explicit repair branch"),
         }
     }
 
