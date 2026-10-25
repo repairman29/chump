@@ -21,8 +21,8 @@
 //!
 //! `gh pr view <sel> [--repo R] --json number,labels,body,comments` (the only
 //! source of comments), tagged `CHUMP_GH_CALL_CRITICALITY=background`. Fails
-//! OPEN when gh cannot be read: a transient API error must not freeze every
-//! arm in the fleet (same as the shell policy).
+//! CLOSED (CREDIBLE-1583) when gh cannot be read or returns malformed JSON so
+//! an unverified or `review-held` PR can never be armed during an API hiccup.
 //!
 //! # Testing
 //!
@@ -42,7 +42,14 @@ use serde_json::Value;
 /// Canonical hold label; the legacy ones follow it in [`HOLD_LABELS`].
 pub const HOLD_LABEL: &str = "no-auto-merge";
 /// Every label that holds a PR (compared case-insensitively).
-pub const HOLD_LABELS: [&str; 4] = ["no-auto-merge", "hold", "do-not-merge", "CHUMP_HOLD"];
+pub const HOLD_LABELS: [&str; 6] = [
+    "no-auto-merge",
+    "hold",
+    "do-not-merge",
+    "CHUMP_HOLD",
+    "review-held",
+    "review-needs-mutants",
+];
 
 /// Why a PR is held.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +60,8 @@ pub enum HoldReason {
     BodyMarker,
     /// An `Auto-merge: hold` line in a PR comment.
     CommentMarker,
+    /// PR label/body/comment read failed — fail closed (CREDIBLE-1583).
+    ReadFailed(String),
 }
 
 impl fmt::Display for HoldReason {
@@ -61,6 +70,7 @@ impl fmt::Display for HoldReason {
             HoldReason::Label(l) => write!(f, "label:{l}"),
             HoldReason::BodyMarker => write!(f, "marker:body"),
             HoldReason::CommentMarker => write!(f, "marker:comment"),
+            HoldReason::ReadFailed(e) => write!(f, "read_failed:{e}"),
         }
     }
 }
@@ -396,11 +406,30 @@ pub fn require_allowed_at(
             .clone()
             .unwrap_or_else(default_ambient_path)
     };
+    let fail_closed = |pr_label: String, reason: HoldReason| -> Result<(), ArmHeld> {
+        // scanner-anchor: "kind":"pr_arm_skipped_hold" (registered in docs/observability/EVENT_REGISTRY.yaml, RESILIENT-1613 / INFRA-8221 / CREDIBLE-1583)
+        let ev = serde_json::json!({
+            "ts": now_ts(),
+            "kind": "pr_arm_skipped_hold",
+            "pr": pr_field(&pr_label),
+            "armer": armer,
+            "reason": reason.to_string(),
+            "source": "gh",
+        });
+        append_ambient(&ambient(), &ev.to_string());
+        let held = ArmHeld {
+            pr: pr_label,
+            armer: armer.to_string(),
+            reason,
+        };
+        eprintln!("[arm-policy] {held}");
+        Err(held)
+    };
     let payload = match fetcher.fetch(selector, repo) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("[arm-policy] WARN: PR {selector}: could not read labels/body/comments ({e}); failing open");
-            return Ok(());
+            eprintln!("[arm-policy] WARN: PR {selector}: could not read labels/body/comments ({e}); failing closed (CREDIBLE-1583)");
+            return fail_closed(selector.to_string(), HoldReason::ReadFailed(e));
         }
     };
     let pr_label = payload
@@ -410,8 +439,8 @@ pub fn require_allowed_at(
         .unwrap_or_else(|| selector.to_string());
     match hold_status_from_json(&payload) {
         Err(e) => {
-            eprintln!("[arm-policy] WARN: PR {selector}: {e}; failing open");
-            Ok(())
+            eprintln!("[arm-policy] WARN: PR {selector}: {e}; failing closed (CREDIBLE-1583)");
+            fail_closed(pr_label, HoldReason::ReadFailed(e.0))
         }
         Ok(HoldStatus::Held(reason)) => {
             // Literal kind for the event-registry scanner (serde_json::json! below
@@ -497,6 +526,13 @@ pub mod testing {
                 calls: Cell::new(0),
             })
         }
+        pub fn read_failed(err: &str) -> Rc<Self> {
+            Rc::new(Self {
+                payload: Err(err.to_string()),
+                last_event: None,
+                calls: Cell::new(0),
+            })
+        }
     }
 
     impl PrHoldFetcher for FakeFetcher {
@@ -531,6 +567,10 @@ mod tests {
             "do-not-merge",
             "CHUMP_HOLD",
             "chump_hold",
+            "review-held",
+            "Review-Held",
+            "review-needs-mutants",
+            "REVIEW-NEEDS-MUTANTS",
         ] {
             assert_eq!(
                 status(json!({"labels": [{"name": "pr:parallel-safe"}, {"name": l}], "body": ""})),
@@ -616,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_allows_clean_pr_and_fails_open_on_read_error() {
+    fn gate_allows_clean_pr_and_fails_closed_on_read_error() {
         let tmp = tempfile::tempdir().unwrap();
         let amb = tmp.path().join("ambient.jsonl");
         {
@@ -624,20 +664,26 @@ mod tests {
             assert!(require_arm_allowed(1, "", "a").is_ok());
             assert!(require_touch_allowed(1, "", "a").is_ok());
         }
+        assert!(!amb.exists(), "no event for allowed clean arms");
         {
-            let broken = Rc::new(FakeFetcher {
-                payload: Err("gh down".into()),
-                last_event: None,
-                calls: Cell::new(0),
-            });
+            let _g = override_for_tests(FakeFetcher::held_by_label("review-held"), &amb);
+            let err = require_arm_allowed(4242, "", "a").unwrap_err();
+            assert_eq!(err.reason, HoldReason::Label("review-held".into()));
+        }
+        {
+            let broken = FakeFetcher::read_failed("gh down");
             let _g = override_for_tests(broken, &amb);
-            assert!(
-                require_arm_allowed(1, "", "a").is_ok(),
-                "read failure must fail open"
+            let err = require_arm_allowed(1, "", "a").unwrap_err();
+            assert_eq!(
+                err.reason,
+                HoldReason::ReadFailed("gh down".into()),
+                "read failure must fail closed (CREDIBLE-1583)"
             );
             assert!(pr_is_held(1, "").is_err());
         }
-        assert!(!amb.exists(), "no event for allowed / fail-open arms");
+        let text = std::fs::read_to_string(&amb).unwrap();
+        assert!(text.contains("label:review-held"), "{text}");
+        assert!(text.contains("read_failed:gh down"), "{text}");
     }
 
     #[test]

@@ -1023,6 +1023,10 @@ fn git_working_tree_dirty(repo_root: &Path) -> bool {
 /// policy. `Ok(false)` = the PR is held (no-auto-merge label / `Auto-merge:
 /// hold`), nothing was armed and `kind=pr_arm_skipped_hold` was emitted.
 async fn arm_integration_pr(pr_number: u64, repo: &Path) -> Result<bool> {
+    arm_integration_pr_with_gh(pr_number, repo, "gh").await
+}
+
+async fn arm_integration_pr_with_gh(pr_number: u64, repo: &Path, gh_bin: &str) -> Result<bool> {
     if chump_ship::arm_policy::require_allowed_at(
         &pr_number.to_string(),
         "",
@@ -1034,7 +1038,7 @@ async fn arm_integration_pr(pr_number: u64, repo: &Path) -> Result<bool> {
     {
         return Ok(false);
     }
-    let merge_status = tokio::process::Command::new("gh")
+    let merge_status = tokio::process::Command::new(gh_bin)
         .args(["pr", "merge", &pr_number.to_string(), "--auto", "--squash"])
         .current_dir(repo)
         .status()
@@ -1155,5 +1159,54 @@ mod tests {
         let ev = std::fs::read_to_string(&amb).unwrap();
         assert!(ev.contains("\"armer\":\"chump-integrator\""), "{ev}");
         assert!(ev.contains("label:do-not-merge"), "{ev}");
+    }
+
+    /// CREDIBLE-1583: integrator arm path refuses `review-held`, allows a clean
+    /// (not-held) PR, and fails closed when the label read fails. Dropping the
+    /// `require_allowed_at` check in `arm_integration_pr_with_gh` causes
+    /// `review-held` and `read_failed` to invoke `"true"` and return `Ok(true)`,
+    /// killing the mutant.
+    #[tokio::test]
+    async fn arm_integration_pr_review_held_not_held_and_read_failure_fail_closed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let amb = tmp.path().join("ambient.jsonl");
+
+        // 1. review-held -> refuses (returns false)
+        {
+            let fake = chump_ship::arm_policy::testing::FakeFetcher::held_by_label("review-held");
+            let _g = chump_ship::arm_policy::override_for_tests(fake.clone(), &amb);
+            let armed = arm_integration_pr_with_gh(4242, tmp.path(), "true")
+                .await
+                .unwrap();
+            assert!(!armed, "review-held PR must not be armed");
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        // 2. not held -> arms (returns true via `true` stub)
+        {
+            let fake = chump_ship::arm_policy::testing::FakeFetcher::clean();
+            let _g = chump_ship::arm_policy::override_for_tests(fake.clone(), &amb);
+            let armed = arm_integration_pr_with_gh(4242, tmp.path(), "true")
+                .await
+                .unwrap();
+            assert!(armed, "clean PR must be armed");
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        // 3. read failure -> fails closed (returns false)
+        {
+            let fake =
+                chump_ship::arm_policy::testing::FakeFetcher::read_failed("gh pr view failed");
+            let _g = chump_ship::arm_policy::override_for_tests(fake.clone(), &amb);
+            let armed = arm_integration_pr_with_gh(4242, tmp.path(), "true")
+                .await
+                .unwrap();
+            assert!(!armed, "read-failure must fail closed");
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        let ev = std::fs::read_to_string(&amb).unwrap();
+        assert!(ev.contains("label:review-held"), "{ev}");
+        assert!(ev.contains("read_failed:gh pr view failed"), "{ev}");
     }
 }

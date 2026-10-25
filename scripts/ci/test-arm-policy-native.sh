@@ -155,6 +155,65 @@ fi
 grep -q 'if not arm_allowed(' scripts/coord/gap-gardener.py && ok "gardener's arm site calls arm_allowed before gh pr merge --auto" \
     || bad "gardener's arm site does not call arm_allowed"
 
+echo "[c] CREDIBLE-1583: Rust review-held + fail-closed policy & workflow arm grep gate"
+
+for lbl in review-held review-needs-mutants; do
+    grep -q "\"$lbl\"" "$POLICY" \
+        && ok "Rust arm_policy HOLD_LABELS contains $lbl" \
+        || bad "Rust arm_policy HOLD_LABELS missing $lbl"
+done
+
+if grep -q "HoldReason::ReadFailed" "$POLICY" && ! grep -q "failing open" "$POLICY"; then
+    ok "Rust arm_policy fails closed (HoldReason::ReadFailed, no failing open)"
+else
+    bad "Rust arm_policy does not fail closed on read error"
+fi
+
+for crate_file in crates/chump-ship/src/lib.rs crates/chump-ship/src/manual_ship.rs crates/chump-integrator/src/daemon.rs; do
+    if grep -q "review-held" "$crate_file" && grep -q "read_failed" "$crate_file"; then
+        ok "$crate_file unit tests cover review-held, not held, and read-failure"
+    else
+        bad "$crate_file missing unit test coverage for review-held / read_failed"
+    fi
+done
+
+# Workflow arm grep gate: every active .github/workflows/*.yml (non-experimental)
+# with an executable `gh pr merge ... --auto` must source arm-policy.sh and call arm_policy_allows.
+wf_out="$(python3 - <<'PY'
+import glob, re
+arm_re = re.compile(r'^\s*(?:chump_)?gh\s+pr\s+merge\b[^#\n]*--auto(?:\s|$|\\|\")', re.M)
+rows = []
+for wf in sorted(glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")):
+    t = open(wf, encoding="utf-8", errors="replace").read()
+    hits = [m.group(0).strip() for m in arm_re.finditer(t) if "--disable-auto" not in m.group(0)]
+    if hits:
+        has_source = "scripts/coord/lib/arm-policy.sh" in t
+        has_call = "arm_policy_allows" in t
+        state = "OK" if (has_source and has_call) else "MISSING"
+        rows.append(f"{state}\t{wf}\t{len(hits)}")
+print("\n".join(rows))
+PY
+)"
+n_wf=0
+while IFS=$'\t' read -r state wf count; do
+    [[ -z "$state" ]] && continue
+    n_wf=$((n_wf + 1))
+    case "$state" in
+        OK)      ok "workflow $wf ($count arm site(s)) sources arm-policy.sh and calls arm_policy_allows" ;;
+        MISSING) bad "workflow $wf arms auto-merge without sourcing scripts/coord/lib/arm-policy.sh + arm_policy_allows" ;;
+    esac
+done <<<"$wf_out"
+[[ "$n_wf" -ge 2 ]] && ok "found $n_wf active workflow arm files (sanity floor 2)" \
+    || bad "only $n_wf active workflow arm files found; detector regex broke?"
+
+for ac3_target in .github/workflows/dependabot-auto-merge.yml .github/workflows/ci-test-census.yml scripts/coord/merge-serializer.sh scripts/ops/pr-approval-action.sh; do
+    if grep -q "arm-policy.sh" "$ac3_target" && grep -q "arm_policy_allows" "$ac3_target"; then
+        ok "$ac3_target honours review-held via arm-policy.sh + arm_policy_allows"
+    else
+        bad "$ac3_target missing arm-policy.sh + arm_policy_allows review-held check"
+    fi
+done
+
 echo
 echo "=== test-arm-policy-native: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]

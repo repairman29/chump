@@ -378,13 +378,22 @@ impl ManualShipPath {
     /// arm subcommand failed in a non-fatal way (secondary rate limit
     /// is the common case); operator can re-arm manually.
     async fn arm_auto_merge(&self, pr_number: u64) -> Result<bool, ShipError> {
+        self.arm_auto_merge_with_gh(pr_number, "gh").await
+    }
+
+    async fn arm_auto_merge_with_gh(
+        &self,
+        pr_number: u64,
+        gh_bin: &str,
+    ) -> Result<bool, ShipError> {
         if self.dry_run {
             tracing::info!(pr = pr_number, "[dry-run] skipping auto-merge arm");
             return Ok(true);
         }
-        // INFRA-8221: the one arm policy. A held PR (no-auto-merge label or an
-        // `Auto-merge: hold` line, possibly carried in from the intent's body)
-        // is left unarmed; not-armed is already a non-fatal outcome here.
+        // INFRA-8221 / CREDIBLE-1583: the one arm policy. A held PR
+        // (review-held / review-needs-mutants / no-auto-merge label or an
+        // `Auto-merge: hold` line) or a label-read failure is left unarmed
+        // (fail-closed).
         if let Err(held) = crate::arm_policy::require_allowed_at(
             &pr_number.to_string(),
             "",
@@ -395,8 +404,12 @@ impl ManualShipPath {
             tracing::warn!(pr = pr_number, %held, "arm policy: PR held; not arming");
             return Ok(false);
         }
-        let out = self
-            .gh()
+        let mut cmd = Command::new(gh_bin);
+        for v in ENV_LEAK_VARS {
+            cmd.env_remove(v);
+        }
+        cmd.current_dir(&self.repo_root);
+        let out = cmd
             .args(["pr", "merge", &pr_number.to_string(), "--auto", "--squash"])
             .output()
             .await?;
@@ -640,5 +653,58 @@ mod tests {
         let ev = std::fs::read_to_string(&amb).unwrap();
         assert!(ev.contains("\"kind\":\"pr_arm_skipped_hold\""), "{ev}");
         assert!(ev.contains("chump-ship(manual_ship)"), "{ev}");
+    }
+
+    /// CREDIBLE-1583: manual_ship arm path refuses `review-held`, allows a clean
+    /// (not-held) PR, and fails closed when the label read fails. Dropping the
+    /// `require_allowed_at` check in `arm_auto_merge_with_gh` causes `review-held`
+    /// and `read_failed` to invoke `"true"` and return `Ok(true)`, killing the mutant.
+    #[tokio::test]
+    async fn arm_auto_merge_review_held_not_held_and_read_failure_fail_closed() {
+        let tmp = TempDir::new().unwrap();
+        let amb = tmp.path().join("ambient.jsonl");
+        let session = unique_session_id("credible-1583");
+        let intent = ShipIntent::owned("CREDIBLE-1583", "b", "main", "msg", session);
+        let shipper = ManualShipPath::new(intent, tmp.path(), false).expect("bind");
+
+        // 1. review-held -> refuses (returns false)
+        {
+            let fake = crate::arm_policy::testing::FakeFetcher::held_by_label("review-held");
+            let _g = crate::arm_policy::override_for_tests(fake.clone(), &amb);
+            let armed = shipper
+                .arm_auto_merge_with_gh(4242, "true")
+                .await
+                .expect("non-fatal");
+            assert!(!armed, "review-held PR must not be armed");
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        // 2. not held -> arms (returns true via `true` stub)
+        {
+            let fake = crate::arm_policy::testing::FakeFetcher::clean();
+            let _g = crate::arm_policy::override_for_tests(fake.clone(), &amb);
+            let armed = shipper
+                .arm_auto_merge_with_gh(4242, "true")
+                .await
+                .expect("non-fatal");
+            assert!(armed, "clean PR must be armed");
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        // 3. read failure -> fails closed (returns false)
+        {
+            let fake = crate::arm_policy::testing::FakeFetcher::read_failed("gh pr view failed");
+            let _g = crate::arm_policy::override_for_tests(fake.clone(), &amb);
+            let armed = shipper
+                .arm_auto_merge_with_gh(4242, "true")
+                .await
+                .expect("non-fatal");
+            assert!(!armed, "read-failure must fail closed");
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        let ev = std::fs::read_to_string(&amb).unwrap();
+        assert!(ev.contains("label:review-held"), "{ev}");
+        assert!(ev.contains("read_failed:gh pr view failed"), "{ev}");
     }
 }

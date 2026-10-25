@@ -1161,4 +1161,48 @@ mod tests {
         assert!(gate_plan(&done, "b", "o/r", "x").is_ok());
         assert_eq!(fake.calls.get(), 2, "no read for a plan that touches no PR");
     }
+
+    /// CREDIBLE-1583: gate_plan refuses `review-held`, allows a clean (not-held)
+    /// PR, and fails closed when the label read fails.
+    #[test]
+    fn gate_plan_review_held_not_held_and_read_failure_fail_closed() {
+        let arm = ShipPlan::ArmAutoMerge {
+            pr: 4242,
+            reason: String::new(),
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let amb = tmp.path().join("ambient.jsonl");
+
+        // 1. review-held -> refused
+        {
+            let fake = arm_policy::testing::FakeFetcher::held_by_label("review-held");
+            let _g = arm_policy::override_for_tests(fake.clone(), &amb);
+            let held = gate_plan(&arm, "b", "o/r", "chump ship execute").unwrap_err();
+            assert_eq!(
+                held.reason,
+                arm_policy::HoldReason::Label("review-held".into())
+            );
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        // 2. not held -> allowed
+        {
+            let fake = arm_policy::testing::FakeFetcher::clean();
+            let _g = arm_policy::override_for_tests(fake.clone(), &amb);
+            assert!(gate_plan(&arm, "b", "o/r", "chump ship execute").is_ok());
+            assert_eq!(fake.calls.get(), 1);
+        }
+
+        // 3. read failure -> fail-closed (refused)
+        {
+            let fake = arm_policy::testing::FakeFetcher::read_failed("gh api timeout");
+            let _g = arm_policy::override_for_tests(fake.clone(), &amb);
+            let held = gate_plan(&arm, "b", "o/r", "chump ship execute").unwrap_err();
+            assert_eq!(
+                held.reason,
+                arm_policy::HoldReason::ReadFailed("gh api timeout".into())
+            );
+            assert_eq!(fake.calls.get(), 1);
+        }
+    }
 }
