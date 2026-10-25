@@ -935,3 +935,7 @@ code_review_unavailable  # reason: CREDIBLE-1529 — registered as a RESILIENT-1
 pr_links_multiple_gaps  # reason: CREDIBLE-1559 — registered as a RESILIENT-1618 fragment (docs/observability/events.d/pr_links_multiple_gaps.yaml), which the CI coverage gate reads via gen-registries.sh but src/verify/rules/event_registry.rs does not (reads only monolith EVENT_REGISTRY.yaml).
 # ── CREDIBLE-1577: dispatch --auto-merge gate-file refusal ────────────────
 dispatch_auto_merge_refused  # reason: CREDIBLE-1577 — registered as a RESILIENT-1618 fragment (docs/observability/events.d/dispatch_auto_merge_refused.yaml), which the CI coverage gate reads via gen-registries.sh but src/verify/rules/event_registry.rs does not (reads only monolith EVENT_REGISTRY.yaml).
+
+# ── RESILIENT-1625 & CREDIBLE-1566: emitted from scripts/git-hooks/ ──────
+prepush_structural_subset_ran  # reason: RESILIENT-1625 emitted from scripts/git-hooks/pre-push Guard 0a; git-hooks/ dir is outside PROD_PATHS grep scan
+agent_bypass_refused  # reason: CREDIBLE-1566 emitted from scripts/git-hooks/pre-push and scripts/git-hooks/commit-msg; git-hooks/ dir is outside PROD_PATHS grep scan

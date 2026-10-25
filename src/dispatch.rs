@@ -824,8 +824,26 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
 
     // Build the workspace: working_dir is either a fresh worktree (Headless
     // / ExecGap) or the caller's repo_root (Interactive). See [`Workspace`].
-    let workspace = Workspace::new(&opts)
-        .context("resolving workspace (worktree creation for ExecGap/Headless)")?;
+    let workspace = match Workspace::new(&opts)
+        .context("resolving workspace (worktree creation for ExecGap/Headless)")
+    {
+        Ok(ws) => ws,
+        Err(e) => {
+            let reason = format!("early-failure:{e:#}");
+            let duration_secs = started.elapsed().as_secs();
+            emit_dispatch_exit(DispatchExitEvent {
+                gap_id: opts.gap_id,
+                session_id: "",
+                exit_code: 1,
+                status: "failed",
+                reason: &reason,
+                child_pid: 0,
+                child_alive_at_exit: false,
+                duration_s: duration_secs,
+            });
+            return Err(e);
+        }
+    };
     let branch = current_branch(workspace.working_dir())?;
 
     // INFRA-8204: one session id for the whole dispatch cycle, printed once
@@ -1186,6 +1204,10 @@ impl<'a> Workspace<'a> {
                 // or fails outright (INFRA-8204).
                 let session_id = resolve_dispatch_session_id(opts.gap_id);
                 std::env::set_var("CHUMP_SESSION_ID", &session_id);
+                // CREDIBLE-1566: export dispatch marker so git hooks (pre-push,
+                // commit-msg) inside a dispatched worker refuse operator-only
+                // bypass env vars and bypass trailers.
+                std::env::set_var("CHUMP_DISPATCH_GAP", opts.gap_id);
                 write_wt_session_id_file(&working_dir, &session_id);
 
                 (working_dir, session_id)
@@ -1372,6 +1394,70 @@ fn write_worktree_search_ignore(worktree: &Path) {
 
 /// INFRA-8199: check out an open PR's head branch into `worktree_path`,
 /// based at `origin/<head>`. See [`create_dispatch_worktree_from`].
+/// INFRA-8593: inspect `git worktree list --porcelain` to find if `branch` is
+/// already checked out in any worktree.
+fn find_worktree_holding_branch(repo_root: &Path, branch: &str) -> Option<PathBuf> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let target_line = format!("branch refs/heads/{branch}");
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut current_wt: Option<PathBuf> = None;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            current_wt = None;
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("worktree ") {
+            current_wt = Some(PathBuf::from(rest.trim()));
+        } else if line == target_line {
+            return current_wt;
+        }
+    }
+    None
+}
+
+/// INFRA-8593: inspect whether a worktree is dirty (uncommitted/untracked
+/// changes via `git status --porcelain`) or holds a live `.chump-locks/*.json`
+/// lease. Returns `(is_dirty, live_lease_holder)`.
+fn inspect_holding_worktree_state(wt: &Path) -> (bool, Option<String>) {
+    let is_dirty = Command::new("git")
+        .arg("-C")
+        .arg(wt)
+        .args(["status", "--porcelain"])
+        .output()
+        .map(|o| !o.status.success() || !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+        .unwrap_or(true);
+
+    let mut live_holder: Option<String> = None;
+    let locks = wt.join(".chump-locks");
+    if let Ok(entries) = std::fs::read_dir(&locks) {
+        let now = chrono::Utc::now();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(bytes) = std::fs::read(&path) {
+                if let Ok(lease) = serde_json::from_slice::<crate::agent_lease::Lease>(&bytes) {
+                    if lease.is_live(now) {
+                        live_holder = Some(lease.session_id);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    (is_dirty, live_holder)
+}
+
 fn create_repair_worktree(repo_root: &Path, worktree_path: &Path, head: &str) -> Result<PathBuf> {
     if worktree_path.exists() {
         let _ = Command::new("git")
@@ -1392,7 +1478,7 @@ fn create_repair_worktree(repo_root: &Path, worktree_path: &Path, head: &str) ->
     if !fetched.success() {
         bail!("git fetch origin {head} failed: cannot base the repair on the PR head");
     }
-    // Preserve a diverged local copy before `-B` resets it.
+    // Preserve a diverged local copy before `-B` or reuse resets it.
     let rev = |r: &str| -> Option<String> {
         Command::new("git")
             .arg("-C")
@@ -1419,6 +1505,60 @@ fn create_repair_worktree(repo_root: &Path, worktree_path: &Path, head: &str) ->
                 .args(["update-ref", &backup, &local])
                 .status();
             eprintln!("[dispatch] preserved diverged local {head} at {backup} ({local})");
+        }
+    }
+    // INFRA-8593: if another worktree already has `head` checked out (e.g. an
+    // earlier worktree created under the parent gap ID before the PR was
+    // retitled to a slice ID), reuse it when clean and lease-free; otherwise
+    // fail with the holding path, specific state, and cleanup command.
+    let canon_repo = std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    if let Some(holding_wt) = find_worktree_holding_branch(repo_root, head) {
+        let canon_holding =
+            std::fs::canonicalize(&holding_wt).unwrap_or_else(|_| holding_wt.clone());
+        if canon_holding != canon_repo && holding_wt != worktree_path {
+            let (is_dirty, live_holder) = inspect_holding_worktree_state(&holding_wt);
+            if !is_dirty && live_holder.is_none() {
+                let reset = Command::new("git")
+                    .arg("-C")
+                    .arg(&holding_wt)
+                    .args(["reset", "--hard", "--quiet", &remote_ref])
+                    .status()
+                    .with_context(|| {
+                        format!(
+                            "resetting reused worktree {} to {remote_ref}",
+                            holding_wt.display()
+                        )
+                    })?;
+                if !reset.success() {
+                    bail!(
+                        "INFRA-8593: git reset --hard {remote_ref} failed in reused worktree {}",
+                        holding_wt.display()
+                    );
+                }
+                set_dispatch_branch_upstream(&holding_wt, head);
+                chump_atomic_claim::atomic_claim::nugget_prefetch::link_state_db(
+                    repo_root,
+                    &holding_wt,
+                );
+                write_worktree_search_ignore(&holding_wt);
+                eprintln!(
+                    "[dispatch] INFRA-8593: reusing clean, lease-free worktree {} holding branch {head} (base {remote_ref})",
+                    holding_wt.display()
+                );
+                return Ok(holding_wt);
+            }
+            let state_desc = match (is_dirty, live_holder) {
+                (true, Some(holder)) => format!("dirty and leased by session {holder}"),
+                (true, None) => "dirty (uncommitted changes)".to_string(),
+                (false, Some(holder)) => format!("leased by session {holder}"),
+                (false, None) => "in use".to_string(),
+            };
+            bail!(
+                "INFRA-8593: branch {head} is already checked out at {} ({state_desc}) — cannot reuse; clean/release or run: git -C {} worktree remove --force {}",
+                holding_wt.display(),
+                repo_root.display(),
+                holding_wt.display()
+            );
         }
     }
     let status = Command::new("git")
@@ -1651,6 +1791,7 @@ fn spawn_opencode(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     }
     cmd.current_dir(ws.working_dir());
     // INFRA-8204: explicit, not merely inherited — see ship()'s comment.
+    cmd.env("CHUMP_DISPATCH_GAP", opts.gap_id);
     if !ws.session_id.is_empty() {
         cmd.env("CHUMP_SESSION_ID", &ws.session_id);
     }
@@ -1689,6 +1830,7 @@ fn spawn_aider(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     }
     cmd.current_dir(ws.working_dir());
     // INFRA-8204: explicit, not merely inherited — see ship()'s comment.
+    cmd.env("CHUMP_DISPATCH_GAP", opts.gap_id);
     if !ws.session_id.is_empty() {
         cmd.env("CHUMP_SESSION_ID", &ws.session_id);
     }
@@ -1737,6 +1879,7 @@ fn spawn_local(ws: &Workspace, prompt: &str) -> Result<()> {
         // explicitly (gen resolves relative paths off cwd otherwise).
         .current_dir(ws.working_dir());
     // INFRA-8204: explicit, not merely inherited — see ship()'s comment.
+    cmd.env("CHUMP_DISPATCH_GAP", opts.gap_id);
     if !ws.session_id.is_empty() {
         cmd.env("CHUMP_SESSION_ID", &ws.session_id);
     }
@@ -1931,6 +2074,7 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     // from ~/.chump/oauth-token.json when absent in caller env.
     ensure_oauth_token_env(Some(&mut cmd));
     // INFRA-8204: explicit, not merely inherited — see ship()'s comment.
+    cmd.env("CHUMP_DISPATCH_GAP", opts.gap_id);
     if !ws.session_id.is_empty() {
         cmd.env("CHUMP_SESSION_ID", &ws.session_id);
     }
@@ -2001,6 +2145,7 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
         // operator typed `chump dispatch …`.
         .current_dir(ws.working_dir());
     // INFRA-8204: explicit, not merely inherited — see ship()'s comment.
+    cmd.env("CHUMP_DISPATCH_GAP", opts.gap_id);
     if !ws.session_id.is_empty() {
         cmd.env("CHUMP_SESSION_ID", &ws.session_id);
     }
@@ -3039,9 +3184,19 @@ fn claim(ws: &Workspace) -> Result<()> {
     // The lease must land in THIS worktree's `.chump-locks/` (as gap-claim.sh did via
     // cwd=working_dir). `agent_lease::locks_dir()` resolves via CHUMP_REPO; point it at
     // the worktree for the duration of the claim (same pattern as execute_gap.rs:999).
+    let repair_branch = match &opts.mode {
+        DispatchMode::Repair { head_branch } => Some(head_branch.as_str()),
+        _ => None,
+    };
     let prev_repo = std::env::var("CHUMP_REPO").ok();
     std::env::set_var("CHUMP_REPO", ws.working_dir());
-    let result = crate::agent_lease::claim_gap(opts.gap_id, &paths_vec, ttl_secs, "dispatch");
+    let result = crate::agent_lease::claim_gap_with_branch(
+        opts.gap_id,
+        &paths_vec,
+        ttl_secs,
+        "dispatch",
+        repair_branch,
+    );
     match prev_repo {
         Some(p) => std::env::set_var("CHUMP_REPO", p),
         None => std::env::remove_var("CHUMP_REPO"),
@@ -3079,6 +3234,7 @@ fn ship(ws: &Workspace) -> Result<ShipResult> {
     // the dispatch worktree's own .chump-locks/, so without this the ship
     // phase can't see the lease claim() just wrote and re-invokes
     // `chump claim`, stranding the agent's commits.
+    cmd.env("CHUMP_DISPATCH_GAP", opts.gap_id);
     if !ws.session_id.is_empty() {
         cmd.env("CHUMP_SESSION_ID", &ws.session_id);
     }
@@ -5489,5 +5645,174 @@ mod tests {
             enforce_routing_floor("haiku", "P2", "rust", "routine cleanup"),
             "haiku"
         );
+    }
+
+    #[test]
+    fn infra_8593_repair_reuses_clean_lease_free_holding_worktree_and_refuses_dirty_or_leased() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let repo_root = tmp.path().join("main");
+        std::fs::create_dir_all(&repo_root).expect("mk repo_root");
+        let git = |dir: &Path, args: &[&str]| -> String {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .expect("spawn git");
+            assert!(out.status.success(), "git {args:?} failed: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&repo_root, &["init", "--quiet", "-b", "main"]);
+        git(&repo_root, &["config", "user.email", "test@example.com"]);
+        git(&repo_root, &["config", "user.name", "Test"]);
+        std::fs::write(repo_root.join("f.txt"), "x").unwrap();
+        git(&repo_root, &["add", "."]);
+        git(&repo_root, &["commit", "-m", "init", "--quiet"]);
+
+        git(
+            &repo_root,
+            &["checkout", "--quiet", "-b", "claude/credible-1550"],
+        );
+        std::fs::write(repo_root.join("pr.txt"), "slice work").unwrap();
+        git(&repo_root, &["add", "."]);
+        git(&repo_root, &["commit", "-m", "slice work", "--quiet"]);
+        let pr_sha = git(&repo_root, &["rev-parse", "HEAD"]);
+        git(&repo_root, &["checkout", "--quiet", "main"]);
+
+        let bare = tmp.path().join("origin.git");
+        assert!(Command::new("git")
+            .args(["clone", "--quiet", "--bare"])
+            .arg(&repo_root)
+            .arg(&bare)
+            .status()
+            .unwrap()
+            .success());
+        git(
+            &repo_root,
+            &["remote", "add", "origin", bare.to_str().unwrap()],
+        );
+        git(&repo_root, &["fetch", "--quiet", "origin"]);
+
+        // First worktree holds claude/credible-1550 under CREDIBLE-1550.
+        let holder_wt = create_dispatch_worktree_from(
+            &repo_root,
+            "CREDIBLE-1550",
+            Some("claude/credible-1550"),
+        )
+        .expect("initial holder worktree created");
+
+        // AC1: Repairing CREDIBLE-1552 on claude/credible-1550 while holder_wt is
+        // clean and lease-free reuses holder_wt.
+        let reused_wt = create_dispatch_worktree_from(
+            &repo_root,
+            "CREDIBLE-1552",
+            Some("claude/credible-1550"),
+        )
+        .expect("clean lease-free holding worktree should be reused");
+        assert_eq!(reused_wt, holder_wt);
+        assert_eq!(git(&reused_wt, &["rev-parse", "HEAD"]), pr_sha);
+
+        // AC2/AC3 (dirty): dirty holder_wt -> fails naming holding path + dirty + cleanup cmd.
+        std::fs::write(holder_wt.join("dirty.txt"), "uncommitted").unwrap();
+        let err_dirty = create_dispatch_worktree_from(
+            &repo_root,
+            "CREDIBLE-1552",
+            Some("claude/credible-1550"),
+        )
+        .expect_err("dirty holding worktree must refuse reuse");
+        let msg_dirty = format!("{err_dirty:#}");
+        assert!(
+            msg_dirty.contains(&holder_wt.display().to_string()),
+            "error must name holding path, got: {msg_dirty}"
+        );
+        assert!(
+            msg_dirty.contains("dirty"),
+            "error must state dirty reason, got: {msg_dirty}"
+        );
+        assert!(
+            msg_dirty.contains("worktree remove --force"),
+            "error must include cleanup command, got: {msg_dirty}"
+        );
+        std::fs::remove_file(holder_wt.join("dirty.txt")).unwrap();
+
+        // AC2/AC3 (leased): clean but holding a live lease -> fails naming holding path + leased.
+        let locks_dir = holder_wt.join(".chump-locks");
+        std::fs::create_dir_all(&locks_dir).unwrap();
+        let now = chrono::Utc::now();
+        let live_lease = crate::agent_lease::Lease {
+            session_id: "sess-holder-1550".to_string(),
+            paths: vec![],
+            taken_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            expires_at: (now + chrono::Duration::hours(1))
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            heartbeat_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            purpose: "holding".to_string(),
+            worktree: String::new(),
+            gap_id: Some("CREDIBLE-1550".to_string()),
+            pending_new_gap: None,
+            branch: Some("claude/credible-1550".to_string()),
+        };
+        std::fs::write(
+            locks_dir.join("sess-holder-1550.json"),
+            serde_json::to_vec_pretty(&live_lease).unwrap(),
+        )
+        .unwrap();
+        let err_leased = create_dispatch_worktree_from(
+            &repo_root,
+            "CREDIBLE-1552",
+            Some("claude/credible-1550"),
+        )
+        .expect_err("leased holding worktree must refuse reuse");
+        let msg_leased = format!("{err_leased:#}");
+        assert!(
+            msg_leased.contains(&holder_wt.display().to_string()),
+            "error must name holding path, got: {msg_leased}"
+        );
+        assert!(
+            msg_leased.contains("leased by session sess-holder-1550"),
+            "error must name lease holder, got: {msg_leased}"
+        );
+    }
+
+    #[test]
+    fn credible_1566_repair_claim_records_pr_head_branch_in_lease() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let wt = tmp.path().to_path_buf();
+        let opts = DispatchOptions {
+            gap_id: "INFRA-8597",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: wt.clone(),
+            mode: DispatchMode::Repair {
+                head_branch: "claude/infra-8595".to_string(),
+            },
+        };
+        let ws = ws_with_dir(&opts, wt.clone());
+        claim(&ws).expect("repair lease claim should succeed");
+        let locks = wt.join(".chump-locks");
+        let leases: Vec<crate::agent_lease::Lease> = std::fs::read_dir(&locks)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+            .map(|e| {
+                serde_json::from_slice(&std::fs::read(e.path()).unwrap())
+                    .expect("parse written lease")
+            })
+            .collect();
+        assert_eq!(leases.len(), 1);
+        assert_eq!(leases[0].gap_id.as_deref(), Some("INFRA-8597"));
+        assert_eq!(leases[0].branch.as_deref(), Some("claude/infra-8595"));
+        // Verify verify_claim_branch accepts the PR's head branch without a bypass trailer.
+        match crate::verify_claim_branch::verify(
+            "claude/infra-8595",
+            &leases[0].session_id,
+            &leases,
+        ) {
+            crate::verify_claim_branch::Verdict::Ok { gap_id } => {
+                assert_eq!(gap_id, "INFRA-8597");
+            }
+            _ => panic!("expected verify_claim_branch Ok for repair lease branch"),
+        }
     }
 }

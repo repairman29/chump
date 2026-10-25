@@ -1828,6 +1828,10 @@ jobs:
         # bot-merge (INFRA-3521 narrowed), and a synthetic unwired scripts/ci test
         # fails the structural census gate locally (#5582 class). Hermetic, no build.
         run: bash scripts/ci/test-resilient-1622-structural-subset.sh
+          bash scripts/ci/test-resilient-1625-structural-hook.sh
+          bash scripts/ci/test-prepush-scoped-packages.sh
+          bash scripts/ci/test-credible-1569-scoped-shell-gates.sh
+          bash scripts/ci/test-credible-1566-dispatch-no-bypass.sh
 
       - name: no title/subject-regex gap closers (CREDIBLE-1550 AC4)
         # A gap close must trust the typed gap_prs FK, never a PR title/commit

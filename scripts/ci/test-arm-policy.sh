@@ -575,7 +575,8 @@ case "$1 $2" in
       exit 0
     fi
     if [[ "$a" == *isDraft* ]]; then cross=false; [[ "$pr" == 202 ]] && cross=true
-      echo "{\"isDraft\":false,\"isCrossRepository\":$cross,\"headRefOid\":\"deadbeef1234567890abcdef1234567890abcdef\",\"author\":{\"login\":\"botx\"},\"headRefName\":\"claude/credible-9${pr}-x\"}"; exit 0; fi
+      _pr_auth="${ORG_PR_AUTHOR:-botx}"; _pr_href="${ORG_PR_HEAD_REF:-claude/credible-9${pr}-x}"
+      echo "{\"isDraft\":false,\"isCrossRepository\":$cross,\"headRefOid\":\"deadbeef1234567890abcdef1234567890abcdef\",\"author\":{\"login\":\"$_pr_auth\"},\"headRefName\":\"$_pr_href\"}"; exit 0; fi
     # Serves both review_hold_allows (labels,comments) and current_head_verdict (comments).
     if [[ "$a" == *comments* ]]; then cat "$ORGCMT" 2>/dev/null || echo '{"labels":[],"comments":[]}'; exit 0; fi
     if [[ "$a" == *statusCheckRollup* ]]; then
@@ -1380,6 +1381,14 @@ organ_run --pr 202
 rm -f "$ORGLOG.cmt.203"
 organ_run --pr 203 --self-login botx
 if [[ -e "$ORGLOG.cmt.203" ]]; then bad "organ: own-lane PR was still reviewed"; else ok "organ: own-lane PR (author==self-login) skipped"; fi
+# Single-account repo (repairman29/chump): --self-login repairman29 still reviews
+# worker branches (claude/*, fix/*) and skips only review-organ/* branches.
+rm -f "$ORGLOG.cmt.203"
+ORG_PR_AUTHOR=repairman29 ORGAN_SELF=repairman29 organ_run --pr 203 --self-login repairman29
+if [[ -e "$ORGLOG.cmt.203" ]]; then ok "organ: single-account repairman29 worker branch reviewed under --self-login repairman29"; else bad "organ: single-account repairman29 worker branch skipped under --self-login repairman29"; fi
+rm -f "$ORGLOG.cmt.203"
+ORG_PR_AUTHOR=repairman29 ORGAN_SELF=repairman29 ORG_PR_HEAD_REF="review-organ/self-203" organ_run --pr 203 --self-login repairman29
+if [[ -e "$ORGLOG.cmt.203" ]]; then bad "organ: review-organ/* own-lane branch was reviewed under --self-login repairman29"; else ok "organ: review-organ/* own-lane branch skipped under --self-login repairman29"; fi
 
 # Idempotency (design item (a) / CREDIBLE-1542 review REQUIRED): a PR whose CURRENT
 # head already has a verdict comment FROM THE ORGAN must NOT be re-reviewed,

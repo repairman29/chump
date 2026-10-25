@@ -41,6 +41,23 @@ if [ ! -f "$MSG_FILE" ]; then
     exit 0
 fi
 
+# ── CREDIBLE-1566: refuse operator-only bypass trailers inside a chump dispatch ──
+# MUTANT_ANCHOR_DISPATCH_NO_BYPASS_TRAILER
+if [ -n "${CHUMP_DISPATCH_GAP:-}" ] || [ "${CHUMP_DISPATCH_DEPTH:-0}" -ge 1 ] 2>/dev/null; then
+    _cm_bypass_hit="$(grep -iE '^(Test-Gate-Bypass|Off-Rails-Bypass|Lint-Gate-Bypass|Preflight-Skip-Reason|Verify-Gate-Bypass|Verify-Bypass):' "$MSG_FILE" | head -1 || true)"
+    if [ -n "$_cm_bypass_hit" ]; then
+        _cm_btype="${_cm_bypass_hit%%:*}"
+        _cm_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        _cm_amb="${CHUMP_AMBIENT_LOG:-$_cm_root/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_cm_amb")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"agent_bypass_refused","hook":"commit-msg","gap_id":"%s","bypass":"%s","reason":"dispatched agents may not use operator bypass trailers"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_DISPATCH_GAP:-unknown}" "$_cm_btype" \
+            >> "$_cm_amb" 2>/dev/null || true
+        echo "[commit-msg] BLOCKED (CREDIBLE-1566): dispatched agent (${CHUMP_DISPATCH_GAP:-dispatch}) cannot use operator bypass trailer '${_cm_btype}:' — stop and report instead." >&2
+        exit 1
+    fi
+fi
+
 # ── CREDIBLE-172 / COTG-3.2: zero-touch provenance stamp ──────────────────────
 # The `Chump-Agent:` trailer is the ONLY signal that reliably tells an OS commit
 # from a human one on main (it is what survives squash-merge under the repo's

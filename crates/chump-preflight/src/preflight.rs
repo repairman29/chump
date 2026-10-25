@@ -1569,6 +1569,187 @@ fn is_local_safe_script(path: &std::path::Path) -> bool {
     true
 }
 
+// ── CREDIBLE-1569: diff-scoped CI/audit shell test selection ──────────────
+//
+// Parses `.github/workflows/ci.yml` and `.github/workflows/audit.yml` path-filter
+// categories + job step lists (no hand-maintained mapping) and selects locally-safe
+// `scripts/ci/test-*.sh` scripts whose content (or 1-hop `scripts/ci/lib/*.sh`
+// helper) references tokens from the changed files.
+pub fn select_ci_scoped_shell_tests(
+    repo_root: &std::path::Path,
+    changed_paths: &[String],
+) -> Vec<String> {
+    if changed_paths.is_empty() {
+        return Vec::new();
+    }
+    let ci_yml =
+        std::fs::read_to_string(repo_root.join(".github/workflows/ci.yml")).unwrap_or_default();
+    let audit_yml =
+        std::fs::read_to_string(repo_root.join(".github/workflows/audit.yml")).unwrap_or_default();
+    if ci_yml.is_empty() && audit_yml.is_empty() {
+        return Vec::new();
+    }
+
+    // Evaluate dorny/paths-filter categories from ci.yml/audit.yml filters block.
+    let mut rust_active = false;
+    let mut scripts_active = false;
+    let mut docs_active = false;
+    let mut other_active = false;
+    for p in changed_paths {
+        let p = p.trim();
+        if p.is_empty() {
+            continue;
+        }
+        if p.starts_with("src/")
+            || p.starts_with("crates/")
+            || p.starts_with("workspace-hack/")
+            || p == "Cargo.toml"
+            || p == "Cargo.lock"
+            || p.starts_with("rust-toolchain")
+            || p.starts_with(".cargo/")
+            || p == "build.rs"
+        {
+            rust_active = true;
+        } else if p.starts_with("scripts/")
+            || p.starts_with(".github/workflows/")
+            || p.starts_with(".github/actions/")
+            || p.starts_with(".githooks/")
+        {
+            scripts_active = true;
+        } else if p.starts_with("docs/") || p.ends_with(".md") {
+            docs_active = true;
+        } else {
+            other_active = true;
+        }
+    }
+
+    // Docs-only diff -> ci.yml/audit.yml skip fast-checks and audit-shard -> select none.
+    if docs_active && !rust_active && !scripts_active && !other_active {
+        return Vec::new();
+    }
+
+    let mut wired_scripts = extract_ci_script_tokens(&ci_yml);
+    for t in extract_ci_script_tokens(&audit_yml) {
+        wired_scripts.insert(t);
+    }
+
+    let mut selected = std::collections::BTreeSet::new();
+    let mut hop0_tokens = std::collections::BTreeSet::new();
+
+    for rel in changed_paths {
+        let rel = rel.trim();
+        if rel.is_empty() {
+            continue;
+        }
+        if rel.starts_with("scripts/ci/test-")
+            && rel.ends_with(".sh")
+            && repo_root.join(rel).is_file()
+        {
+            selected.insert(rel.to_string());
+        }
+        if let Some(fname) = std::path::Path::new(rel)
+            .file_name()
+            .and_then(|s| s.to_str())
+        {
+            if fname.len() >= 6 {
+                hop0_tokens.insert(fname.to_string());
+            }
+            if let Some(stem) = std::path::Path::new(fname)
+                .file_stem()
+                .and_then(|s| s.to_str())
+            {
+                if stem.len() >= 6 {
+                    hop0_tokens.insert(stem.to_string());
+                    let dashed = stem.replace('_', "-");
+                    if dashed.len() >= 6 {
+                        hop0_tokens.insert(dashed);
+                    }
+                }
+            }
+        }
+        // Extract `.chump/<token>` state-file literals and module-header gap IDs from the file.
+        if let Ok(content) = std::fs::read_to_string(repo_root.join(rel)) {
+            for line in content.lines() {
+                let mut rest = line;
+                while let Some(idx) = rest.find(".chump/") {
+                    let after = &rest[idx + ".chump/".len()..];
+                    let end = after
+                        .find(|c: char| {
+                            !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+                        })
+                        .unwrap_or(after.len());
+                    let tok = after[..end].trim_matches('.');
+                    if tok.len() >= 6 {
+                        hop0_tokens.insert(tok.to_string());
+                    }
+                    rest = &after[end.max(1)..];
+                }
+            }
+            for line in content.lines().take(30) {
+                let trimmed = line.trim_start();
+                if !(trimmed.starts_with("//!")
+                    || trimmed.starts_with("//")
+                    || trimmed.starts_with('#'))
+                {
+                    continue;
+                }
+                for word in trimmed.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')) {
+                    if let Some((prefix, num)) = word.split_once('-') {
+                        if prefix.len() >= 3
+                            && prefix.chars().all(|c| c.is_ascii_uppercase())
+                            && num.len() >= 3
+                            && num.chars().all(|c| c.is_ascii_digit())
+                        {
+                            hop0_tokens.insert(word.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if hop0_tokens.is_empty() {
+        return selected.into_iter().collect();
+    }
+
+    // Hop 1: scripts/ci/lib/*.sh helpers that reference any Hop-0 token.
+    let mut all_tokens = hop0_tokens.clone();
+    let lib_dir = repo_root.join("scripts/ci/lib");
+    if let Ok(entries) = std::fs::read_dir(&lib_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("sh") {
+                continue;
+            }
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                if hop0_tokens.iter().any(|tok| text.contains(tok.as_str())) {
+                    if let Some(fname) = path.file_name().and_then(|s| s.to_str()) {
+                        all_tokens.insert(fname.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Hop 2: CI/audit-wired scripts/ci/test-*.sh files that reference any Hop-0 or Hop-1 token.
+    for script_rel in wired_scripts {
+        if !script_rel.starts_with("scripts/ci/test-") || !script_rel.ends_with(".sh") {
+            continue;
+        }
+        let full = repo_root.join(&script_rel);
+        if !full.is_file() || !is_local_safe_script(&full) {
+            continue;
+        }
+        if let Ok(text) = std::fs::read_to_string(&full) {
+            if all_tokens.iter().any(|tok| text.contains(tok.as_str())) {
+                selected.insert(script_rel);
+            }
+        }
+    }
+
+    selected.into_iter().collect()
+}
+
 // ── RESILIENT-196: disk-floor guard ────────────────────────────────────────
 //
 // A full workspace build writes several GB into target/. Starting one below
@@ -3453,6 +3634,40 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // RESILIENT-1625: structural preflight hook + bot-merge stage 4b + UTF-8 cap.
+        steps.push(step(
+            "resilient-1625-structural-hook",
+            &["bash", "scripts/ci/test-resilient-1625-structural-hook.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-8154: pre-push package-scoped cargo nextest selection + rdeps.
+        steps.push(step(
+            "prepush-scoped-packages",
+            &["bash", "scripts/ci/test-prepush-scoped-packages.sh"],
+            GateKind::Scripts,
+        ));
+
+        // CREDIBLE-1569: pre-push + preflight diff-scoped CI/audit shell gates.
+        steps.push(step(
+            "credible-1569-scoped-shell-gates",
+            &[
+                "bash",
+                "scripts/ci/test-credible-1569-scoped-shell-gates.sh",
+            ],
+            GateKind::Scripts,
+        ));
+
+        // CREDIBLE-1566: dispatched worker env/trailer bypass refusal + repair lease branch.
+        steps.push(step(
+            "credible-1566-dispatch-no-bypass",
+            &[
+                "bash",
+                "scripts/ci/test-credible-1566-dispatch-no-bypass.sh",
+            ],
+            GateKind::Scripts,
+        ));
+
         // INFRA-5000 (META-070/INFRA-3373 slice): cli_observability_misc
         // gate — mirrors the 41 remaining cli-observability-misc cluster
         // scripts from docs/process/AUDIT_JOB_DECOMPOSITION.md.
@@ -3483,6 +3698,33 @@ pub fn run(argv: &[String]) -> i32 {
             steps.push(Step {
                 name,
                 argv: vec!["bash".to_string(), path],
+                kind: GateKind::Scripts,
+            });
+        }
+    }
+
+    // CREDIBLE-1569: under --scope auto, include CI/audit-wired shell tests
+    // whose content or 1-hop scripts/ci/lib helper matches the changed files
+    // (e.g. src/farmer_status.rs -> sandbox-healthy-node.sh -> test-fleet-kill-switch.sh,
+    // test-outcome-gate.sh, test-state-db-yaml-sync.sh).
+    let auto_changed_paths = staged_paths(&repo_root);
+    if args.scope == ScopeArg::Auto
+        && (scope.rust || scope.scripts)
+        && !auto_changed_paths.is_empty()
+    {
+        let mut present: std::collections::BTreeSet<String> = steps
+            .iter()
+            .filter_map(|st| st.argv.iter().find(|a| a.contains("scripts/ci/")).cloned())
+            .collect();
+        for rel in select_ci_scoped_shell_tests(&repo_root, &auto_changed_paths) {
+            if present.contains(&rel) {
+                continue;
+            }
+            present.insert(rel.clone());
+            let name: &'static str = Box::leak(format!("scoped-ci: {rel}").into_boxed_str());
+            steps.push(Step {
+                name,
+                argv: vec!["bash".to_string(), rel],
                 kind: GateKind::Scripts,
             });
         }
@@ -3642,16 +3884,8 @@ pub fn run(argv: &[String]) -> i32 {
             let should_continue = baseline.is_some() || args.keep_going;
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", s.name);
-                // Truncate to first ~2KB to avoid swamping the terminal.
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                // Truncate to first ~2KB (UTF-8 char-boundary safe, RESILIENT-1625).
+                let trunc = truncate_output_utf8(cap, 2048);
                 eprintln!("{}", trunc);
                 eprintln!("---- end ----");
             }
@@ -3822,7 +4056,40 @@ pub fn run(argv: &[String]) -> i32 {
 /// bot-merge pre-push hook. Honors the main-RED auto-skip (a gate already red
 /// on origin/main never blocks a ship). On failure, prints the failing gate
 /// names so the caller (bot-merge) can surface them. Returns an exit code.
+/// RESILIENT-1625: UTF-8 char-boundary-safe output truncation. Never slices in
+/// the middle of a multi-byte UTF-8 codepoint (e.g. `✓`, `✗`, `—`, `…` at byte 2048).
+fn truncate_output_utf8(cap: &str, max_bytes: usize) -> String {
+    if cap.len() <= max_bytes {
+        return cap.to_string();
+    }
+    let mut boundary = max_bytes;
+    while boundary > 0 && !cap.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!(
+        "{}\n... [{} more bytes truncated]",
+        &cap[..boundary],
+        cap.len() - boundary
+    )
+}
+
 fn run_structural(
+    keep_going: bool,
+    json: bool,
+    main_red_gates: &[String],
+    trunk_fix_gap_id: &str,
+) -> i32 {
+    run_structural_with_gates(
+        STRUCTURAL_GATES,
+        keep_going,
+        json,
+        main_red_gates,
+        trunk_fix_gap_id,
+    )
+}
+
+fn run_structural_with_gates(
+    gates: &[(&'static str, &'static str)],
     keep_going: bool,
     json: bool,
     main_red_gates: &[String],
@@ -3831,13 +4098,13 @@ fn run_structural(
     eprintln!(
         "[preflight] --structural: {} no-build gate(s) (census, ci-parity, env-var, \
          event-registry, path-filter, no-new-bypass, raw-gh)",
-        STRUCTURAL_GATES.len()
+        gates.len()
     );
     let started = Instant::now();
     let mut failed_gates: Vec<&'static str> = vec![];
     let mut json_results: Vec<String> = vec![];
 
-    for &(name, script) in STRUCTURAL_GATES {
+    for &(name, script) in gates {
         // INFRA-2422: auto-skip gates already failing on origin/main so a
         // trunk-RED structural gate never blocks the fleet's own ship path.
         if main_red_gates.iter().any(|g| g == name) {
@@ -3860,9 +4127,21 @@ fn run_structural(
             continue;
         }
 
-        let s = step(name, &["bash", script], GateKind::Scripts);
         eprint!("[preflight] {} ... ", name);
-        let out = run_step(&s);
+        // RESILIENT-1625: a missing structural gate script must fail closed
+        // rather than silently skipping via INFRA-2721's missing-script skip.
+        let out = if !std::path::Path::new(script).is_file() {
+            Outcome {
+                status: Status::Fail,
+                elapsed_ms: 0,
+                captured: Some(format!(
+                    "[preflight --structural] missing required structural gate script: {script}"
+                )),
+            }
+        } else {
+            let s = step(name, &["bash", script], GateKind::Scripts);
+            run_step(&s)
+        };
         let symbol = match out.status {
             Status::Pass => "✓",
             Status::Fail => "✗",
@@ -3879,15 +4158,7 @@ fn run_structural(
             failed_gates.push(name);
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", name);
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                let trunc = truncate_output_utf8(cap, 2048);
                 eprintln!("{}", trunc);
                 eprintln!("---- end ----");
             }
@@ -5350,5 +5621,96 @@ mod tests {
         // env var name must stay stable since it's the documented escape
         // hatch for CI/tests to skip the real-time defer loop.
         assert_eq!(LOAD_DEFER_DISABLE_ENV, "CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE");
+    }
+
+    // ── RESILIENT-1625: --structural unit tests + UTF-8 truncation ──────────
+
+    #[test]
+    fn resilient1625_parse_args_structural_flag() {
+        let a = parse_args(&["--structural".to_string()]);
+        assert!(a.structural, "--structural must set Args.structural");
+    }
+
+    #[test]
+    fn resilient1625_run_structural_fails_on_failing_gate() {
+        let script_path = _write_tmp_script(
+            "r1625_fail",
+            "#!/usr/bin/env bash
+echo fail_output >&2
+exit 1
+",
+        );
+        let leaked_path: &'static str =
+            Box::leak(script_path.to_string_lossy().into_owned().into_boxed_str());
+        let gates: &[(&'static str, &'static str)] = &[("synthetic-fail-gate", leaked_path)];
+        let rc = run_structural_with_gates(gates, false, false, &[], "");
+        let _ = std::fs::remove_file(&script_path);
+        assert_eq!(
+            rc, 1,
+            "run_structural_with_gates must return 1 when a gate exits non-zero"
+        );
+    }
+
+    #[test]
+    fn resilient1625_run_structural_fails_on_missing_gate_script() {
+        let gates: &[(&'static str, &'static str)] = &[(
+            "synthetic-missing-gate",
+            "/tmp/chump-nonexistent-structural-gate-1625.sh",
+        )];
+        let rc = run_structural_with_gates(gates, false, false, &[], "");
+        assert_eq!(
+            rc, 1,
+            "run_structural_with_gates must fail closed (1) when a structural gate script is missing"
+        );
+    }
+
+    #[test]
+    fn resilient1625_truncate_output_utf8_respects_multibyte_char_boundary() {
+        // 2047 ASCII bytes followed by a 3-byte UTF-8 checkmark '✓' (bytes 2047..2050),
+        // straddling byte index 2048. Slicing &cap[..2048] would panic!
+        let mut s = "a".repeat(2047);
+        s.push('✓');
+        s.push_str("trailing output");
+        assert!(
+            !s.is_char_boundary(2048),
+            "byte 2048 must be inside multibyte char"
+        );
+        let out = truncate_output_utf8(&s, 2048);
+        assert!(out.starts_with(&"a".repeat(2047)));
+        assert!(out.contains("more bytes truncated"));
+    }
+
+    // ── CREDIBLE-1569: diff-scoped CI/audit shell test selection ────────────
+
+    #[test]
+    fn credible1569_select_ci_scoped_shell_tests_farmer_status_selects_three_gates() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let selected =
+            select_ci_scoped_shell_tests(repo_root, &["src/farmer_status.rs".to_string()]);
+        for required in [
+            "scripts/ci/test-fleet-kill-switch.sh",
+            "scripts/ci/test-outcome-gate.sh",
+            "scripts/ci/test-state-db-yaml-sync.sh",
+        ] {
+            assert!(
+                selected.iter().any(|s| s == required),
+                "diff touching src/farmer_status.rs must select {required}; got {selected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn credible1569_select_ci_scoped_shell_tests_docs_only_selects_none() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let selected = select_ci_scoped_shell_tests(
+            repo_root,
+            &["docs/README.md".to_string(), "docs/ROADMAP.md".to_string()],
+        );
+        assert!(
+            selected.is_empty(),
+            "docs-only diff must select zero shell tests, got {selected:?}"
+        );
     }
 }

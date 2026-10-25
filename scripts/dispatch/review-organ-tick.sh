@@ -775,9 +775,17 @@ process_pr() {
     head="$(printf '%s'  "$meta" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("headRefOid") or "")' 2>/dev/null)"
     author="$(printf '%s' "$meta" | python3 -c 'import json,sys;d=json.load(sys.stdin).get("author") or {};print(d.get("login") or "")' 2>/dev/null)"
 
+    local head_ref
+    head_ref="$(printf '%s' "$meta" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("headRefName") or "")' 2>/dev/null)"
     if [[ "$draft" == "True" ]]; then log "PR #$pr: draft — skip"; SKIPPED=$((SKIPPED+1)); return 0; fi
     if [[ -n "$SELF_LOGIN" && "$author" == "$SELF_LOGIN" ]]; then
-        log "PR #$pr: authored by own lane ($author) — not reviewing (independence)"; SKIPPED=$((SKIPPED+1)); return 0
+        # Single-account repo (repairman29/chump): all worker lanes and the review
+        # organ share the repairman29 GitHub login, so own-lane for repairman29 is
+        # a review-organ/* branch; for any dedicated bot login (e.g. botx), matching
+        # author == SELF_LOGIN is sufficient.
+        if [[ "$SELF_LOGIN" != "repairman29" || "$head_ref" == review-organ/* ]]; then
+            log "PR #$pr: authored by own lane ($author) — not reviewing (independence)"; SKIPPED=$((SKIPPED+1)); return 0
+        fi
     fi
     [[ "$head" =~ ^[0-9a-fA-F]{7,40}$ ]] || { log "PR #$pr: no head sha — skip"; SKIPPED=$((SKIPPED+1)); return 0; }
 

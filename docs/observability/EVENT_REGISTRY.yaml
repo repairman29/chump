@@ -14847,3 +14847,28 @@ events:
     fields_required: [ts, kind, pr, branch, mode]
 
   # ── INFRA-8218 / CREDIBLE-1509: invariant-boundary gate reading (Phase R R6) ──
+
+  # ── RESILIENT-1625: pre-push structural preflight subset ran under bot-merge ──
+  - kind: prepush_structural_subset_ran
+    status: active
+    effect_metric: resilient
+    emitter: scripts/git-hooks/pre-push Guard 0a (RESILIENT-1625)
+    emitter_paths: [scripts/git-hooks/pre-push]
+    trigger: a bot-merge push (`CHUMP_BOT_MERGE_IN_PROGRESS=1`) with a `--structural`-capable
+      `chump` binary ran `chump preflight --structural` instead of skipping preflight entirely.
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, reason]
+
+  # ── CREDIBLE-1566: dispatched agent bypass env/trailer refused by git hook ───
+  - kind: agent_bypass_refused
+    status: active
+    effect_metric: credible
+    emitter: scripts/git-hooks/pre-push, scripts/git-hooks/commit-msg (CREDIBLE-1566)
+    emitter_paths: [scripts/git-hooks/pre-push, scripts/git-hooks/commit-msg]
+    trigger: a commit or push inside a `chump dispatch` (`CHUMP_DISPATCH_GAP` set or
+      `CHUMP_DISPATCH_DEPTH >= 1`) attempted to use an operator-only bypass env var
+      (`CHUMP_TEST_GATE=0`, `CHUMP_CLIPPY_GATE=0`, or any `CHUMP_*_SKIP` / `CHUMP_*_BYPASS` variable) or commit-message bypass trailer
+      (`Test-Gate-Bypass:`, `Off-Rails-Bypass:`, `Lint-Gate-Bypass:`, `Preflight-Skip-Reason:`,
+      `Verify-Gate-Bypass:`, `Verify-Bypass:`).
+    consumers: [ambient, fleet-brief, audit-log]
+    fields_required: [ts, kind, hook, gap_id, bypass, reason]

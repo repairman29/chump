@@ -141,7 +141,324 @@ fi
 # Fix: read all of stdin into _HOOK_STDIN once, then feed each loop with
 #   `while ... done <<< "$_HOOK_STDIN"` so every loop sees the full input.
 # -----------------------------------------------------------------------
-_HOOK_STDIN="$(cat || true)"
+if [[ "${CHUMP_PREPUSH_SELECT_PACKAGES_ONLY:-0}" == "1" || "${CHUMP_PREPUSH_SELECT_SHELL_TESTS_ONLY:-0}" == "1" ]]; then _HOOK_STDIN=""; else _HOOK_STDIN="$(cat || true)"; fi
+
+# -----------------------------------------------------------------------
+# CREDIBLE-1566: Dispatched agents may NOT use operator-only bypass env
+# vars or commit-message bypass trailers. They must stop and report.
+# -----------------------------------------------------------------------
+# MUTANT_ANCHOR_DISPATCH_NO_BYPASS
+if [[ -n "${CHUMP_DISPATCH_GAP:-}" || "${CHUMP_DISPATCH_DEPTH:-0}" -ge 1 ]]; then
+    _dnb_hit=""
+    if [[ "${CHUMP_TEST_GATE:-1}" == "0" && "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" != "1" ]]; then
+        _dnb_hit="CHUMP_TEST_GATE=0"
+    elif [[ "${CHUMP_CLIPPY_GATE:-1}" == "0" ]]; then
+        _dnb_hit="CHUMP_CLIPPY_GATE=0"
+    else
+        _dnb_hit="$(env | grep -E '^CHUMP_[A-Z0-9_]*_(SKIP|BYPASS)=[^0]|^CHUMP_(OFF_RAILS_CHECK|VERIFY_GATE)=0|^CHUMP_(OPERATOR_RECOVERY)=1' | head -1 || true)"
+    fi
+    if [[ -z "$_dnb_hit" ]]; then
+        _dnb_msgs="$(git -C "$REPO_ROOT" log -1 --pretty=%B 2>/dev/null || true)"
+        while read -r _lref _lsha _rref _rsha; do
+            [[ -z "$_lsha" || "$_lsha" =~ ^0+$ ]] && continue
+            if [[ -n "$_rsha" && ! "$_rsha" =~ ^0+$ ]]; then
+                _dnb_msgs+=$'\n'"$(git -C "$REPO_ROOT" log "${_rsha}..${_lsha}" --pretty=%B 2>/dev/null || true)"
+            fi
+        done <<<"$_HOOK_STDIN"
+        _dnb_trailer="$(grep -iE '^(Test-Gate-Bypass|Off-Rails-Bypass|Lint-Gate-Bypass|Preflight-Skip-Reason|Verify-Gate-Bypass|Verify-Bypass):' <<<"$_dnb_msgs" | head -1 || true)"
+        if [[ -n "$_dnb_trailer" ]]; then
+            _dnb_hit="${_dnb_trailer%%:*}:"
+        fi
+    fi
+    if [[ -n "$_dnb_hit" ]]; then
+        _dnb_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
+        _dnb_amb="${CHUMP_AMBIENT_LOG:-$_dnb_root/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_dnb_amb")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"agent_bypass_refused","hook":"pre-push","gap_id":"%s","bypass":"%s","reason":"dispatched agents may not use operator bypass env vars or trailers"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_DISPATCH_GAP:-dispatch}" "$_dnb_hit" \
+            >> "$_dnb_amb" 2>/dev/null || true
+        echo "[pre-push] BLOCKED (CREDIBLE-1566): dispatched agent (${CHUMP_DISPATCH_GAP:-dispatch}) cannot use operator bypass '${_dnb_hit}' — stop and report instead." >&2
+        exit 1
+    fi
+    unset _dnb_hit _dnb_msgs _dnb_trailer
+fi
+
+# -----------------------------------------------------------------------
+# INFRA-8154: Scoped Rust package selector (touched packages + workspace
+# reverse dependencies via cargo metadata, or full workspace on root
+# Cargo.toml / Cargo.lock / workspace-hack / toolchain / config / pre-push).
+# -----------------------------------------------------------------------
+prepush_select_rust_packages() {
+    local _repo="$1"
+    local _changed="${2:-}"
+    if [[ -z "$_changed" ]]; then
+        echo "MODE=none"
+        echo "REASON=empty diff"
+        echo "PACKAGES="
+        return 0
+    fi
+    # Fallback to legacy mode when repo has no root Cargo.toml or cargo metadata
+    # returns empty (e.g. minimal mock-cargo test repos).
+    if [[ ! -f "$_repo/Cargo.toml" ]]; then
+        if grep -qE '\.rs$' <<<"$_changed"; then
+            echo "MODE=legacy"
+            echo "REASON=no workspace Cargo.toml (legacy --bin chump --tests)"
+            echo "PACKAGES=chump"
+        else
+            echo "MODE=none"
+            echo "REASON=no Rust files changed"
+            echo "PACKAGES="
+        fi
+        return 0
+    fi
+    local _meta_file="$_repo/.chump-locks/cargo-metadata-cache.json"
+    mkdir -p "$_repo/.chump-locks" 2>/dev/null || true
+    if [[ ! -s "$_meta_file" ]] || [[ "$_repo/Cargo.toml" -nt "$_meta_file" ]]; then
+        cargo metadata --format-version 1 --no-deps --manifest-path "$_repo/Cargo.toml" > "$_meta_file" 2>/dev/null || rm -f "$_meta_file"
+    fi
+    if [[ ! -s "$_meta_file" ]] || ! grep -q '"packages"' "$_meta_file" 2>/dev/null; then
+        rm -f "$_meta_file" 2>/dev/null || true
+        if grep -qE '\.rs$' <<<"$_changed"; then
+            echo "MODE=legacy"
+            echo "REASON=cargo metadata unavailable (legacy --bin chump --tests)"
+            echo "PACKAGES=chump"
+        else
+            echo "MODE=none"
+            echo "REASON=no Rust files changed"
+            echo "PACKAGES="
+        fi
+        return 0
+    fi
+
+    # MUTANT_ANCHOR_WORKSPACE_WIDE
+    local _ws_trigger=""
+    _ws_trigger="$(grep -E '^(Cargo\.(toml|lock)|build\.rs|rust-toolchain.*|\.cargo/config.*|\.config/nextest\.toml|(crates/)?workspace-hack/.*|scripts/git-hooks/pre-push)$' <<<"$_changed" | head -1 || true)"
+
+    python3 - "$_repo" "$_ws_trigger" "$_changed" "$_meta_file" <<'PYEOF'
+import json, os, sys
+
+repo = os.path.realpath(sys.argv[1])
+ws_trigger = sys.argv[2].strip()
+changed = [l.strip() for l in sys.argv[3].splitlines() if l.strip()]
+with open(sys.argv[4], encoding="utf-8") as mf:
+    meta = json.load(mf)
+
+pkgs = {}
+pkg_dirs = []
+for p in meta.get("packages", []):
+    name = p["name"]
+    mpath = os.path.realpath(p["manifest_path"])
+    pdir = os.path.dirname(mpath)
+    rel = os.path.relpath(pdir, repo)
+    if rel == ".":
+        rel = ""
+    pkgs[name] = {
+        "rel": rel,
+        "deps": [d["name"] for d in p.get("dependencies", [])],
+    }
+    pkg_dirs.append((len(rel), rel, name))
+
+# Longest relative prefix wins so crates/<subcrate>/ beats root package
+pkg_dirs.sort(key=lambda x: x[0], reverse=True)
+all_ws_names = sorted(pkgs.keys())
+
+if ws_trigger:
+    print("MODE=workspace")
+    print(f"REASON=workspace-wide trigger ({ws_trigger})")
+    print("PACKAGES=" + " ".join(all_ws_names))
+    sys.exit(0)
+
+def is_rust_impact_file(path, pkg_rel):
+    sub = path[len(pkg_rel):].lstrip("/") if pkg_rel else path
+    if sub.endswith(".rs") or sub in ("Cargo.toml", "build.rs"):
+        return True
+    first = sub.split("/", 1)[0]
+    if first in ("src", "tests", "benches", "examples"):
+        return True
+    return False
+
+direct = set()
+for f in changed:
+    for _, rel, name in pkg_dirs:
+        if rel == "":
+            if is_rust_impact_file(f, ""):
+                direct.add(name)
+                break
+        elif f == rel or f.startswith(rel + "/"):
+            if is_rust_impact_file(f, rel):
+                direct.add(name)
+            break
+
+if not direct:
+    print("MODE=none")
+    print("REASON=no Rust package touched")
+    print("PACKAGES=")
+    sys.exit(0)
+
+# MUTANT_ANCHOR_RDEPS: expand reverse dependencies in the workspace
+rdeps = {k: set() for k in pkgs}
+for name, info in pkgs.items():
+    for dep in info["deps"]:
+        if dep in rdeps:
+            rdeps[dep].add(name)
+
+selected = set(direct)
+queue = list(direct)
+while queue:
+    cur = queue.pop()
+    for dependent in rdeps.get(cur, ()):
+        if dependent not in selected:
+            selected.add(dependent)
+            queue.append(dependent)
+
+direct_s = ",".join(sorted(direct))
+selected_list = sorted(selected)
+rdep_only = sorted(selected - direct)
+if rdep_only:
+    reason = f"touched [{direct_s}] + reverse deps [{','.join(rdep_only)}]"
+else:
+    reason = f"touched [{direct_s}] (leaf)"
+print("MODE=scoped")
+print(f"REASON={reason}")
+print("PACKAGES=" + " ".join(selected_list))
+PYEOF
+}
+
+# -----------------------------------------------------------------------
+# CREDIBLE-1569: CI-scoped shell test selector derived from
+# .github/workflows/ci.yml (changes filter + fast-checks / fast-checks-heavy
+# / audit matrix test_script).
+# -----------------------------------------------------------------------
+# MUTANT_ANCHOR_SHELL_TESTS
+prepush_select_shell_tests() {
+    local _repo="$1"
+    local _changed="${2:-}"
+    [[ -z "$_changed" ]] && return 0
+    [[ ! -f "$_repo/.github/workflows/ci.yml" && ! -f "$_repo/.github/workflows/audit.yml" ]] && return 0
+    python3 - "$_repo" "$_changed" <<'PYEOF'
+import os, re, sys
+
+repo = sys.argv[1]
+changed = [l.strip() for l in sys.argv[2].splitlines() if l.strip()]
+if not changed:
+    sys.exit(0)
+
+ci_yml_path = os.path.join(repo, ".github", "workflows", "ci.yml")
+audit_yml_path = os.path.join(repo, ".github", "workflows", "audit.yml")
+ci_yml = open(ci_yml_path, encoding="utf-8", errors="ignore").read() if os.path.isfile(ci_yml_path) else ""
+audit_yml = open(audit_yml_path, encoding="utf-8", errors="ignore").read() if os.path.isfile(audit_yml_path) else ""
+if not ci_yml and not audit_yml:
+    sys.exit(0)
+
+rust_active = False
+scripts_active = False
+docs_active = False
+other_active = False
+for p in changed:
+    if (
+        p.startswith("src/")
+        or p.startswith("crates/")
+        or p.startswith("workspace-hack/")
+        or p in ("Cargo.toml", "Cargo.lock", "build.rs")
+        or p.startswith("rust-toolchain")
+        or p.startswith(".cargo/")
+    ):
+        rust_active = True
+    elif (
+        p.startswith("scripts/")
+        or p.startswith(".github/workflows/")
+        or p.startswith(".github/actions/")
+        or p.startswith(".githooks/")
+    ):
+        scripts_active = True
+    elif p.startswith("docs/") or p.endswith(".md"):
+        docs_active = True
+    else:
+        other_active = True
+
+if docs_active and not rust_active and not scripts_active and not other_active:
+    sys.exit(0)
+
+wired_scripts = set(re.findall(r"scripts/ci/test-[A-Za-z0-9_.-]+\.sh", ci_yml + "\n" + audit_yml))
+selected = set()
+hop0_tokens = set()
+
+for rel in changed:
+    if rel.startswith("scripts/ci/test-") and rel.endswith(".sh"):
+        if os.path.isfile(os.path.join(repo, rel)):
+            selected.add(rel)
+    fname = os.path.basename(rel)
+    if len(fname) >= 6:
+        hop0_tokens.add(fname)
+    stem = os.path.splitext(fname)[0]
+    if len(stem) >= 6:
+        hop0_tokens.add(stem)
+        dashed = stem.replace("_", "-")
+        if len(dashed) >= 6:
+            hop0_tokens.add(dashed)
+    full = os.path.join(repo, rel)
+    if os.path.isfile(full):
+        try:
+            content = open(full, encoding="utf-8", errors="ignore").read()
+            for m in re.finditer(r"\.chump/([A-Za-z0-9_.-]+)", content):
+                tok = m.group(1).strip(".")
+                if len(tok) >= 6:
+                    hop0_tokens.add(tok)
+            for line in content.splitlines()[:30]:
+                t = line.lstrip()
+                if t.startswith("//!") or t.startswith("//") or t.startswith("#"):
+                    for gm in re.finditer(r"\b([A-Z]{3,}-[0-9]{3,})\b", t):
+                        hop0_tokens.add(gm.group(1))
+        except OSError:
+            pass
+
+all_tokens = set(hop0_tokens)
+lib_dir = os.path.join(repo, "scripts", "ci", "lib")
+if hop0_tokens and os.path.isdir(lib_dir):
+    for entry in os.listdir(lib_dir):
+        if not entry.endswith(".sh"):
+            continue
+        lpath = os.path.join(lib_dir, entry)
+        try:
+            ltxt = open(lpath, encoding="utf-8", errors="ignore").read()
+            if any(tok in ltxt for tok in hop0_tokens):
+                all_tokens.add(entry)
+                lstem = os.path.splitext(entry)[0]
+                if len(lstem) >= 6:
+                    all_tokens.add(lstem)
+        except OSError:
+            pass
+
+for sc in sorted(wired_scripts):
+    if sc in ("scripts/ci/test-preflight-ci-parity.sh", "scripts/ci/test-credible-1569-scoped-shell-gates.sh"):
+        continue
+    full = os.path.join(repo, sc)
+    if not os.path.isfile(full):
+        continue
+    try:
+        stxt = open(full, encoding="utf-8", errors="ignore").read()
+        if any(tok in stxt for tok in all_tokens):
+            selected.add(sc)
+    except OSError:
+        pass
+
+for s in sorted(selected):
+    print(s)
+PYEOF
+}
+if [[ "${CHUMP_PREPUSH_SELECT_PACKAGES_ONLY:-0}" == "1" ]]; then
+    _HOOK_LOOP_ENTERED=1
+    _sel_files="${CHUMP_PREPUSH_CHANGED_FILES:-$(git -C "$REPO_ROOT" diff --name-only origin/main...HEAD 2>/dev/null || true)}"
+    prepush_select_rust_packages "${CHUMP_REPO:-$REPO_ROOT}" "$_sel_files"
+    exit 0
+fi
+
+if [[ "${CHUMP_PREPUSH_SELECT_SHELL_TESTS_ONLY:-0}" == "1" ]]; then
+    _HOOK_LOOP_ENTERED=1
+    _sel_files="${CHUMP_PREPUSH_CHANGED_FILES:-$(git -C "$REPO_ROOT" diff --name-only origin/main...HEAD 2>/dev/null || true)}"
+    prepush_select_shell_tests "${CHUMP_REPO:-$REPO_ROOT}" "$_sel_files"
+    exit 0
+fi
 
 # -----------------------------------------------------------------------
 # INFRA-5126 (INFRA-1861 slice): pre-push phase + total hard timeout.
@@ -514,8 +831,13 @@ fi
 if command -v chump &>/dev/null \
    && chump preflight --help &>/dev/null; then
     preflight_has_targets=0
-    while IFS=' ' read -r local_sha local_ref remote_sha _remote_ref; do
-        [[ -z "$local_sha" ]] && continue
+    while IFS=' ' read -r _t1 _t2 _t3 _t4; do
+        [[ -z "$_t1" ]] && continue
+        if [[ "$_t1" =~ ^[0-9a-fA-F]{40}$ || "${CHUMP_PREPUSH_GUARD_0A_ONLY:-0}" != "1" ]]; then
+            local_sha="$_t1"; local_ref="$_t2"; remote_sha="$_t3"; _remote_ref="$_t4"
+        else
+            local_ref="$_t1"; local_sha="$_t2"; _remote_ref="$_t3"; remote_sha="$_t4"
+        fi
         if [[ "$local_sha" =~ ^0+$ ]]; then continue; fi
         if [[ "$remote_sha" =~ ^0+$ ]]; then
             range_base="$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
@@ -523,9 +845,9 @@ if command -v chump &>/dev/null \
         else
             range_base="$remote_sha"
         fi
-        # Match what preflight cares about: Rust + scripts + Cargo manifests.
+        # Match what preflight cares about: Rust + scripts + Cargo manifests + .github/.
         if git diff --name-only "$range_base..$local_sha" 2>/dev/null \
-            | grep -qE '\.(rs|sh)$|^Cargo\.(toml|lock)$|^crates/|^src/|^scripts/'; then
+            | grep -qE '\.(rs|sh)$|^Cargo\.(toml|lock)$|^crates/|^src/|^scripts/|^\.github/'; then
             preflight_has_targets=1
             break
         fi
@@ -560,7 +882,7 @@ if command -v chump &>/dev/null \
         if [[ "$_pf_help" == *--structural* ]]; then
             _pf_structural_arg="--structural"
             echo "[pre-push] INFRA-3521 (RESILIENT-1622): bot-merge push — running structural preflight subset (no cargo build) instead of skipping." >&2
-            printf '{"ts":"%s","kind":"prepush_preflight_skipped_botmerge","reason":"INFRA-3521 narrowed (RESILIENT-1622): full preflight skipped, structural subset runs"}\n' \
+            printf '{"ts":"%s","kind":"prepush_structural_subset_ran","reason":"INFRA-3521 narrowed (RESILIENT-1622): full preflight skipped, structural subset runs"}\n' \
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_3521" 2>/dev/null || true
         else
             preflight_has_targets=0
@@ -616,6 +938,10 @@ if command -v chump &>/dev/null \
         fi
         unset _pf_rc
     fi
+fi
+if [[ "${CHUMP_PREPUSH_GUARD_0A_ONLY:-0}" == "1" ]]; then
+    _HOOK_LOOP_ENTERED=1
+    exit 0
 fi
 
 # -----------------------------------------------------------------------
@@ -1169,20 +1495,46 @@ elif [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
         fi
 
         ANY_RS=0
-        _CHANGED_FILES=""
-        if [[ -t 0 ]] || [[ -z "${CHUMP_TEST_GATE_RANGE:-}" ]]; then
-            # Stdin is a terminal or unset — use origin/main fallback.
-            if git fetch origin main --quiet 2>/dev/null || git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-                _CHANGED_FILES="$(git diff --name-only origin/main...HEAD 2>/dev/null || git diff --name-only origin/main..HEAD 2>/dev/null || true)"
-            else
-                # Offline or no main — assume workspace-wide Rust change (be conservative).
-                _CHANGED_FILES="Cargo.toml"
+        _CHANGED_FILES="${CHUMP_PREPUSH_CHANGED_FILES:-}"
+        if [[ -z "$_CHANGED_FILES" ]]; then
+            if [[ -t 0 ]] || [[ -z "${CHUMP_TEST_GATE_RANGE:-}" ]]; then
+                # Stdin is a terminal or unset — use origin/main fallback.
+                if git fetch origin main --quiet 2>/dev/null || git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+                    _CHANGED_FILES="$(git diff --name-only origin/main...HEAD 2>/dev/null || git diff --name-only origin/main..HEAD 2>/dev/null || true)"
+                else
+                    # Offline or no main — assume workspace-wide Rust change (be conservative).
+                    _CHANGED_FILES="Cargo.toml"
+                fi
             fi
         fi
 
-        _SCOPE_LINE="$(pre_push_compute_pkg_scope "$_CHANGED_FILES")"
-        echo "$_SCOPE_LINE" >&2
-        _SCOPE_PKGS="$(printf '%s\n' "$_SCOPE_LINE" | sed -nE 's/.*packages=([^ ]+).*/\1/p')"
+        # CREDIBLE-1569: run CI-scoped shell tests selected for the push diff.
+        # MUTANT_ANCHOR_SHELL_TESTS_RUN
+        _SCOPED_SHELL_TESTS="$(prepush_select_shell_tests "$REPO_ROOT_T" "$_CHANGED_FILES" || true)"
+        if [[ -n "$_SCOPED_SHELL_TESTS" ]]; then
+            echo "[pre-push] CREDIBLE-1569: running CI-scoped shell tests for diff: $(tr '\n' ' ' <<<"$_SCOPED_SHELL_TESTS")" >&2
+            while IFS= read -r _st; do
+                [[ -z "$_st" ]] && continue
+                echo "[pre-push] CREDIBLE-1569: -> bash $_st" >&2
+                if ! (cd "$REPO_ROOT_T" && bash "$REPO_ROOT_T/$_st"); then
+                    echo "[pre-push] BLOCKED (CREDIBLE-1569): CI-scoped shell test failed: $_st" >&2
+                    exit 1
+                fi
+            done <<<"$_SCOPED_SHELL_TESTS"
+        fi
+
+        if declare -F pre_push_compute_pkg_scope >/dev/null 2>&1; then
+            _SCOPE_LINE="$(pre_push_compute_pkg_scope "$_CHANGED_FILES")"
+            echo "$_SCOPE_LINE" >&2
+            _SCOPE_PKGS="$(printf '%s\n' "$_SCOPE_LINE" | sed -nE 's/.*packages=([^ ]+).*/\1/p')"
+        else
+            # Fallback when scripts/lib/pre-push-pkg-scope.sh is absent (e.g. stub repo tests)
+            if grep -qE '\.rs$' <<<"$_CHANGED_FILES"; then
+                _SCOPE_PKGS="chump"
+            else
+                _SCOPE_PKGS="none"
+            fi
+        fi
         if [[ -n "$_SCOPE_PKGS" && "$_SCOPE_PKGS" != "none" ]]; then
             ANY_RS=1
         fi
@@ -2080,11 +2432,15 @@ if [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
         # Expected branch form: chump/<gap-id>-claim (gap-id lowercased).
         _pp_claim_file=""
         _pp_claimed_gap=""
+        _pp_expected_branch=""
         _pp_available_gap_ids=""
         for _f in "${_pp_all_claims[@]}"; do
             _gap="$(jq -r '.gap_id // empty' "$_f" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+            _explicit_br="$(jq -r '.branch // empty' "$_f" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+            _exp_for_f="${_explicit_br:-chump/${_gap}-claim}"
             _pp_available_gap_ids="${_pp_available_gap_ids:+$_pp_available_gap_ids,}${_gap}"
-            if [[ -n "$_gap" && "$_pp_current_branch" == "chump/${_gap}-claim" ]]; then
+            if [[ -n "$_gap" && "$_pp_current_branch" == "$_exp_for_f" ]]; then
+                _pp_expected_branch="$_exp_for_f" 
                 # Branch matches. Prefer session_id match when CHUMP_SESSION_ID is set.
                 _sid="$(jq -r '.session_id // empty' "$_f" 2>/dev/null || true)"
                 if [[ -n "${CHUMP_SESSION_ID:-}" && "$_sid" == "${CHUMP_SESSION_ID}" ]]; then
@@ -2112,7 +2468,7 @@ if [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
             echo "[pre-push] WARN (RESILIENT-026): ${#_pp_all_claims[@]} claim file(s) present but none match branch '$_pp_current_branch' — skipping branch check (peer leases present)." >&2
         else
             # Found the matching claim file. Validate current branch equals expected.
-            _pp_expected="chump/${_pp_claimed_gap}-claim"
+            _pp_expected="${_pp_expected_branch:-chump/${_pp_claimed_gap}-claim}"
             if [[ "$_pp_current_branch" != "$_pp_expected" ]]; then
                 # Check for bypass trailer on HEAD commit
                 _pp_head_msg="$(git -C "$REPO_ROOT" log -1 --pretty=%B 2>/dev/null || true)"
