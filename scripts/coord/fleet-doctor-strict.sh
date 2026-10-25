@@ -925,6 +925,43 @@ check_organ_roll_call_live() {
     done < "$manifest"
 }
 
+check_organ_home() {
+    local manifest="${CHUMP_ORGAN_MANIFEST:-$REPO_ROOT/scripts/ops/organ-manifest.txt}"
+    local systemctl_bin="${CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN:-systemctl}"
+    local here="${CHUMP_ORGAN_MANIFEST_NODE:-$(hostname -s 2>/dev/null || echo unknown)}"
+    if [[ ! -f "$manifest" ]]; then
+        register_check "organ-home" "skip" "organ-manifest.txt not found at $manifest" ""
+        return
+    fi
+    local state unit rest tok home missing="" misplaced="" n=0
+    while read -r state unit rest; do
+        [[ -z "${state:-}" || "$state" == \#* || "$state" != "enabled" ]] && continue
+        n=$((n + 1))
+        home=""
+        for tok in $rest; do
+            [[ "$tok" == \#* ]] && break
+            [[ "$tok" == home=* ]] && home="${tok#home=}"
+        done
+        if [[ -z "$home" ]]; then
+            missing+=" $unit"
+            continue
+        fi
+        if [[ ",$home," != *",$here,"* ]] && command -v "$systemctl_bin" >/dev/null 2>&1 \
+            && "$systemctl_bin" is-active --quiet "$unit" 2>/dev/null; then
+            misplaced+=" $unit(home=$home)"
+        fi
+    done < "$manifest"
+    if [[ -n "$missing" ]]; then
+        register_check "organ-home" "fail" "organs missing home= in organ-manifest.txt:$missing" \
+            "add home=<node> to each listed enabled line in scripts/ops/organ-manifest.txt"
+    elif [[ -n "$misplaced" ]]; then
+        register_check "organ-home" "fail" "organs running away from home on $here:$misplaced" \
+            "stop the unit here or move it home: sudo bash scripts/ops/organ-reconcile.sh --apply"
+    else
+        register_check "organ-home" "pass" "all $n organs declare home= and none run off-home on $here" ""
+    fi
+}
+
 check_a2a_consensus() {
     if ! command -v python3 &>/dev/null; then
         register_check "a2a-consensus" "skip" "python3 unavailable — skipping A2A outcome scan" ""
@@ -2102,6 +2139,7 @@ check_a2a_consensus
 check_almanac_freshness
 check_backlog_sync_freshness
 check_organ_roll_call_live
+check_organ_home
 check_required_status_checks
 check_ops_defect_selfdiag
 check_auth_probe
