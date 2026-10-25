@@ -888,9 +888,9 @@ impl GreenFirstTrySection {
     }
 }
 
-/// Scan ambient.jsonl and `.chump/state.db` (`gaps.status='done'` + `gap_prs`)
+/// Scan ambient.jsonl and `.chump/state.db` (`WHERE gaps.status='done'` + `gap_prs`)
 /// and correlate shipped gaps/PRs (`gap_shipped`, `pr_merged`, `gap_done`,
-/// `ship_landed`, `gap_status_done_written`, `gaps.status='done'`, `gap_prs`)
+/// `ship_landed`, `gap_status_done_written`, `WHERE gaps.status='done'`, `gap_prs`)
 /// against failure/repair events (`bot_merge_phase_failure`, `repair_dispatch`,
 /// `pr_repair_dispatched`, failed `prepush_review_verdict`/`code_review_verdict`).
 pub fn build_green_first_try_section(repo_root: &Path) -> GreenFirstTrySection {
@@ -1590,7 +1590,7 @@ pub fn build_landings_and_repairs_section_at(
     LandingsAndRepairsSection {
         window_days,
         landings,
-        landings_source: ".chump/state.db (gaps.status='done' + gap_prs) + .chump-locks/ambient.jsonl (gap_shipped/pr_merged/gap_done/ship_landed)".to_string(),
+        landings_source: ".chump/state.db (WHERE gaps.status='done' + gap_prs) + .chump-locks/ambient.jsonl (gap_shipped/pr_merged/gap_done/ship_landed)".to_string(),
         total_repair_rounds,
         repair_rounds_per_landing,
         repair_rounds_source: ".chump-locks/ambient.jsonl (prepush_review_verdict/repair_dispatch/bot_merge_phase_failure/prepush_duration) + .chump/state.db (gap_prs)".to_string(),
