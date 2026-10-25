@@ -184,6 +184,13 @@ pub fn sync_check(store: &GapStore, gaps_dir: &Path) -> Result<DriftReport> {
 /// on every shipped gap. Since INFRA-8193 there is no YAML → DB direction,
 /// so this export can never be circular.
 pub fn sync_push(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<SyncReport> {
+    let db_path = store.store_file_path();
+    if chump_store_path::has_noncanonical_marker(&db_path) {
+        anyhow::bail!(
+            "RESILIENT-1650: refusing to sync --push from marked non-canonical gap store {} (NONCANONICAL marker present beside store)",
+            db_path.display()
+        );
+    }
     let snapshot = build_snapshot(store, gaps_dir)?;
     let mut report = SyncReport::default();
 

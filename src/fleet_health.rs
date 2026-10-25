@@ -78,6 +78,8 @@ pub struct HealthReport {
     // INFRA-1454: agent-bash sandbox-runtime status
     pub sandbox_status_tag: String,
     pub sandbox_status_summary: String,
+    // RESILIENT-1650: runtime gap-store classification (canonical, non-canonical, UNMARKED)
+    pub gap_store_report: chump_gap_store::store_path::NodeGapStoreReport,
 }
 
 pub fn build_report(repo_root: &Path) -> HealthReport {
@@ -276,6 +278,18 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
     let sandbox_status_tag = sandbox_status.tag().to_string();
     let sandbox_status_summary = sandbox_status.summary();
 
+    // ── 11. Node gap stores (RESILIENT-1650) ──────────────────────────────────
+    let gap_store_report = chump_gap_store::store_path::inspect_node_stores(repo_root);
+    for w in &gap_store_report.warnings {
+        let s = HealthSignal {
+            name: "unmarked_gap_store".into(),
+            penalty: 5,
+            detail: w.clone(),
+        };
+        total_penalty += s.penalty;
+        signals.push(s);
+    }
+
     // ── Score + grade ─────────────────────────────────────────────────────────
     let raw_score = (100i64 - total_penalty).max(0).min(100);
     let score = raw_score as u8;
@@ -310,6 +324,7 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         binary_stale,
         sandbox_status_tag,
         sandbox_status_summary,
+        gap_store_report,
     }
 }
 
@@ -503,8 +518,24 @@ impl HealthReport {
                 )
             })
             .collect();
+        let stores_json: Vec<String> = self
+            .gap_store_report
+            .stores
+            .iter()
+            .map(|st| {
+                let expected = st.status != chump_gap_store::store_path::GapStoreStatus::Unmarked;
+                format!(
+                    r#"{{"path":"{}","origin":"{}","status":"{}","expected":{},"summary":"{}"}}"#,
+                    json_escape(&st.path.display().to_string()),
+                    json_escape(&st.origin),
+                    json_escape(st.status.as_str()),
+                    expected,
+                    json_escape(&st.summary_line())
+                )
+            })
+            .collect();
         format!(
-            r#"{{"schema_version":1,"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"binary_age_h":{bah:.2},"binary_stale":{bs},"ambient_recent":[{recent}]}}"#,
+            r#"{{"schema_version":1,"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"binary_age_h":{bah:.2},"binary_stale":{bs},"gap_stores":[{gstores}],"ambient_recent":[{recent}]}}"#,
             ts = self.ts,
             score = self.score,
             grade = self.grade,
@@ -527,6 +558,7 @@ impl HealthReport {
             sr = self.session_rescues_24h,
             bah = self.binary_age_h,
             bs = self.binary_stale,
+            gstores = stores_json.join(","),
             recent = recent_json.join(","),
         )
     }
@@ -599,6 +631,12 @@ impl HealthReport {
             "  Sandbox:  {} — {}\n",
             self.sandbox_status_tag, self.sandbox_status_summary
         ));
+        if !self.gap_store_report.stores.is_empty() {
+            out.push_str("  Stores:\n");
+            for st in &self.gap_store_report.stores {
+                out.push_str(&format!("    {}\n", st.summary_line()));
+            }
+        }
         if !self.signals.is_empty() {
             out.push_str("\n  Penalties:\n");
             for s in &self.signals {
@@ -1839,6 +1877,7 @@ mod tests {
             binary_stale: false,
             sandbox_status_tag: "available_not_enabled".to_string(),
             sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
+            gap_store_report: Default::default(),
         };
         let json = report.render_event_json();
         assert!(json.contains(r#""kind":"fleet_health""#), "kind field");
@@ -1884,6 +1923,7 @@ mod tests {
             binary_stale: false,
             sandbox_status_tag: "available_not_enabled".to_string(),
             sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
+            gap_store_report: Default::default(),
         };
         let text = report.render_text();
         assert!(text.contains("75/100"), "score in text");
@@ -1920,6 +1960,7 @@ mod tests {
             binary_stale: false,
             sandbox_status_tag: "available_not_enabled".to_string(),
             sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
+            gap_store_report: Default::default(),
         };
         let json = report.render_json();
         assert!(json.starts_with('{'), "starts with {{");
@@ -1969,6 +2010,7 @@ mod tests {
             binary_stale: false,
             sandbox_status_tag: "available_not_enabled".to_string(),
             sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
+            gap_store_report: Default::default(),
         };
         emit(&tmp, &report);
         let contents = std::fs::read_to_string(tmp.join(".chump-locks/ambient.jsonl")).unwrap();

@@ -1515,6 +1515,9 @@ jobs:
       - name: gap mutation verbs reject unknown flags and handle --help (CREDIBLE-1565)
         run: bash scripts/ci/test-gap-verb-unknown-flag.sh
 
+      - name: runtime check reports canonical, NONCANONICAL-marked, and UNMARKED gap stores (RESILIENT-1650)
+        run: bash scripts/ci/test-resilient-1650-noncanonical-store-check.sh
+
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
 

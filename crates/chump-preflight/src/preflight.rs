@@ -3064,6 +3064,16 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-gap-verb-unknown-flag.sh"],
             GateKind::Scripts,
         ));
+        // RESILIENT-1650: runtime check reports canonical, NONCANONICAL-marked,
+        // and UNMARKED gap stores and refuses to sync/reconcile a marked copy.
+        steps.push(step(
+            "resilient-1650-noncanonical-store-check",
+            &[
+                "bash",
+                "scripts/ci/test-resilient-1650-noncanonical-store-check.sh",
+            ],
+            GateKind::Scripts,
+        ));
         // INFRA-8193: docs/gaps/*.yaml is an export-only mirror of state.db;
         // fail when a new script or Rust path writes it outside the export.
         steps.push(step(

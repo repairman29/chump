@@ -263,6 +263,15 @@ impl GapStore {
         store_path::state_db_path(repo_root)
     }
 
+    /// Return the actual SQLite database file path backing this `GapStore`.
+    pub fn store_file_path(&self) -> PathBuf {
+        self.conn
+            .path()
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| Self::db_path(&self.repo_root))
+    }
+
     /// Test-only accessor for the underlying connection. Production callers
     /// must use the typed methods (`get`, `reserve`, etc.). This exists so
     /// briefing-module tests (INFRA-760) can seed synthetic gaps directly

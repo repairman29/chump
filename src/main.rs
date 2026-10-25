@@ -9953,6 +9953,23 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // RESILIENT-1650: runtime gap-store report (canonical, non-canonical, UNMARKED)
+                let gap_store_report =
+                    chump_gap_store::store_path::inspect_node_stores(&repo_root_for_strict);
+                let gap_stores_json: Vec<serde_json::Value> = gap_store_report
+                    .stores
+                    .iter()
+                    .map(|st| {
+                        serde_json::json!({
+                            "path": st.path.display().to_string(),
+                            "origin": st.origin,
+                            "status": st.status.as_str(),
+                            "expected": st.status != chump_gap_store::store_path::GapStoreStatus::Unmarked,
+                            "summary": st.summary_line(),
+                        })
+                    })
+                    .collect();
+
                 if want_json {
                     println!(
                         "{}",
@@ -9976,11 +9993,20 @@ async fn main() -> Result<()> {
                                 "failure_class": failure_class,
                                 "status": status,
                             })),
+                            "gap_stores": {
+                                "canonical_path": gap_store_report.canonical_path.display().to_string(),
+                                "stores": gap_stores_json,
+                                "warnings": gap_store_report.warnings,
+                            },
                             "note": "diagnose-only; --heal auto-fixes what INFRA-1427 strict + required-check gates surface"
                         })
                     );
                 } else {
                     println!("chump fleet doctor: diagnose-only mode (pass --heal to auto-fix).");
+                    println!("  gap-stores (RESILIENT-1650):");
+                    for st in &gap_store_report.stores {
+                        println!("    {}", st.summary_line());
+                    }
                     if let Some(r) = &health_report {
                         if r.any_unhealthy {
                             println!("\n{}", r.refuse_message());

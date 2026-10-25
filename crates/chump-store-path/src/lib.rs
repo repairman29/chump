@@ -258,6 +258,257 @@ fn home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// Marker file placed beside a `state.db` to declare that store an
+/// expected non-canonical replica (RESILIENT-1650, Phase R R4).
+pub const NONCANONICAL_MARKER: &str = "NONCANONICAL";
+
+/// Marker file placed beside a retired/archived `state.db` (CREDIBLE-1602).
+pub const ARCHIVED_MARKER: &str = "CHUMP_STORE_ARCHIVED";
+
+/// Classification of a discovered `state.db` on a node (RESILIENT-1650).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GapStoreStatus {
+    /// The canonical store resolved for this node.
+    Canonical,
+    /// A non-canonical copy explicitly marked with a `NONCANONICAL` file
+    /// beside `state.db` (expected; not a warning).
+    NonCanonicalMarked,
+    /// A non-canonical copy without a `NONCANONICAL` marker beside it
+    /// (unexpected; emits a warning with its path).
+    Unmarked,
+}
+
+impl GapStoreStatus {
+    /// Stable label required by RESILIENT-1650 AC1:
+    /// `"canonical"`, `"non-canonical"`, or `"UNMARKED"`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GapStoreStatus::Canonical => "canonical",
+            GapStoreStatus::NonCanonicalMarked => "non-canonical",
+            GapStoreStatus::Unmarked => "UNMARKED",
+        }
+    }
+}
+
+/// One `state.db` discovered on the node (RESILIENT-1650).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveredGapStore {
+    /// Path to `state.db`.
+    pub path: PathBuf,
+    /// Where this candidate was found (`"CHUMP_STATE_DB"`, `"repo"`, `"home"`, `"scan"`).
+    pub origin: String,
+    /// Classification (`Canonical`, `NonCanonicalMarked`, `Unmarked`).
+    pub status: GapStoreStatus,
+}
+
+impl DiscoveredGapStore {
+    /// Human-readable one-line description for `chump health` / `chump fleet doctor`.
+    pub fn summary_line(&self) -> String {
+        match self.status {
+            GapStoreStatus::Canonical => {
+                format!("{} [canonical ({})]", self.path.display(), self.origin)
+            }
+            GapStoreStatus::NonCanonicalMarked => {
+                format!(
+                    "{} [non-canonical: {} marker beside store — expected ({})]",
+                    self.path.display(),
+                    NONCANONICAL_MARKER,
+                    self.origin
+                )
+            }
+            GapStoreStatus::Unmarked => {
+                format!(
+                    "WARN: {} [UNMARKED non-canonical gap store ({})]",
+                    self.path.display(),
+                    self.origin
+                )
+            }
+        }
+    }
+}
+
+/// Full node gap-store audit report (RESILIENT-1650).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NodeGapStoreReport {
+    /// Path resolved as the node's canonical store.
+    pub canonical_path: PathBuf,
+    /// Every `state.db` found on the node, classified.
+    pub stores: Vec<DiscoveredGapStore>,
+    /// Warnings for any `UNMARKED` non-canonical stores (each includes the path).
+    pub warnings: Vec<String>,
+}
+
+/// Return true if `db_path` sits in a directory carrying a `NONCANONICAL`
+/// marker file (`<dir>/NONCANONICAL`).
+pub fn has_noncanonical_marker(db_path: &Path) -> bool {
+    db_path
+        .parent()
+        .map(|d| d.join(NONCANONICAL_MARKER).exists())
+        .unwrap_or(false)
+}
+
+/// Return true if `db_path` sits in a directory carrying a
+/// `CHUMP_STORE_ARCHIVED` marker file (`<dir>/CHUMP_STORE_ARCHIVED`).
+pub fn has_archived_marker(db_path: &Path) -> bool {
+    db_path
+        .parent()
+        .map(|d| d.join(ARCHIVED_MARKER).exists())
+        .unwrap_or(false)
+}
+
+/// Inspect all gap stores discoverable on this node using the live environment
+/// (`CHUMP_STATE_DB`, repo `.chump/state.db`, `~/.chump/state.db`, and a shallow
+/// scan of `$HOME` / `CHUMP_STORE_SCAN_DIRS`). Strictly read-only: never opens,
+/// syncs, restores, or copies any database file (RESILIENT-1650 AC1-AC3).
+pub fn inspect_node_stores(root: &Path) -> NodeGapStoreReport {
+    let env_db = std::env::var(STATE_DB_ENV).ok();
+    let home = home_dir();
+    let extra_dirs: Vec<PathBuf> = std::env::var("CHUMP_STORE_SCAN_DIRS")
+        .ok()
+        .map(|raw| {
+            raw.split(':')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    inspect_node_stores_with(root, env_db.as_deref(), home.as_deref(), &extra_dirs)
+}
+
+/// Pure/testable node gap-store inspector (RESILIENT-1650).
+/// Lists every existing `state.db` it can find across `env_state_db`, `root`,
+/// `home`, and `extra_scan_dirs`, classifying each as `canonical`,
+/// `non-canonical` (`NONCANONICAL` marker beside it — expected), or `UNMARKED`
+/// (warning with path).
+pub fn inspect_node_stores_with(
+    root: &Path,
+    env_state_db: Option<&str>,
+    home: Option<&Path>,
+    extra_scan_dirs: &[PathBuf],
+) -> NodeGapStoreReport {
+    let resolved = resolve_with(root, env_state_db, home);
+    let canonical_path = resolved.path.clone();
+
+    let mut candidates: Vec<(PathBuf, String)> = Vec::new();
+    if let Some(raw) = env_state_db.map(str::trim).filter(|s| !s.is_empty()) {
+        candidates.push((expand_tilde(raw, home), "CHUMP_STATE_DB".to_string()));
+    }
+    let abs_root = absolutize(root);
+    if let Some((checkout, _)) = find_checkout(&abs_root) {
+        candidates.push((checkout.join(".chump").join("state.db"), "repo".to_string()));
+    }
+    candidates.push((root.join(".chump").join("state.db"), "repo".to_string()));
+    if let Some(h) = home {
+        candidates.push((h.join(".chump").join("state.db"), "home".to_string()));
+        scan_for_state_dbs(h, 0, 3, &mut candidates);
+    }
+    for dir in extra_scan_dirs {
+        candidates.push((dir.join(".chump").join("state.db"), "scan".to_string()));
+        scan_for_state_dbs(dir, 0, 3, &mut candidates);
+    }
+
+    let mut seen_keys: Vec<PathBuf> = Vec::new();
+    let mut stores: Vec<DiscoveredGapStore> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    for (cand, origin) in candidates {
+        // Ignore non-existent paths and symlinks (a worktree symlink into the
+        // canonical store is not a separate store).
+        let Ok(sym_meta) = std::fs::symlink_metadata(&cand) else {
+            continue;
+        };
+        if !sym_meta.file_type().is_file() {
+            continue;
+        }
+        if has_archived_marker(&cand) {
+            continue;
+        }
+        let dedup_key =
+            std::fs::canonicalize(&cand).unwrap_or_else(|_| lexical_normalize(&absolutize(&cand)));
+        if seen_keys.contains(&dedup_key) {
+            continue;
+        }
+        seen_keys.push(dedup_key);
+
+        let status = if has_noncanonical_marker(&cand) {
+            GapStoreStatus::NonCanonicalMarked
+        } else if same_file_or_path(&cand, &canonical_path) {
+            GapStoreStatus::Canonical
+        } else {
+            GapStoreStatus::Unmarked
+        };
+
+        if status == GapStoreStatus::Unmarked {
+            warnings.push(format!(
+                "WARN: unmarked non-canonical gap store at {} (mark with {} beside it if expected, or archive with scripts/coord/archive-stale-gap-store.sh)",
+                cand.display(),
+                NONCANONICAL_MARKER
+            ));
+        }
+
+        stores.push(DiscoveredGapStore {
+            path: cand,
+            origin,
+            status,
+        });
+    }
+
+    NodeGapStoreReport {
+        canonical_path,
+        stores,
+        warnings,
+    }
+}
+
+fn same_file_or_path(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => lexical_normalize(&absolutize(a)) == lexical_normalize(&absolutize(b)),
+    }
+}
+
+fn scan_for_state_dbs(
+    dir: &Path,
+    depth: usize,
+    max_depth: usize,
+    out: &mut Vec<(PathBuf, String)>,
+) {
+    if depth > max_depth {
+        return;
+    }
+    let candidate = dir.join(".chump").join("state.db");
+    if let Ok(meta) = std::fs::symlink_metadata(&candidate) {
+        if meta.file_type().is_file() {
+            out.push((candidate, "scan".to_string()));
+        }
+    }
+    if depth == max_depth {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if !ft.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if matches!(
+            name_str.as_ref(),
+            ".chump" | ".git" | "tmp" | ".cache" | "node_modules" | ".cargo" | ".rustup" | "target"
+        ) || name_str.ends_with("-backup")
+        {
+            continue;
+        }
+        scan_for_state_dbs(&entry.path(), depth + 1, max_depth, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +633,67 @@ mod tests {
         assert_eq!(StoreSource::Env.as_str(), "env");
         assert_eq!(StoreSource::LinkedWorktree.as_str(), "linked-worktree");
         assert_eq!(StoreSource::HomeFallback.as_str(), "home-fallback");
+    }
+
+    #[test]
+    fn resilient_1650_inspect_node_stores_classifies_canonical_marked_and_unmarked() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = d.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(repo.join(".chump")).unwrap();
+        let canonical_db = repo.join(".chump/state.db");
+        std::fs::write(&canonical_db, b"canonical-bytes").unwrap();
+
+        let home = d.path().join("home");
+        // Unmarked store in ~/.chump/state.db
+        std::fs::create_dir_all(home.join(".chump")).unwrap();
+        let unmarked_db = home.join(".chump/state.db");
+        std::fs::write(&unmarked_db, b"unmarked-bytes").unwrap();
+
+        // Marked non-canonical replica in ~/replica/.chump/state.db with NONCANONICAL beside it
+        let replica_dir = home.join("replica/.chump");
+        std::fs::create_dir_all(&replica_dir).unwrap();
+        let marked_db = replica_dir.join("state.db");
+        std::fs::write(&marked_db, b"marked-replica-bytes").unwrap();
+        std::fs::write(replica_dir.join(NONCANONICAL_MARKER), b"expected replica\n").unwrap();
+
+        let report = inspect_node_stores_with(&repo, None, Some(&home), &[]);
+        assert_eq!(
+            report.stores.len(),
+            3,
+            "expected 3 stores: {:?}",
+            report.stores
+        );
+
+        let by_status = |st: GapStoreStatus| -> Vec<&DiscoveredGapStore> {
+            report.stores.iter().filter(|s| s.status == st).collect()
+        };
+        assert_eq!(by_status(GapStoreStatus::Canonical).len(), 1);
+        assert_eq!(by_status(GapStoreStatus::Canonical)[0].path, canonical_db);
+
+        assert_eq!(by_status(GapStoreStatus::NonCanonicalMarked).len(), 1);
+        assert_eq!(
+            by_status(GapStoreStatus::NonCanonicalMarked)[0].path,
+            marked_db
+        );
+        assert!(
+            by_status(GapStoreStatus::NonCanonicalMarked)[0]
+                .summary_line()
+                .contains("expected"),
+            "marked copy must be reported as expected"
+        );
+
+        assert_eq!(by_status(GapStoreStatus::Unmarked).len(), 1);
+        assert_eq!(by_status(GapStoreStatus::Unmarked)[0].path, unmarked_db);
+        assert_eq!(report.warnings.len(), 1);
+        assert!(
+            report.warnings[0].contains(&unmarked_db.display().to_string()),
+            "warning must include unmarked store path: {:?}",
+            report.warnings
+        );
+
+        // AC3: strictly read-only — canonical and marked stores are byte-unchanged.
+        assert_eq!(std::fs::read(&canonical_db).unwrap(), b"canonical-bytes");
+        assert_eq!(std::fs::read(&marked_db).unwrap(), b"marked-replica-bytes");
     }
 }

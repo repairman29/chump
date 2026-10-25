@@ -624,6 +624,14 @@ pub fn reconcile(opts: &ReconcileOptions) -> Result<ReconcileReport> {
             bail!("{label} {} is not a file", p.display());
         }
     }
+    // RESILIENT-1650 (AC3): a gap store marked NONCANONICAL must never be
+    // synced, restored, or copied toward the canonical store.
+    if chump_store_path::has_noncanonical_marker(&opts.from) {
+        bail!(
+            "RESILIENT-1650: refusing to reconcile from marked non-canonical gap store {} (NONCANONICAL marker present beside store — a marked non-canonical store must never be synced, restored, or copied toward the canonical store)",
+            opts.from.display()
+        );
+    }
     let same = std::fs::canonicalize(&opts.from).ok() == std::fs::canonicalize(&opts.into).ok();
     if same {
         bail!("--from and --into are the same store");
