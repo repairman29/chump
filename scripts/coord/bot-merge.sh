@@ -1148,7 +1148,7 @@ bot_merge_enqueue_or_arm() {
     fi
     local arm_out="" arm_rc=0
     arm_out="$(gh pr merge "$pr_num" --auto --squash 2>&1)" || arm_rc=$?
-    if printf '%s' "$arm_out" | grep -qiE 'merge queue|MergeQueue'; then
+    if grep -qiE 'merge queue|MergeQueue' <<<"$arm_out"; then
         if gh pr merge "$pr_num" --auto >/dev/null 2>&1; then
             mkdir -p "$(dirname "$amb")" 2>/dev/null || true
             printf '{"ts":"%s","kind":"pr_merge_group_enqueued","pr":%s,"branch":"%s","gap":"%s","batch_size":%s,"mode":"merge_group"}\n' \
