@@ -1876,6 +1876,9 @@ jobs:
         # gaps-for-pr result so restoring a title regex flips it red. Hermetic.
         run: bash scripts/ci/test-credible-1551-converted-closers-behaviour.sh
 
+      - name: rulebook budget + registry completeness (ZERO-WASTE-125)
+        run: bash scripts/ci/test-rulebook-budget.sh
+
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 
