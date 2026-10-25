@@ -639,7 +639,7 @@ else
 fi
 # Commit-msg hook also permits Rust-First-Bypass and Shared-Service-Bypass under CHUMP_DISPATCH_GAP
 printf 'feat: glue script\n\nRust-First-Bypass: legitimate glue\nShared-Service-Bypass: legitimate test\n' > "$TMP/cmsg-8643.txt"
-OUT_CM_8643="$(CHUMP_DISPATCH_GAP=INFRA-9999 sh "$COMMIT_MSG_HOOK" "$TMP/cmsg-8643.txt" 2>&1)"
+OUT_CM_8643="$(CHUMP_DISPATCH_GAP=INFRA-9999 bash "$COMMIT_MSG_HOOK" "$TMP/cmsg-8643.txt" 2>&1)"
 RC_CM_8643=$?
 if [[ "$RC_CM_8643" -eq 0 ]]; then
     ok "INFRA-8643/8644/8645: commit-msg allows Rust-First-Bypass and Shared-Service-Bypass under CHUMP_DISPATCH_GAP"
