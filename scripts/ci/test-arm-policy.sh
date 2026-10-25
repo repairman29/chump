@@ -991,23 +991,23 @@ unset ORG_ROLLUP
 # today only burns a guaranteed-refused cycle). MUTANT (killed here): drop the
 # `REPAIR_DISPATCH_ENABLED != 1` early-return in dispatch_repair → a repair fires
 # with the switch off → ndisp becomes 1 → this `== 0` assertion fails.
-organ_run --pr 204
+organ_run --pr 204 --disable-repair
 ndisp_off="$(grep -c 'chump dispatch' "$ORGLOG.chump" 2>/dev/null || true)"; ndisp_off="${ndisp_off:-0}"
-[[ "$ndisp_off" == 0 ]] && ok "organ CREDIBLE-1589 AC3: repair path OFF by default → no dispatch (constant switch)" \
-    || bad "organ CREDIBLE-1589 AC3: repair dispatched with the switch off, got $ndisp_off ($(cat "$ORGLOG.chump"))"
+[[ "$ndisp_off" == 0 ]] && ok "organ CREDIBLE-1589/1596: --disable-repair switch → no dispatch" \
+    || bad "organ CREDIBLE-1589/1596: repair dispatched with --disable-repair, got $ndisp_off ($(cat "$ORGLOG.chump"))"
 [[ -s "$ORGLOG.merges" ]] && bad "organ AC4: a CHANGES REQUIRED PR was merged (switch off)" || ok "organ AC4: CHANGES REQUIRED PR not merged (switch off)"
 [[ "$(sed -n '1p' "$ORGLOG.cmt.204")" == "VERDICT: CHANGES REQUIRED" ]] && ok "organ AC1: CHANGES comment first line exact" \
     || bad "organ AC1: CHANGES comment first line wrong"
 
-# CREDIBLE-1589 AC1/AC4: with the repair path ENABLED (--enable-repair, the test
-# seam the systemd unit never passes), a CHANGES REQUIRED verdict dispatches
-# exactly ONE repair that carries the explicit --repair flag — so the work lands
-# on the EXISTING PR head branch (DispatchMode::Repair) through a CLI flag, never
-# an ambient env default (no CHUMP_CLAIM_ALLOW_DUPLICATE_PR) — and never with
-# --auto-merge, and never merges the PR. MUTANT (killed here): drop `--repair`
-# from the `chump dispatch` line in dispatch_repair → the --repair assertion
-# below fails.
-organ_run --pr 204 --enable-repair
+# CREDIBLE-1589 AC1/AC4 + CREDIBLE-1596: with the repair path ON by default
+# (now that chump dispatch --repair is live on main), a CHANGES REQUIRED verdict
+# dispatches exactly ONE repair that carries the explicit --repair flag — so the
+# work lands on the EXISTING PR head branch (DispatchMode::Repair) through a CLI
+# flag, never an ambient env default (no CHUMP_CLAIM_ALLOW_DUPLICATE_PR) — and
+# never with --auto-merge, and never merges the PR. MUTANT (killed here):
+#   M1: set ENABLE_REPAIR=0 by default → ndisp == 0 → assertion below fails
+#   M2: drop `--repair` from `chump dispatch` in dispatch_repair → fails
+organ_run --pr 204
 ndisp="$(grep -c 'chump dispatch' "$ORGLOG.chump" 2>/dev/null || true)"; ndisp="${ndisp:-0}"
 [[ "$ndisp" == 1 ]] && ok "organ CREDIBLE-1589 AC4: --enable-repair → exactly one repair dispatch" \
     || bad "organ CREDIBLE-1589 AC4: expected 1 repair dispatch when enabled, got $ndisp ($(cat "$ORGLOG.chump"))"

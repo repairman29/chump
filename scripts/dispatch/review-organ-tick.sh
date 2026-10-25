@@ -71,18 +71,22 @@ REPO=""                # owner/repo; empty = current checkout's repo
 # default (a constant switch, below). --enable-repair is the test seam that
 # flips it on; the systemd unit never passes it, so production stays OFF until
 # the lane-1 Rust slice teaches `chump dispatch` the explicit --repair flag.
-ENABLE_REPAIR=0
+# CREDIBLE-1596: chump dispatch --repair is live on main (#5700), so the
+# CHANGES-REQUIRED repair dispatch path is ON by default (REPAIR_DISPATCH_ENABLED=1).
+# --disable-repair / --enable-repair are the explicit CLI test seams; never an env var.
+ENABLE_REPAIR=1
 declare -a ONLY_PRS=()
 while (( $# )); do
     case "$1" in
-        --claude-bin)    CLAUDE_BIN="${2:-}"; shift 2 ;;
-        --checkout)      CHECKOUT="${2:-}"; shift 2 ;;
-        --self-login)    SELF_LOGIN="${2:-}"; shift 2 ;;
-        --repo)          REPO="${2:-}"; shift 2 ;;
-        --pr)            ONLY_PRS+=("${2:-}"); shift 2 ;;
-        --enable-repair) ENABLE_REPAIR=1; shift ;;
-        -h|--help)       sed -n '2,45p' "$0"; exit 0 ;;
-        *)               echo "[review-organ] unknown argument '$1'" >&2; exit 2 ;;
+        --claude-bin)     CLAUDE_BIN="${2:-}"; shift 2 ;;
+        --checkout)       CHECKOUT="${2:-}"; shift 2 ;;
+        --self-login)     SELF_LOGIN="${2:-}"; shift 2 ;;
+        --repo)           REPO="${2:-}"; shift 2 ;;
+        --pr)             ONLY_PRS+=("${2:-}"); shift 2 ;;
+        --enable-repair)  ENABLE_REPAIR=1; shift ;;
+        --disable-repair) ENABLE_REPAIR=0; shift ;;
+        -h|--help)        sed -n '2,45p' "$0"; exit 0 ;;
+        *)                echo "[review-organ] unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
 
