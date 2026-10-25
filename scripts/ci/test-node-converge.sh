@@ -485,10 +485,10 @@ ok "INFRA-8106: _ensure_pr_book_timer renders and installs chump-pr-book.{servic
 # ── Test 15: INFRA-8639: chump-worker@.service template + node-orchestrator.sh worker unit resolution ──
 WORKER_TPL="$REPO_ROOT/scripts/dispatch/chump-worker@.service"
 [[ -f "$WORKER_TPL" ]] || fail "INFRA-8639: missing $WORKER_TPL"
-grep -qE '^WorkingDirectory=%h/chump$' "$WORKER_TPL" \
-    || fail "INFRA-8639: chump-worker@.service missing WorkingDirectory=%h/chump"
-grep -qE '^EnvironmentFile=-%h/\.chump/node\.env$' "$WORKER_TPL" \
-    || fail "INFRA-8639: chump-worker@.service missing EnvironmentFile=-%h/.chump/node.env"
+grep -qE '^WorkingDirectory=(__REPO_ROOT__|%h/chump)$' "$WORKER_TPL" \
+    || fail "INFRA-8639: chump-worker@.service missing WorkingDirectory=__REPO_ROOT__"
+grep -qE '^EnvironmentFile=-(__HOME__|%h)/\.chump/node\.env$' "$WORKER_TPL" \
+    || fail "INFRA-8639: chump-worker@.service missing EnvironmentFile=-__HOME__/.chump/node.env"
 grep -qE 'set -a.*providers\.env' "$WORKER_TPL" \
     && fail "INFRA-8639: chump-worker@.service must not source providers.env with set -a"
 ORCH_SCRIPT="$REPO_ROOT/scripts/ops/node-orchestrator.sh"

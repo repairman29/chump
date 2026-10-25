@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/chump
-EnvironmentFile=-%h/.chump/node.env
-ExecStart=/bin/bash %h/chump/scripts/dispatch/node-worker-run.sh %i
+WorkingDirectory=__REPO_ROOT__
+EnvironmentFile=-__HOME__/.chump/node.env
+ExecStart=/bin/bash __REPO_ROOT__/scripts/dispatch/node-worker-run.sh %i
 Restart=always
 RestartSec=10
 
