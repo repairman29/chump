@@ -1,0 +1,11 @@
+  - kind: worker_dev_binary
+    effect_metric: credible
+    emitter: scripts/dispatch/worker.sh (CREDIBLE-1609)
+    trigger: >-
+      Emitted when scripts/dispatch/worker.sh falls back to a target/ debug or
+      release chumpd binary because no deployed chumpd binary was found alongside
+      chump or in ~/.cargo/bin or ~/.chumpnode/bin.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, bin, reason]
+    expected_volume: "0 on a properly refreshed node"
+    status: stable

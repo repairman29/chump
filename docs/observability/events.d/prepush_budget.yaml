@@ -1,0 +1,11 @@
+  - kind: prepush_budget
+    effect_metric: resilient
+    emitter: scripts/dispatch/worker.sh (RESILIENT-1693, via scripts/git-hooks/pre-push)
+    trigger: >-
+      Emitted when the pre-push hook finishes, recording per-phase wall-clock
+      seconds spent in clippy (clippy_s), the incremental test gate (test_s),
+      and total hook duration (total_s) against budget_s.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, clippy_s, test_s, total_s, budget_s, branch, gap_id]
+    expected_volume: "1 per git push invocation"
+    status: stable

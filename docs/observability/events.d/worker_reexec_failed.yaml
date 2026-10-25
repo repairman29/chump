@@ -1,0 +1,11 @@
+  - kind: worker_reexec_failed
+    effect_metric: resilient
+    emitter: scripts/dispatch/worker.sh (RESILIENT-1689)
+    trigger: >-
+      Emitted when scripts/dispatch/worker.sh _check_worker_head_reexec exceeds
+      the maximum consecutive self-re-exec attempt cap (3) without stabilizing
+      and aborts instead of crash-looping.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, count, old_sha, new_sha]
+    expected_volume: "0 on a healthy worker"
+    status: stable

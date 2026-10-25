@@ -1,0 +1,11 @@
+  - kind: model_floor_violation
+    effect_metric: credible
+    emitter: scripts/dispatch/worker.sh (CREDIBLE-1612)
+    trigger: >-
+      Emitted when scripts/dispatch/worker.sh detects a resolved FLEET_MODEL below
+      the sonnet floor (e.g. haiku, flash, or empty) on FLEET_BACKEND=claude and
+      overrides it to sonnet before invoking claude -p.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, requested, actual]
+    expected_volume: "0 when node.env and router enforce the sonnet floor"
+    status: stable
