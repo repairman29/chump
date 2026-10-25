@@ -879,8 +879,9 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
     // gates that. FAIL aborts the ship; the gap stays open for a retry.
     verify_fix_before_ship(gap_id, repo_root).await?;
 
-    // CREDIBLE-1607: Worker ship paths NEVER arm auto-merge by default.
-    // bot-merge.sh opens the PR and exits; arming is owned by the review organ
+    // CREDIBLE-1607 / arm-policy: delegated (INFRA-8221). Worker ship paths NEVER
+    // arm auto-merge by default: bot-merge.sh opens the PR and exits; arming is
+    // delegated to the review organ / auto-merge-armer.sh (arm_policy_allows)
     // after VERDICT: APPROVE.
     let script = repo_root.join("scripts/coord/bot-merge.sh");
     eprintln!("[execute-gap] free-tier ship: bot-merge.sh --gap {gap_id} --fast");
