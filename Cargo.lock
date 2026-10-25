@@ -1755,6 +1755,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "chump-atomic-claim",
  "chump-bench",
  "chump-ship",
  "chump-store-path",
@@ -2086,6 +2087,7 @@ version = "0.1.0"
 dependencies = [
  "chump-ambient-cli",
  "chump-atomic-claim",
+ "log",
  "tempfile",
 ]
 

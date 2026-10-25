@@ -15358,3 +15358,22 @@ esac
         assert_eq!(parsed[4], "unquoted_yaml_key: value after colon-space");
     }
 }
+
+#[cfg(test)]
+mod smoke_observability_tests {
+    #[test]
+    fn smoke_debug_chump_observability() {
+        use chump_atomic_claim::atomic_claim::{
+            classify_claim_result, emit_claim_completed, last_claim_completed,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let r: anyhow::Result<()> = Err(anyhow::anyhow!("fetch failed: connection reset"));
+        let (outcome, class) = classify_claim_result(&r);
+        emit_claim_completed(dir.path(), "DEBUG-1", outcome, 42, class);
+        let ev = last_claim_completed(dir.path()).expect("event");
+        assert_eq!(ev["outcome"], "failure");
+        assert_eq!(ev["cost_ms"], 42);
+        assert_eq!(ev["failure_class"], "transient");
+        assert_eq!(ev["gap_id"], "DEBUG-1");
+    }
+}

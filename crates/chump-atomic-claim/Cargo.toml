@@ -20,6 +20,10 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 chump-team = { path = "../chump-team", version = "0.1.0" }
 log = "0.4"
 
+[[bin]]
+name = "chump-debug-helper"
+path = "src/bin/chump-debug-helper.rs"
+
 [dev-dependencies]
 tempfile = "3"
 

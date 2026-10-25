@@ -15,5 +15,7 @@ path = "src/lib.rs"
 chump-ambient-cli = { path = "../ambient-cli", version = "0.1.0" }
 chump-atomic-claim = { path = "../chump-atomic-claim", version = "0.1.0" }
 
+log = "0.4"
+
 [dev-dependencies]
 tempfile = "3"

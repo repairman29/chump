@@ -968,7 +968,81 @@ fn run_claim_lease_only(args: ClaimArgs) -> Result<ClaimReport> {
     })
 }
 
-pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
+pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
+    let repo_root = args.repo_root.clone();
+    let gap_id = args.gap_id.clone();
+    let start = std::time::Instant::now();
+    let result = run_claim_inner(args);
+    let cost_ms = start.elapsed().as_millis() as u64;
+    let (outcome, failure_class) = classify_claim_result(&result);
+    emit_claim_completed(&repo_root, &gap_id, outcome, cost_ms, failure_class);
+    result
+}
+
+/// Map a claim result to (`outcome`, `failure_class`).
+pub fn classify_claim_result<T>(r: &Result<T>) -> (&'static str, &'static str) {
+    match r {
+        Ok(_) => ("success", "none"),
+        Err(e) => {
+            let m = format!("{e:#}").to_lowercase();
+            let outcome = if m.contains("timed out") || m.contains("timeout") {
+                "timeout"
+            } else {
+                "failure"
+            };
+            let transient = outcome == "timeout"
+                || [
+                    "fetch",
+                    "network",
+                    "connection",
+                    "lock",
+                    "temporarily",
+                    "rate limit",
+                ]
+                .iter()
+                .any(|k| m.contains(k));
+            (outcome, if transient { "transient" } else { "permanent" })
+        }
+    }
+}
+
+/// Append a `kind=ClaimCompleted` event to `.chump-locks/ambient.jsonl` (best-effort).
+pub fn emit_claim_completed(
+    repo_root: &Path,
+    gap_id: &str,
+    outcome: &str,
+    cost_ms: u64,
+    failure_class: &str,
+) {
+    let _ = std::fs::create_dir_all(repo_root.join(".chump-locks"));
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{}\n",
+        serde_json::json!({
+            "ts": ts, "kind": "ClaimCompleted", "gap_id": gap_id,
+            "outcome": outcome, "cost_ms": cost_ms, "failure_class": failure_class,
+        })
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(repo_root.join(".chump-locks/ambient.jsonl"))
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// Last `ClaimCompleted` event in the ambient log, if any.
+pub fn last_claim_completed(repo_root: &Path) -> Option<serde_json::Value> {
+    let text = std::fs::read_to_string(repo_root.join(".chump-locks/ambient.jsonl")).ok()?;
+    text.lines()
+        .rev()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .find(|v| v["kind"] == "ClaimCompleted")
+}
+
+fn run_claim_inner(mut args: ClaimArgs) -> Result<ClaimReport> {
     if args.lease_only {
         return run_claim_lease_only(args);
     }

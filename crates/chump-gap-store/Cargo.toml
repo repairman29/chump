@@ -52,6 +52,7 @@ postgres-backend = ["dep:postgres"]
 
 [dev-dependencies]
 serial_test = "4"
+chump-atomic-claim = { path = "../chump-atomic-claim", version = "0.1.0" }
 tempfile = "3"
 
 # INFRA-2000: Phase 1 of META-107 — maintenance-module CLI binaries

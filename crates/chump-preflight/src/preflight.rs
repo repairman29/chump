@@ -1243,6 +1243,15 @@ fn run_docs_delta_check(repo_root: &std::path::Path) -> DocsDeltaOutcome {
 /// fast, broadly-useful tests; INFRA-1672 wires diff scoping above the gate
 /// itself rather than per-script.
 fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let found = discover_test_scripts_inner(repo_root);
+    log::info!("preflight: discovered {} test script(s)", found.len());
+    for p in &found {
+        log::info!("preflight: test script {}", p.display());
+    }
+    found
+}
+
+fn discover_test_scripts_inner(repo_root: &std::path::Path) -> Vec<std::path::PathBuf> {
     // Conservative whitelist — these are the ones that have most often
     // failed-on-CI-but-would-have-passed-locally in the last 48h.
     let candidates = [
