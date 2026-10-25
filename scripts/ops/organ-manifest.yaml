@@ -157,6 +157,12 @@ organs:
     home: slim
     run_scope: any
     platforms: "systemd"
+  - unit: chump-architect-tick.timer
+    state: enabled
+    role: brain
+    home: slim
+    run_scope: any
+    platforms: "systemd"
   - unit: chump-digest.timer
     state: enabled
     role: data

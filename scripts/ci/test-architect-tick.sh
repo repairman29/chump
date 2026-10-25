@@ -594,11 +594,11 @@ else
     fail "timer has an unexpected cadence line"
 fi
 if grep -qE '^WantedBy=timers.target$' "$TIMER" 2>/dev/null; then ok "timer installs into timers.target (the operator's enable works)"; else fail "timer lacks WantedBy=timers.target"; fi
-manifest_hits="$(grep -nE '^[[:space:]]*enabled[[:space:]]+chump-architect-tick' "$REPO_ROOT"/scripts/ops/*manifest*.txt 2>/dev/null)"
-if [[ -z "$manifest_hits" ]]; then
-    ok "no organ manifest line enables chump-architect-tick (shipped disabled)"
+manifest_hits="$(grep -hE '^[[:space:]]*enabled[[:space:]]+chump-architect-tick' "$REPO_ROOT"/scripts/ops/organ-manifest.txt 2>/dev/null)"
+if grep -qE 'home=slim' <<<"$manifest_hits"; then
+    ok "RESILIENT-1704: organ manifest enables chump-architect-tick with home=slim"
 else
-    fail "an organ manifest enables chump-architect-tick: $manifest_hits"
+    fail "organ manifest must enable chump-architect-tick with home=slim: $manifest_hits"
 fi
 if grep -q 'chump node render-unit scripts/dispatch/chump-architect-tick.timer' "$TIMER" \
    && grep -q 'systemctl --user enable --now chump-architect-tick.timer' "$TIMER"; then

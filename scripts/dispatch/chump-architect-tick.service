@@ -18,8 +18,8 @@
 # NODE_LOCAL_ORGAN_BASES (scripts/ops/organ-reconcile.sh), so a role-scoped
 # reconcile never reaps it as out-of-role drift.
 #
-# SHIPPED DISABLED: no organ manifest line enables it. Rendering and enabling
-# it is the operator's step (see chump-architect-tick.timer's header).
+# RESILIENT-1704: enabled in the organ manifest with home=slim (thinking node);
+# the old cuphead unit is disabled. Render per chump-architect-tick.timer's header.
 [Unit]
 Description=Chump architect tick — one bounded claude -p --model opus ATC cycle (board/trunk/nodes/rollup, unstick-only) (RESILIENT-1634)
 After=network-online.target
