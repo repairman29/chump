@@ -46,7 +46,8 @@ def gather():
     if os.path.isdir(src):
         out = subprocess.run(["grep", "-rhoE", r"CHUMP_GAP_RESERVE_" + "NO_[A-Z_]+", src], capture_output=True, text=True).stdout
         for g in sorted(set(out.split())):
-            rows.append((f"reserve-gate:{g.lower().replace("chump_gap_reserve_", "").rstrip(chr(95))}", "reserve-gate", "src/", "gap_reserve_bypass", "-"))
+            short = g.lower().replace("chump_gap_reserve_", "").rstrip("_")
+            rows.append((f"reserve-gate:{short}", "reserve-gate", "src/", "gap_reserve_bypass", "-"))
     return rows
 
 

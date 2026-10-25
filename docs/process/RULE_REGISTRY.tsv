@@ -1750,5 +1750,5 @@ ci-gate:scripts/ci/test-yaml-orphan-prune-state-aware.sh	ci-gate	scripts/ci/test
 ci-gate:scripts/ci/test-zero-waste-014-ambient-only.sh	ci-gate	scripts/ci/test-zero-waste-014-ambient-only.sh	stuck_pr	-
 ci-gate:scripts/ci/test-zero-waste-020.sh	ci-gate	scripts/ci/test-zero-waste-020.sh	-	-
 ci-gate:scripts/ci/test-r1-inflight-no-repick.py	ci-gate	scripts/ci/test-r1-inflight-no-repick.py	-	-
-reserve-gate:chump_gap_reserve_no_evidence	reserve-gate	src/	gap_reserve_bypass	-
-reserve-gate:chump_gap_reserve_no_similarity	reserve-gate	src/	gap_reserve_bypass	-
+reserve-gate:no_evidence	reserve-gate	src/	gap_reserve_bypass	-
+reserve-gate:no_similarity	reserve-gate	src/	gap_reserve_bypass	-
