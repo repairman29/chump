@@ -14379,6 +14379,13 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, picked, missing_skills, worker_skills]
 
+  - kind: skill_routing_no_match
+    effect_metric: self
+    emitter: scripts/dispatch/_pick_and_claim_gap.py (INFRA-1829)
+    trigger: the picker considered a gap with skills_required and no live CapabilityManifest session covers all of them (falls back to round-robin)
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, skills_required]
+
   # ── Activation telemetry (chump-init) ─────────────────────────────────────
   - kind: store_reconciled
     status: active
