@@ -451,4 +451,17 @@ else
   fail "docs/operations/SLIM_4GB_THINKING_ORGANS.md missing or incomplete"
 fi
 
+# ── 10. RESILIENT-1703: duty-officer homed on slim, scoped off cuphead ───────
+if grep -qE '^enabled[[:space:]]+chump-duty-officer\.timer[[:space:]].*node=slim.*home=slim' "$MANIFEST_TXT"; then
+  pass "duty-officer manifest entry declares node=slim home=slim"
+else
+  fail "duty-officer manifest entry missing node=slim home=slim"
+fi
+(
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/scripts/ops/lib/organ-manifest-lib.sh"
+  organ_node_matches "slim" "slim" && ! organ_node_matches "slim" "cuphead"
+) || fail "duty-officer node=slim must match slim and be scoped off cuphead"
+pass "duty-officer node=slim scoped off cuphead (old unit not applied there)"
+
 echo "ALL PASS"

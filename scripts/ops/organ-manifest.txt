@@ -352,7 +352,7 @@ enabled     chump-gap-decompose.timer  role=brain requires=bin:chump,bin:sqlite3
 enabled     chump-board-cycle.timer  role=brain home=cuphead
 # RESILIENT-274: the duty-officer — reads firing health signals, routes
 # T1 auto-heal / T2 runbook / T3 page (the no-human incident responder).
-enabled     chump-duty-officer.timer  role=brain home=slim
+enabled     chump-duty-officer.timer  role=brain node=slim home=slim
 # RESILIENT-376: the DISCORD DIGEST organ — twice-daily phone-readable
 # factory pulse (SHIPPED/THE NUMBER/STUCK/NEEDS-YOUR-CALL) to the operator
 # Discord DM. role=data (publishes state, no muscle). Deterministic state
