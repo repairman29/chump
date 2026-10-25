@@ -1,0 +1,24 @@
+# RESILIENT-1699 (RESILIENT-1691 slice): live A2A inbox injector (INFRA-2014)
+# as a systemd service so the Phase 1 coordination organs can live on slim.
+# Polls .chump-locks/inbox/*.jsonl and slips high-urgency messages in front of
+# idle worker panes. Long-running; bounded for the 4GB slim node. Linux
+# counterpart of com.chump.inbox-injector.plist (launchd, Mac).
+[Unit]
+Description=Chump inbox injector — live high-urgency A2A injection into worker panes (INFRA-2014, RESILIENT-1699)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+MemoryHigh=3072M
+MemoryMax=3584M
+Environment=HOME=__HOME__
+Environment=CHUMP_REPO=__REPO_ROOT__
+Environment=CHUMP_REPO_ROOT=__REPO_ROOT__
+WorkingDirectory=__REPO_ROOT__
+ExecStart=/bin/bash -lc "cd __REPO_ROOT__; exec bash scripts/coord/inbox-injector.sh"
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

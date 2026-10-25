@@ -160,13 +160,25 @@ organs:
   - unit: chump-digest.timer
     state: enabled
     role: data
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd"
   - unit: holler.timer
     state: enabled
     role: data
-    home: cuphead
+    home: slim
+    run_scope: any
+    platforms: "systemd"
+  - unit: chump-peer-mind.timer
+    state: enabled
+    role: brain
+    home: slim
+    run_scope: any
+    platforms: "systemd"
+  - unit: chump-inbox-injector.service
+    state: enabled
+    role: data
+    home: slim
     run_scope: any
     platforms: "systemd"
   - unit: chump-cj-worker.service
