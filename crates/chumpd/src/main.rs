@@ -149,12 +149,31 @@ impl Config {
         let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()));
         let repo = std::env::var("CHUMP_REPO")
             .map(PathBuf::from)
+            .or_else(|_| Self::resolve_repo_from_git())
             .unwrap_or_else(|_| home.join("Projects/Chump"));
         let log_dir = PathBuf::from(format!("/tmp/chumpd-fleet-{}", now_epoch()));
         Config {
             repo,
             home,
             log_dir,
+        }
+    }
+
+    /// Resolve repo root from git toplevel of current directory.
+    fn resolve_repo_from_git() -> Result<PathBuf, String> {
+        match Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !path.is_empty() {
+                    Ok(PathBuf::from(path))
+                } else {
+                    Err("empty git toplevel".into())
+                }
+            }
+            _ => Err("git rev-parse failed".into()),
         }
     }
 

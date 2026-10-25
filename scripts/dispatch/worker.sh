@@ -76,6 +76,10 @@ export CHUMP_WORKER_SINGLE_TICK="$_WORKER_SINGLE_TICK"
 AGENT_ID="${AGENT_ID:-?}"
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
+# RESILIENT-1689: track failed re-exec attempts for backoff.
+_REEXEC_FAIL_COUNT=0
+_REEXEC_FAIL_STAMP=""
+
 # ── PHASE-R R6 / INFRA-8575: loop-control shim ───────────────────────────────
 # The per-worker loop control (cadence, heartbeat, fleet-paused sentinel,
 # per-tick budget) now lives in the `chumpd worker` subcommand. Unless we are
@@ -908,6 +912,28 @@ _check_worker_head_reexec() {
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${AGENT_ID:-}" "$_WORKER_START_CODE_HASH" "$_now_hash" \
         >> "$_amb" 2>/dev/null || true
     log "RESILIENT-1453: worker.sh content changed ($_WORKER_START_CODE_HASH -> $_now_hash); re-exec'ing self at cycle boundary"
+
+    # RESILIENT-1689: verify the path exists before exec. On case-sensitive fs,
+    # a hardcoded Mac path (Projects/Chump) will not exist, causing crash-loop.
+    if [[ ! -f "$REPO_ROOT/scripts/dispatch/worker.sh" ]]; then
+        _REEXEC_FAIL_COUNT=$((_REEXEC_FAIL_COUNT + 1))
+        local _now_ts
+        _now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"ts":"%s","kind":"worker_reexec_failed","source":"worker.sh","agent_id":"%s","attempt":%d,"repo_root":"%s","missing_path":"%s"}\n' \
+            "$_now_ts" "${AGENT_ID:-}" "$_REEXEC_FAIL_COUNT" "$REPO_ROOT" "$REPO_ROOT/scripts/dispatch/worker.sh" \
+            >> "$_amb" 2>/dev/null || true
+        log "RESILIENT-1689: re-exec failed (attempt $_REEXEC_FAIL_COUNT): path not found: $REPO_ROOT/scripts/dispatch/worker.sh"
+        if [[ $_REEXEC_FAIL_COUNT -ge 3 ]]; then
+            printf '{"ts":"%s","kind":"worker_reexec_exhausted","source":"worker.sh","agent_id":"%s","attempts":%d}\n' \
+                "$_now_ts" "${AGENT_ID:-}" "$_REEXEC_FAIL_COUNT" >> "$_amb" 2>/dev/null || true
+            log "RESILIENT-1689: re-exec failed 3 times; stopping worker"
+            exit 1
+        fi
+        # Backoff: max 1 attempt per 15s, per AC2
+        sleep 15
+        return 0
+    fi
+
     exec bash "$REPO_ROOT/scripts/dispatch/worker.sh"
 }
 

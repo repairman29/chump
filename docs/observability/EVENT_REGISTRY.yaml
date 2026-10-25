@@ -5957,6 +5957,21 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, kind, disk_hash, started_hash, trigger, units]
 
+  # ── RESILIENT-1689: worker re-exec backoff on missing path ────────────────
+  - kind: worker_reexec_failed
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-1689, _check_worker_head_reexec)
+    trigger: during _check_worker_head_reexec (between-cycle re-exec triggered by worker.sh content change), the resolved REPO_ROOT path does not contain scripts/dispatch/worker.sh (e.g. hardcoded Mac path on case-sensitive fs). Emitted once per failed attempt; backed off 15s per attempt with exit after 3 failures instead of looping forever.
+    consumers: [fleet-brief, watchdog, operator-recall]
+    fields_required: [ts, kind, source, agent_id, attempt, repo_root, missing_path]
+
+  - kind: worker_reexec_exhausted
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-1689, _check_worker_head_reexec)
+    trigger: _check_worker_head_reexec failed 3 times to find the re-exec path; worker exits instead of continuing the crash-loop (RestartSec-style backoff, max 1 per 15s per AC2).
+    consumers: [fleet-brief, watchdog, operator-recall]
+    fields_required: [ts, kind, source, agent_id, attempts]
+
   - kind: stale_binary_destructive_override
     effect_metric: self
     emitter: src/version.rs (chump fleet version-check)

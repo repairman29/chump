@@ -111,6 +111,7 @@ impl WorkerConfig {
         let repo = std::env::var("REPO_ROOT")
             .or_else(|_| std::env::var("CHUMP_REPO"))
             .map(PathBuf::from)
+            .or_else(|_| Self::resolve_repo_from_git())
             .unwrap_or_else(|_| home.join("Projects/Chump"));
         let agent_id = env_or("AGENT_ID", "0");
         let hb_dir = env_or("CHUMP_HEARTBEAT_DIR", "/tmp");
@@ -217,6 +218,24 @@ impl WorkerConfig {
     /// `<state_dir>/.chump/fleet-paused`) — INFRA-8583 AC1/AC2.
     pub fn is_paused(&self) -> bool {
         self.pause_file.exists() || crate::node_pause::is_paused(&self.state_dir)
+    }
+
+    /// Resolve repo root from git toplevel of current directory.
+    fn resolve_repo_from_git() -> Result<PathBuf, String> {
+        match Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !path.is_empty() {
+                    Ok(PathBuf::from(path))
+                } else {
+                    Err("empty git toplevel".into())
+                }
+            }
+            _ => Err("git rev-parse failed".into()),
+        }
     }
 }
 
