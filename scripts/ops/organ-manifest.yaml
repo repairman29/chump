@@ -130,13 +130,13 @@ organs:
   - unit: chump-gap-closure-reconcile.timer
     state: enabled
     role: janitor
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd"
   - unit: chump-gap-close-decomposed.timer
     state: enabled
     role: janitor
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd"
   - unit: chump-gap-decompose.timer
@@ -268,13 +268,13 @@ organs:
   - unit: chump-gap-drain.timer
     state: enabled
     role: brain
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd"
   - unit: chump-next-best-action.timer
     state: enabled
     role: data
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd"
   - unit: chump-nba-dispatch.timer
@@ -448,7 +448,7 @@ organs:
   - unit: chump-coord-assign.service
     state: enabled
     role: brain
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd,launchd"
   - unit: chump-a2a-dead-letter-reaper.timer
@@ -544,13 +544,13 @@ organs:
   - unit: chump-backlog-governor.timer
     state: enabled
     role: brain
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd,launchd"
   - unit: chump-plan-priority.timer
     state: enabled
     role: data
-    home: cuphead
+    home: slim
     run_scope: any
     platforms: "systemd,launchd"
   - unit: chump-pr-auto-rebase.timer

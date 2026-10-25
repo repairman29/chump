@@ -12,6 +12,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+EnvironmentFile=-__HOME__/.chump/node.env
 Type=oneshot
 WorkingDirectory=__REPO_ROOT__
 Environment=HOME=__HOME__

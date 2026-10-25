@@ -12,6 +12,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+EnvironmentFile=-__HOME__/.chump/node.env
 Type=simple
 Environment=HOME=__HOME__
 # chump-coord is a distinct binary (not the chump symlink on PATH), so reference

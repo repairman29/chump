@@ -14,6 +14,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+EnvironmentFile=-__HOME__/.chump/node.env
 Type=oneshot
 Environment=HOME=__HOME__
 Environment=PATH=__HOME__/.cargo/bin:__REPO_ROOT__/target/release:/usr/local/bin:/usr/bin:/bin

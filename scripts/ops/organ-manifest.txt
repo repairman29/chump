@@ -311,14 +311,14 @@ enabled     chump-outcome-verify-heal-consumer.timer  role=brain requires=bin:ch
 
 # chump-gap-closure-reconcile.timer: close open-but-merged gaps from GitHub truth (INFRA-303).
 # Backstop for the fragile bot-merge auto-close; without it the gap store drifts from GitHub.
-enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh home=cuphead
+enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh home=slim
 
 # chump-gap-close-decomposed.timer: auto-close decomposed umbrella gaps (RESILIENT-1366).
 # Periodically walks the gap store and closes parent umbrellas whose decomposed
 # child slices have all shipped.
 # chump-gap-close-decomposed.timer: auto-close decomposed umbrella gaps when all child slices are done (RESILIENT-1366).
 # Walks the gap store and closes parent umbrellas whose decomposed children have all shipped.
-enabled     chump-gap-close-decomposed.timer  role=janitor requires=bin:chump home=cuphead
+enabled     chump-gap-close-decomposed.timer  role=janitor requires=bin:chump home=slim
 enabled     chump-gap-decompose.timer  role=brain requires=bin:chump,bin:sqlite3,bin:python3 run-scope=user home=cuphead  # RESILIENT-1707: periodic decompose organ running chump gap decompose --apply on open P0/P1 effort=l or umbrella gaps once per gap and emitting kind=gap_decomposed.
 
 # RESILIENT-366: chump-armed-rebaser.timer and chump-board-cycle.timer are both
@@ -529,7 +529,7 @@ enabled     chump-organ-deploy.timer  role=janitor requires=bin:git run-scope=sy
 # almanac; a node without them is skipped, not force-installed. Declared here so
 # organ-reconcile re-arms it if it drifts and Roll-Call
 # (scripts/ci/test-resilient-366-organ-roll-call.sh) never lets it rot silently.
-enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bin:almanac home=cuphead
+enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bin:almanac home=slim
 
 # chump-next-best-action.timer: OS-HAS-NO-NERVOUS-SYSTEM — the ADVISORY
 # next-best-action router. scripts/coord/next-best-action.sh recomputes an
@@ -542,7 +542,7 @@ enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bi
 # ranking FRESH so the nervous system (duty-officer, board, operator) reads a
 # current picture, not a week-old file. Cheap (no LLM call). Declared here so
 # organ-reconcile re-arms it on drift and Roll-Call never lets it rot silently.
-enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq home=cuphead
+enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq home=slim
 
 # chump-nba-dispatch.timer: EFFECTIVE-509 (+ conservative first cut of
 # EFFECTIVE-510) - the AUTO-DISPATCH CONSUMER that closes the next-best-action
@@ -660,7 +660,7 @@ enabled     chump-distill-pr-skills.timer  role=data requires=bin:chump platform
 enabled     chump-ci-health-gate.timer  role=brain requires=bin:chump platforms=systemd,launchd home=cuphead  # ci-health-gate-launchd: 5-min auto-pause when CI is jammed (>=50% BLOCKED) or an SLO breaches. Linux port: tracked scripts/dispatch/chump-ci-health-gate.{service,timer} (oneshot bash scripts/coord/ci-health-gate.sh every 5min), placed+host-rewritten by place_role_unit_files.
 enabled     chump-auto-deploy.timer  role=janitor requires=bin:chump,bin:git platforms=launchd home=mac  # auto-deploy-launchd: 20-min binary-tracks-main deploy daemon via refresh-runner-binary.sh. ONE_COMMAND_INSTALL.md finding 4 explicitly rules OUT chump-organ-deploy.timer as a match (that one places unit files as root; this one rebuilds/redeploys the binary). Not traced to a Linux unit. Linux port: TODO.
 enabled     chump-almanac-code-intel.timer  role=data requires=bin:chump platforms=launchd home=mac  # almanac-code-intel: wires almanac_* MCP tools into chump-mcp.json + indexes the working repo. RENAMED-ORGAN, PARTIAL/UNCONFIRMED: install-almanac-organ.sh already self-installs as systemd --user on Linux TODAY (ONE_COMMAND_INSTALL.md section 2d groups it with install-oauth-refresh-systemd.sh/install-fleet-health-sentinel.sh as already-rootless-systemd installers) -- but that --user unit is NOT organ-manifest.txt-tracked, and is a DIFFERENT capability from chump-almanac-liveness.timer below (which is itself the systemd complement to a THIRD, not-in-bootstrap-manifest launchd organ, almanac-summarize-watchdog/RESILIENT-354 -- freshness-checking, not indexing/MCP-wiring). Left platforms=launchd-only (not widened to systemd) rather than force a 1:1 merge with either existing organ pending a dedicated reconciliation follow-up; zero behavior change preserved either way since this line was never reconcile-visible before.
-enabled     chump-coord-assign.service  role=brain requires=bin:chump-coord platforms=systemd,launchd home=cuphead  # coord-assign-launchd: FLEET-034 push-routing daemon publishing WorkEnvelopes. Linux port: tracked scripts/dispatch/chump-coord-assign.service (Type=simple daemon `chump-coord assign`, fail-open when NATS unreachable), placed+host-rewritten by place_role_unit_files. requires=bin:chump-coord so a node without that binary is cleanly skipped (not force-enabled into backoff).
+enabled     chump-coord-assign.service  role=brain requires=bin:chump-coord platforms=systemd,launchd home=slim  # coord-assign-launchd: FLEET-034 push-routing daemon publishing WorkEnvelopes. Linux port: tracked scripts/dispatch/chump-coord-assign.service (Type=simple daemon `chump-coord assign`, fail-open when NATS unreachable), placed+host-rewritten by place_role_unit_files. requires=bin:chump-coord so a node without that binary is cleanly skipped (not force-enabled into backoff).
 enabled     chump-a2a-dead-letter-reaper.timer  role=janitor requires=bin:chump platforms=launchd home=mac  # a2a-dead-letter-reaper-launchd: 30-min dead-letter reaper for unread dormant-inbox A2A messages. Not traced to a Linux unit. Linux port: TODO.
 enabled     chump-decomposition-hint-tracker.timer  role=data requires=bin:chump platforms=launchd home=mac  # decomposition-hint-tracker-launchd: daily analytics on PR-decomposition-hint heeded-rate. Not traced to a Linux unit. Linux port: TODO.
 enabled     chump-refresh-model-prices.timer  role=data requires=bin:chump platforms=launchd home=mac  # refresh-model-prices-launchd: weekly diff of model_rates.yaml/model_registry.yaml against LiteLLM upstream. Not traced to a Linux unit. Linux port: TODO.
@@ -719,8 +719,8 @@ enabled     chump-pr-stuck-cluster-detector.service  role=brain requires=file:~/
 # PHASE-R R3 (RESILIENT-1644): queue-duplicating organs retired at both system and
 # user scopes — retired: done by the GitHub merge queue (PHASE-R R3).
 enabled     chump-armed-pr-rebaser.timer    role=brain requires=bin:chump,bin:gh platforms=systemd,launchd home=cuphead  # INFRA-8144: re-enabled on Linux+launchd with CHUMP_REBASER_MAX_PER_CYCLE=3 throttle (scripts/dispatch/chump-armed-pr-rebaser.{service,timer} -> scripts/coord/armed-pr-rebaser.sh every 20min), placed+host-rewritten by place_role_unit_files.
-enabled     chump-backlog-governor.timer    role=brain requires=bin:python3,bin:sqlite3 platforms=systemd,launchd home=cuphead  # INFRA-8175: 15-min backlog governor computing open gap counts by priority + 24h net burn and healing expired .chump-locks leases / stale in_progress claims (scripts/dispatch/chump-backlog-governor.{service,timer} -> scripts/coord/backlog-governor.sh --apply).
-enabled     chump-plan-priority.timer       role=data  requires=bin:chump-plan platforms=systemd,launchd home=cuphead  # INFRA-8143: 30-min gap-priority.json writer on Linux+launchd (scripts/dispatch/chump-plan-priority.{service,timer} -> scripts/setup/install-chump-planner-launchd.sh --once).
+enabled     chump-backlog-governor.timer    role=brain requires=bin:python3,bin:sqlite3 platforms=systemd,launchd home=slim  # INFRA-8175: 15-min backlog governor computing open gap counts by priority + 24h net burn and healing expired .chump-locks leases / stale in_progress claims (scripts/dispatch/chump-backlog-governor.{service,timer} -> scripts/coord/backlog-governor.sh --apply).
+enabled     chump-plan-priority.timer       role=data  requires=bin:chump-plan platforms=systemd,launchd home=slim  # INFRA-8143: 30-min gap-priority.json writer on Linux+launchd (scripts/dispatch/chump-plan-priority.{service,timer} -> scripts/setup/install-chump-planner-launchd.sh --once).
 retired     chump-pr-auto-rebase.timer      role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
 retired     chump-pr-auto-rebase.service    role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
 retired     chump-rot-reaper.service        role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)

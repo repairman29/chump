@@ -33,6 +33,7 @@ Description=Chump gap-closure reconciler — close open-but-merged, merged-PR-ti
 After=network-online.target
 Wants=network-online.target
 [Service]
+EnvironmentFile=-__HOME__/.chump/node.env
 Type=oneshot
 # The drift pass exits 3 when it FINDS+resolves drift (an alert contract for the
 # CI/cron callers), and merged-pr-titles/already-satisfied exit 0 on any clean
