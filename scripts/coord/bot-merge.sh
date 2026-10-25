@@ -936,7 +936,7 @@ for arg in "$@"; do
         --review)             BM_FORCE_REVIEW=1 ;;    # Mode B: skip batched queue, use existing PR flow
         --hot-fix)            BM_FORCE_HOTFIX=1 ;;    # Mode C: P0 hot-fix, skip batched queue
         --legacy)             BM_LEGACY_MODE=1 ;;     # force old behavior (Mode B) for all gaps
-        --enqueue-batch)      IN_ENQUEUE_BATCH=1 ;;   # META-196: batch-enqueue PRs into native GitHub merge_group
+        --enqueue-batch)      IN_ENQUEUE_BATCH=1; [[ ${#GAP_IDS[@]} -eq 0 ]] && GAP_IDS=("none") ;;   # META-196: batch-enqueue PRs into native GitHub merge_group
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -1002,7 +1002,7 @@ ALLOW_MASS_DELETE="${ALLOW_MASS_DELETE:-0}"
 # ghosts INFRA-241 had to backfill. Making --gap effectively-required closes
 # that path at the bottleneck without forcing every legitimate non-gap PR
 # to add boilerplate.
-if [[ ${#GAP_IDS[@]} -eq 0 && ${#ENQUEUE_BATCH_PRS[@]} -eq 0 ]]; then
+if [[ ${#GAP_IDS[@]} -eq 0 ]]; then
     _branch_name=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
     # Strip the canonical chump-codename prefixes (chump/, claude/, chore/file-,
     # chore/close-) so the regex catches IDs anywhere in the remainder.
