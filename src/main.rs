@@ -13106,6 +13106,12 @@ async fn main() -> Result<()> {
                                             ],
                                             ..Default::default()
                                         });
+                                    let _ = crate::doctor::gap_cmd::emit_gap_shipped(
+                                        &repo_root,
+                                        &result.gap_id,
+                                        &session_id,
+                                        closed_pr,
+                                    );
                                     println!("shipped {}", result.gap_id);
                                     return Ok(());
                                 }
@@ -13165,7 +13171,9 @@ async fn main() -> Result<()> {
                         found
                     }
                 };
-                match store.ship_with_external_repo(
+                match crate::doctor::gap_cmd::ship_gap(
+                    &store,
+                    &repo_root,
                     &gap_id,
                     &session_id,
                     closed_pr,
