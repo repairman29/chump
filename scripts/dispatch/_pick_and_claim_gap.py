@@ -576,6 +576,52 @@ def detect_and_emit_pillar_imbalance(ambient_path: str) -> None:
             break  # Only emit one alert per check
 
 
+def _load_capability_manifests(lock_dir) -> dict:
+    """INFRA-1829: latest fresh manifest per session from .chump-locks/capabilities/*.jsonl."""
+    from datetime import datetime, timezone
+
+    cap_dir = os.environ.get("CHUMP_CAPABILITY_DIR") or os.path.join(str(lock_dir), "capabilities")
+    out: dict = {}
+    now = time.time()
+    try:
+        names = sorted(os.listdir(cap_dir))
+    except OSError:
+        return out
+    for name in names:
+        if not name.endswith(".jsonl"):
+            continue
+        last = None
+        try:
+            with open(os.path.join(cap_dir, name)) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        last = line
+            m = json.loads(last) if last else None
+            hb = datetime.strptime(m["heartbeat_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc
+            ).timestamp()
+            if now - hb > int(m.get("ttl_seconds", 300)):
+                continue
+            out[m["session_id"]] = (
+                {str(x).lower() for x in m.get("skills", [])},
+                hb,
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return out
+
+
+def _skill_routing_defers(skills_required: set, my_session: str, manifests: dict) -> bool | None:
+    """True = another session should take this gap; False = I'm the best match;
+    None = no live session matches (caller emits skill_routing_no_match)."""
+    matching = {sid: hb for sid, (sk, hb) in manifests.items() if skills_required <= sk}
+    if not matching:
+        return None
+    best = max(matching.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    return my_session not in matching or best != my_session and matching[best] > matching[my_session]
+
+
 def csv(env_key: str) -> list[str]:
     return [s.strip() for s in os.environ.get(env_key, "").split(",") if s.strip()]
 
@@ -1225,6 +1271,7 @@ def main() -> int:
     # Specialized nodes opt back into hard filtering with WORKER_SKILLS_HARD=1.
     skills_hard = os.environ.get("WORKER_SKILLS_HARD", "0") == "1"
     soft_demoted: dict = {}
+    skill_manifests = None  # INFRA-1829: lazy-loaded capability manifests
 
     # FLEET-046: pillar/domain rebalancing.
     # INFRA-8224: rebalance (and its wedge_rank) is the claim-path tiebreaker;
@@ -1434,6 +1481,29 @@ def main() -> int:
                 continue
             if skill_mismatch:
                 soft_demoted[gid] = sorted(skills_required - worker_skills)
+
+            # INFRA-1829: manifest-aware routing (claim modes only).
+            if (
+                skills_required
+                and not curator_mode
+                and os.environ.get("CHUMP_SKILL_ROUTING", "1") != "0"
+            ):
+                if skill_manifests is None:
+                    skill_manifests = _load_capability_manifests(
+                        lock_dir or get_lock_dir()
+                    )
+                if skill_manifests:
+                    verdict = _skill_routing_defers(
+                        skills_required, session_id or get_session_id(), skill_manifests
+                    )
+                    if verdict is None:
+                        _emit_ambient(
+                            {"kind": "skill_routing_no_match",
+                             "gap_id": gid,
+                             "skills_required": sorted(skills_required)}
+                        )
+                    elif verdict:
+                        soft_demoted.setdefault(gid, sorted(skills_required))
 
             # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
             worker_backend = os.environ.get("WORKER_BACKEND", "").lower()

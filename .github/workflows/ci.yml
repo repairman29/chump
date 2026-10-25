@@ -1579,6 +1579,9 @@ jobs:
       - name: picker soft skill filter + open-PR anti-spin fallback (INFRA-8176)
         run: bash scripts/ci/test-picker-soft-skill-open-pr.sh
 
+      - name: picker skill-aware routing via CapabilityManifest (INFRA-1829)
+        run: bash scripts/ci/test-picker-skill-routing.sh
+
       - name: corrective-keyword waste-SLO-pause exception (META-937/META-823)
         run: bash scripts/ci/test-corrective-keyword-exception.sh
 
