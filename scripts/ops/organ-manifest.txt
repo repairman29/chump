@@ -703,7 +703,12 @@ enabled     chump-mission-grade.timer  role=data requires=bin:chump platforms=la
 enabled     chump-node-orchestrator.service  role=brain requires=file:~/.chump/organs/node-orchestrator.sh housekeeping=scripts/ops/node-orchestrator.sh|0| run-scope=system home=any
 enabled     chump-worktree-reaper.service  role=janitor requires=file:~/.chump/organs/worktree-reaper.sh housekeeping=scripts/ops/stale-worktree-reaper.sh|900|--execute run-scope=system home=any
 enabled     chump-disk-monitor.service  role=janitor requires=file:~/.chump/organs/disk-monitor.sh housekeeping=scripts/ops/disk-health-monitor.sh|300| run-scope=system home=any
-enabled     chump-main-health-watchdog.service  role=brain requires=file:~/.chump/organs/main-health-watchdog.sh housekeeping=scripts/ops/main-health-watchdog.sh|600| run-scope=system home=any
+enabled     chump-main-health-watchdog.service  role=brain requires=file:~/.chump/organs/main-health-watchdog.sh housekeeping=scripts/ops/main-health-watchdog.sh|600| run-scope=system home=slim
+# RESILIENT-1697 (RESILIENT-1691 slice): Phase 1 health watchers live on slim
+# only. Old cuphead/Mac units are disabled; slim is the single witness host so
+# off-node health checks (peer heartbeat files) are no longer self-attested.
+enabled     chump-fleet-health-sentinel.timer  role=brain platforms=systemd run-scope=any home=slim
+enabled     chump-node-heartbeat.timer  role=brain platforms=systemd run-scope=any home=slim
 enabled     chump-cargo-sweep-gc.service  role=janitor requires=file:~/.chump/organs/cargo-sweep-gc.sh housekeeping=scripts/ops/cargo-sweep-gc.sh|3600| run-scope=system home=any
 # RESILIENT-1680: scoped prune of the shared cargo target's rebuildable
 # incremental/ caches (never the whole target), floor/budget decided by the

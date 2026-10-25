@@ -502,7 +502,7 @@ organs:
   - unit: chump-main-health-watchdog.service
     state: enabled
     role: brain
-    home: any
+    home: slim
     run_scope: system
     platforms: "systemd"
   - unit: chump-cargo-sweep-gc.service
@@ -605,5 +605,17 @@ organs:
     state: retired
     role: brain
     home: cuphead
+    run_scope: any
+    platforms: "systemd"
+  - unit: chump-fleet-health-sentinel.timer
+    state: enabled
+    role: brain
+    home: slim
+    run_scope: any
+    platforms: "systemd"
+  - unit: chump-node-heartbeat.timer
+    state: enabled
+    role: brain
+    home: slim
     run_scope: any
     platforms: "systemd"
