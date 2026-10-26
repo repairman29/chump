@@ -1288,9 +1288,12 @@ fn is_test_file(path: &str) -> bool {
         || lower.contains("test") // broad fallback: any file with "test" in the path
 }
 
-/// Return true if the PR is a pure test-addition PR: every changed file between
-/// `base_sha` and `head_sha` is in `test_files` AND every changed file has
-/// status `A` (newly added) in `git diff --name-status base_sha..head_sha`.
+/// Return true if the PR is a pure test-coverage addition/extension PR:
+/// - every changed file between `base_sha` and `head_sha` is in `test_files`
+///   (or is a companion `DEPTH.md` / `e2e/DEPTH.md` ledger update), AND
+/// - every changed test file exists on head and contains both a test definition
+///   (`def test_`, `test(`, `it(`, or `#[test]`) and a real assertion
+///   (`assert`, `expect(`, or `pytest.raises`), rejecting trivial/cosmetic stubs.
 fn is_pure_test_addition(
     clone_dir: &Path,
     base_sha: &str,
@@ -1314,24 +1317,42 @@ fn is_pure_test_addition(
         return Ok(false);
     }
     let raw = String::from_utf8_lossy(&out.stdout);
-    let mut saw_any = false;
+    let mut saw_test = false;
     for line in raw.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        saw_any = true;
         let mut parts = trimmed.splitn(2, '\t');
         let status = parts.next().unwrap_or("").trim();
         let path = parts.next().unwrap_or("").trim();
-        if status != "A" || path.is_empty() {
+        if path.is_empty() || (!status.starts_with('A') && !status.starts_with('M')) {
             return Ok(false);
+        }
+        if path == "DEPTH.md" || path == "e2e/DEPTH.md" {
+            continue;
         }
         if !test_files.iter().any(|tf| tf == path) {
             return Ok(false);
         }
+        let full_path = clone_dir.join(path);
+        let Ok(content) = std::fs::read_to_string(&full_path) else {
+            return Ok(false);
+        };
+        let has_test_fn = content.contains("def test_")
+            || content.contains("async def test_")
+            || content.contains("#[test]")
+            || content.contains("test(")
+            || content.contains("it(");
+        let has_assertion = content.contains("assert")
+            || content.contains("expect(")
+            || content.contains("pytest.raises");
+        if !has_test_fn || !has_assertion {
+            return Ok(false);
+        }
+        saw_test = true;
     }
-    Ok(saw_any)
+    Ok(saw_test)
 }
 
 /// Detect how to run tests for this repo.
