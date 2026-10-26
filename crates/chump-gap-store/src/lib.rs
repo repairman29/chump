@@ -5619,9 +5619,9 @@ impl GapStore {
                 continue;
             }
             if !existing_ids.contains(&g.id)
-                && (g.title.trim().is_empty()
-                    || g.status.trim().is_empty()
-                    || g.domain.trim().is_empty())
+                && g.title.trim().is_empty()
+                && g.status.trim().is_empty()
+                && g.domain.trim().is_empty()
             {
                 skipped += 1;
                 continue;
