@@ -592,6 +592,34 @@ fn free_tier_comprehend_section(root: &std::path::Path) -> String {
     format!("\n## Repo map (comprehension — reference, only if your change touches wiring/gates)\n```\n{body}\n```\n")
 }
 
+/// EFFECTIVE-316: Check whether an `acceptance_criteria` string is empty (`""` or `"[]"`).
+pub(crate) fn is_ac_less_acceptance_criteria(ac: &str) -> bool {
+    let trimmed = ac.trim();
+    trimmed.is_empty() || trimmed == "[]"
+}
+
+/// EFFECTIVE-316: Fail-fast guard for free-tier dispatches on gaps with empty
+/// `acceptance_criteria` before building the prompt or invoking the model.
+pub(crate) fn check_free_tier_ac_requirement(
+    gap_id: &str,
+    canonical_root: &std::path::Path,
+) -> Result<()> {
+    let gap_row = chump_gap_store::GapStore::open(canonical_root)
+        .ok()
+        .and_then(|store| store.get(gap_id).ok().flatten());
+    if let Some(gap) = gap_row {
+        if is_ac_less_acceptance_criteria(&gap.acceptance_criteria) {
+            eprintln!(
+                "[execute-gap] EFFECTIVE-316: skipping AC-less gap {gap_id} before free-tier model dispatch"
+            );
+            return Err(anyhow!(
+                "skipping AC-less gap {gap_id}: acceptance_criteria is empty (EFFECTIVE-316)"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Build a simplified prompt for free-tier models. Key differences from
 /// `build_execute_gap_prompt`:
 ///
@@ -1131,6 +1159,14 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
     if free_tier {
         let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
         eprintln!("[execute-gap] free-tier mode: model={model}, slim dispatch profile");
+        // EFFECTIVE-316: fail fast on AC-less gaps before building the prompt or
+        // dispatching the model so free-tier workers don't burn a 5-min cycle on
+        // a gap that `chump claim` at ship time is guaranteed to reject.
+        let canonical_root = crate::repo_path::main_checkout_root();
+        check_free_tier_ac_requirement(gap_id, &canonical_root)?;
+        if canonical_root != repo_root {
+            check_free_tier_ac_requirement(gap_id, &repo_root)?;
+        }
         // INFRA-3406: file tools (read/patch/git_commit) resolve paths via
         // CHUMP_REPO — inherited as the MAIN checkout from worker env, so
         // every model patch and commit landed OUTSIDE the dispatch worktree
@@ -2518,5 +2554,39 @@ mod tests {
         restore_env_var("OPENAI_API_KEY", orig_key);
         restore_env_var("CHUMP_FREE_TIER_MODE", orig_mode);
         std::env::remove_var("MY_TEST_KEY_002");
+    }
+
+    #[test]
+    fn effective316_free_tier_skips_ac_less_gap_fast() {
+        assert!(is_ac_less_acceptance_criteria(""));
+        assert!(is_ac_less_acceptance_criteria("   "));
+        assert!(is_ac_less_acceptance_criteria("[]"));
+        assert!(is_ac_less_acceptance_criteria(" [] \n"));
+        assert!(!is_ac_less_acceptance_criteria("- concrete criterion"));
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let _store = chump_gap_store::GapStore::open(dir.path()).expect("open gap store");
+        let conn =
+            rusqlite::Connection::open(chump_gap_store::GapStore::db_path(dir.path())).unwrap();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, status, priority, effort, description, acceptance_criteria) VALUES ('EFFECTIVE-9999', 'EFFECTIVE', 'AC-less test gap', 'open', 'P2', 'xs', 'desc', '[]')",
+            [],
+        )
+        .expect("insert empty-ac gap");
+
+        let err = check_free_tier_ac_requirement("EFFECTIVE-9999", dir.path())
+            .expect_err("AC-less gap must fail fast on free-tier check");
+        assert!(
+            err.to_string().contains("skipping AC-less gap"),
+            "error must contain 'skipping AC-less gap', got: {err:#}"
+        );
+
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, status, priority, effort, description, acceptance_criteria) VALUES ('EFFECTIVE-9998', 'EFFECTIVE', 'Valid test gap', 'open', 'P2', 'xs', 'desc', '- AC1: passes unit test')",
+            [],
+        )
+        .expect("insert valid gap");
+        check_free_tier_ac_requirement("EFFECTIVE-9998", dir.path())
+            .expect("gap with concrete AC must pass free-tier AC check");
     }
 }

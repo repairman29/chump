@@ -347,6 +347,13 @@ _install_binary() {
     cp -f "$src" "$TARGET_BIN.new" 2>>"$LOG" || return 1
     chmod +x "$TARGET_BIN.new"
     mv -f "$TARGET_BIN.new" "$TARGET_BIN" || return 1
+    local _stamp_dir="${CHUMP_STATE_DIR:-$HOME/.chump}"
+    mkdir -p "$_stamp_dir" 2>/dev/null || true
+    local _installed_ver_sha
+    _installed_ver_sha="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || true)"
+    if [[ -n "$_installed_ver_sha" ]]; then
+        printf '%s\n' "$_installed_ver_sha" > "$_stamp_dir/installed-chump.sha" 2>/dev/null || true
+    fi
     _converge_stale_binaries
     return 0
 }
@@ -697,14 +704,15 @@ cd "$REPO_ROOT" || { log "FATAL: cannot cd $REPO_ROOT"; emit node_binary_refresh
 # diagnosis, never blocks the refresh.
 _check_gh_auth_precondition() {
     command -v gh >/dev/null 2>&1 || return 0
-    if ! gh auth status >/dev/null 2>&1; then
+    local _gh_cmd="gh"
+    command -v chump_gh >/dev/null 2>&1 && _gh_cmd="chump_gh"
+    if ! CHUMP_GH_CALL_CRITICALITY=background "$_gh_cmd" auth status >/dev/null 2>&1; then
         log "WARN: gh present but not authenticated (gh auth status failed) — green-lookup and artifact-pull will both fall back"
         _node_refresh_halt_class "node-refresh-gh-auth" \
             "gh is on PATH but 'gh auth status' failed (no GH_TOKEN / no gh auth login in this timer env) — green-lookup and artifact-pull will both degrade to their fallback paths" \
             "{\"node_repo\":\"$REPO_ROOT\"}"
     fi
 }
-_check_gh_auth_precondition
 
 # --- fetch + advance the mirror to the last-GREEN main, not raw HEAD --------
 # These nodes are pure BUILD MIRRORS (no operator WIP), so a hard reset to the
@@ -714,16 +722,28 @@ _check_gh_auth_precondition
 # a real working tree, guard this behind a clean-tree check.
 git fetch origin main --quiet 2>>"$LOG" || log "WARN: git fetch failed (offline?); building local main"
 
-# BUILD_PIN_SHA is the sha the BINARY is built/pulled from — the RESILIENT-327
-# green-main pin (never a red HEAD). It is DISTINCT from where the working tree
-# is checked out: RESILIENT-1205 requires the SOURCE tree track origin/main HEAD
-# (so merged bash-organ fixes reach the iron), while the compiled binary stays
-# pinned to green. Conflating the two — resetting the working tree to the green
-# pin — was the merged-!=-deployed keystone bug: whenever green lagged HEAD
-# (e.g. a coherence-sync commit that never gets a build artifact), this script
-# permanently pinned the checkout behind HEAD AND fought chump-node-converge
-# (RESILIENT-1189), which resets the same tree to origin/main every 10 min.
-RAW_HEAD_SHA="$(git rev-parse --short=12 origin/main 2>/dev/null || git rev-parse --short=12 HEAD)"
+# --- ZERO-WASTE-132: fast no-change short-circuit (zero gh calls) ------------
+# When the installed binary's SHA stamp (from `$TARGET_BIN --version` or
+# `~/.chump/installed-chump.sha`) already matches `origin/main` (via local
+# `origin/main` ref or `git ls-remote origin refs/heads/main`), short-circuit
+# before making ANY `gh` API call.
+RAW_HEAD_SHA="$(git rev-parse --short=12 origin/main 2>/dev/null || git -C "$REPO_ROOT" ls-remote origin refs/heads/main 2>/dev/null | awk '{print substr($1,1,12)}' || git rev-parse --short=12 HEAD)"
+if [[ -z "${CHUMP_NODE_REFRESH_TEST_GREEN_SHA:-}" && "${1:-}" != "--force" && -x "$TARGET_BIN" && -x "$TARGET_CHUMPD_BIN" ]]; then
+    _FAST_INSTALLED_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || true)"
+    if [[ -z "$_FAST_INSTALLED_SHA" && -f "${CHUMP_STATE_DIR:-$HOME/.chump}/installed-chump.sha" ]]; then
+        _FAST_INSTALLED_SHA="$(head -1 "${CHUMP_STATE_DIR:-$HOME/.chump}/installed-chump.sha" 2>/dev/null | tr -d '[:space:]' || true)"
+    fi
+    if [[ -n "$_FAST_INSTALLED_SHA" && "$_FAST_INSTALLED_SHA" != "none" && "$_FAST_INSTALLED_SHA" != "unknown" ]] \
+       && [[ "$_FAST_INSTALLED_SHA" == "$RAW_HEAD_SHA"* || "$RAW_HEAD_SHA" == "$_FAST_INSTALLED_SHA"* ]]; then
+        converge_mirror_hard_reset origin/main >>"$LOG" 2>&1 || true
+        log "SKIP: binary already current ($_FAST_INSTALLED_SHA); origin/main ($RAW_HEAD_SHA) unchanged — fast short-circuit (0 gh calls)"
+        emit node_binary_refresh_skipped "\"reason\":\"already_current\",\"sha\":\"$_FAST_INSTALLED_SHA\""
+        _reconcile_role_organs
+        exit 0
+    fi
+fi
+
+_check_gh_auth_precondition
 GREEN_SHA="$(_find_green_main_sha)"
 if [[ -n "$GREEN_SHA" ]]; then
     BUILD_PIN_SHA="$GREEN_SHA"

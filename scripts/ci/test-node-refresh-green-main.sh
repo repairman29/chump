@@ -129,4 +129,26 @@ grep -q '"kind":"node_refresh_green_lookup_failed"' "$AMBIENT" \
     || fail "expected node_refresh_green_lookup_failed emitted on fallback: $(cat "$AMBIENT")"
 ok "with no green sha resolvable, falls back to raw HEAD and emits it loudly (non-silent)"
 
+# ── Test 3 (ZERO-WASTE-132): fast no-change short-circuit makes zero gh calls ─
+cat > "$TMP/bin/gh" <<EOF
+#!/usr/bin/env bash
+echo "GH_CALLED \$*" >> "$TMP/gh-calls-zw132.log"
+exit 0
+EOF
+chmod +x "$TMP/bin/gh"
+rm -f "$TMP/gh-calls-zw132.log"
+
+CHUMP_NODE_REPO="$MIRROR" \
+CHUMP_NODE_BIN="$TMP/installed-chump2" \
+NODE_AMBIENT="$AMBIENT" \
+CHUMP_NODE_REFRESH_LOGDIR="$TMP/logs3" \
+HOME="$TMP/fakehome" \
+PATH="$TMP/bin:$PATH" \
+    bash "$SCRIPT" > "$TMP/out3.log" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] || fail "fast short-circuit run exited $rc: $(cat "$TMP/out3.log")"
+[ ! -f "$TMP/gh-calls-zw132.log" ] || fail "ZERO-WASTE-132: expected 0 gh calls when main SHA unchanged, got: $(cat "$TMP/gh-calls-zw132.log")"
+grep -q "fast short-circuit" "$TMP/out3.log" || fail "ZERO-WASTE-132: expected fast short-circuit log line in $(cat "$TMP/out3.log")"
+ok "ZERO-WASTE-132: unchanged origin/main short-circuits with 0 gh calls"
+
 exit 0

@@ -3744,3 +3744,6 @@ CHUMP_COMMIT_MSG_FILE
 CHUMP_SYSTEMD_UNIT_DIRS
 CHUMP_SYSTEMCTL_BIN
 
+# Wave 20 (INFRA-2254): shepherd-triage WARN broadcast fingerprint cooldown window (minutes)
+CHUMP_SHEPHERD_WARN_COOLDOWN_M
+

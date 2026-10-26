@@ -267,7 +267,33 @@ if [[ "$BROADCAST" == "1" ]]; then
     if [[ -x "$REPO_ROOT/scripts/coord/broadcast.sh" ]]; then
         PLAN=$(echo "$SUMMARY_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(' | '.join(d.get('plan',[])))" 2>/dev/null || echo "(plan unavailable)")
         GHOST=$(echo "$SUMMARY_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ghost_count',0))" 2>/dev/null || echo 0)
-        CHUMP_SESSION_ID="$SESSION_ID" "$REPO_ROOT/scripts/coord/broadcast.sh" --to "$OPERATOR_ID" WARN \
-            "SHEPHERD-TRIAGE: ghosts=$GHOST. PLAN: $PLAN" >/dev/null 2>&1 || true
+        # INFRA-2254: sha256 fingerprint of (ghost_count + plan-string) with cooldown
+        # sentinel at .chump-locks/shepherd-triage-last-warn.sentinel.
+        _WARN_COOLDOWN_M="${CHUMP_SHEPHERD_WARN_COOLDOWN_M:-120}"
+        if [[ "$AMBIENT" == "$REPO_ROOT/.chump-locks/ambient.jsonl" ]]; then
+            _WARN_SENTINEL="$REPO_ROOT/.chump-locks/shepherd-triage-last-warn.sentinel"
+        else
+            _WARN_SENTINEL="$(dirname "$AMBIENT")/shepherd-triage-last-warn.sentinel"
+        fi
+        _WARN_FP=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest())' "${GHOST}:${PLAN}")
+        _SUPPRESS_WARN=0
+        if [[ -f "$_WARN_SENTINEL" ]]; then
+            _LAST_FP=$(head -1 "$_WARN_SENTINEL" 2>/dev/null | tr -d '[:space:]' || true)
+            _SENTINEL_MTIME=$(stat -f%m "$_WARN_SENTINEL" 2>/dev/null || stat -c%Y "$_WARN_SENTINEL" 2>/dev/null || echo 0)
+            _NOW_EPOCH=$(date +%s)
+            _AGE_S=$(( _NOW_EPOCH - _SENTINEL_MTIME ))
+            if [[ "$_LAST_FP" == "$_WARN_FP" ]] && (( _AGE_S < _WARN_COOLDOWN_M * 60 )); then
+                _SUPPRESS_WARN=1
+            fi
+        fi
+        if [[ "$_SUPPRESS_WARN" == "1" ]]; then
+            # scanner-anchor: "kind":"shepherd_warn_suppressed"
+            python3 -c 'import datetime,json,sys; print(json.dumps({"ts":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"kind":"shepherd_warn_suppressed","session":sys.argv[1],"fingerprint":sys.argv[2],"cooldown_m":int(sys.argv[3])},separators=(",",":")))' "$SESSION_ID" "$_WARN_FP" "$_WARN_COOLDOWN_M" >> "$AMBIENT" 2>/dev/null || true
+        else
+            mkdir -p "$(dirname "$_WARN_SENTINEL")" 2>/dev/null || true
+            printf '%s\n' "$_WARN_FP" > "$_WARN_SENTINEL" 2>/dev/null || true
+            CHUMP_SESSION_ID="$SESSION_ID" "$REPO_ROOT/scripts/coord/broadcast.sh" --to "$OPERATOR_ID" WARN \
+                "SHEPHERD-TRIAGE: ghosts=$GHOST. PLAN: $PLAN" >/dev/null 2>&1 || true
+        fi
     fi
 fi

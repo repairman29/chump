@@ -31,6 +31,10 @@
 
 set -euo pipefail
 
+# INFRA-2037: initialize _staged_paths array before any conditional branch so
+# set -u never emits `_staged_paths: unbound variable`.
+_staged_paths=()
+
 # INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
 # shellcheck source=../lib/discover-flock.sh
 # shellcheck disable=SC1091
@@ -498,6 +502,19 @@ if [[ "${CHUMP_LEASE_CHECK:-1}" != "0" ]]; then
     fi
 fi
 
+# RESILIENT-065 / INFRA-3389: never silently abort before git commit. Armed HERE
+# (after all intentional gate-refusals above and BEFORE the INFRA-085 known-prefixes
+# / _state_db lookup) so any unexpected failure under set -euo pipefail converts
+# into a loud diagnostic instead of a silent pre-commit exit.
+_commit_started=0
+_chump_commit_exit_trap() {
+    local _rc=$?
+    if [[ "${_commit_started:-0}" != "1" && "$_rc" -ne 0 ]]; then
+        echo "[chump-commit] ERROR: aborted (exit $_rc) BEFORE git commit — files are STAGED but NOT committed. Recover: re-run scripts/coord/chump-commit.sh, or commit manually: git commit ${GIT_ARGS[*]:-<your -m args>}" >&2
+    fi
+}
+trap _chump_commit_exit_trap EXIT
+
 # ── INFRA-085: auto-write lease from gap-IDs in commit message ───────────────
 # The third bypass-path closure (after INFRA-236 commit-subject closer and
 # INFRA-237 bot-merge.sh --gap auto-derive). Manual-ship paths (gh pr
@@ -538,15 +555,27 @@ if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
         esac
     done
     if [[ -n "$_commit_msg_text" ]]; then
-        # INFRA-1059: derive known domain prefixes from state.db to avoid
-        # matching non-gap tokens like SHA-256, P0-1, HTTP-200. Fall back to
-        # a hard-coded list if sqlite3 or state.db is unavailable.
-        _state_db="$REPO_ROOT/.chump/state.db"
+        # INFRA-1059 / INFRA-3389: derive known domain prefixes from the canonical
+        # MAIN_REPO/.chump/state.db (resolved via git rev-parse --git-common-dir),
+        # falling back to $REPO_ROOT/.chump/state.db only if non-empty and containing
+        # the `gaps` table, and finally to the hard-coded prefix list.
+        _common_git_dir="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+        if [[ "$_common_git_dir" == ".git" ]]; then
+            _canonical_main_repo="${MAIN_REPO:-$REPO_ROOT}"
+        else
+            _canonical_main_repo="$(cd "$_common_git_dir/.." 2>/dev/null && pwd || echo "${MAIN_REPO:-$REPO_ROOT}")"
+        fi
+        _state_db="$_canonical_main_repo/.chump/state.db"
+        if [[ ! -s "$_state_db" ]] && [[ -s "$REPO_ROOT/.chump/state.db" ]]; then
+            if command -v sqlite3 >/dev/null 2>&1 && sqlite3 "$REPO_ROOT/.chump/state.db" "SELECT 1 FROM gaps LIMIT 1;" >/dev/null 2>&1; then
+                _state_db="$REPO_ROOT/.chump/state.db"
+            fi
+        fi
         _known_prefixes=""
-        if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$_state_db" ]]; then
+        if command -v sqlite3 >/dev/null 2>&1 && [[ -s "$_state_db" ]]; then
             # RESILIENT-065-class guard: an empty/uninitialized state.db (no
             # `gaps` table — e.g. a fresh worktree checkout) makes sqlite3
-            # exit non-zero; under `set -euo pipefail` that silently aborts
+            # exit non-zero; under set -e / pipefail that silently aborts
             # this script before it ever reaches `git commit`. `|| true`
             # keeps the fallback prefix list path (below) reachable instead.
             _known_prefixes=$( (sqlite3 "$_state_db" \
@@ -648,30 +677,18 @@ for _ga in "${GIT_ARGS[@]}"; do
 done
 unset _next_is_inline_msg _ga _GIT_COMMON_DIR
 
-# INFRA-2205: assign _staged_paths unconditionally so INFRA-1833 / INFRA-1853
-# blocks below can reference it safely under set -u regardless of which
-# branch the INFRA-1673 preflight check takes.
-_staged_paths=$(git diff --cached --name-only 2>/dev/null)
+# INFRA-2037 / INFRA-2205: populate _staged_paths array unconditionally so
+# INFRA-1833 / INFRA-1853 blocks below can reference it safely under set -u
+# via "${_staged_paths[@]+"${_staged_paths[@]}"}".
+_staged_paths=()
+while IFS= read -r _sp_line; do
+    [[ -n "$_sp_line" ]] && _staged_paths+=("$_sp_line")
+done < <(git diff --cached --name-only 2>/dev/null || true)
+unset _sp_line
 
 # INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted — the audit block that warned
 # when the bypass was used without a Preflight-Skip-Reason trailer is removed.
 # preflight now auto-skips only main-RED gates; no bypass env is accepted.
-
-# RESILIENT-065: never silently abort before git commit. With `set -euo pipefail`
-# a non-zero anywhere in the auto-fix blocks below (classically a grep-no-match in
-# the INFRA-1853 env-var scan when a code commit adds no new CHUMP_* var — the
-# COMMON case) kills the script mid-way, leaving files STAGED but uncommitted with
-# ZERO output: the "stages but never commits, no error" bug. Armed HERE (after all
-# intentional gate-refusals above, which exit <665) so it only guards the
-# should-always-commit region; converts any pre-commit abort into a loud diagnostic.
-_commit_started=0
-_chump_commit_exit_trap() {
-    local _rc=$?
-    if [[ "${_commit_started:-0}" != "1" && "$_rc" -ne 0 ]]; then
-        echo "[chump-commit] ERROR: aborted (exit $_rc) BEFORE git commit — files are STAGED but NOT committed. Recover: re-run scripts/coord/chump-commit.sh, or commit manually: git commit ${GIT_ARGS[*]:-<your -m args>}" >&2
-    fi
-}
-trap _chump_commit_exit_trap EXIT
 
 # INFRA-1833: auto-fmt-on-commit. Run `cargo fmt --all` BEFORE commit so
 # the cargo fmt --check CI gate never fails. Auto-fix beats check-and-fail —
@@ -680,9 +697,11 @@ trap _chump_commit_exit_trap EXIT
 #   - cargo is on PATH
 #   - CHUMP_AUTO_FMT != "0" (bypass with audit-trail emit)
 _has_rust_staged=0
-if echo "$_staged_paths" | grep -qE '\.rs$|^Cargo\.(toml|lock)$' 2>/dev/null; then
-    _has_rust_staged=1
-fi
+for _sp in "${_staged_paths[@]+"${_staged_paths[@]}"}"; do
+    case "$_sp" in
+        *.rs|Cargo.toml|Cargo.lock) _has_rust_staged=1; break ;;
+    esac
+done
 if [[ "$_has_rust_staged" -eq 1 ]] && command -v cargo >/dev/null 2>&1; then
     if [[ "${CHUMP_AUTO_FMT:-1}" == "0" ]]; then
         _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
@@ -698,8 +717,33 @@ if [[ "$_has_rust_staged" -eq 1 ]] && command -v cargo >/dev/null 2>&1; then
         # (many fleet cargo procs) can't hang the commit indefinitely. On timeout
         # (124) or fmt failure, fall through to the non-fatal else and still commit.
         if timeout "${CHUMP_AUTO_FMT_TIMEOUT:-120}" cargo fmt --all 200>&- 2>&1 | tail -3 >&2; then
-            # Re-stage any files cargo fmt touched. If nothing changed, this is a no-op.
-            git add -A 2>/dev/null || true
+            # EFFECTIVE-218: replaced bare `git add -A` with `git add -- "${FILES[@]}"`
+            # so cargo-fmt re-staging stays strictly scoped to the caller's declared
+            # files and never sweeps untracked files (e.g. .chump-no-reap).
+            git add -- "${FILES[@]}"
+            _outside_fmt_rs=()
+            while IFS= read -r _fmt_df; do
+                [[ -z "$_fmt_df" ]] && continue
+                case "$_fmt_df" in
+                    *.rs)
+                        _in_declared=0
+                        for _decl_f in "${FILES[@]}"; do
+                            if [[ "$_fmt_df" == "$_decl_f" || "./$_fmt_df" == "$_decl_f" || "$_fmt_df" == "./$_decl_f" ]]; then
+                                _in_declared=1
+                                break
+                            fi
+                        done
+                        if [[ $_in_declared -eq 0 ]]; then
+                            _outside_fmt_rs+=("$_fmt_df")
+                        fi
+                        ;;
+                esac
+            done < <(git diff --name-only 2>/dev/null || true)
+            if [[ ${#_outside_fmt_rs[@]} -gt 0 ]]; then
+                echo "[chump-commit] ERROR (EFFECTIVE-218): cargo fmt modified .rs file(s) outside declared argv (${FILES[*]}): ${_outside_fmt_rs[*]}" >&2
+                echo "[chump-commit]   Include them in your chump-commit.sh file list or revert/stash outside changes before committing." >&2
+                _commit_started=1; exit 1
+            fi
             _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
             mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
             printf '{"ts":"%s","kind":"auto_fmt_applied","session":"%s"}\n' \
@@ -722,9 +766,11 @@ fi
 # Bypass: CHUMP_AUTO_ENVVAR=0 emits auto_envvar_bypassed audit event.
 _envvar_file="${REPO_ROOT}/scripts/ci/env-vars-internal.txt"
 _has_code_staged=0
-if echo "$_staged_paths" | grep -qE '\.(rs|sh|py)$' 2>/dev/null; then
-    _has_code_staged=1
-fi
+for _sp in "${_staged_paths[@]+"${_staged_paths[@]}"}"; do
+    case "$_sp" in
+        *.rs|*.sh|*.py) _has_code_staged=1; break ;;
+    esac
+done
 if [[ "$_has_code_staged" -eq 1 ]] && [[ -f "$_envvar_file" ]]; then
     _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
     mkdir -p "$(dirname "$_amb")" 2>/dev/null || true

@@ -11199,7 +11199,18 @@ async fn main() -> Result<()> {
                         return Ok(());
                     }
                     Ok(None) => {
+                        // INFRA-1582: fall back to git commit history when not in active state.db.
+                        if let Some(reaped_msg) =
+                            crate::doctor::gap_cmd::lookup_reaped_gap_in_git_history(
+                                &repo_root, &id,
+                            )
+                        {
+                            println!("chump gap show: gap {id} — {reaped_msg}");
+                            eprintln!("chump gap show: gap {id} — {reaped_msg}");
+                            return Ok(());
+                        }
                         eprintln!("chump gap show: gap {} not found", id);
+                        eprintln!("  {}", crate::doctor::gap_cmd::GAP_SHOW_NOT_FOUND_HINT);
                         std::process::exit(1);
                     }
                     Err(e) => {
@@ -11209,7 +11220,9 @@ async fn main() -> Result<()> {
                 }
             }
             "list" => {
-                let status_filter = flag("--status");
+                // INFRA-1582: --include-done shows closed/done gaps alongside open ones.
+                let include_done = args.iter().any(|a| a == "--include-done");
+                let status_filter = if include_done { None } else { flag("--status") };
                 // INFRA-431: include-test-domains opts back in to SPIKE/TEST*
                 // rows. Default is to filter them out of the human-readable
                 // output (kept in --json output unconditionally so tooling
@@ -13244,6 +13257,25 @@ async fn main() -> Result<()> {
                     },
                     None => None,
                 };
+                // INFRA-2038: detect metadata-only status flip (when state.db already has
+                // closed_pr matching --closed-pr or --closed-pr references an already-merged
+                // PR and --update-yaml is not passed); skip the 15-commit behind-main stale
+                // check and emit kind=gap_ship_metadata_only.
+                let metadata_only_flip = crate::doctor::gap_cmd::is_metadata_only_ship(
+                    &store,
+                    &repo_root,
+                    &gap_id,
+                    closed_pr,
+                    update_yaml,
+                );
+                if metadata_only_flip {
+                    let _ = crate::doctor::gap_cmd::emit_gap_ship_metadata_only(
+                        &repo_root,
+                        &gap_id,
+                        &session_id,
+                        closed_pr,
+                    );
+                }
                 // INFRA-1007: staleness gate — belt-and-suspenders for the CLAUDE.md
                 // "rebase if > 15 commits behind" rule. bot-merge.sh has this gate for
                 // the push path; the manual `chump gap ship` path needs the same check.
@@ -13251,7 +13283,9 @@ async fn main() -> Result<()> {
                     .ok()
                     .and_then(|s| s.trim().parse().ok())
                     .unwrap_or(15);
-                if std::env::var("CHUMP_GAP_SHIP_SKIP_STALE_CHECK").as_deref() != Ok("1") {
+                if !metadata_only_flip
+                    && std::env::var("CHUMP_GAP_SHIP_SKIP_STALE_CHECK").as_deref() != Ok("1")
+                {
                     let _ = std::process::Command::new("git")
                         .args(["fetch", "origin", "main", "--quiet"])
                         .current_dir(&worktree_root)

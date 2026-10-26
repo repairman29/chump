@@ -106,6 +106,7 @@ trap _emit_cargo_target_reaper_run EXIT
 
 EXECUTE=0
 EVENT_LISTEN=0
+INCLUDE_SHARED=0
 # RESILIENT-1620: Class D — lease-less dispatch worktrees under the repo's
 # .claude/worktrees whose PR merged/closed. --class-d-only runs ONLY Class D,
 # bypassing the global cargo-process / low-disk guards (Class D is build-safe
@@ -152,6 +153,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)            FORCE_DRY=1 ;;
         --event-listen)       EVENT_LISTEN=1 ;;
         --class-d-only)       CLASS_D_ONLY=1 ;;
+        --include-shared)     INCLUDE_SHARED=1 ;;
         --fingerprint-age-d)  FINGERPRINT_AGE_D="$2"; shift ;;
         --fleet-age-d)        FLEET_AGE_D="$2"; shift ;;
         --help|-h)
@@ -1187,6 +1189,35 @@ if [[ -d "$TARGET_DEBUG" ]]; then
     while IFS= read -r -d '' entry; do
         maybe_delete "$entry"
     done < <(find "${TARGET_DEBUG}/deps" -maxdepth 1 -name 'lib*.rlib' -mtime "+${FINGERPRINT_AGE_D}" -print0 2>/dev/null)
+fi
+
+# ── (b2) ZERO-WASTE-034: shared cargo target ($HOME/.cargo/chump-shared-target + $CARGO_TARGET_DIR) ──
+if [[ $INCLUDE_SHARED -eq 1 || -n "${CARGO_TARGET_DIR:-}" ]]; then
+    _shared_seen=" "
+    _shared_candidates=()
+    [[ -n "${CARGO_TARGET_DIR:-}" ]] && _shared_candidates+=("${CARGO_TARGET_DIR%/}")
+    if [[ $INCLUDE_SHARED -eq 1 ]]; then
+        _shared_candidates+=("${HOME}/.cargo/chump-shared-target")
+    fi
+    for _shared_base in "${_shared_candidates[@]+"${_shared_candidates[@]}"}"; do
+        [[ -n "$_shared_base" && -d "$_shared_base" ]] || continue
+        [[ "$_shared_seen" == *" ${_shared_base} "* ]] && continue
+        _shared_seen+="${_shared_base} "
+        _shared_dbg="${_shared_base}/debug"
+        [[ -d "$_shared_dbg" ]] || continue
+        echo "[cargo-target-reaper] Scanning ${_shared_dbg}/{.fingerprint,deps,incremental,build} (>${FINGERPRINT_AGE_D}d, ZERO-WASTE-034)…"
+        for _sub in ".fingerprint" "incremental" "build"; do
+            [[ -d "${_shared_dbg}/${_sub}" ]] || continue
+            while IFS= read -r -d '' entry; do
+                maybe_delete "$entry"
+            done < <(find "${_shared_dbg}/${_sub}" -mindepth 1 -maxdepth 1 -mtime "+${FINGERPRINT_AGE_D}" -print0 2>/dev/null)
+        done
+        if [[ -d "${_shared_dbg}/deps" ]]; then
+            while IFS= read -r -d '' entry; do
+                maybe_delete "$entry"
+            done < <(find "${_shared_dbg}/deps" -maxdepth 1 -name 'lib*.rlib' -mtime "+${FINGERPRINT_AGE_D}" -print0 2>/dev/null)
+        fi
+    done
 fi
 
 # ── (c) fleet shared target dirs ─────────────────────────────────────────────

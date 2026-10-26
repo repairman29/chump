@@ -776,7 +776,7 @@ events:
       chump claim refused because a non-draft OPEN PR already exists on
       the canonical claim branch `chump/<gap>-claim` — prevents the "2 sessions
       wasted creating duplicate worktrees" failure mode observed 2026-05-16.
-      Overrides logged separately:  --allow-duplicate-pr / CHUMP_CLAIM_ALLOW_OPEN_PR
+      'Overrides logged separately: --allow-duplicate-pr / CHUMP_CLAIM_ALLOW_OPEN_PR'
       (rescue), --resume (continue same work), CHUMP_ALLOW_STOMP (abandoned PR
       takeover).
     consumers: [fleet-brief, waste-tally, audit-log]
@@ -15089,4 +15089,41 @@ events:
       stalled for >= 4 hours, surfacing it for conflict triage / rebase.
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
+
+  - kind: bot_merge_step_stalled
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-2272, INFRA-2273)
+    emitter_paths: [scripts/coord/bot-merge.sh]
+    trigger: >
+      Emitted by _bm_emit_step_stalled in scripts/coord/bot-merge.sh when a wrapped
+      step exceeds its per-step gtimeout budget (exit 124).
+    consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
+    fields_required: [ts, kind, gap_id, step_name, elapsed_seconds, last_progress_ts, cmd_label, timeout_s, pid]
+
+  - kind: gap_ship_metadata_only
+    status: active
+    effect_metric: self
+    emitter: src/gap_cmd.rs + src/main.rs (INFRA-2038)
+    emitter_paths: [src/gap_cmd.rs, src/main.rs]
+    trigger: >
+      Emitted by chump gap ship when a metadata-only status flip is detected
+      (closed_pr already matches or no code-ship YAML mutation requested), skipping
+      the 15-commit branch staleness gate.
+    consumers: [scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap, session]
+
+  - kind: shepherd_warn_suppressed
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/opus-shepherd-triage.sh (INFRA-2254)
+    emitter_paths: [scripts/coord/opus-shepherd-triage.sh]
+    trigger: >
+      Emitted by scripts/coord/opus-shepherd-triage.sh when an operator WARN
+      broadcast is suppressed because its sha256(ghost_count + plan) fingerprint
+      matches .chump-locks/shepherd-triage-last-warn.sentinel within
+      CHUMP_SHEPHERD_WARN_COOLDOWN_M minutes.
+    consumers: [scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, session, fingerprint, cooldown_m]
+
 

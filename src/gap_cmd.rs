@@ -91,6 +91,147 @@ pub fn ship_gap(
     Ok(())
 }
 
+/// INFRA-1582: Hint line appended when `chump gap show <ID>` finds neither an
+/// active row in `state.db` nor a matching commit in git history.
+pub const GAP_SHOW_NOT_FOUND_HINT: &str =
+    "no record in active registry or recent commit history — check spelling or chump gap list --include-done";
+
+/// INFRA-1582: When `<ID>` is not in active `state.db`, scan git commit history
+/// (`git log --all --grep=<ID> --format="%h|%ad|%s" --date=short -n 1`) and return
+/// `"closed via PR #<N> (commit <sha>) on <YYYY-MM-DD>, reaped"` or
+/// `"closed in commit <sha> on <YYYY-MM-DD>, reaped"` if found.
+pub fn lookup_reaped_gap_in_git_history(repo_root: &Path, gap_id: &str) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .args([
+            "log",
+            "--all",
+            &format!("--grep={gap_id}"),
+            "--format=%h|%ad|%s",
+            "--date=short",
+            "-n",
+            "1",
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if line.is_empty() {
+        return None;
+    }
+    let mut parts = line.splitn(3, '|');
+    let sha = parts.next()?.trim();
+    let date = parts.next()?.trim();
+    let subject = parts.next().unwrap_or("").trim();
+    if sha.is_empty() || date.is_empty() {
+        return None;
+    }
+    let pr_num = extract_pr_number_from_subject(subject);
+    if let Some(n) = pr_num {
+        Some(format!(
+            "closed via PR #{n} (commit {sha}) on {date}, reaped"
+        ))
+    } else {
+        Some(format!("closed in commit {sha} on {date}, reaped"))
+    }
+}
+
+fn extract_pr_number_from_subject(subject: &str) -> Option<u64> {
+    let bytes = subject.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'#' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > start {
+                if let Ok(n) = subject[start..end].parse::<u64>() {
+                    if n > 0 {
+                        return Some(n);
+                    }
+                }
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// INFRA-1582: List gaps from `store`, honoring `--include-done` (which includes
+/// `done`/`closed` gaps alongside open ones).
+pub fn list_gaps_with_include_done(
+    store: &chump_gap_store::GapStore,
+    status_filter: Option<&str>,
+    include_done: bool,
+) -> Result<Vec<chump_gap_store::GapRow>> {
+    if include_done {
+        store.list(None)
+    } else {
+        store.list(status_filter)
+    }
+}
+
+/// INFRA-2038: Detect whether a `chump gap ship` invocation is a metadata-only
+/// status flip (when `state.db` already has `closed_pr` set matching `--closed-pr`
+/// or when `--closed-pr` is passed on an already-merged PR and `--update-yaml` is
+/// not passed).
+pub fn is_metadata_only_ship(
+    store: &chump_gap_store::GapStore,
+    repo_root: &Path,
+    gap_id: &str,
+    closed_pr: Option<i64>,
+    update_yaml: bool,
+) -> bool {
+    if update_yaml {
+        return false;
+    }
+    let Some(pr_num) = closed_pr else {
+        return false;
+    };
+    if let Ok(Some(row)) = store.get(gap_id) {
+        if row.closed_pr == Some(pr_num) {
+            return true;
+        }
+    }
+    if let Ok(prs) = store.list_prs_for_gap(gap_id) {
+        if prs.iter().any(|p| p.pr_number == pr_num) {
+            return true;
+        }
+    }
+    chump_gap_store::pr_references_gap(repo_root, gap_id, pr_num) == Some(true)
+}
+
+/// INFRA-2038: Emit `kind=gap_ship_metadata_only` to `.chump-locks/ambient.jsonl`.
+/// # scanner-anchor: "kind":"gap_ship_metadata_only"
+pub fn emit_gap_ship_metadata_only(
+    repo_root: &Path,
+    gap_id: &str,
+    session_id: &str,
+    closed_pr: Option<i64>,
+) -> Result<()> {
+    use std::io::Write as _;
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let pr_str = closed_pr
+        .map(|pr| format!(",\"closed_pr\":{pr}"))
+        .unwrap_or_default();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"gap_ship_metadata_only\",\"gap\":\"{gap_id}\",\"session\":\"{session_id}\"{pr_str}}}\n"
+    );
+    let locks = repo_root.join(".chump-locks");
+    std::fs::create_dir_all(&locks)?;
+    let amb = locks.join("ambient.jsonl");
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)?;
+    f.write_all(line.as_bytes())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +303,93 @@ mod tests {
         if let Some(v) = prev {
             std::env::set_var("CHUMP_STATE_DB", v);
         }
+    }
+
+    #[test]
+    fn infra1582_lookup_reaped_gap_in_git_history_and_include_done() {
+        let tmp = tempfile::tempdir().unwrap();
+        let status = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(tmp.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(tmp.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "feat(TEST-A): ship reaped gap (#1967)",
+            ])
+            .current_dir(tmp.path())
+            .status();
+
+        let found = lookup_reaped_gap_in_git_history(tmp.path(), "TEST-A")
+            .expect("TEST-A should be found in git log");
+        assert!(
+            found.contains("closed via PR #1967 (commit ") && found.ends_with(", reaped"),
+            "unexpected reaped message: {found}"
+        );
+        assert!(lookup_reaped_gap_in_git_history(tmp.path(), "NEVER-9999").is_none());
+        assert!(GAP_SHOW_NOT_FOUND_HINT.contains("chump gap list --include-done"));
+
+        let store = chump_gap_store::GapStore::open(tmp.path()).unwrap();
+        let conn =
+            rusqlite::Connection::open(chump_gap_store::GapStore::db_path(tmp.path())).unwrap();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, status, priority, effort) VALUES ('TEST-OPEN', 'TEST', 'open', 'open', 'P2', 'xs')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, status, priority, effort) VALUES ('TEST-DONE', 'TEST', 'done', 'done', 'P2', 'xs')",
+            [],
+        )
+        .unwrap();
+        let all = list_gaps_with_include_done(&store, Some("open"), true).unwrap();
+        assert_eq!(
+            all.len(),
+            2,
+            "--include-done must include done and open gaps"
+        );
+    }
+
+    #[test]
+    fn infra2038_metadata_only_ship_detection_and_ambient_emit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = chump_gap_store::GapStore::open(tmp.path()).unwrap();
+        let conn =
+            rusqlite::Connection::open(chump_gap_store::GapStore::db_path(tmp.path())).unwrap();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, status, priority, effort, closed_pr) VALUES ('INFRA-2038', 'INFRA', 'metadata flip', 'open', 'P2', 'xs', 2525)",
+            [],
+        )
+        .unwrap();
+        assert!(is_metadata_only_ship(
+            &store,
+            tmp.path(),
+            "INFRA-2038",
+            Some(2525),
+            false
+        ));
+        assert!(!is_metadata_only_ship(
+            &store,
+            tmp.path(),
+            "INFRA-2038",
+            Some(2525),
+            true
+        ));
+        emit_gap_ship_metadata_only(tmp.path(), "INFRA-2038", "sess-1", Some(2525)).unwrap();
+        let amb = std::fs::read_to_string(tmp.path().join(".chump-locks/ambient.jsonl")).unwrap();
+        assert!(amb.contains("\"kind\":\"gap_ship_metadata_only\""));
     }
 }

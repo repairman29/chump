@@ -242,12 +242,18 @@ for g in json.load(sys.stdin):
         _pr_num="$_known_pr"
         echo "[ghost-gap-reaper] RESILIENT-070: reconciling $_gid — closed_pr=#$_pr_num already recorded, no PR lookup needed"
 
-        CHUMP_REPO="$REPO_ROOT" CHUMP_BINARY_STALENESS_CHECK=0 \
+        # ZERO-WASTE-022: post-YAML-retirement, --update-yaml fails when the gap's
+        # YAML file was retired. Use metadata-only `chump gap ship` (no --update-yaml)
+        # with fallback to `chump gap set <id> --status done --closed-pr <pr>`.
+        if ! CHUMP_REPO="$REPO_ROOT" CHUMP_BINARY_STALENESS_CHECK=0 \
             CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
-            "$_chump" gap ship "$_gid" --closed-pr "$_pr_num" --update-yaml 2>/dev/null || {
-            echo "[ghost-gap-reaper] WARNING: failed to ship $_gid"
-            continue
-        }
+            "$_chump" gap ship "$_gid" --closed-pr "$_pr_num" 2>/dev/null; then
+            CHUMP_REPO="$REPO_ROOT" CHUMP_BINARY_STALENESS_CHECK=0 \
+                "$_chump" gap set "$_gid" --status done --closed-pr "$_pr_num" 2>/dev/null || {
+                echo "[ghost-gap-reaper] WARNING: failed to close $_gid"
+                continue
+            }
+        fi
         _emit_ambient ghost_gap_reaped "gap=$_gid" "pr=$_pr_num" "reaped_via=ghost-gap-reaper"
         (( _reaped++ )) || true
     done <<< "$_open_pairs"

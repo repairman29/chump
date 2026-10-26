@@ -7903,16 +7903,29 @@ mod tests {
             stderr_msg.replace('"', "\\\""),
             rc
         );
-        // sync_all() + explicit drop before chmod avoids ETXTBSY (os error 26)
-        // on Linux when the kernel still sees the inode open for writing at exec time.
+        // INFRA-1530: OpenOptions write+truncate + write_all + flush + sync_all +
+        // explicit drop(f) before chmod + parent dir sync_all() avoids ETXTBSY
+        // (os error 26) on Linux when exec() races inode writeback.
         {
-            let mut f = std::fs::File::create(path).unwrap();
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(path)
+                .unwrap();
             f.write_all(body.as_bytes()).unwrap();
+            f.flush().unwrap();
             f.sync_all().unwrap();
+            drop(f);
         }
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
     }
 
     #[test]

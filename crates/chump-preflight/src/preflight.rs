@@ -3706,17 +3706,13 @@ pub fn run(argv: &[String]) -> i32 {
             let should_continue = baseline.is_some() || args.keep_going;
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", s.name);
-                // Truncate to first ~2KB to avoid swamping the terminal.
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                let target_dir = default_preflight_target_dir(Some(repo_root.as_path()));
+                let (trunc, log_path) =
+                    format_and_persist_failed_gate_output(s.name, cap, &target_dir);
                 eprintln!("{}", trunc);
+                if let Some(p) = log_path {
+                    eprintln!("  [preflight] full gate output written to: {}", p.display());
+                }
                 eprintln!("---- end ----");
             }
             if !should_continue {
@@ -3880,6 +3876,77 @@ pub fn run(argv: &[String]) -> i32 {
     }
 }
 
+/// EFFECTIVE-220: Resolve the target directory for `<target_dir>/preflight-logs/<gate>.log`.
+fn default_preflight_target_dir(repo_root: Option<&std::path::Path>) -> std::path::PathBuf {
+    if let Ok(t) = std::env::var("CARGO_TARGET_DIR") {
+        let trimmed = t.trim();
+        if !trimmed.is_empty() {
+            return std::path::PathBuf::from(trimmed);
+        }
+    }
+    match repo_root {
+        Some(r) => r.join("target"),
+        None => std::path::PathBuf::from("target"),
+    }
+}
+
+/// EFFECTIVE-220: Persist full failed-gate output to `<target_dir>/preflight-logs/<gate>.log`
+/// and when the output exceeds the truncation threshold, preserve the last 5 lines of the
+/// full output so the final `error: could not compile` / summary diagnostics are never cut off.
+pub fn format_and_persist_failed_gate_output(
+    gate_name: &str,
+    cap: &str,
+    target_dir: &std::path::Path,
+) -> (String, Option<std::path::PathBuf>) {
+    const TRUNCATE_HEAD_BYTES: usize = 2048;
+    const TAIL_LINES_PRESERVED: usize = 5;
+
+    let sanitized: String = gate_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let stem = if sanitized.is_empty() {
+        "gate"
+    } else {
+        sanitized.as_str()
+    };
+    let logs_dir = target_dir.join("preflight-logs");
+    let log_path = logs_dir.join(format!("{stem}.log"));
+    let persisted = if std::fs::create_dir_all(&logs_dir).is_ok()
+        && std::fs::write(&log_path, cap.as_bytes()).is_ok()
+    {
+        Some(log_path)
+    } else {
+        None
+    };
+
+    if cap.len() <= TRUNCATE_HEAD_BYTES {
+        return (cap.to_string(), persisted);
+    }
+
+    let mut head_end = TRUNCATE_HEAD_BYTES.min(cap.len());
+    while head_end > 0 && !cap.is_char_boundary(head_end) {
+        head_end -= 1;
+    }
+    let head = &cap[..head_end];
+    let all_lines: Vec<&str> = cap.lines().collect();
+    let tail_start = all_lines.len().saturating_sub(TAIL_LINES_PRESERVED);
+    let tail = all_lines[tail_start..].join("\n");
+    let omitted = cap.len().saturating_sub(head_end);
+    let formatted = format!(
+        "{head}\n... [{omitted} more bytes truncated — last {TAIL_LINES_PRESERVED} lines preserved]\n{tail}"
+    );
+    (formatted, persisted)
+}
+
 /// RESILIENT-1622: run ONLY the structural (no-build) subset — the gates in
 /// `STRUCTURAL_GATES`. No cargo compile, no scope auto-detect; the whole subset
 /// runs in <30s warm so it fits inside bot-merge's push-phase budget and the
@@ -3943,16 +4010,13 @@ fn run_structural(
             failed_gates.push(name);
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", name);
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                let target_dir = default_preflight_target_dir(None);
+                let (trunc, log_path) =
+                    format_and_persist_failed_gate_output(name, cap, &target_dir);
                 eprintln!("{}", trunc);
+                if let Some(p) = log_path {
+                    eprintln!("  [preflight] full gate output written to: {}", p.display());
+                }
                 eprintln!("---- end ----");
             }
             if !keep_going {
@@ -5434,5 +5498,42 @@ mod tests {
         );
         let docs = vec!["docs/ROADMAP.md".to_string()];
         assert!(select_shell_tests_for_paths(&docs).is_empty());
+    }
+
+    #[test]
+    fn effective220_truncated_gate_output_preserves_last_5_lines_and_writes_full_log() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut big = String::with_capacity(32_000);
+        while big.len() < 30_000 {
+            big.push_str("   Checking chump-coord v0.1.0 (/workspace/crates/chump-coord)\n");
+        }
+        let tail_lines = [
+            "error[E0425]: cannot find value `missing_ident` in this scope",
+            "  --> src/lib.rs:42:13",
+            "For more information about this error, try `rustc --explain E0425`.",
+            "error: could not compile `chump` (lib) due to 1 previous error",
+            "warning: build failed, waiting for other jobs to finish...",
+        ];
+        for l in &tail_lines {
+            big.push_str(l);
+            big.push('\n');
+        }
+        assert!(big.len() > 30_000);
+
+        let (formatted, log_path) =
+            format_and_persist_failed_gate_output("cargo clippy", &big, dir.path());
+        for l in &tail_lines {
+            assert!(
+                formatted.contains(l),
+                "truncated output must preserve final line {l:?}, got:\n{formatted}"
+            );
+        }
+        let log_path = log_path.expect("log file should be written");
+        assert!(log_path.ends_with("preflight-logs/cargo-clippy.log"));
+        let on_disk = std::fs::read_to_string(&log_path).expect("read persisted log");
+        assert_eq!(
+            on_disk, big,
+            "persisted preflight log must contain complete untruncated output"
+        );
     }
 }
