@@ -15289,5 +15289,56 @@ events:
     consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
     fields_required: [ts, kind, signature_hash, gap_id, priority, effort]
 
+  - kind: ci_health_gate_blind
+    status: active
+    effect_metric: credible
+    emitter: scripts/coord/ci-health-gate.sh (INFRA-8050)
+    emitter_paths: [scripts/coord/ci-health-gate.sh]
+    trigger: >
+      Emitted when ci-health-gate.sh cannot query open PRs via github_cache.db or gh (auth/transport failure), refusing to report false-healthy or clear an existing pause.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, reason, slo_rc]
+
+  - kind: organ_dual_scope_detected
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (INFRA-8586)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when node-converge detects a chump-*.timer enabled in both system and user systemd scopes.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, unit, remedy]
+
+  - kind: system_unit_missing_user
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (RESILIENT-1732)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when node-converge detects a system-scope chump-*.service lacking a User= directive under [Service].
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, unit, path, expected_user]
+
+  - kind: stale_usr_local_chump_repointed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (RESILIENT-1602)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when node-converge repoints a stale /usr/local/bin/chump to the managed ~/.cargo/bin/chump binary.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, from, to]
+
+  - kind: stale_usr_local_chump_shadow
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (RESILIENT-1602)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when /usr/local/bin/chump shadows ~/.cargo/bin/chump and cannot be repointed due to permissions.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, usr_bin, cargo_bin]
+
+
 
 

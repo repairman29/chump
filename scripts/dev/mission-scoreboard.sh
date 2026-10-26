@@ -13,6 +13,9 @@
 #
 # Follow-up: port to `chump kpi mission` (Rust) once metrics stabilize.
 set -uo pipefail
+# RESILIENT-1602: prepend the managed cargo/local bin dirs so `chump` resolves
+# to the refreshed ~/.cargo/bin/chump rather than a stale /usr/local/bin/chump.
+export PATH="${CARGO_HOME:-${HOME:-/root}/.cargo}/bin:${HOME:-/root}/.local/bin:$PATH"
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || true
 
 MODE="default"

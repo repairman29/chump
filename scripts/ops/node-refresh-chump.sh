@@ -953,9 +953,15 @@ if [[ -n "$_PIN_FULL" && "$_PIN_FULL" != "$_HEAD_FULL" ]]; then
         BUILD_DIR="$_BUILD_WT"
         log "cold-build: building green pin $MAIN_SHA in a detached worktree (main tree stays at origin/main HEAD)"
     else
-        log "WARN: could not add detached worktree at $BUILD_PIN_SHA; building in place"
+        log "WARN: could not add detached worktree at $BUILD_PIN_SHA; converging $REPO_ROOT to $BUILD_PIN_SHA and building in place"
         rm -rf "$_BUILD_WT"; _BUILD_WT=""
+        converge_mirror_hard_reset "$BUILD_PIN_SHA" >>"$LOG" 2>&1 || true
     fi
+else
+    # INFRA-8053: unconditionally converge CHUMP_NODE_REPO to the green pin
+    # immediately before any in-place cold cargo build so a stale mirror can
+    # never produce a stale binary.
+    converge_mirror_hard_reset "${_PIN_FULL:-$BUILD_PIN_SHA}" >>"$LOG" 2>&1 || true
 fi
 _cleanup_build_wt() {
     [[ -n "$_BUILD_WT" ]] && { git worktree remove --force "$_BUILD_WT" >>"$LOG" 2>&1 || rm -rf "$_BUILD_WT"; }

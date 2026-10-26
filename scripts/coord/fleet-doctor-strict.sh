@@ -2278,7 +2278,6 @@ check_core_organs_not_neutered() {
         "chump-pr-shepherd"
         "chump-review-organ"
         "chump-organ-reconcile"
-        "chump-merge-serializer"
         "chump-farmer"
         "chump-gap-closure-reconcile"
     )
@@ -2343,6 +2342,135 @@ check_core_organs_not_neutered() {
     fi
 }
 
+# ── RESILIENT-1600: Decommissioned organs must not be active or enabled ──────
+check_decommissioned_organs_absent() {
+    local decommissioned=("chump-merge-serializer.timer" "chump-merge-serializer.service")
+    local sctl="${CHUMP_SYSTEMCTL_BIN:-}"
+    if [[ -z "$sctl" ]] && [[ "$(uname -s)" == "Linux" ]] && command -v systemctl >/dev/null 2>&1; then
+        sctl="systemctl"
+    fi
+    if [[ -z "$sctl" ]]; then
+        register_check "decommissioned-organs" "skip" "systemctl unavailable — decommissioned organ check not applicable" ""
+        return
+    fi
+    local active_decomm=() u
+    for u in "${decommissioned[@]}"; do
+        if "$sctl" --user is-active --quiet "$u" 2>/dev/null || "$sctl" --user is-enabled --quiet "$u" 2>/dev/null; then
+            active_decomm+=("${u}(user)")
+        fi
+        if "$sctl" is-active --quiet "$u" 2>/dev/null || "$sctl" is-enabled --quiet "$u" 2>/dev/null; then
+            active_decomm+=("${u}(system)")
+        fi
+    done
+    if [[ ${#active_decomm[@]} -gt 0 ]]; then
+        register_check "decommissioned-organs" "fail" \
+            "RED: decommissioned organ(s) still active or enabled (RESILIENT-1600): ${active_decomm[*]}" \
+            "disable and remove decommissioned units: systemctl --user disable --now chump-merge-serializer.timer chump-merge-serializer.service"
+    else
+        register_check "decommissioned-organs" "pass" \
+            "GREEN: decommissioned organs (${decommissioned[*]}) are absent/disabled" ""
+    fi
+}
+
+# ── INFRA-8586: No chump organ enabled in both system and user scope ─────────
+check_dual_scope_organs() {
+    local sctl="${CHUMP_SYSTEMCTL_BIN:-}"
+    if [[ -z "$sctl" ]] && [[ "$(uname -s)" == "Linux" ]] && command -v systemctl >/dev/null 2>&1; then
+        sctl="systemctl"
+    fi
+    local sys_dir="${CHUMP_SYSTEMD_SYSTEM_DIR:-/etc/systemd/system}"
+    local usr_dir="${CHUMP_SYSTEMD_USER_DIR:-${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/systemd/user}"
+    if [[ -z "$sctl" || ! -d "$sys_dir" || ! -d "$usr_dir" ]]; then
+        register_check "dual-scope-organs" "skip" "dual-scope organ scan requires Linux systemd system+user dirs" ""
+        return
+    fi
+    local dual=() uf u
+    for uf in "$usr_dir"/chump-*.timer; do
+        [[ -f "$uf" ]] || continue
+        u="$(basename "$uf")"
+        [[ -f "$sys_dir/$u" && ! -L "$sys_dir/$u" ]] || continue
+        if "$sctl" is-enabled --quiet "$u" 2>/dev/null && "$sctl" --user is-enabled --quiet "$u" 2>/dev/null; then
+            dual+=("$u")
+        fi
+    done
+    if [[ ${#dual[@]} -gt 0 ]]; then
+        register_check "dual-scope-organs" "fail" \
+            "RED: chump organ(s) enabled in BOTH system and user scope (INFRA-8586): ${dual[*]}" \
+            "disable non-manifest scope via: sudo systemctl disable --now <unit>"
+    else
+        register_check "dual-scope-organs" "pass" \
+            "GREEN: no chump organs enabled in both system and user scope" ""
+    fi
+}
+
+# ── RESILIENT-1605: Configured MCP servers must resolve and carry no dead IPs ─
+check_mcp_servers_spawnable() {
+    local mcp_cfg="${CHUMP_MCP_CONFIG:-$REPO_ROOT/chump-mcp.json}"
+    if [[ ! -f "$mcp_cfg" ]]; then
+        register_check "mcp-servers" "skip" "no chump-mcp.json at $mcp_cfg" ""
+        return
+    fi
+    if grep -q "100.101.188.30" "$mcp_cfg" 2>/dev/null; then
+        register_check "mcp-servers" "fail" \
+            "RED: chump-mcp.json contains retired helsinki literal IP 100.101.188.30 (RESILIENT-1605)" \
+            "update ALMANAC_EMBED_URL in chump-mcp.json to http://127.0.0.1:11434 or the node's live embed endpoint"
+        return
+    fi
+    if [[ "${CHUMP_DOCTOR_MCP_SPAWN_PROBE:-0}" == "1" ]] && command -v python3 >/dev/null 2>&1; then
+        local missing=""
+        missing="$(python3 - "$mcp_cfg" <<'PY'
+import json, os, shutil, sys
+cfg = json.load(open(sys.argv[1]))
+bad = []
+for name, srv in (cfg.get("mcpServers") or {}).items():
+    if not srv.get("enabled", True):
+        continue
+    cmd = os.path.expandvars(srv.get("command", ""))
+    if not cmd:
+        bad.append(f"{name}(empty)")
+    elif "/" in cmd:
+        if not (os.path.isfile(cmd) and os.access(cmd, os.X_OK)):
+            bad.append(f"{name}({cmd})")
+    else:
+        if not shutil.which(cmd):
+            bad.append(f"{name}({cmd})")
+print(" ".join(bad))
+PY
+)"
+        if [[ -n "$missing" ]]; then
+            register_check "mcp-servers" "fail" \
+                "RED: enabled MCP server command(s) not executable (RESILIENT-1605): $missing" \
+                "install missing MCP binary onto PATH or disable unused entry in chump-mcp.json"
+            return
+        fi
+    fi
+    register_check "mcp-servers" "pass" \
+        "GREEN: chump-mcp.json valid and carries no retired helsinki IP" ""
+}
+
+# ── INFRA-8053: CHUMP_NODE_REPO mirror must not be >1 day behind origin/main ──
+check_node_repo_freshness() {
+    local nr="${CHUMP_NODE_REPO:-}"
+    if [[ -z "$nr" || ! -d "$nr/.git" ]]; then
+        register_check "node-repo-freshness" "skip" "CHUMP_NODE_REPO not set or not a git checkout" ""
+        return
+    fi
+    local head_ts orig_ts lag_s
+    head_ts="$(git -C "$nr" log -1 --format=%ct HEAD 2>/dev/null || echo 0)"
+    orig_ts="$(git -C "$nr" log -1 --format=%ct origin/main 2>/dev/null || echo 0)"
+    if [[ "$orig_ts" -gt "$head_ts" ]]; then
+        lag_s=$(( orig_ts - head_ts ))
+        if (( lag_s > 86400 )); then
+            register_check "node-repo-freshness" "fail" \
+                "RED: CHUMP_NODE_REPO ($nr) is $((lag_s / 3600))h (>24h) behind origin/main (INFRA-8053)" \
+                "run 'git -C $nr fetch origin main && git -C $nr reset --hard origin/main'"
+            return
+        fi
+    fi
+    register_check "node-repo-freshness" "pass" \
+        "GREEN: CHUMP_NODE_REPO ($nr) is within 24h of origin/main" ""
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -2381,6 +2509,10 @@ check_cargo_nextest
 check_installed_unit_host_literals
 check_organ_home_placement
 check_core_organs_not_neutered
+check_decommissioned_organs_absent
+check_dual_scope_organs
+check_mcp_servers_spawnable
+check_node_repo_freshness
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

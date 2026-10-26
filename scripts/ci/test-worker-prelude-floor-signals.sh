@@ -83,7 +83,8 @@ fi
 
 # Verify it's called in ALL three required paths.
 # Use grep -A35 — the release-lock + RESILIENT-332 cooldown block sits between the log and the emit call.
-if grep -A35 "failed pre-pick preflight" "$WORKER" 2>/dev/null | grep -q "_emit_worker_stuck"; then
+_preflight_block="$(grep -A35 "failed pre-pick preflight" "$WORKER" 2>/dev/null || true)"
+if grep -q "_emit_worker_stuck" <<<"$_preflight_block"; then
     ok "worker.sh: worker_stuck on preflight_fail"
 else
     fail "worker.sh: worker_stuck NOT called on preflight_fail path"

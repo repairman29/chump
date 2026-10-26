@@ -217,7 +217,7 @@ INSERT INTO gaps VALUES
   ('PRODUCT-S3','PRODUCT','open'),('PRODUCT-S4','PRODUCT','open');
 SQL
 skew_out="$(check_domain_skew "$skew_db" "$skew_amb" 2>&1)" || fail "check_domain_skew exited non-zero on 60% skew: $skew_out"
-echo "$skew_out" | grep -q '\[WARN\] domain skew: INFRA is 60%' \
+grep -q '\[WARN\] domain skew: INFRA is 60%' <<<"$skew_out" \
     || fail "expected WARN on 60% INFRA skew, got: $skew_out"
 grep -q '"kind":"domain_skew_observed"' "$skew_amb" \
     || fail "expected kind=domain_skew_observed in $skew_amb"

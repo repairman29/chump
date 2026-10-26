@@ -39,8 +39,8 @@ AMBIENT_LOG="$REPO_ROOT/.chump-locks/ambient.jsonl"
 SURFACES_MANIFEST="$REPO_ROOT/scripts/ci/contract-surfaces.txt"
 
 # ── Self-test mode ──────────────────────────────────────────────────────────────
-if [[ "${TEST_SELF_TEST:-0}" == "1" ]]; then
-  bash "$0" --self-test
+if [[ "${TEST_SELF_TEST:-0}" == "1" && "${1:-}" != "--self-test" ]]; then
+  TEST_SELF_TEST=0 bash "$0" --self-test
   exit $?
 fi
 
@@ -79,7 +79,8 @@ MOCKEOF
 
     local out
     local actual_exit=0
-    out=$(CHUMP_BIN_OVERRIDE="$mock_chump" \
+    out=$(TEST_SELF_TEST=0 \
+          CHUMP_BIN_OVERRIDE="$mock_chump" \
           MOCK_CONTRACT_JSON="$mock_json" \
           AMBIENT_LOG_OVERRIDE="$mock_ambient" \
           ALLOWLIST_OVERRIDE="$mock_allowlist" \
@@ -250,41 +251,29 @@ is_allowlisted() {
 # The JSON looks like: {"mismatches":[{"writer":"...","reader":"...","missing_keys":[...],...},...]}
 # Strategy: split on },{ boundaries within the mismatches array.
 
-MISMATCHES_RAW=""
-if printf '%s\n' "$SCAN_OUTPUT" | grep -qE '"mismatches"\s*:\s*\['; then
-  # Extract the mismatches array content
-  MISMATCHES_RAW="$(printf '%s\n' "$SCAN_OUTPUT" \
-    | grep -oE '"mismatches":\[[^]]*(\[[^]]*\])*[^]]*\]' \
-    | sed 's/^"mismatches":\[//' \
-    | sed 's/\]$//')"
-fi
-
 MISMATCH_COUNT=0
 VIOLATION_PAIRS=()
+WRITERS_LIST=()
+READERS_LIST=()
+MISSING_LIST=()
 
-if [[ -n "$MISMATCHES_RAW" ]] && printf '%s\n' "$MISMATCHES_RAW" | grep -q '"writer"'; then
-  # Count mismatch objects by counting "writer": occurrences
-  MISMATCH_COUNT="$(printf '%s\n' "$MISMATCHES_RAW" | grep -c '"writer"' || true)"
-
-  # Extract individual mismatch pairs (writer + reader) for allowlist check
-  # Simple approach: extract all writer/reader pairs sequentially
-  WRITERS_LIST=()
-  READERS_LIST=()
-  MISSING_LIST=()
+MISMATCHES_SECTION="${SCAN_OUTPUT#*\"mismatches\":}"
+if [[ "$MISMATCHES_SECTION" != "$SCAN_OUTPUT" ]] && grep -q '"writer"' <<<"$MISMATCHES_SECTION"; then
+  MISMATCH_COUNT="$(grep -o '"writer"' <<<"$MISMATCHES_SECTION" | wc -l | tr -d ' ')"
 
   while IFS= read -r w; do
     [[ -n "$w" ]] && WRITERS_LIST+=("$w")
-  done < <(printf '%s\n' "$SCAN_OUTPUT" \
+  done < <(printf '%s\n' "$MISMATCHES_SECTION" \
     | grep -oE '"writer":"[^"]*"' | sed 's/"writer":"//;s/"$//')
 
   while IFS= read -r r; do
     [[ -n "$r" ]] && READERS_LIST+=("$r")
-  done < <(printf '%s\n' "$SCAN_OUTPUT" \
+  done < <(printf '%s\n' "$MISMATCHES_SECTION" \
     | grep -oE '"reader":"[^"]*"' | sed 's/"reader":"//;s/"$//')
 
   while IFS= read -r m; do
     [[ -n "$m" ]] && MISSING_LIST+=("$m")
-  done < <(printf '%s\n' "$SCAN_OUTPUT" \
+  done < <(printf '%s\n' "$MISMATCHES_SECTION" \
     | grep -oE '"missing_keys":\[[^]]*\]' | sed 's/"missing_keys":\[//;s/\]$//' | tr -d '"')
 fi
 
