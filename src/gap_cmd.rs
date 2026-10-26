@@ -73,8 +73,53 @@ pub fn emit_gap_shipped(
     Ok(())
 }
 
-/// INFRA-8108: execute `GapStore::ship_with_external_repo` and emit
+/// CREDIBLE-1647: Validate a product-delivery receipt JSON (`probe_status == "ok"`
+/// and non-empty `deploy_id`) for a `PRODUCT-*` gap and emit
+/// `kind=product_delivery_verified` to `.chump-locks/ambient.jsonl`.
+/// # scanner-anchor: "kind":"product_delivery_verified"
+pub fn verify_product_delivery_receipt(
+    repo_root: &Path,
+    gap_id: &str,
+    receipt_json: &str,
+) -> Result<()> {
+    use std::io::Write as _;
+    let parsed: serde_json::Value = serde_json::from_str(receipt_json).map_err(|e| {
+        anyhow::anyhow!("CREDIBLE-1647: invalid product delivery receipt JSON for {gap_id}: {e}")
+    })?;
+    let probe_status = parsed
+        .get("probe_status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let deploy_id = parsed
+        .get("deploy_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    if probe_status != "ok" || deploy_id.is_empty() {
+        bail!(
+            "CREDIBLE-1647: product gap {gap_id} requires live delivery receipt with probe_status=\"ok\" and non-empty deploy_id (got probe_status={probe_status:?}, deploy_id={deploy_id:?})"
+        );
+    }
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"product_delivery_verified\",\"gap_id\":\"{gap_id}\",\"deploy_id\":\"{deploy_id}\",\"probe_status\":\"ok\"}}\n"
+    );
+    let locks = repo_root.join(".chump-locks");
+    std::fs::create_dir_all(&locks)?;
+    let amb = locks.join("ambient.jsonl");
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)?;
+    f.write_all(line.as_bytes())?;
+    Ok(())
+}
+
+/// INFRA-8108 / CREDIBLE-1647: execute `GapStore::ship_with_external_repo` and emit
 /// `kind=gap_shipped` on the first transition to `done` (idempotent on re-ship).
+/// When `gap_id` is a `PRODUCT-*` gap and `CHUMP_ENFORCE_PRODUCT_DELIVERY=1` (or
+/// `CHUMP_PRODUCT_DELIVERY_RECEIPT_JSON` is provided), validates the live delivery
+/// receipt before finalizing `status=done`.
 pub fn ship_gap(
     store: &chump_gap_store::GapStore,
     repo_root: &Path,
@@ -83,6 +128,23 @@ pub fn ship_gap(
     closed_pr: Option<i64>,
     external_repo: Option<&str>,
 ) -> Result<()> {
+    if gap_id.starts_with("PRODUCT-") {
+        let enforce = std::env::var("CHUMP_ENFORCE_PRODUCT_DELIVERY")
+            .ok()
+            .as_deref()
+            == Some("1");
+        let receipt_env = std::env::var("CHUMP_PRODUCT_DELIVERY_RECEIPT_JSON")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        if enforce || receipt_env.is_some() {
+            let receipt_json = receipt_env.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "CREDIBLE-1647: PRODUCT gap {gap_id} requires CHUMP_PRODUCT_DELIVERY_RECEIPT_JSON when product delivery verification is active"
+                )
+            })?;
+            verify_product_delivery_receipt(repo_root, gap_id, &receipt_json)?;
+        }
+    }
     let was_terminal = store.already_terminal(gap_id)?.is_some();
     store.ship_with_external_repo(gap_id, session_id, closed_pr, external_repo)?;
     if !was_terminal {
@@ -391,5 +453,76 @@ mod tests {
         emit_gap_ship_metadata_only(tmp.path(), "INFRA-2038", "sess-1", Some(2525)).unwrap();
         let amb = std::fs::read_to_string(tmp.path().join(".chump-locks/ambient.jsonl")).unwrap();
         assert!(amb.contains("\"kind\":\"gap_ship_metadata_only\""));
+    }
+
+    #[test]
+    #[serial]
+    fn credible_1647_product_gap_requires_delivery_receipt_when_enforced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = chump_gap_store::GapStore::open(tmp.path()).unwrap();
+        let conn =
+            rusqlite::Connection::open(chump_gap_store::GapStore::db_path(tmp.path())).unwrap();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, status, priority, effort) VALUES ('PRODUCT-399', 'PRODUCT', 'Product delivery gap', 'open', 'P2', 's')",
+            [],
+        )
+        .unwrap();
+        store
+            .claim("PRODUCT-399", "sess-prod", "/wt", 3600)
+            .unwrap();
+        store.link_pr("PRODUCT-399", 7777, "abc1234").unwrap();
+
+        std::env::set_var("CHUMP_ENFORCE_PRODUCT_DELIVERY", "1");
+        std::env::remove_var("CHUMP_PRODUCT_DELIVERY_RECEIPT_JSON");
+
+        // 1. Missing receipt refuses ship_gap when enforced.
+        let err = ship_gap(
+            &store,
+            tmp.path(),
+            "PRODUCT-399",
+            "sess-prod",
+            Some(7777),
+            None,
+        )
+        .expect_err("PRODUCT gap without delivery receipt must fail when enforced");
+        assert!(format!("{err:#}").contains("CREDIBLE-1647"));
+
+        // 2. Failed probe receipt also refuses ship_gap.
+        std::env::set_var(
+            "CHUMP_PRODUCT_DELIVERY_RECEIPT_JSON",
+            r#"{"gap_id":"PRODUCT-399","deploy_id":"dep-1","probe_status":"failed"}"#,
+        );
+        let err2 = ship_gap(
+            &store,
+            tmp.path(),
+            "PRODUCT-399",
+            "sess-prod",
+            Some(7777),
+            None,
+        )
+        .expect_err("PRODUCT gap with failed probe receipt must fail");
+        assert!(format!("{err2:#}").contains("CREDIBLE-1647"));
+
+        // 3. Valid receipt allows ship_gap and emits product_delivery_verified.
+        std::env::set_var(
+            "CHUMP_PRODUCT_DELIVERY_RECEIPT_JSON",
+            r#"{"gap_id":"PRODUCT-399","deploy_id":"dep-live-42","probe_status":"ok"}"#,
+        );
+        ship_gap(
+            &store,
+            tmp.path(),
+            "PRODUCT-399",
+            "sess-prod",
+            Some(7777),
+            None,
+        )
+        .expect("PRODUCT gap with valid delivery receipt must succeed");
+
+        std::env::remove_var("CHUMP_ENFORCE_PRODUCT_DELIVERY");
+        std::env::remove_var("CHUMP_PRODUCT_DELIVERY_RECEIPT_JSON");
+
+        let amb = std::fs::read_to_string(tmp.path().join(".chump-locks/ambient.jsonl")).unwrap();
+        assert!(amb.contains("\"kind\":\"product_delivery_verified\""));
+        assert!(amb.contains("\"deploy_id\":\"dep-live-42\""));
     }
 }

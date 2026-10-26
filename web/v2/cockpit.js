@@ -21,10 +21,9 @@
 //   │                  (footer — quick-actions verb nav)               │
 //   └──────────────────────────────────────────────────────────────────┘
 //
-// Reach this from URL: /v2/?view=cockpit
-// (Routing into chump-nav cadence happens in a follow-up to avoid colliding
-// with 5 live leases editing app.js + index.html — PRODUCT-112/113/INFRA-
-// 1203/1204/1207.)
+// Default landing view for the `NOW` mode at /v2/ (INFRA-1592; routed via
+// web/v2/app.js MODE_PREFS.now.landing = 'cockpit'). Also reachable via the
+// compatibility URL alias /v2/?view=cockpit.
 //
 // Reaction-target for PRODUCT-121 sign-off. If the operator opens this and
 // says "wrong shape", we re-cut Phase 1 before sinking effort into atomic

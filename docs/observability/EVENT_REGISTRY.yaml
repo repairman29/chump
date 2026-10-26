@@ -15126,4 +15126,73 @@ events:
     consumers: [scripts/ops/vital-signs.sh]
     fields_required: [ts, kind, session, fingerprint, cooldown_m]
 
+  - kind: fleet_identity_missing
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/lib/github.sh + scripts/dispatch/worker.sh + scripts/coord/bot-merge.sh (INFRA-8652)
+    emitter_paths: [scripts/coord/lib/github.sh, scripts/dispatch/worker.sh, scripts/coord/bot-merge.sh]
+    trigger: >
+      Emitted when chump_use_fleet_identity finds neither GH_TOKEN_FLEET nor a configured
+      GitHub App key, falling back to operator GH_TOKEN / gh auth state.
+    consumers: [scripts/ops/vital-signs.sh, scripts/dispatch/fleet-brief.sh]
+    fields_required: [ts, kind, caller, fallback]
+
+  - kind: organ_rehome_deferred_target_offline
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1734)
+    emitter_paths: [scripts/ops/organ-reconcile.sh]
+    trigger: >
+      Emitted by organ-reconcile.sh when a non-home host evaluates a unit whose target
+      home node has no fresh heartbeat (<10m), deferring disable/mask so the unit is not
+      stranded on an offline home node.
+    consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
+    fields_required: [ts, kind, unit, host, target_home]
+
+  - kind: product_delivery_verified
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/verify-product-delivery.sh + src/gap_cmd.rs (CREDIBLE-1647)
+    emitter_paths: [scripts/coord/verify-product-delivery.sh, src/gap_cmd.rs]
+    trigger: >
+      Emitted when a PRODUCT-* gap passes live delivery verification (deploy_id +
+      health probe / build artifact verification) before or during ship.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/dev/mission-scoreboard.sh]
+    fields_required: [ts, kind, gap_id, deploy_id, probe_status]
+
+  - kind: domain_skew_observed
+    status: active
+    effect_metric: self
+    emitter: scripts/ci/test-no-anthropic-smoke.sh + scripts/dev/mission-scoreboard.sh (INFRA-1414)
+    emitter_paths: [scripts/ci/test-no-anthropic-smoke.sh, scripts/dev/mission-scoreboard.sh]
+    trigger: >
+      Emitted as a non-fatal warning when the top gap domain exceeds
+      ALERT_DOMAIN_SKEW_WARN_PCT (default 50%) but remains at or below
+      ALERT_DOMAIN_SKEW_FATAL_PCT (default 80%).
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, domain, pct, warn_pct, fatal_pct]
+
+  - kind: claim_aborted_open_pr
+    status: active
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs (INFRA-1636)
+    emitter_paths: [crates/chump-atomic-claim/src/atomic_claim.rs]
+    trigger: >
+      Emitted when chump claim aborts because the current branch already has an open PR,
+      preventing silent overwrite of an active PR branch.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap_id, session, branch, open_pr]
+
+  - kind: claim_completed
+    status: active
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs (INFRA-1652)
+    emitter_paths: [crates/chump-atomic-claim/src/atomic_claim.rs]
+    trigger: >
+      Emitted at the end of run_claim with outcome (claimed|failed), cost_ms, and
+      failure_class so claim latency and failure modes are observable.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap_id, session, outcome, cost_ms, failure_class]
+
+
 

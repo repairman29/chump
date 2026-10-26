@@ -1,0 +1,16 @@
+# chump-holler-drain.timer — PRODUCT-320
+# Runs chump-holler-drain.service every 5 minutes on cuphead.
+
+[Unit]
+Description=Run Holler feedback drain every 5 minutes (PRODUCT-320)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=chump-holler-drain.service
+
+[Install]
+WantedBy=timers.target

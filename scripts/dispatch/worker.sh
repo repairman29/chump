@@ -91,6 +91,18 @@ if [[ -z "${REPO_ROOT:-}" || ! -d "${REPO_ROOT}" ]]; then
     REPO_ROOT="$_worker_self_toplevel"
 fi
 
+# INFRA-8652: apply dedicated fleet machine-account identity (GH_TOKEN_FLEET +
+# git author/committer) for worker git pushes and PR creation when configured;
+# falls back to default GH_TOKEN and emits kind=fleet_identity_missing once per
+# boot when GH_TOKEN_FLEET is unset.
+if [[ -f "$REPO_ROOT/scripts/coord/lib/github.sh" ]]; then
+    # shellcheck source=../coord/lib/github.sh
+    source "$REPO_ROOT/scripts/coord/lib/github.sh" 2>/dev/null || true
+fi
+if declare -F chump_apply_fleet_identity >/dev/null 2>&1; then
+    chump_apply_fleet_identity "worker.sh"
+fi
+
 # ── PHASE-R R6 / INFRA-8575 / CREDIBLE-1609: loop-control shim ───────────────
 # The per-worker loop control (cadence, heartbeat, fleet-paused sentinel,
 # per-tick budget) now lives in the `chumpd worker` subcommand. Unless we are

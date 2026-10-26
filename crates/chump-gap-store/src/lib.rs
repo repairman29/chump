@@ -4829,6 +4829,45 @@ struct YamlGapsFile {
     gaps: Vec<YamlGap>,
 }
 
+/// PRODUCT-354: Parse a YAML gap document in any of the three supported shapes:
+///   1. Bare sequence (`- id: ...`)
+///   2. `gaps:`-keyed mapping (`gaps:\n  - id: ...`)
+///   3. Single-gap mapping (`id: ...`)
+fn parse_yaml_gaps_any_shape(body: &str) -> Result<Vec<YamlGap>> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    if trimmed.starts_with('-') {
+        let wrapped = format!("gaps:\n{body}");
+        let file: YamlGapsFile =
+            serde_yaml::from_str(&wrapped).context("parsing bare YAML gap list")?;
+        return Ok(file.gaps);
+    }
+    let val: serde_yaml::Value = serde_yaml::from_str(body).context("parsing YAML gap document")?;
+    match &val {
+        serde_yaml::Value::Sequence(_) => {
+            let list: Vec<YamlGap> =
+                serde_yaml::from_str(body).context("parsing YAML gap sequence")?;
+            Ok(list)
+        }
+        serde_yaml::Value::Mapping(map) => {
+            if map.contains_key(serde_yaml::Value::String("gaps".to_string())) {
+                let file: YamlGapsFile =
+                    serde_yaml::from_str(body).context("parsing gaps-keyed YAML")?;
+                Ok(file.gaps)
+            } else if map.contains_key(serde_yaml::Value::String("id".to_string())) {
+                let single: YamlGap =
+                    serde_yaml::from_str(body).context("parsing single-gap map YAML")?;
+                Ok(vec![single])
+            } else {
+                bail!("YAML mapping contains neither 'gaps' nor 'id' key")
+            }
+        }
+        _ => bail!("expected YAML sequence or mapping for gap definition"),
+    }
+}
+
 /// VOA-006: load the gap registry, parsing each `docs/gaps/*.yaml` on its own.
 ///
 /// The three call sites here (import, closed_pr backfill, status backfill) each
@@ -4884,10 +4923,10 @@ fn load_gap_registry(repo_root: &Path) -> Result<Option<YamlGapsFile>> {
         if content.trim().is_empty() {
             continue;
         }
-        // Each file holds a bare YAML list; wrap it so it parses as YamlGapsFile.
-        let wrapped = format!("gaps:\n{content}");
-        match serde_yaml::from_str::<YamlGapsFile>(&wrapped) {
-            Ok(f) => gaps.extend(f.gaps),
+        // PRODUCT-354: support list-form (`- id: ...`), `gaps:`-keyed form, and
+        // single-gap map form (`id: ...`).
+        match parse_yaml_gaps_any_shape(&content) {
+            Ok(parsed) => gaps.extend(parsed),
             Err(e) => {
                 eprintln!(
                     "chump gap import: SKIPPING malformed {}: {e}",
@@ -5069,40 +5108,9 @@ impl GapStore {
     /// gap via `chump gap dump --update-yaml` → `chump gap import` should not
     /// fire similarity checks.
     fn parse_new_gap_titles(&self, repo_root: &Path) -> Result<Vec<(String, String)>> {
-        let per_file_dir = repo_root.join("docs").join("gaps");
-        let text = if per_file_dir.is_dir() {
-            let mut parts = Vec::new();
-            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
-                .with_context(|| format!("reading {}", per_file_dir.display()))?
-                .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s == "yaml")
-                        .unwrap_or(false)
-                })
-                .collect();
-            dir_entries.sort_by_key(|e| e.file_name());
-            for entry in &dir_entries {
-                if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                    parts.push(content);
-                }
-            }
-            if parts.is_empty() {
-                return Ok(Vec::new());
-            }
-            format!("gaps:\n{}", parts.join(""))
-        } else {
-            let yaml_path = repo_root.join("docs").join("gaps.yaml");
-            match std::fs::read_to_string(&yaml_path) {
-                Ok(t) => t,
-                Err(_) => return Ok(Vec::new()),
-            }
-        };
-        let file: YamlGapsFile = match serde_yaml::from_str(&text) {
-            Ok(f) => f,
-            Err(_) => return Ok(Vec::new()), // canonical import will surface parse errors
+        let file = match load_gap_registry(repo_root) {
+            Ok(Some(f)) => f,
+            _ => return Ok(Vec::new()),
         };
 
         let mut existing_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -5140,6 +5148,26 @@ impl GapStore {
         let mut skipped = 0usize;
 
         for g in &file.gaps {
+            if g.id.trim().is_empty() {
+                skipped += 1;
+                continue;
+            }
+            let exists_in_db: bool = self
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM gaps WHERE id=?1)",
+                    params![g.id],
+                    |r| r.get(0),
+                )
+                .unwrap_or(false);
+            if !exists_in_db
+                && (g.title.trim().is_empty()
+                    || g.status.trim().is_empty()
+                    || g.domain.trim().is_empty())
+            {
+                skipped += 1;
+                continue;
+            }
             // Normalize acceptance_criteria to JSON-stringified array of strings.
             let ac = match &g.acceptance_criteria {
                 Some(v) => normalize_string_list(v),
@@ -5253,6 +5281,16 @@ impl GapStore {
             if changed > 0 {
                 inserted += 1;
             } else {
+                // PRODUCT-354: heal any previously blank title/domain/status on an existing
+                // row from non-blank YAML fields, without ever overwriting non-blank DB fields.
+                let _ = self.conn.execute(
+                    "UPDATE gaps
+                     SET title = CASE WHEN trim(title) = '' AND trim(?1) != '' THEN ?1 ELSE title END,
+                         domain = CASE WHEN trim(domain) = '' AND trim(?2) != '' THEN ?2 ELSE domain END,
+                         status = CASE WHEN trim(status) = '' AND trim(?3) != '' THEN ?3 ELSE status END
+                     WHERE id = ?4",
+                    params![g.title, g.domain, g.status, g.id],
+                );
                 skipped += 1;
             }
         }
@@ -5412,16 +5450,11 @@ impl GapStore {
             .with_context(|| format!("parsing YAML in {}", sql_path.display()))
     }
 
-    /// Parse the YAML body of a `.chump/state.sql` dump (either `gaps:\n- id: ...`
-    /// mapping or a bare `- id: ...` YAML sequence).
+    /// Parse the YAML body of a `.chump/state.sql` dump (`gaps:\n- id: ...`,
+    /// bare `- id: ...` YAML sequence, or single-gap `id: ...` map).
     fn parse_state_sql_yaml(text: &str) -> Result<YamlGapsFile> {
-        let trimmed = text.trim_start();
-        if trimmed.starts_with('-') {
-            let wrapped = format!("gaps:\n{text}");
-            serde_yaml::from_str(&wrapped).context("parsing bare YAML gap list")
-        } else {
-            serde_yaml::from_str(text).context("parsing state.sql YAML")
-        }
+        let gaps = parse_yaml_gaps_any_shape(text).context("parsing state.sql YAML")?;
+        Ok(YamlGapsFile { gaps })
     }
 
     /// RESILIENT-1651 AC2: load gaps from an explicit file or directory path,
@@ -5581,6 +5614,18 @@ impl GapStore {
             if skip_ids.contains(&g.id) {
                 continue;
             }
+            if g.id.trim().is_empty() {
+                skipped += 1;
+                continue;
+            }
+            if !existing_ids.contains(&g.id)
+                && (g.title.trim().is_empty()
+                    || g.status.trim().is_empty()
+                    || g.domain.trim().is_empty())
+            {
+                skipped += 1;
+                continue;
+            }
             let ac = match &g.acceptance_criteria {
                 Some(v) => normalize_string_list(v),
                 None => String::new(),
@@ -5686,6 +5731,16 @@ impl GapStore {
                 inserted += 1;
             } else {
                 skipped += 1;
+                // PRODUCT-354: heal any previously blank title/domain/status on an existing
+                // row from non-blank YAML fields, without ever overwriting non-blank DB fields.
+                let _ = self.conn.execute(
+                    "UPDATE gaps
+                     SET title = CASE WHEN trim(title) = '' AND trim(?1) != '' THEN ?1 ELSE title END,
+                         domain = CASE WHEN trim(domain) = '' AND trim(?2) != '' THEN ?2 ELSE domain END,
+                         status = CASE WHEN trim(status) = '' AND trim(?3) != '' THEN ?3 ELSE status END
+                     WHERE id = ?4",
+                    params![g.title, g.domain, g.status, g.id],
+                );
                 if let Some(pr) = closed_pr {
                     let bf = self.conn.execute(
                         "UPDATE gaps SET closed_pr = ?1 WHERE id = ?2 AND closed_pr IS NULL",
@@ -5752,6 +5807,49 @@ impl GapStore {
     }
 
     fn insert_or_replace_gap_row(&self, g: &YamlGap) -> Result<()> {
+        if g.id.trim().is_empty() {
+            bail!("PRODUCT-354: refusing to write gap row with blank id");
+        }
+        // PRODUCT-354: preserve existing non-blank domain/title/status if incoming YAML
+        // has blank fields, and refuse to insert a brand-new row with blank domain/title/status.
+        let existing_core: Option<(String, String, String)> = self
+            .conn
+            .query_row(
+                "SELECT domain, title, status FROM gaps WHERE id = ?1",
+                params![g.id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .ok();
+        let domain = if !g.domain.trim().is_empty() {
+            g.domain.clone()
+        } else {
+            existing_core
+                .as_ref()
+                .map(|c| c.0.clone())
+                .unwrap_or_default()
+        };
+        let title = if !g.title.trim().is_empty() {
+            g.title.clone()
+        } else {
+            existing_core
+                .as_ref()
+                .map(|c| c.1.clone())
+                .unwrap_or_default()
+        };
+        let status = if !g.status.trim().is_empty() {
+            g.status.clone()
+        } else {
+            existing_core
+                .as_ref()
+                .map(|c| c.2.clone())
+                .unwrap_or_default()
+        };
+        if domain.trim().is_empty() || title.trim().is_empty() || status.trim().is_empty() {
+            bail!(
+                "PRODUCT-354: refusing to write gap {} with blank domain/title/status",
+                g.id
+            );
+        }
         let ac = match &g.acceptance_criteria {
             Some(v) => normalize_string_list(v),
             None => String::new(),
@@ -5832,12 +5930,12 @@ impl GapStore {
              VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
             params![
                 g.id,
-                g.domain,
-                g.title,
+                domain,
+                title,
                 g.description,
                 g.priority,
                 g.effort,
-                g.status,
+                status,
                 ac,
                 deps,
                 notes,
@@ -6754,12 +6852,13 @@ fn run_verify_command(repo_root: &std::path::Path, cmd: &str, timeout_s: u64) ->
     }
 }
 
-/// INFRA-1411: load a single gap from its YAML file as a fallback when
+/// INFRA-1411 / PRODUCT-354: load a single gap from its YAML file as a fallback when
 /// state.db is missing the row or holds vague (TODO/TBD) acceptance_criteria.
 ///
-/// Looks for `<repo_root>/docs/gaps/<ID>.yaml`. Accepts either shape:
+/// Looks for `<repo_root>/docs/gaps/<ID>.yaml`. Accepts any of the three shapes:
 ///   1. Top-level list:   `- id: INFRA-1411\n  title: …`
 ///   2. `gaps:` keyed:    `gaps:\n  - id: INFRA-1411\n    title: …`
+///   3. Single-gap map:   `id: INFRA-1411\ntitle: …`
 ///
 /// Handles the double-encoded AC pattern observed 2026-05-16 in state.db
 /// (`acceptance_criteria: "[\"a\",\"b\"]"` — a single-string-element list
@@ -6767,18 +6866,24 @@ fn run_verify_command(repo_root: &std::path::Path, cmd: &str, timeout_s: u64) ->
 /// canonical single-level JSON array string.
 pub fn load_gap_from_yaml(repo_root: &std::path::Path, gap_id: &str) -> Result<Option<GapRow>> {
     let path = repo_root.join("docs/gaps").join(format!("{}.yaml", gap_id));
+    load_gap_from_yaml_path(&path, Some(gap_id))
+}
+
+/// PRODUCT-354: load a single gap directly from an explicit `.yaml` file path.
+pub fn load_gap_from_yaml_path(
+    path: &std::path::Path,
+    expected_gap_id: Option<&str>,
+) -> Result<Option<GapRow>> {
     if !path.exists() {
         return Ok(None);
     }
-    let body =
-        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-    // Try top-level-list shape first; fall back to `gaps:`-keyed shape.
-    let yaml_gap: Option<YamlGap> = if let Ok(list) = serde_yaml::from_str::<Vec<YamlGap>>(&body) {
-        list.into_iter().find(|g| g.id == gap_id)
-    } else if let Ok(file) = serde_yaml::from_str::<YamlGapsFile>(&body) {
-        file.gaps.into_iter().find(|g| g.id == gap_id)
-    } else {
-        None
+    let body = std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let yaml_gap: Option<YamlGap> = match parse_yaml_gaps_any_shape(&body) {
+        Ok(list) => match expected_gap_id {
+            Some(gid) => list.into_iter().find(|g| g.id == gid),
+            None => list.into_iter().next(),
+        },
+        Err(_) => None,
     };
     let Some(yg) = yaml_gap else {
         return Ok(None);
@@ -15356,5 +15461,82 @@ esac
         assert_eq!(parsed[2], "item with # hash comment syntax inside");
         assert_eq!(parsed[3], "- leading dash bullet item");
         assert_eq!(parsed[4], "unquoted_yaml_key: value after colon-space");
+    }
+
+    #[test]
+    fn product354_yaml_import_supports_list_and_map_shapes_and_never_blanks_db_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&gaps_dir).unwrap();
+
+        // 1. List-form YAML (`- id: ...`)
+        std::fs::write(
+            gaps_dir.join("PRODUCT-354.yaml"),
+            "- id: PRODUCT-354\n  domain: PRODUCT\n  title: List-form product gap\n  status: open\n  priority: P2\n  effort: s\n",
+        )
+        .unwrap();
+
+        // 2. Map-form YAML (`id: ...`)
+        std::fs::write(
+            gaps_dir.join("PRODUCT-355.yaml"),
+            "id: PRODUCT-355\ndomain: PRODUCT\ntitle: Map-form product gap\nstatus: open\npriority: P2\neffort: s\n",
+        )
+        .unwrap();
+
+        let store = GapStore::open(dir.path()).unwrap();
+        let (inserted, _skipped, _backfilled) = store.import_from_yaml(dir.path()).unwrap();
+        assert_eq!(
+            inserted, 2,
+            "both list-form and map-form YAML files must import"
+        );
+
+        let r354 = store
+            .get("PRODUCT-354")
+            .unwrap()
+            .expect("PRODUCT-354 in DB");
+        assert_eq!(r354.title, "List-form product gap");
+        assert_eq!(r354.domain, "PRODUCT");
+        assert_eq!(r354.status, "open");
+
+        let r355 = store
+            .get("PRODUCT-355")
+            .unwrap()
+            .expect("PRODUCT-355 in DB");
+        assert_eq!(r355.title, "Map-form product gap");
+        assert_eq!(r355.domain, "PRODUCT");
+        assert_eq!(r355.status, "open");
+
+        // Also verify load_gap_from_yaml parses map-form YAML cleanly.
+        let loaded_map = load_gap_from_yaml(dir.path(), "PRODUCT-355")
+            .unwrap()
+            .expect("load_gap_from_yaml must parse map-form YAML");
+        assert_eq!(loaded_map.title, "Map-form product gap");
+
+        // 3. Re-syncing / re-importing a YAML with blank title/status/domain must never overwrite existing DB row with blanks.
+        std::fs::write(
+            gaps_dir.join("PRODUCT-355.yaml"),
+            "id: PRODUCT-355\ndomain: \"\"\ntitle: \"\"\nstatus: \"\"\n",
+        )
+        .unwrap();
+        let _ = store.import_from_yaml(dir.path()).unwrap();
+        let r355_after = store
+            .get("PRODUCT-355")
+            .unwrap()
+            .expect("PRODUCT-355 still in DB");
+        assert_eq!(r355_after.title, "Map-form product gap");
+        assert_eq!(r355_after.domain, "PRODUCT");
+        assert_eq!(r355_after.status, "open");
+
+        // And a brand-new YAML with blank title/status/domain must not be inserted as a blank row.
+        std::fs::write(
+            gaps_dir.join("PRODUCT-356.yaml"),
+            "id: PRODUCT-356\ndomain: \"\"\ntitle: \"\"\nstatus: \"\"\n",
+        )
+        .unwrap();
+        let _ = store.import_from_yaml(dir.path()).unwrap();
+        assert!(
+            store.get("PRODUCT-356").unwrap().is_none(),
+            "blank title/domain/status YAML must not insert an empty row"
+        );
     }
 }

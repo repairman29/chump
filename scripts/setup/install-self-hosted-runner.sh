@@ -239,6 +239,21 @@ cmd_uninstall() {
 }
 
 cmd_install() {
+  # RESILIENT-253: refuse root runner execution / RUNNER_ALLOW_RUNASROOT=1.
+  # Self-hosted runners must run under a dedicated unprivileged account (e.g.
+  # gha-chump / gha-froogle) with zero read access to /etc/nats/nats.conf or
+  # ~/.chump/ credentials.
+  if [ "${RUNNER_ALLOW_RUNASROOT:-0}" = "1" ]; then
+    echo "ERROR (RESILIENT-253): RUNNER_ALLOW_RUNASROOT=1 is forbidden." >&2
+    echo "Provision a dedicated unprivileged user (e.g. gha-chump) with zero read access to /etc/nats/nats.conf or ~/.chump/ credentials." >&2
+    exit 1
+  fi
+  if [ "$(id -u)" = "0" ] && [ -z "${CHUMP_RUNNER_USER:-}" ]; then
+    echo "ERROR (RESILIENT-253): refusing to install or run actions-runner as root." >&2
+    echo "Run as a dedicated unprivileged user (e.g. gha-chump) or pass --runner-user <user>." >&2
+    exit 1
+  fi
+
   # 0. Pre-flight
   if [ -d "$RUNNER_DIR" ] && [ -f "$RUNNER_DIR/.runner" ]; then
     echo "Runner already configured at $RUNNER_DIR — re-running is a no-op."
@@ -385,10 +400,18 @@ EOF
 # Dispatch
 TOKEN=""
 SKIP_CANARY="${SKIP_CANARY:-${CHUMP_SKIP_CANARY:-0}}"
-# Allow --skip-canary anywhere in the argv.
+# Allow --skip-canary or --runner-user anywhere in the argv.
+prev_arg=""
 for a in "$@"; do
+  if [ "$prev_arg" = "--runner-user" ]; then
+    CHUMP_RUNNER_USER="$a"
+    export CHUMP_RUNNER_USER
+    prev_arg=""
+    continue
+  fi
   case "$a" in
     --skip-canary) SKIP_CANARY=1 ;;
+    --runner-user) prev_arg="--runner-user" ;;
   esac
 done
 export SKIP_CANARY CHUMP_SKIP_CANARY="$SKIP_CANARY"
@@ -398,6 +421,7 @@ case "${1:-}" in
   --uninstall) shift; while [ $# -gt 0 ]; do case "$1" in --token) TOKEN="$2"; shift 2 ;; *) shift ;; esac; done; cmd_uninstall ;;
   --upgrade)   cmd_upgrade ;;
   --token)     TOKEN="${2:-}"; cmd_install ;;
+  --runner-user) CHUMP_RUNNER_USER="${2:-}"; export CHUMP_RUNNER_USER; cmd_install ;;
   --skip-canary) cmd_install ;;
   -h|--help)   usage 0 ;;
   "")          cmd_install ;;

@@ -26,6 +26,48 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
+# INFRA-1414: Domain-skew check defaults to WARN (exit 0) when a single domain
+# exceeds 50% of open gaps, emits kind=domain_skew_observed to ambient, and only
+# exits 1 if ALERT_DOMAIN_SKEW_FATAL_PCT (default 80) is exceeded.
+check_domain_skew() {
+    local db_path="$1"
+    local amb_path="${2:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    local warn_pct="${ALERT_DOMAIN_SKEW_WARN_PCT:-50}"
+    local fatal_pct="${ALERT_DOMAIN_SKEW_FATAL_PCT:-80}"
+    [[ -f "$db_path" ]] || return 0
+    python3 - "$db_path" "$amb_path" "$warn_pct" "$fatal_pct" <<'PY'
+import datetime, json, os, sqlite3, sys
+db_path, amb_path, warn_pct, fatal_pct = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+con = sqlite3.connect(db_path)
+rows = con.execute(
+    "SELECT COALESCE(domain,'UNKNOWN'), COUNT(*) FROM gaps WHERE status IN ('open','in_progress') GROUP BY COALESCE(domain,'UNKNOWN')"
+).fetchall()
+con.close()
+total = sum(r[1] for r in rows)
+if total <= 0:
+    sys.exit(0)
+top_domain, top_count = max(rows, key=lambda r: r[1])
+pct = int(round((top_count * 100.0) / total))
+if pct > warn_pct:
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ev = {"ts": ts, "kind": "domain_skew_observed", "domain": top_domain, "pct": pct, "total": total}
+    if amb_path:
+        os.makedirs(os.path.dirname(amb_path), exist_ok=True)
+        with open(amb_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(ev, separators=(",", ":")) + "\n")
+    if pct > fatal_pct:
+        print(f"[FAIL] domain skew: {top_domain} is {pct}% ({top_count}/{total}) > fatal {fatal_pct}%", file=sys.stderr)
+        sys.exit(1)
+    print(f"[WARN] domain skew: {top_domain} is {pct}% ({top_count}/{total}) > warn {warn_pct}% (non-blocking)")
+sys.exit(0)
+PY
+}
+
+if [[ "${1:-}" == "--domain-skew-db" ]]; then
+    check_domain_skew "${2:-}" "${3:-}"
+    exit $?
+fi
+
 # Hard-unset Anthropic credentials — any test below that calls the Anthropic
 # API will fail with a timeout or 401, which is exactly what we want to catch.
 unset ANTHROPIC_API_KEY
@@ -161,6 +203,27 @@ fi
 #    never wrote a docs/gaps/<ID>.yaml fixture file to clean up. The test
 #    fixture gap lives only in $CHUMP_STATE_DB, which `trap cleanup EXIT`
 #    (rm -rf "$TMP") already removes.
+
+# ── Test 6: INFRA-1414 domain-skew check warns (exits 0) at 60% skew and emits domain_skew_observed ──
+echo "--- Test 6: domain skew warn-only (INFRA-1414) ---"
+skew_db="$TMP/skew-state.db"
+skew_amb="$TMP/skew-ambient.jsonl"
+sqlite3 "$skew_db" <<'SQL'
+CREATE TABLE gaps (id TEXT PRIMARY KEY, domain TEXT, status TEXT);
+INSERT INTO gaps VALUES
+  ('INFRA-S1','INFRA','open'),('INFRA-S2','INFRA','open'),('INFRA-S3','INFRA','open'),
+  ('INFRA-S4','INFRA','open'),('INFRA-S5','INFRA','open'),('INFRA-S6','INFRA','open'),
+  ('PRODUCT-S1','PRODUCT','open'),('PRODUCT-S2','PRODUCT','open'),
+  ('PRODUCT-S3','PRODUCT','open'),('PRODUCT-S4','PRODUCT','open');
+SQL
+skew_out="$(check_domain_skew "$skew_db" "$skew_amb" 2>&1)" || fail "check_domain_skew exited non-zero on 60% skew: $skew_out"
+echo "$skew_out" | grep -q '\[WARN\] domain skew: INFRA is 60%' \
+    || fail "expected WARN on 60% INFRA skew, got: $skew_out"
+grep -q '"kind":"domain_skew_observed"' "$skew_amb" \
+    || fail "expected kind=domain_skew_observed in $skew_amb"
+grep -q '"domain":"INFRA","pct":60,"total":10' "$skew_amb" \
+    || fail "expected domain=INFRA,pct=60,total=10 in $skew_amb: $(cat "$skew_amb")"
+pass "domain skew >50% logs WARN, exits 0, and emits kind=domain_skew_observed (INFRA-1414)"
 
 echo ""
 echo "All CREDIBLE-046 no-Anthropic smoke tests passed."

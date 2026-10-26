@@ -552,7 +552,19 @@ ORGAN_SELF="${ORGAN_SELF:-organbot}"
 [[ "$1 $2" == "pr update-branch" ]] && echo "$a" >>"$ORGLOG.rebase"
 case "$1 $2" in
   "api user") echo "$ORGAN_SELF"; exit 0;;
+  "api repos/"*)
+    if [[ "$a" == *allow_auto_merge* ]]; then
+      echo "${ORG_ALLOW_AUTO_MERGE:-false}"
+    else
+      echo "{\"allow_auto_merge\":${ORG_ALLOW_AUTO_MERGE:-false}}"
+    fi
+    exit 0;;
+  "pr review") echo "REVIEW $a" >>"$ORGLOG.reviews"; exit 0;;
   "pr view")
+    if [[ "$a" == *"--json mergeCommit"* ]]; then
+      echo "${ORG_MERGE_SHA:-mergedsha20300000000000000000000000000000}"
+      exit 0
+    fi
     if [[ "$a" == *"--json files"* ]]; then
       # 201 = a TRUE ship gate (ci.yml) → held for mutants; 205 = a scripts/ci
       # test change ONLY → reviewed normally (CREDIBLE-1590); else a plain non-gate.
@@ -2131,6 +2143,97 @@ W19_DOC_AMB="$TMP/w19-doc-amb.jsonl"
 ) && grep -q '"kind":"core_organ_neutered"' "$W19_DOC_AMB" \
     && ok "RESILIENT-1559: check_core_organs_not_neutered detects ExecStart=/bin/true drop-in and emits core_organ_neutered" \
     || bad "RESILIENT-1559: check_core_organs_not_neutered missed ExecStart=/bin/true drop-in"
+
+# ── Wave 20: CREDIBLE-1649 (organ_merge landing strategy) + INFRA-8652 (GH_TOKEN_FLEET split) + INFRA-1668 (daily fallback sentinel) ──
+echo "[w20] CREDIBLE-1649 organ_merge landing strategy + INFRA-8652 GH_TOKEN_FLEET split + INFRA-1668 daily sentinel"
+
+# CREDIBLE-1649: arm_policy_select_strategy & landing_provider_strategy auto-select organ_merge when allow_auto_merge=false
+w20_strat_false="$(
+    export PATH="$D/bin:$PATH" ORG_ALLOW_AUTO_MERGE=false
+    unset CHUMP_REPO_ALLOW_AUTO_MERGE _CHUMP_ARM_POLICY_SOURCED
+    source "$REPO_ROOT/scripts/coord/lib/arm-policy.sh"
+    arm_policy_select_strategy "repairman29/chump"
+)"
+[[ "$w20_strat_false" == '{"strategy":"organ_merge","reason":"allow_auto_merge_false_free_plan_private_repo"}' ]] \
+    && ok "CREDIBLE-1649: arm_policy_select_strategy selects organ_merge (reason=allow_auto_merge_false_free_plan_private_repo) when allow_auto_merge=false" \
+    || bad "CREDIBLE-1649: arm_policy_select_strategy unexpected output: $w20_strat_false"
+
+w20_lp_false="$(
+    export PATH="$D/bin:$PATH" ORG_ALLOW_AUTO_MERGE=false
+    unset CHUMP_REPO_ALLOW_AUTO_MERGE _CHUMP_LANDING_PROVIDER_SOURCED
+    source "$REPO_ROOT/scripts/coord/lib/landing-provider.sh"
+    landing_provider_strategy "repairman29/chump"
+)"
+[[ "$w20_lp_false" == '{"strategy":"organ_merge","reason":"allow_auto_merge_false_free_plan_private_repo"}' ]] \
+    && ok "CREDIBLE-1649: landing_provider_strategy selects organ_merge when allow_auto_merge=false" \
+    || bad "CREDIBLE-1649: landing_provider_strategy unexpected output: $w20_lp_false"
+
+# CREDIBLE-1649: under organ_merge (allow_auto_merge=false), review-organ merges with --squash --delete-branch (never --auto or --admin), records R1+R2, and emits ship_landed
+: >"$ORGLOG.reviews"
+ORG_ALLOW_AUTO_MERGE=false ORG_PR_AUTHOR="chump-fleet-bot" organ_run --pr 203
+if grep -qE '^MERGE pr merge 203 --squash --match-head-commit deadbeef[0-9a-f]* --delete-branch$' "$ORGLOG.merges" \
+    && ! grep -qE -- '--auto|--admin' "$ORGLOG.merges"; then
+    ok "CREDIBLE-1649: organ_merge merges with --squash and --delete-branch (never --auto or --admin)"
+else
+    bad "CREDIBLE-1649: organ_merge merge command mismatch: $(cat "$ORGLOG.merges" 2>/dev/null)"
+fi
+if grep -q '"kind":"ship_landed"' "$D/amb.jsonl" \
+    && grep -q '"repo_pr":"repairman29/chump:203"' "$D/amb.jsonl" \
+    && grep -q '"strategy":"organ_merge"' "$D/amb.jsonl" \
+    && grep -q '"reason":"allow_auto_merge_false_free_plan_private_repo"' "$D/amb.jsonl" \
+    && grep -q '"r1_merged":true' "$D/amb.jsonl" \
+    && grep -q '"r2_gap_done":true' "$D/amb.jsonl"; then
+    ok "CREDIBLE-1649: organ_merge emits kind=ship_landed with repo_pr, strategy=organ_merge, R1+R2 receipts"
+else
+    bad "CREDIBLE-1649: missing or incomplete ship_landed event in ambient: $(cat "$D/amb.jsonl" 2>/dev/null)"
+fi
+
+# INFRA-8652: because ORG_PR_AUTHOR=chump-fleet-bot != ORGAN_LOGIN (organbot), review-organ also posted a formal `gh pr review 203 --approve`
+grep -qE '^REVIEW pr review 203 --approve' "$ORGLOG.reviews" \
+    && ok "INFRA-8652: review-organ posts formal gh pr review --approve when PR author (chump-fleet-bot) != ORGAN_LOGIN" \
+    || bad "INFRA-8652: review-organ did not post gh pr review --approve (reviews: $(cat "$ORGLOG.reviews" 2>/dev/null))"
+
+# INFRA-8652: test chump_apply_fleet_identity with GH_TOKEN_FLEET set vs unset fallback
+W20_ID_LOCKS="$TMP/w20-id-locks"
+W20_ID_AMB="$W20_ID_LOCKS/ambient.jsonl"
+mkdir -p "$W20_ID_LOCKS"
+w20_id_set="$(
+    export GH_TOKEN="operator-token" GH_TOKEN_FLEET="fleet-bot-pat" CHUMP_LOCK_DIR="$W20_ID_LOCKS" CHUMP_AMBIENT_LOG="$W20_ID_AMB"
+    source "$REPO_ROOT/scripts/coord/lib/github.sh"
+    chump_apply_fleet_identity "worker.sh"
+    printf '%s|%s|%s|%s\n' "$GH_TOKEN" "$GIT_AUTHOR_NAME" "$GIT_COMMITTER_EMAIL" "$CHUMP_FLEET_IDENTITY_ACTIVE"
+)"
+[[ "$w20_id_set" == "fleet-bot-pat|chump-fleet-bot|chump-fleet-bot@users.noreply.github.com|1" ]] \
+    && ok "INFRA-8652: chump_apply_fleet_identity switches GH_TOKEN + git author/committer to chump-fleet-bot when GH_TOKEN_FLEET is set" \
+    || bad "INFRA-8652: chump_apply_fleet_identity (set) unexpected: $w20_id_set"
+
+(
+    unset GH_TOKEN_FLEET
+    export GH_TOKEN="operator-token" CHUMP_LOCK_DIR="$W20_ID_LOCKS" CHUMP_AMBIENT_LOG="$W20_ID_AMB"
+    source "$REPO_ROOT/scripts/coord/lib/github.sh"
+    chump_apply_fleet_identity "worker.sh"
+    chump_apply_fleet_identity "bot-merge.sh"
+    [[ "$GH_TOKEN" == "operator-token" && "$CHUMP_FLEET_IDENTITY_ACTIVE" == "0" ]]
+) && [[ "$(grep -c '"kind":"fleet_identity_missing"' "$W20_ID_AMB" 2>/dev/null || echo 0)" == "1" ]] \
+    && ok "INFRA-8652: unset GH_TOKEN_FLEET preserves operator GH_TOKEN and emits kind=fleet_identity_missing once per boot" \
+    || bad "INFRA-8652: unset GH_TOKEN_FLEET fallback failed (ambient: $(cat "$W20_ID_AMB" 2>/dev/null))"
+
+# INFRA-1668: day-level sentinel deduplicates github_app_fallback across separate subprocess invocations
+W20_FB_LOCKS="$TMP/w20-fb-locks"
+W20_FB_AMB="$W20_FB_LOCKS/ambient.jsonl"
+mkdir -p "$W20_FB_LOCKS"
+for _ in 1 2; do
+    (
+        unset _CHUMP_GH_FALLBACK_NOTICED
+        export CHUMP_LOCK_DIR="$W20_FB_LOCKS" CHUMP_AMBIENT_LOG="$W20_FB_AMB" CHUMP_GH_LANE_TOKEN_DIR="$TMP/no-such-lane-dir"
+        source "$REPO_ROOT/scripts/coord/lib/github.sh"
+        _chump_gh_lane_token || true
+    )
+done
+[[ "$(grep -c '"kind":"github_app_fallback"' "$W20_FB_AMB" 2>/dev/null || echo 0)" == "1" ]] \
+    && [[ -f "$W20_FB_LOCKS/gh-fallback-noticed-$(date -u +%Y-%m-%d).sentinel" ]] \
+    && ok "INFRA-1668: day-level sentinel file deduplicates github_app_fallback across cron subprocesses" \
+    || bad "INFRA-1668: github_app_fallback emitted more than once across subprocesses ($(cat "$W20_FB_AMB" 2>/dev/null))"
 
 echo
 echo "=== test-arm-policy: $PASS passed, $FAIL failed ==="

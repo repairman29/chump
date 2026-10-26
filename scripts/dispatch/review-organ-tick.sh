@@ -130,6 +130,8 @@ MODEL="opus"
 
 # shellcheck source=scripts/coord/lib/review-hold.sh
 source "$REPO_ROOT/scripts/coord/lib/review-hold.sh"
+# shellcheck source=scripts/coord/lib/arm-policy.sh
+source "$REPO_ROOT/scripts/coord/lib/arm-policy.sh"
 
 # CREDIBLE-1602: resolve the gap store through the ONE resolver
 # (scripts/coord/lib/state-store.sh, the exact mirror of crates/chump-store-path
@@ -184,6 +186,7 @@ emit() { printf '%s\n' "$1" >> "$AMBIENT" 2>/dev/null || true; }
 # scanner-anchor: "kind":"review_organ_gap_store_miss"
 # scanner-anchor: "kind":"review_organ_gap_ship_failed"
 # scanner-anchor: "kind":"pr_repair_dispatched"
+# scanner-anchor: "kind":"ship_landed"
 
 REVIEWED=0; APPROVED=0; CHANGES=0; HELD_MUTANTS=0; ARMED=0; DISPATCHED=0; SKIPPED=0
 # CREDIBLE-1602: set to 1 when the post-merge gap step hits a loud failure (a
@@ -339,6 +342,13 @@ post_verdict() {
     } > "$cfile"
     GH pr comment "$pr" ${REPO:+--repo "$REPO"} --body-file "$cfile" >/dev/null 2>&1 || log "WARN: could not post verdict comment on #$pr"
     rm -f "$cfile"
+    # INFRA-8652: when the PR was authored by the dedicated fleet machine account
+    # (author != ORGAN_LOGIN), also post a formal GitHub APPROVE review so branch
+    # protection rulesets requiring 1 approving review are satisfied without
+    # hitting "Can not approve your own pull request".
+    if [[ "$verdict" == APPROVE && -n "${CURRENT_PR_AUTHOR:-}" && -n "$ORGAN_LOGIN" && "$CURRENT_PR_AUTHOR" != "$ORGAN_LOGIN" ]]; then
+        GH pr review "$pr" ${REPO:+--repo "$REPO"} --approve --body "VERDICT: APPROVE (head: $head)" >/dev/null 2>&1 || true
+    fi
     emit "$(printf '{"ts":"%s","kind":"pr_review_verdict","pr":%s,"verdict":"%s","head":"%s","mutants":"%s"}' \
         "$(ts)" "$pr" "$(json_str "$verdict")" "$(json_str "$head")" "$(json_str "$mutants")")"
 }
@@ -814,6 +824,7 @@ process_pr() {
     fork="$(printf '%s'  "$meta" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("isCrossRepository"))' 2>/dev/null)"
     head="$(printf '%s'  "$meta" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("headRefOid") or "")' 2>/dev/null)"
     author="$(printf '%s' "$meta" | python3 -c 'import json,sys;d=json.load(sys.stdin).get("author") or {};print(d.get("login") or "")' 2>/dev/null)"
+    CURRENT_PR_AUTHOR="$author"
     head_ref="$(printf '%s' "$meta" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("headRefName") or "")' 2>/dev/null)"
     own_lane="$(printf '%s' "$meta" | python3 -c '
 import json, sys
@@ -1044,8 +1055,14 @@ maybe_arm() {
         maybe_dispatch_ci_red_repair "$pr" "$head"
         return 0
     fi
-    log "PR #$pr: APPROVE for head ${head:0:12} + verified green → head-pinned squash merge (no auto-merge)"
-    GH pr merge "$pr" ${REPO:+--repo "$REPO"} --squash --match-head-commit "$head" >/dev/null 2>&1 \
+    # CREDIBLE-1649: select landing strategy (`organ_merge` when allow_auto_merge=false,
+    # recording reason="allow_auto_merge_false_free_plan_private_repo"). Under organ_merge,
+    # merge ONLY after our own VERDICT: APPROVE comment (verified by review_hold_allows above)
+    # AND all checks green (verified by verified_green above), using --squash --delete-branch
+    # (never --auto or --admin).
+    arm_policy_select_strategy "${REPO:-repairman29/chump}" >/dev/null 2>&1 || true
+    log "PR #$pr: APPROVE for head ${head:0:12} + verified green (strategy=${ARM_POLICY_STRATEGY:-organ_merge} reason=${ARM_POLICY_STRATEGY_REASON:-allow_auto_merge_false_free_plan_private_repo}) → head-pinned squash merge (no auto-merge)"
+    GH pr merge "$pr" ${REPO:+--repo "$REPO"} --squash --match-head-commit "$head" --delete-branch >/dev/null 2>&1 \
         && { ARMED=$((ARMED+1)); log "PR #$pr: merged head-pinned"; ship_merged_gap "$pr" "$head"; } \
         || log "WARN: PR #$pr head-pinned merge did not succeed (head moved or not mergeable)"
 }
@@ -1110,6 +1127,17 @@ ship_merged_gap() {
     git -C "$CHECKOUT" fetch origin main -q 2>/dev/null || true
     if CHUMP_REPO="$CHECKOUT" CHUMP_STATE_DB="$ORGAN_GAP_STORE" chump gap ship "$gap" --closed-pr "$pr" >/dev/null 2>&1; then
         log "PR #$pr: shipped $gap --closed-pr $pr (organ landing recorded in $ORGAN_GAP_STORE)"
+        # CREDIBLE-1649: record R1 (merged=true + merge_commit_sha) and R2 (gap_status=done)
+        # and emit kind=ship_landed with repo_pr.
+        local merge_sha repo_slug
+        merge_sha="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} --json mergeCommit --jq '.mergeCommit.oid // ""' 2>/dev/null || true)"
+        [[ -n "$merge_sha" ]] || merge_sha="$head"
+        repo_slug="${REPO:-repairman29/chump}"
+        emit "$(printf '{"ts":"%s","kind":"ship_landed","repo_pr":"%s:%s","pr":%s,"gap_id":"%s","strategy":"%s","reason":"%s","merge_commit_sha":"%s","r1_merged":true,"r2_gap_done":true}' \
+            "$(ts)" "$(json_str "$repo_slug")" "$pr" "$pr" "$(json_str "$gap")" \
+            "$(json_str "${ARM_POLICY_STRATEGY:-organ_merge}")" \
+            "$(json_str "${ARM_POLICY_STRATEGY_REASON:-allow_auto_merge_false_free_plan_private_repo}")" \
+            "$(json_str "$merge_sha")")"
     else
         emit "$(printf '{"ts":"%s","kind":"review_organ_gap_ship_failed","pr":%s,"gap":"%s","store":"%s","checkout":"%s","head":"%s"}' \
             "$(ts)" "$pr" "$(json_str "$gap")" "$(json_str "$ORGAN_GAP_STORE")" "$(json_str "$CHECKOUT")" "$(json_str "$head")")"

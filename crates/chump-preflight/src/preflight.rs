@@ -1493,6 +1493,7 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
             }
         }
     }
+    eprintln!("[preflight] discovered {} test script(s)", out.len());
     out
 }
 
@@ -5535,5 +5536,19 @@ mod tests {
             on_disk, big,
             "persisted preflight log must contain complete untruncated output"
         );
+    }
+
+    #[test]
+    fn infra1652_discover_test_scripts_returns_existing_scripts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ci_dir = dir.path().join("scripts/ci");
+        std::fs::create_dir_all(&ci_dir).expect("mkdir");
+        std::fs::write(
+            ci_dir.join("test-event-registry-coverage.sh"),
+            "#!/bin/sh\n",
+        )
+        .expect("write");
+        let scripts = discover_test_scripts(dir.path());
+        assert_eq!(scripts.len(), 1);
     }
 }

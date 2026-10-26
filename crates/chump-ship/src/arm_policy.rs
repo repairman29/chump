@@ -91,6 +91,109 @@ impl HoldStatus {
     }
 }
 
+/// CREDIBLE-1649: Repository-level landing strategy.
+///
+/// Private repositories on GitHub's free plan have `allow_auto_merge: false`
+/// and no merge-queue feature (`Pull request Auto merge is not allowed for
+/// this repository`), so `gh pr merge --auto` is structurally rejected by
+/// GitHub. When `allow_auto_merge == false`, `select_landing_strategy`
+/// selects [`LandingStrategy::OrganMerge`] with reason
+/// [`ALLOW_AUTO_MERGE_FALSE_REASON`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandingStrategy {
+    AutoMerge,
+    MergeQueue,
+    OrganMerge,
+}
+
+impl LandingStrategy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            LandingStrategy::AutoMerge => "auto_merge",
+            LandingStrategy::MergeQueue => "merge_queue",
+            LandingStrategy::OrganMerge => "organ_merge",
+        }
+    }
+}
+
+/// Canonical reason recorded when `allow_auto_merge: false` triggers
+/// [`LandingStrategy::OrganMerge`].
+pub const ALLOW_AUTO_MERGE_FALSE_REASON: &str = "allow_auto_merge_false_free_plan_private_repo";
+
+/// Decision returned by [`select_landing_strategy`].
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LandingDecision {
+    pub strategy: LandingStrategy,
+    pub reason: String,
+}
+
+/// CREDIBLE-1649: Select the landing strategy from repository capabilities.
+///
+/// When `allow_auto_merge` is `false` (private repo on GitHub's free plan),
+/// auto-selects [`LandingStrategy::OrganMerge`] with
+/// `reason = "allow_auto_merge_false_free_plan_private_repo"`.
+pub fn select_landing_strategy(
+    allow_auto_merge: bool,
+    merge_queue_enabled: bool,
+) -> LandingDecision {
+    if !allow_auto_merge {
+        return LandingDecision {
+            strategy: LandingStrategy::OrganMerge,
+            reason: ALLOW_AUTO_MERGE_FALSE_REASON.to_string(),
+        };
+    }
+    if merge_queue_enabled {
+        return LandingDecision {
+            strategy: LandingStrategy::MergeQueue,
+            reason: "merge_queue_enabled".to_string(),
+        };
+    }
+    LandingDecision {
+        strategy: LandingStrategy::AutoMerge,
+        reason: "allow_auto_merge_true".to_string(),
+    }
+}
+
+/// CREDIBLE-1649: Pre-merge gate evaluation for [`LandingStrategy::OrganMerge`].
+///
+/// Under `organ_merge`, the review organ may execute `gh pr merge --squash --delete-branch`
+/// (never `--auto` or `--admin`) ONLY when:
+///   1. Its own `VERDICT: APPROVE` comment is present on the PR (`has_organ_approve_comment`),
+///   2. All checks in `statusCheckRollup` are green (`total_checks > 0`, `failing_checks == 0`,
+///      `pending_checks == 0`), and
+///   3. The PR is not held by a hold label/marker (`!is_held`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OrganMergeGate {
+    ReadyToSquashMerge,
+    Blocked(&'static str),
+}
+
+pub fn evaluate_organ_merge_gate(
+    has_organ_approve_comment: bool,
+    total_checks: u32,
+    failing_checks: u32,
+    pending_checks: u32,
+    is_held: bool,
+) -> OrganMergeGate {
+    if is_held {
+        return OrganMergeGate::Blocked("pr_held");
+    }
+    if !has_organ_approve_comment {
+        return OrganMergeGate::Blocked("missing_verdict_approve_comment");
+    }
+    if failing_checks > 0 {
+        return OrganMergeGate::Blocked("checks_failing");
+    }
+    if pending_checks > 0 {
+        return OrganMergeGate::Blocked("checks_pending");
+    }
+    if total_checks == 0 {
+        return OrganMergeGate::Blocked("no_checks_reported");
+    }
+    OrganMergeGate::ReadyToSquashMerge
+}
+
 /// The policy could not read the PR (the gates treat this as fail-open).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArmPolicyError(pub String);
@@ -719,5 +822,55 @@ mod tests {
                 HoldStatus::NotHeld => String::new(),
             }
         }
+    }
+
+    #[test]
+    fn credible_1649_select_landing_strategy_when_allow_auto_merge_false() {
+        let dec = select_landing_strategy(false, false);
+        assert_eq!(dec.strategy, LandingStrategy::OrganMerge);
+        assert_eq!(dec.strategy.as_str(), "organ_merge");
+        assert_eq!(dec.reason, ALLOW_AUTO_MERGE_FALSE_REASON);
+        assert_eq!(dec.reason, "allow_auto_merge_false_free_plan_private_repo");
+
+        // Even if merge_queue_enabled were true, allow_auto_merge=false forces organ_merge.
+        let dec2 = select_landing_strategy(false, true);
+        assert_eq!(dec2.strategy, LandingStrategy::OrganMerge);
+        assert_eq!(dec2.reason, ALLOW_AUTO_MERGE_FALSE_REASON);
+
+        let dec_auto = select_landing_strategy(true, false);
+        assert_eq!(dec_auto.strategy, LandingStrategy::AutoMerge);
+        assert_eq!(dec_auto.reason, "allow_auto_merge_true");
+
+        let dec_mq = select_landing_strategy(true, true);
+        assert_eq!(dec_mq.strategy, LandingStrategy::MergeQueue);
+        assert_eq!(dec_mq.reason, "merge_queue_enabled");
+    }
+
+    #[test]
+    fn credible_1649_evaluate_organ_merge_gate_requires_verdict_and_green_checks() {
+        assert_eq!(
+            evaluate_organ_merge_gate(true, 4, 0, 0, false),
+            OrganMergeGate::ReadyToSquashMerge
+        );
+        assert_eq!(
+            evaluate_organ_merge_gate(false, 4, 0, 0, false),
+            OrganMergeGate::Blocked("missing_verdict_approve_comment")
+        );
+        assert_eq!(
+            evaluate_organ_merge_gate(true, 4, 1, 0, false),
+            OrganMergeGate::Blocked("checks_failing")
+        );
+        assert_eq!(
+            evaluate_organ_merge_gate(true, 4, 0, 1, false),
+            OrganMergeGate::Blocked("checks_pending")
+        );
+        assert_eq!(
+            evaluate_organ_merge_gate(true, 0, 0, 0, false),
+            OrganMergeGate::Blocked("no_checks_reported")
+        );
+        assert_eq!(
+            evaluate_organ_merge_gate(true, 4, 0, 0, true),
+            OrganMergeGate::Blocked("pr_held")
+        );
     }
 }

@@ -42,6 +42,14 @@ still publish, but `brew upgrade chump` continues serving the old version.
 step in `release.yml` will error immediately with a clear message before
 wasting runner time on builds.
 
+## Pre-release / Public Visibility Gate (RESILIENT-253)
+
+Before cutting a public release or flipping repository visibility to public, every self-hosted GitHub Actions runner attached to the repo (`closetjunky`, `cuphead`, etc.) MUST pass the runner privilege and credential-isolation gate:
+
+- [ ] **No root runner execution:** No runner service uses `User=root` or `RUNNER_ALLOW_RUNASROOT=1`. Every Linux self-hosted runner executes under a dedicated unprivileged account (e.g. `gha-chump`, matching `cuphead`'s `gha-froogle` isolation pattern).
+- [ ] **Credential & NATS config isolation:** The runner user has zero read access to `/etc/nats/nats.conf`, `~/.chump/oauth-token.json`, `~/.chump/providers.env`, or operator SSH/signing keys.
+- [ ] **Automated release-audit gate:** `python3 scripts/dev/release-audit.py --require-runner-isolation --json` reports `"verdict": "GO"` with zero violations.
+
 ## Cutting a release
 
 ```bash

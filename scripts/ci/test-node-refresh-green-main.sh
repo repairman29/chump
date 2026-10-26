@@ -151,4 +151,60 @@ rc=$?
 grep -q "fast short-circuit" "$TMP/out3.log" || fail "ZERO-WASTE-132: expected fast short-circuit log line in $(cat "$TMP/out3.log")"
 ok "ZERO-WASTE-132: unchanged origin/main short-circuits with 0 gh calls"
 
+# ── Test 4 (RESILIENT-253): release-audit runner-isolation gate + install-self-hosted-runner root refusal ──
+RELEASE_AUDIT="$REPO_ROOT/scripts/dev/release-audit.py"
+RUNNER_INSTALLER="$REPO_ROOT/scripts/setup/install-self-hosted-runner.sh"
+RELEASE_DOC="$REPO_ROOT/docs/process/RELEASE.md"
+grep -q "RESILIENT-253" "$RELEASE_DOC" || fail "RESILIENT-253: docs/process/RELEASE.md missing runner isolation gate checklist"
+
+bad_runner_json="$(CHUMP_RELEASE_AUDIT_RUNNER_SPEC='{"runners":[{"name":"closetjunky","user":"root","readable_paths":["/etc/nats/nats.conf"]}]}' \
+    python3 "$RELEASE_AUDIT" --since 1d --json --require-runner-isolation 2>&1)"
+bad_runner_rc=$?
+[ "$bad_runner_rc" -ne 0 ] || fail "RESILIENT-253: release-audit.py --require-runner-isolation must exit non-zero on root runner reading /etc/nats/nats.conf"
+printf '%s' "$bad_runner_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["runner_isolation"]["verdict"]=="NO-GO", d; assert "closetjunky:runs_as_root" in d["runner_isolation"]["violations"], d' \
+    || fail "RESILIENT-253: expected NO-GO + closetjunky:runs_as_root in release-audit JSON: $bad_runner_json"
+
+good_runner_json="$(CHUMP_RELEASE_AUDIT_RUNNER_SPEC='{"runners":[{"name":"closetjunky","user":"gha-chump","readable_paths":[]}]}' \
+    python3 "$RELEASE_AUDIT" --since 1d --json --require-runner-isolation 2>&1)"
+good_runner_rc=$?
+[ "$good_runner_rc" -eq 0 ] || fail "RESILIENT-253: release-audit.py --require-runner-isolation must exit 0 on isolated gha-chump runner (rc=$good_runner_rc): $good_runner_json"
+printf '%s' "$good_runner_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["runner_isolation"]["verdict"]=="GO", d' \
+    || fail "RESILIENT-253: expected GO verdict for isolated runner: $good_runner_json"
+
+if RUNNER_ALLOW_RUNASROOT=1 RUNNER_DIR="$TMP/never-runner" bash "$RUNNER_INSTALLER" --token dummy >/dev/null 2>&1; then
+    fail "RESILIENT-253: install-self-hosted-runner.sh must refuse RUNNER_ALLOW_RUNASROOT=1"
+fi
+ok "RESILIENT-253: release-audit runner-isolation gate flags root/credential-exposed runners as NO-GO and installer refuses RUNNER_ALLOW_RUNASROOT=1"
+
+# ── Test 5 (PRODUCT-324): README quick-start CLI commands match src/main.rs ──
+python3 - "$REPO_ROOT/README.md" "$REPO_ROOT/src/main.rs" <<'PY' || fail "PRODUCT-324: README quick-start subcommand drift detected"
+import pathlib, re, sys
+
+readme = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+main_rs = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+
+# Extract the "Try Chump in 5 minutes" quick-start section
+m = re.search(r"## Try Chump in 5 minutes\b(.*?)(?:\n---\n|\n## )", readme, re.S)
+assert m, "Could not locate '## Try Chump in 5 minutes' section in README.md"
+quickstart = m.group(1)
+
+subcommands = set()
+for block in re.findall(r"```bash\n(.*?)```", quickstart, re.S):
+    for line in block.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m_cmd = re.match(r"^chump\s+([a-z][a-z0-9_-]*)\b", line)
+        if m_cmd:
+            subcommands.add(m_cmd.group(1))
+
+assert len(subcommands) >= 5, f"Expected >=5 subcommands in README quick-start, got {subcommands}"
+missing = [
+    sub for sub in sorted(subcommands)
+    if f'Some("{sub}")' not in main_rs and f'"{sub}"' not in main_rs
+]
+assert not missing, f"README quick-start subcommands missing from src/main.rs: {missing}"
+PY
+ok "PRODUCT-324: all README quick-start 'chump <subcommand>' invocations are registered in src/main.rs"
+
 exit 0

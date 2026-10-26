@@ -27,11 +27,11 @@
 //!   * `Divergent`  — both exist; one or more comparable fields differ.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::{load_gap_from_yaml, parse_json_ac_list, GapRow, GapStore};
+use crate::{load_gap_from_yaml_path, parse_json_ac_list, GapRow, GapStore};
 
 /// One per-gap drift entry produced by [`sync_check`] and by the diagnostic
 /// pass that precedes [`sync_push`].
@@ -262,10 +262,6 @@ fn build_snapshot(store: &GapStore, gaps_dir: &Path) -> Result<Snapshot> {
     // YAML side — walk `gaps_dir/*.yaml`. Missing-dir is OK (returns empty).
     if gaps_dir.is_dir() {
         let mut all_ids: BTreeSet<String> = by_id.keys().cloned().collect();
-        // The directory walk needs a stable repo_root for load_gap_from_yaml,
-        // which expects `<root>/docs/gaps/<ID>.yaml`. Recover root by going
-        // up two levels from gaps_dir.
-        let repo_root = synthetic_repo_root(gaps_dir);
         for entry in std::fs::read_dir(gaps_dir)
             .with_context(|| format!("reading {}", gaps_dir.display()))?
             .flatten()
@@ -281,8 +277,7 @@ fn build_snapshot(store: &GapStore, gaps_dir: &Path) -> Result<Snapshot> {
             else {
                 continue;
             };
-            // load_gap_from_yaml builds the path itself from repo_root + ID.
-            let row_opt = load_gap_from_yaml(&repo_root, &id)
+            let row_opt = load_gap_from_yaml_path(&path, Some(&id))
                 .with_context(|| format!("loading YAML for {id}"))?;
             let Some(yaml_row) = row_opt else {
                 // File exists but YAML didn't parse as a gap (empty or
@@ -308,18 +303,6 @@ fn build_snapshot(store: &GapStore, gaps_dir: &Path) -> Result<Snapshot> {
     }
 
     Ok(Snapshot { by_id })
-}
-
-/// Walk up from `<root>/docs/gaps` → `<root>`. Used so we can hand
-/// `load_gap_from_yaml` a repo_root that resolves the on-disk YAML path
-/// correctly even when the test fixture lives outside the real repo.
-fn synthetic_repo_root(gaps_dir: &Path) -> PathBuf {
-    // gaps_dir == "<root>/docs/gaps" — pop twice to get "<root>".
-    gaps_dir
-        .parent()
-        .and_then(Path::parent)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| gaps_dir.to_path_buf())
 }
 
 /// Return the canonical list of fields that differ between two gap rows.

@@ -309,7 +309,13 @@ _calibration_line() {
 echo "═══ Fleet brief (last 24h) ═══"
 _calibration_line
 # INFRA-2013: show 1h ships as leading indicator alongside 24h rolling average
-echo "Ships: $ships_24h (≈${rate_per_hr}/hr) | last 6h: $ships_6h | last 1h: $ships_1h"
+# CREDIBLE-1647: report Delivered (product) separately from Merged
+delivered_product_24h=0
+if [[ -f "$AMBIENT_LOG" ]]; then
+    delivered_product_24h=$(grep -c '"kind":"product_delivery_verified"' "$AMBIENT_LOG" 2>/dev/null || true)
+    delivered_product_24h="${delivered_product_24h:-0}"
+fi
+echo "Ships (Merged): $ships_24h (≈${rate_per_hr}/hr) | Delivered (product): $delivered_product_24h | last 6h: $ships_6h | last 1h: $ships_1h"
 # INFRA-2040: silent-fleet-death banner — takes priority over STALLED (more severe)
 if [[ "$_silent_fleet_dead" -eq 1 ]]; then
     if [[ -t 1 ]]; then

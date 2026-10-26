@@ -46,6 +46,10 @@ pub mod landing;
 pub mod manual_ship;
 pub mod ship;
 
+pub use arm_policy::{
+    evaluate_organ_merge_gate, select_landing_strategy, LandingDecision, LandingStrategy,
+    OrganMergeGate, ALLOW_AUTO_MERGE_FALSE_REASON,
+};
 pub use landing::{
     landed, landed_with, GithubLandingSource, LandingError, LandingProvider, LandingSource,
     MergeSha,

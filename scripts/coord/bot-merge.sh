@@ -115,6 +115,17 @@ fi
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 # (INFRA-1939: file-wide shellcheck disable moved to line 2 so source-on-line-24 is covered.)
 
+# INFRA-8652: apply dedicated fleet machine-account identity (GH_TOKEN_FLEET +
+# git author/committer) for bot-merge git pushes and `gh pr create` when
+# configured; falls back to default GH_TOKEN and emits kind=fleet_identity_missing
+# once per boot when GH_TOKEN_FLEET is unset.
+if [[ -f "$(dirname "${BASH_SOURCE[0]}")/lib/github.sh" ]]; then
+    source "$(dirname "${BASH_SOURCE[0]}")/lib/github.sh" 2>/dev/null || true
+fi
+if declare -F chump_apply_fleet_identity >/dev/null 2>&1; then
+    chump_apply_fleet_identity "bot-merge.sh"
+fi
+
 # Test/ops seam (explicit CLI arg — the systemd unit/timer never passes it):
 # `--gate-arm-check [--auto-merge]` runs ONLY the real gate decision against the
 # current branch diff and exits — 2 if arming would be refused, 0 otherwise.
