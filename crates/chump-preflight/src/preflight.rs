@@ -1087,7 +1087,6 @@ BYPASS:
     only those failing gates with a logged reason. No env override needed.
     CHUMP_PREFLIGHT_SKIP_REGISTRY=1   Skip event-registry-audit (INFRA-1731).
     CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1  Skip docs-delta-trailer (INFRA-1788).
-    CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1   Skip pipefail-race-sweep (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_PATHFILTER=1 Skip path-filter-coverage (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
 
@@ -2228,29 +2227,15 @@ pub fn run(argv: &[String]) -> i32 {
         // (INFRA-1810). Each fires in <1s and runs whenever Scripts scope is
         // active. Skip via the gate-specific bypass env with audit-trail emit.
 
-        // INFRA-1658: bash subshell pipefail-race sweep. Catches a class of
-        // races where `cmd | other-cmd` inside a `set -e`-d script swallows
-        // failure because bash's pipefail isn't set. Detecting locally avoids
-        // a CI round-trip on the install/uninstall path.
-        if std::env::var("CHUMP_PREFLIGHT_SKIP_PIPEFAIL").as_deref() == Ok("1") {
-            eprintln!("[preflight] skipping pipefail-race-sweep (CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1)");
-            let _ =
-                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
-                    kind: "preflight_pipefail_bypassed".to_string(),
-                    source: Some("chump-preflight".to_string()),
-                    fields: vec![(
-                        "reason".to_string(),
-                        "CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1".to_string(),
-                    )],
-                    ..Default::default()
-                });
-        } else {
-            steps.push(step(
-                "pipefail-race-sweep",
-                &["bash", "scripts/ci/test-pipefail-race-sweep.sh"],
-                GateKind::Scripts,
-            ));
-        }
+        // INFRA-1658 / INFRA-2427: bash subshell pipefail-race sweep. Catches a
+        // class of races where `cmd | other-cmd` inside a `set -e`-d script swallows
+        // failure because bash's pipefail isn't set. Always-on (bypass removed in
+        // INFRA-2427; main-RED auto-skip handles any trunk-wide breakage).
+        steps.push(step(
+            "pipefail-race-sweep",
+            &["bash", "scripts/ci/test-pipefail-race-sweep.sh"],
+            GateKind::Scripts,
+        ));
 
         // INFRA-682: path-filter allowlist structural coverage. Detects when
         // a contributor adds new code paths but forgets to add them to the
@@ -4500,6 +4485,55 @@ struct BaselineDiff {
     baseline_age_secs: u64,
 }
 
+/// INFRA-1792: Outcome of checking staged-diff top-level directory scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrScopeOutcome {
+    /// Distinct top-level directories touched by the staged paths.
+    pub top_level_dirs: Vec<String>,
+    ///Configured threshold `N` (default 5, overridable via `CHUMP_PRSCOPE_THRESHOLD`).
+    pub threshold: usize,
+    /// True when `top_level_dirs.len() == threshold.saturating_sub(1)` (heads-up before hard fail).
+    pub soft_warn: bool,
+    /// True when `top_level_dirs.len() > threshold`.
+    pub should_fail: bool,
+}
+
+/// INFRA-1792: Resolve the PR scope threshold from `CHUMP_PRSCOPE_THRESHOLD` (default 5).
+pub fn pr_scope_threshold_from_env() -> usize {
+    std::env::var("CHUMP_PRSCOPE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n >= 2)
+        .unwrap_or(5)
+}
+
+/// INFRA-1792: Evaluate staged-diff paths against a top-level directory count threshold.
+/// Soft-warns at `threshold - 1` and fails when `top_level_dirs.len() > threshold`.
+pub fn check_pr_scope(staged_paths: &[&str], threshold: usize) -> PrScopeOutcome {
+    let mut dirs = std::collections::BTreeSet::new();
+    for raw in staged_paths {
+        let p = raw.trim().trim_start_matches("./");
+        if p.is_empty() {
+            continue;
+        }
+        let top = match p.split_once('/') {
+            Some((first, _)) if !first.is_empty() => first.to_string(),
+            _ => "<root>".to_string(),
+        };
+        dirs.insert(top);
+    }
+    let top_level_dirs: Vec<String> = dirs.into_iter().collect();
+    let count = top_level_dirs.len();
+    let should_fail = count > threshold;
+    let soft_warn = !should_fail && threshold > 1 && count == threshold - 1;
+    PrScopeOutcome {
+        top_level_dirs,
+        threshold,
+        soft_warn,
+        should_fail,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5550,5 +5584,38 @@ mod tests {
         .expect("write");
         let scripts = discover_test_scripts(dir.path());
         assert_eq!(scripts.len(), 1);
+    }
+
+    #[test]
+    fn infra1792_check_pr_scope_warns_at_n_minus_1_and_fails_above_n() {
+        let three_dirs = ["src/main.rs", "crates/foo/lib.rs", "docs/README.md"];
+        let out_ok = check_pr_scope(&three_dirs, 5);
+        assert_eq!(out_ok.top_level_dirs.len(), 3);
+        assert!(!out_ok.soft_warn);
+        assert!(!out_ok.should_fail);
+
+        let four_dirs = [
+            "src/main.rs",
+            "crates/foo/lib.rs",
+            "docs/README.md",
+            "scripts/ci/test.sh",
+        ];
+        let out_warn = check_pr_scope(&four_dirs, 5);
+        assert_eq!(out_warn.top_level_dirs.len(), 4);
+        assert!(out_warn.soft_warn);
+        assert!(!out_warn.should_fail);
+
+        let six_dirs = [
+            "src/main.rs",
+            "crates/foo/lib.rs",
+            "docs/README.md",
+            "scripts/ci/test.sh",
+            "web/v2/app.js",
+            "launchd/foo.plist",
+        ];
+        let out_fail = check_pr_scope(&six_dirs, 5);
+        assert_eq!(out_fail.top_level_dirs.len(), 6);
+        assert!(!out_fail.soft_warn);
+        assert!(out_fail.should_fail);
     }
 }

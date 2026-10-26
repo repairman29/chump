@@ -665,6 +665,51 @@ _run "D1: all expected scanner-anchor kinds are present"
     done
 }
 
+# Test E1: INFRA-2312/2313 installer graceful skip + INFRA-1911 audit-stale-closed-pr-refs
+_run "E1: INFRA-2312/2313 installer graceful skip & INFRA-1911 stale closed PR audit"
+{
+    TMPDIR_E1="$(mktemp -d)"
+    trap 'rm -rf "$TMPDIR_E1"' RETURN
+
+    if PATH="/usr/bin:/bin" HOME="$TMPDIR_E1" bash "$REPO_ROOT/scripts/setup/install-chump-integrator-launchd.sh" >/dev/null 2>&1; then
+        _ok "install-chump-integrator-launchd.sh exits 0 when binary absent (INFRA-2312)"
+    else
+        _fail "install-chump-integrator-launchd.sh exited non-zero when binary absent"
+    fi
+
+    if grep -q 'BOT_SCRIPT' "$ACTIVATOR"; then
+        _ok "daemon-activator-loop.sh checks BOT_SCRIPT before running installer (INFRA-2313)"
+    else
+        _fail "daemon-activator-loop.sh missing BOT_SCRIPT check (INFRA-2313)"
+    fi
+
+    # INFRA-1911 hermetic fixture test
+    SDB="$TMPDIR_E1/state.db"
+    CDB="$TMPDIR_E1/cache.db"
+    AMB_E1="$TMPDIR_E1/ambient.jsonl"
+    python3 - "$SDB" "$CDB" <<'PY'
+import sqlite3, sys
+s = sqlite3.connect(sys.argv[1])
+s.execute("CREATE TABLE gaps (id TEXT PRIMARY KEY, status TEXT, description TEXT, notes TEXT)")
+s.execute("INSERT INTO gaps VALUES ('INFRA-9991', 'open', 'depends on #4321', '')")
+s.commit()
+c = sqlite3.connect(sys.argv[2])
+c.execute("CREATE TABLE pr_state (number INTEGER PRIMARY KEY, merged_at TEXT, raw_payload_json TEXT)")
+c.execute("INSERT INTO pr_state VALUES (4321, NULL, '{\"state\":\"CLOSED\"}')")
+c.commit()
+PY
+    if CHUMP_STATE_DB="$SDB" CHUMP_GITHUB_CACHE_DB="$CDB" AMBIENT_JSONL="$AMB_E1" \
+        bash "$REPO_ROOT/scripts/dev/audit-stale-closed-pr-refs.sh" --apply >/dev/null 2>&1; then
+        _fail "audit-stale-closed-pr-refs.sh should exit 1 when stale closed PR ref found"
+    else
+        if grep -q '"kind":"stale_closed_pr_ref"' "$AMB_E1"; then
+            _ok "audit-stale-closed-pr-refs.sh emits kind=stale_closed_pr_ref and exits 1 (INFRA-1911)"
+        else
+            _fail "audit-stale-closed-pr-refs.sh did not emit kind=stale_closed_pr_ref"
+        fi
+    fi
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────

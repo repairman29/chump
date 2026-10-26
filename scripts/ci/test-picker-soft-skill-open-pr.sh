@@ -188,6 +188,29 @@ printf '[%s]' "$(gap INFRA-9301 P1 '""' 1000)" > "$GAPS"
 check "a PR that left the open list no longer blocks its gap (reconciled closed)" \
   "$(pick)" "INFRA-9301"
 
+echo "== 5. INFRA-1829: CapabilityManifest skill-aware routing =="
+mkdir -p "$T/root/.chump-locks/capabilities"
+now_ts="$(date +%s)"
+printf '{"schema":"chump-capability-v2","session_id":"test-8176","node_id":"node-1","skills":["rust","bash"],"heartbeat_at":%s,"ttl_seconds":300,"healthy":true}\n' "$now_ts" \
+  > "$T/root/.chump-locks/capabilities/test-8176.jsonl"
+printf '[%s,%s]' \
+  "$(gap INFRA-9401 P1 '"[\"vercel\"]"' 1000)" \
+  "$(gap INFRA-9402 P1 '"[\"rust\"]"' 2000)" > "$GAPS"
+: > "$AMB"
+check "manifest skills route INFRA-9402 (rust) before INFRA-9401 (vercel) when WORKER_SKILLS unset" \
+  "$(pick)" "INFRA-9402"
+
+printf '[%s]' "$(gap INFRA-9401 P1 '"[\"vercel\"]"' 1000)" > "$GAPS"
+: > "$AMB"
+check "unmatched skill falls back to highest-priority open gap" \
+  "$(pick)" "INFRA-9401"
+if has_event skill_routing_no_match gap_id=INFRA-9401; then
+  ok "kind=skill_routing_no_match emitted on manifest skill miss"
+else
+  bad "kind=skill_routing_no_match not emitted on manifest skill miss"
+fi
+rm -rf "$T/root/.chump-locks/capabilities"
+
 echo
 echo "passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ] && echo "PASS: INFRA-8176 soft skill filter + open-PR anti-spin" || { echo "FAIL"; exit 1; }

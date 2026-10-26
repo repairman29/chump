@@ -31,6 +31,10 @@ fn make_manifest(session_id: &str, machine: Option<&str>, ttl_seconds: u32) -> C
         heartbeat_at: now,
         ttl_seconds,
         external_repo_enabled: false,
+        token_budget_remaining: None,
+        compute_available_pct: None,
+        bandwidth_kbps: None,
+        healthy: true,
     }
 }
 

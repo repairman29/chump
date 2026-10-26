@@ -234,8 +234,18 @@ while IFS= read -r install_script; do
     install_error=""
 
     # Ensure local copy matches origin/main (robust to dirty worktree)
-    if git -C "$REPO_ROOT" show "origin/main:$install_script" > "$LOCAL_PATH" 2>/dev/null; then
+    if git -C "$REPO_ROOT" show "origin/main:$install_script" > "$LOCAL_PATH" 2>/dev/null || [[ -f "$LOCAL_PATH" ]]; then
         chmod +x "$LOCAL_PATH"
+        # INFRA-2313: check if installer references a BOT_SCRIPT that does not exist yet
+        bot_script_ref="$(grep -oE 'BOT_SCRIPT="[^"]+"' "$LOCAL_PATH" 2>/dev/null | head -1 | sed 's/BOT_SCRIPT="//;s/"$//' || true)"
+        if [[ -n "$bot_script_ref" ]]; then
+            resolved_bot="${bot_script_ref//\$\{REPO_ROOT\}/$REPO_ROOT}"
+            resolved_bot="${resolved_bot//\$REPO_ROOT/$REPO_ROOT}"
+            if [[ ! -f "$resolved_bot" ]]; then
+                log "  SKIP: skipping $label: BOT_SCRIPT $resolved_bot missing (INFRA-2313)"
+                continue
+            fi
+        fi
         if bash "$LOCAL_PATH" 2>&1; then
             install_ok=1
         else

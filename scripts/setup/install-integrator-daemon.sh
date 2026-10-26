@@ -145,8 +145,8 @@ esac
 
 # ── verify template exists ────────────────────────────────────────────────────
 if [[ ! -f "$PLIST_TEMPLATE" ]]; then
-    echo "[install-integrator-daemon] ERROR: plist template not found: $PLIST_TEMPLATE" >&2
-    exit 1
+    echo "[install-integrator-daemon] [WARN] plist template not found: $PLIST_TEMPLATE — skipping install (INFRA-2312)" >&2
+    exit 0
 fi
 
 # ── resolve binary (warn if missing; install anyway for forward-compat) ───────

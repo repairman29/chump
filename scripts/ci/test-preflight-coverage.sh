@@ -19,10 +19,10 @@ if [ ! -f "$PREFLIGHT_RS" ]; then
   exit 1
 fi
 
-# Expected gates added by INFRA-2350.
+# Expected gates added by INFRA-2350 (INFRA-2427 removed the pipefail bypass env var).
 # format: gate_name|bypass_env_var|underlying_script
 EXPECTED_GATES=(
-  "pipefail-race-sweep|CHUMP_PREFLIGHT_SKIP_PIPEFAIL|scripts/ci/test-pipefail-race-sweep.sh"
+  "pipefail-race-sweep||scripts/ci/test-pipefail-race-sweep.sh"
   "path-filter-coverage|CHUMP_PREFLIGHT_SKIP_PATHFILTER|scripts/ci/check-path-filter-coverage.sh"
   "install-manifest|CHUMP_PREFLIGHT_SKIP_INSTALLMAP|scripts/ci/test-install-script-manifest.sh"
 )
@@ -35,8 +35,8 @@ for entry in "${EXPECTED_GATES[@]}"; do
     echo "FAIL: gate name '$gate_name' not found in $PREFLIGHT_RS" >&2
     errors=$((errors + 1))
   fi
-  # 2. Bypass env var is referenced.
-  if ! grep -qE "$bypass_env" "$PREFLIGHT_RS"; then
+  # 2. Bypass env var is referenced (when non-empty).
+  if [ -n "$bypass_env" ] && ! grep -qE "$bypass_env" "$PREFLIGHT_RS"; then
     echo "FAIL: bypass env '$bypass_env' not found in $PREFLIGHT_RS" >&2
     errors=$((errors + 1))
   fi

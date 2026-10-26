@@ -91,8 +91,8 @@ mkdir -p "$LOG_DIR"
 mkdir -p "$HOME/Library/LaunchAgents"
 
 if [[ ! -f "$PLIST_TEMPLATE" ]]; then
-    log "ERROR: plist template not found at $PLIST_TEMPLATE"
-    exit 1
+    log "[WARN] plist template not found at $PLIST_TEMPLATE — skipping install (INFRA-2312)"
+    exit 0
 fi
 
 # ── RESILIENT-246: the binary MUST live at a stable path ───────────────────
@@ -114,7 +114,7 @@ BUILT_BIN="$REPO_ROOT/target/release/chump-curator-supervisor"
 
 if [[ ! -x "$BUILT_BIN" && ! -x "$STABLE_BIN" ]]; then
     log "Binary not found — building chump-curator-supervisor (release)..."
-    (cd "$REPO_ROOT" && PATH="$HOME/.cargo/bin:$PATH" cargo build --release -p chump-curator-supervisor)
+    (cd "$REPO_ROOT" && PATH="$HOME/.cargo/bin:$PATH" cargo build --release -p chump-curator-supervisor) || true
 fi
 
 # Copy the freshest build into the stable path. `install` is atomic enough for
@@ -134,8 +134,8 @@ elif [[ -x "$BUILT_BIN" ]]; then
     log "WARNING: only a disposable build path is available ($BUILT_BIN)."
     log "WARNING: this is the RESILIENT-246 fragility — install into ~/.cargo/bin when you can."
 else
-    log "ERROR: no chump-curator-supervisor binary could be found or built"
-    exit 1
+    log "[WARN] no chump-curator-supervisor binary could be found or built — skipping install (INFRA-2312)"
+    exit 0
 fi
 log "supervisor binary: $BIN_PATH"
 

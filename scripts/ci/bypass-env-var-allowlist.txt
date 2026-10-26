@@ -14,7 +14,7 @@
 
 # ── Category A quality-gate bypasses — targeted deletion gaps filed ───────────
 # CHUMP_PREFLIGHT_SKIP deleted (INFRA-2422) — replaced by main-red-aware auto-skip
-CHUMP_PREFLIGHT_SKIP_PIPEFAIL      # Bypass-Justification: pipefail-sweep gate skip; deletion target  gap: INFRA-2427
+# CHUMP_PREFLIGHT_SKIP_PIPEFAIL deleted (INFRA-2427) — pipefail-race-sweep is always-on
 
 # ── Category A bypasses — deletion gap TBD ───────────────────────────────────
 CHUMP_AMBIENT_INSTALL_SKIP         # Bypass-Justification: ambient install hook skip; grandfathered  gap: TBD

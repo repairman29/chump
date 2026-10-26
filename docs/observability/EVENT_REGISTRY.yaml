@@ -8548,6 +8548,7 @@ events:
     fields_required: [ts, kind, remote, base, reason]
   # ── INFRA-1361: GitHub App installation-token rotator ────────────────────
   - kind: gh_token_rotate_noop
+    deprecated: true
     effect_metric: self
     emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
     trigger: chump gh-token rotate was invoked but ~/.chump/github_apps.toml is
@@ -8558,6 +8559,7 @@ events:
     fields_optional: [session, worktree, harness]
 
   - kind: gh_token_rotated
+    deprecated: true
     effect_metric: self
     emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
     trigger: a fresh GitHub App installation token was successfully fetched for
@@ -15193,6 +15195,99 @@ events:
       failure_class so claim latency and failure modes are observable.
     consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
     fields_required: [ts, kind, gap_id, session, outcome, cost_ms, failure_class]
+
+  - kind: picker_safety_guard_tripped
+    status: active
+    effect_metric: resilient
+    emitter: src/gap_cmd.rs (INFRA-2170)
+    emitter_paths: [src/gap_cmd.rs]
+    trigger: >
+      Emitted when chump gap reserve detects an external_repo skill tag without
+      a Mode D authorization marker (--require-mode-d, CHUMP_MODE_D=1, or Mode D in notes).
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, guard, title, skills, enforced]
+
+  - kind: stale_closed_pr_ref
+    status: active
+    effect_metric: credible
+    emitter: scripts/dev/audit-stale-closed-pr-refs.sh (INFRA-1911)
+    emitter_paths: [scripts/dev/audit-stale-closed-pr-refs.sh]
+    trigger: >
+      Emitted per open gap in state.db whose description or notes reference a PR
+      that is CLOSED without merge in github_cache.db.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap_id, pr_number, applied]
+
+  - kind: inbox_watcher_missing
+    status: active
+    effect_metric: resilient
+    emitter: scripts/hooks/inbox-watcher-nag.sh (INFRA-1941)
+    emitter_paths: [scripts/hooks/inbox-watcher-nag.sh]
+    trigger: >
+      Emitted (debounced 10m) when a session's inbox-watcher heartbeat file is
+      missing or older than 600s.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, session, age_s]
+
+  - kind: inbox_watcher_opted_out
+    status: active
+    effect_metric: self
+    emitter: scripts/hooks/inbox-watcher-nag.sh (INFRA-1941)
+    emitter_paths: [scripts/hooks/inbox-watcher-nag.sh]
+    trigger: >
+      Emitted when CHUMP_INBOX_WATCHER_OPTOUT=1 suppresses the inbox-watcher nag hook.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, session]
+
+  - kind: a2a_msg_sent
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when an A2A inbox message is sent via a2a_emit_lifecycle.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, msg_id, from, to]
+
+  - kind: a2a_msg_delivered
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when an A2A inbox message is delivered to a recipient inbox via a2a_emit_lifecycle.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, msg_id, from, to]
+
+  - kind: a2a_msg_acked
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when an A2A inbox message is acknowledged by the recipient via a2a_emit_lifecycle.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, msg_id, from, to]
+
+  - kind: a2a_msg_schema_violation
+    status: active
+    effect_metric: credible
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when a2a_validate_message_json rejects a malformed or incomplete A2A message payload.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, reason, missing_fields]
+
+  - kind: wedge_auto_filed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh (INFRA-2068)
+    emitter_paths: [scripts/coord/wizard-daemon.sh]
+    trigger: >
+      Emitted when wizard-daemon Step 7 auto-reserves a P1/xs gap for a novel wedge_class_detected signature.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, signature_hash, gap_id, priority, effort]
 
 
 

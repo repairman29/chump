@@ -261,6 +261,10 @@ impl WorkerCapability {
             heartbeat_at: now,
             ttl_seconds: DEFAULT_TTL_SECONDS,
             external_repo_enabled: self.external_repo_enabled,
+            token_budget_remaining: None,
+            compute_available_pct: None,
+            bandwidth_kbps: None,
+            healthy: true,
         }
     }
 }

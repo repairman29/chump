@@ -1341,12 +1341,68 @@ PY
         "\"rebased_count\":$rebased_count,\"rebases_this_run\":$_CASCADE_REBASES_THIS_RUN"
 }
 
+# ── Step 7: Auto-file gap on novel wedge class (INFRA-2068) ──────────────────
+#
+# Scans recent kind=wedge_class_detected events in ambient.jsonl, deduplicates by
+# signature_hash against .chump-locks/wizard-wedge-filed.txt (within 24h), and
+# auto-reserves a P1/xs gap via `chump gap reserve`, emitting kind=wedge_auto_filed.
+#
+# scanner-anchor: "kind":"wedge_auto_filed"
+step7_auto_wedge_file() {
+    if [[ ! -f "$AMBIENT" ]]; then
+        return 0
+    fi
+    local dedup_file="$LOCK_DIR/wizard-wedge-filed.txt"
+    touch "$dedup_file"
+    local now_epoch
+    now_epoch="$(date -u +%s)"
+    local lines=""
+    lines="$(grep -E '"kind":"wedge_class_detected"' "$AMBIENT" 2>/dev/null | tail -20 || true)"
+    [[ -z "$lines" ]] && return 0
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local parsed
+        parsed="$(python3 - "$line" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+    sig = d.get("signature_hash") or d.get("wedge_class") or ""
+    title = d.get("summary") or d.get("title") or f"Auto-remediate wedge {sig}"
+    print(f"{sig}|{title}")
+except Exception:
+    pass
+PY
+)"
+        [[ -z "$parsed" ]] && continue
+        local sig="${parsed%%|*}"
+        local summary="${parsed#*|}"
+        [[ -z "$sig" ]] && continue
+
+        # Check 24h dedup in wizard-wedge-filed.txt (format: sig<TAB>epoch<TAB>gap_id)
+        local already=0
+        if [[ -s "$dedup_file" ]]; then
+            already="$(awk -F'\t' -v s="$sig" -v now="$now_epoch" '$1 == s && (now - $2) < 86400 { found=1 } END { print found+0 }' "$dedup_file")"
+        fi
+        (( already > 0 )) && continue
+
+        local new_gap_id="RESILIENT-WEDGE"
+        if [[ "$DRY_RUN" != "1" ]] && command -v chump >/dev/null 2>&1; then
+            new_gap_id="$(chump gap reserve --domain RESILIENT --title "fix(wedge): $summary" --priority P1 --effort xs 2>/dev/null | awk 'NR==1{print $1}' || echo "RESILIENT-WEDGE")"
+        fi
+        printf '%s\t%s\t%s\n' "$sig" "$now_epoch" "$new_gap_id" >> "$dedup_file"
+        emit_ambient "wedge_auto_filed" \
+            "\"signature_hash\":\"$sig\",\"gap_id\":\"$new_gap_id\",\"priority\":\"P1\",\"effort\":\"xs\""
+    done <<< "$lines"
+}
+
 # ── Run the orchestration loop ────────────────────────────────────────────────
 
 step1_classify_prs
 step4_dispatch_pickable_gaps
 step5_cascade_rebase
 step6_broadcast_on_stall
+step7_auto_wedge_file
 
 log "wizard-daemon: Phase 1+2 cycle complete (recovery_emits=$_RECOVERY_EMITS_THIS_RUN cascade_rebases=$_CASCADE_REBASES_THIS_RUN)"
 emit_ambient "wizard_daemon_action" \

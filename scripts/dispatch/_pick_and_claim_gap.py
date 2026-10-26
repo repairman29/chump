@@ -1084,6 +1084,37 @@ def _record_external_repo_cycle(
         pass
 
 
+def _load_capability_manifests(repo_root: str) -> list[dict]:
+    """INFRA-1829: load live CapabilityManifest entries from .chump-locks/capabilities/*.jsonl."""
+    cap_dir = Path(repo_root) / ".chump-locks" / "capabilities"
+    if not cap_dir.is_dir():
+        return []
+    now = int(time.time())
+    live: list[dict] = []
+    for p in sorted(cap_dir.glob("*.jsonl")):
+        try:
+            lines = [
+                ln.strip()
+                for ln in p.read_text(encoding="utf-8").splitlines()
+                if ln.strip()
+            ]
+            if not lines:
+                continue
+            entry = json.loads(lines[-1])
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("healthy") is False:
+                continue
+            hb = int(entry.get("heartbeat_at") or 0)
+            ttl = int(entry.get("ttl_seconds") or 300)
+            if hb > 0 and (now - hb) > ttl:
+                continue
+            live.append(entry)
+        except Exception:
+            continue
+    return live
+
+
 def main() -> int:
     # INFRA-8224: CLI flags for the no-claim (preview/ranking) path that the
     # _pick_gap.py shim and curator-jit-scheduler call.
@@ -1225,6 +1256,33 @@ def main() -> int:
     # Specialized nodes opt back into hard filtering with WORKER_SKILLS_HARD=1.
     skills_hard = os.environ.get("WORKER_SKILLS_HARD", "0") == "1"
     soft_demoted: dict = {}
+    # INFRA-1829: read CapabilityManifest (.chump-locks/capabilities/*.jsonl)
+    # when CHUMP_SKILL_ROUTING != 0.
+    skill_routing_enabled = (
+        (not curator_mode) and os.environ.get("CHUMP_SKILL_ROUTING", "1") != "0"
+    )
+    live_manifests = (
+        _load_capability_manifests(repo_root) if skill_routing_enabled else []
+    )
+    all_manifest_skills: set[str] = set()
+    no_manifest_match: dict[str, list[str]] = {}
+    if live_manifests:
+        cur_sid = os.environ.get("CHUMP_SESSION_ID", "")
+        cur_wid = os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", ""))
+        for m in live_manifests:
+            m_skills = {
+                s.lower().strip()
+                for s in (m.get("skills") or [])
+                if isinstance(s, str) and s.strip()
+            }
+            all_manifest_skills |= m_skills
+            if not worker_skills and (
+                (cur_sid and m.get("session_id") == cur_sid)
+                or (cur_wid and m.get("node_id") == cur_wid)
+            ):
+                worker_skills = set(m_skills)
+        if not worker_skills and all_manifest_skills:
+            worker_skills = set(all_manifest_skills)
 
     # FLEET-046: pillar/domain rebalancing.
     # INFRA-8224: rebalance (and its wedge_rank) is the claim-path tiebreaker;
@@ -1434,6 +1492,12 @@ def main() -> int:
                 continue
             if skill_mismatch:
                 soft_demoted[gid] = sorted(skills_required - worker_skills)
+            if (
+                live_manifests
+                and skills_required
+                and not (skills_required & all_manifest_skills)
+            ):
+                no_manifest_match[gid] = sorted(skills_required)
 
             # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
             worker_backend = os.environ.get("WORKER_BACKEND", "").lower()
@@ -1553,6 +1617,20 @@ def main() -> int:
         # INFRA-8176: events for the gap actually offered this cycle.
         def _emit_pick_events(gap_id: str) -> None:
             _emit_skipped_open_pr(skipped_open_pr, "gh" if gh_fallback else "pr_state")
+            if gap_id in no_manifest_match:
+                # scanner-anchor: "kind":"skill_routing_no_match"
+                _emit_ambient(
+                    {
+                        "kind": "skill_routing_no_match",
+                        "event": "skill_routing_no_match",
+                        "gap_id": gap_id,
+                        "required_skills": no_manifest_match[gap_id],
+                        "available_skill_sets": [
+                            m.get("skills", []) for m in live_manifests
+                        ],
+                        "session": os.environ.get("CHUMP_SESSION_ID", ""),
+                    }
+                )
             if gap_id in soft_demoted:
                 _emit_ambient(
                     {"kind":"picker_soft_skill_demoted",  # literal kind at the emit site (EVENT_REGISTRY scanner)

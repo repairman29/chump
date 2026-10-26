@@ -40,10 +40,14 @@ use std::io::Write as IoWrite;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Wire-version constant. Bump to `chump-capability-v2` when adding a new
-/// REQUIRED field; readers should tolerate forward-compat optional fields
-/// without a bump.
-pub const CAPABILITY_SCHEMA_VERSION: &str = "chump-capability-v1";
+/// Wire-version constant. INFRA-1805 bumped to `chump-capability-v2` with
+/// dynamic resource & health fields inspired by `chump-proprietary` (`RobotState`);
+/// readers tolerate v1 fixtures via `#[serde(default)]`.
+pub const CAPABILITY_SCHEMA_VERSION: &str = "chump-capability-v2";
+
+fn default_true() -> bool {
+    true
+}
 
 /// Default heartbeat TTL when not overridden by the caller. Matches the
 /// 5-min stale-session window the picker uses to exclude dead manifests.
@@ -93,6 +97,22 @@ pub struct CapabilityManifest {
     /// gaps (`CHUMP_EXTERNAL_REPO_PICK_OK=1` or `true`). Defaults to `false`.
     #[serde(default)]
     pub external_repo_enabled: bool,
+    /// INFRA-1805 (`chump-proprietary` `RobotState` adaptation): remaining
+    /// token budget for this worker session, if tracked.
+    #[serde(default)]
+    pub token_budget_remaining: Option<u64>,
+    /// INFRA-1805 (`chump-proprietary` `RobotState` adaptation): available
+    /// compute headroom percentage (`0..=100`).
+    #[serde(default)]
+    pub compute_available_pct: Option<u8>,
+    /// INFRA-1805 (`chump-proprietary` `RobotState` adaptation): estimated
+    /// network bandwidth in kbps.
+    #[serde(default)]
+    pub bandwidth_kbps: Option<u32>,
+    /// INFRA-1805 (`chump-proprietary` `RobotState` adaptation): self-reported
+    /// worker health status (defaults to `true` when deserializing v1 manifests).
+    #[serde(default = "default_true")]
+    pub healthy: bool,
 }
 
 impl CapabilityManifest {
@@ -157,6 +177,10 @@ pub fn current_manifest(skills: Vec<String>) -> CapabilityManifest {
         heartbeat_at: now,
         ttl_seconds: DEFAULT_TTL_SECONDS,
         external_repo_enabled,
+        token_budget_remaining: None,
+        compute_available_pct: None,
+        bandwidth_kbps: None,
+        healthy: true,
     }
 }
 
@@ -403,8 +427,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn schema_version_is_v1() {
-        assert_eq!(CAPABILITY_SCHEMA_VERSION, "chump-capability-v1");
+    fn schema_version_is_v2() {
+        assert_eq!(CAPABILITY_SCHEMA_VERSION, "chump-capability-v2");
     }
 
     #[test]
@@ -422,6 +446,10 @@ mod tests {
             heartbeat_at: Utc::now(),
             ttl_seconds: DEFAULT_TTL_SECONDS,
             external_repo_enabled: false,
+            token_budget_remaining: Some(50_000),
+            compute_available_pct: Some(80),
+            bandwidth_kbps: Some(10_000),
+            healthy: true,
         };
         let json = serde_json::to_string(&m).expect("serialize");
         let back: CapabilityManifest = serde_json::from_str(&json).expect("deserialize");
@@ -444,6 +472,10 @@ mod tests {
             heartbeat_at: now,
             ttl_seconds: 300,
             external_repo_enabled: false,
+            token_budget_remaining: None,
+            compute_available_pct: None,
+            bandwidth_kbps: None,
+            healthy: true,
         };
         assert!(m.is_alive(now));
         let later = now + chrono::Duration::seconds(200);
@@ -493,6 +525,10 @@ mod tests {
             heartbeat_at: now,
             ttl_seconds: 300,
             external_repo_enabled: false,
+            token_budget_remaining: None,
+            compute_available_pct: None,
+            bandwidth_kbps: None,
+            healthy: true,
         };
         let m1 = make("s1", vec!["shell", "docs"]);
         let m2 = make("s2", vec!["rust", "ci-mirror"]);
@@ -521,6 +557,10 @@ mod tests {
             heartbeat_at: Utc::now(),
             ttl_seconds: DEFAULT_TTL_SECONDS,
             external_repo_enabled: false,
+            token_budget_remaining: None,
+            compute_available_pct: None,
+            bandwidth_kbps: None,
+            healthy: true,
         };
         append_file_audit(&m).expect("write audit");
         append_file_audit(&m).expect("write audit second time");

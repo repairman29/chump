@@ -26,34 +26,14 @@
 
 use anyhow::Result;
 use chump_coord::help_request::{BlockerType, HelpRequest, HelpStatus};
-use chump_coord::work_board::{Requirement, Subtask, SubtaskStatus, TransitionMiss};
+use chump_coord::work_board::{
+    format_transition_miss, Requirement, Subtask, SubtaskStatus, TransitionMiss,
+};
 use chump_coord::{CoordClient, CoordEvent};
 use std::env;
 
 fn print_transition_miss(verb: &str, id: &str, miss: &TransitionMiss) {
-    match miss {
-        TransitionMiss::NotFound => {
-            eprintln!("[chump-coord] cannot {} {}: not found", verb, id);
-        }
-        TransitionMiss::StaleRevision => {
-            eprintln!(
-                "[chump-coord] cannot {} {}: another agent updated it first (stale revision)",
-                verb, id
-            );
-        }
-        TransitionMiss::WrongState(s) => {
-            eprintln!(
-                "[chump-coord] cannot {} {}: subtask is in state {:?}, not the expected state",
-                verb, id, s
-            );
-        }
-        TransitionMiss::NotClaimHolder { holder, caller } => {
-            eprintln!(
-                "[chump-coord] cannot {} {}: claim is held by {} but caller is {}",
-                verb, id, holder, caller
-            );
-        }
-    }
+    eprintln!("{}", format_transition_miss(verb, id, miss));
 }
 
 fn session_id() -> String {
@@ -749,6 +729,40 @@ async fn main() -> Result<()> {
                             "[chump-coord] COMPLETED {} (parent={})",
                             s.subtask_id, s.parent_gap
                         ),
+                        Err(TransitionMiss::WrongState(SubtaskStatus::Open)) => {
+                            // INFRA-2107: Auto-claim unowned Open subtasks on complete
+                            // and print a note; if the implicit claim misses, print the
+                            // explicit remedy message.
+                            match client.claim_subtask(&id, &sess).await? {
+                                Ok(_) => {
+                                    eprintln!(
+                                        "[chump-coord] note: implicit claim performed for {} from state Open",
+                                        id
+                                    );
+                                    match client
+                                        .complete_subtask(&id, &sess, commit.as_deref())
+                                        .await?
+                                    {
+                                        Ok(s) => println!(
+                                            "[chump-coord] COMPLETED {} (parent={})",
+                                            s.subtask_id, s.parent_gap
+                                        ),
+                                        Err(miss2) => {
+                                            print_transition_miss("complete", &id, &miss2);
+                                            std::process::exit(1);
+                                        }
+                                    }
+                                }
+                                Err(_) => {
+                                    print_transition_miss(
+                                        "complete",
+                                        &id,
+                                        &TransitionMiss::WrongState(SubtaskStatus::Open),
+                                    );
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
                         Err(miss) => {
                             print_transition_miss("complete", &id, &miss);
                             std::process::exit(1);

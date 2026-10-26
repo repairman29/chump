@@ -1662,6 +1662,137 @@ async fn main() -> Result<()> {
         std::process::exit(run_store_cli(&args));
     }
 
+    // INFRA-1819: `chump ast-shape <repo-path> [--json] [--include-vendor]`
+    // Deterministic AST shape extractor CLI wrapping `chump_ast_crawler`.
+    // Exit codes: 0 = success, 2 = bad usage / missing path, 3 = crawl error.
+    if args.get(1).map(String::as_str) == Some("ast-shape") {
+        if args
+            .iter()
+            .skip(2)
+            .any(|a| matches!(a.as_str(), "--help" | "-h"))
+        {
+            println!("Usage: chump ast-shape <repo-path> [--json] [--include-vendor]");
+            println!("  --json            Emit full CodebaseShape JSON (default)");
+            println!("  --include-vendor  Include vendor/third_party directories");
+            return Ok(());
+        }
+        let mut target_path: Option<std::path::PathBuf> = None;
+        for a in args.iter().skip(2) {
+            match a.as_str() {
+                "--json" | "--include-vendor" => {}
+                s if s.starts_with('-') => {
+                    eprintln!("chump ast-shape: unknown flag {s}");
+                    std::process::exit(2);
+                }
+                s => {
+                    if target_path.is_none() {
+                        target_path = Some(std::path::PathBuf::from(s));
+                    }
+                }
+            }
+        }
+        let Some(repo_dir) = target_path else {
+            eprintln!("Usage: chump ast-shape <repo-path> [--json] [--include-vendor]");
+            std::process::exit(2);
+        };
+        if !repo_dir.exists() || !repo_dir.is_dir() {
+            eprintln!(
+                "chump ast-shape: path does not exist or is not a directory: {}",
+                repo_dir.display()
+            );
+            std::process::exit(2);
+        }
+        match chump_ast_crawler::crawl_repo(&repo_dir) {
+            Ok(shape) => {
+                match serde_json::to_string_pretty(&shape) {
+                    Ok(j) => println!("{j}"),
+                    Err(e) => {
+                        eprintln!("chump ast-shape: serialize error: {e}");
+                        std::process::exit(3);
+                    }
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump ast-shape: crawl error: {e:#}");
+                std::process::exit(3);
+            }
+        }
+    }
+
+    // INFRA-2018: `chump ack-rca <date-stamp> [--note <str>]`
+    // Records an operator/curator session's acknowledgement of an RCA doc
+    // at `.chump-locks/acks/${SESSION_ID}_${DATE}.json`.
+    if args.get(1).map(String::as_str) == Some("ack-rca") {
+        if args
+            .iter()
+            .skip(2)
+            .any(|a| matches!(a.as_str(), "--help" | "-h"))
+        {
+            println!("Usage: chump ack-rca <date-stamp> [--note <str>]");
+            println!("Writes .chump-locks/acks/${{SESSION_ID}}_${{DATE}}.json");
+            return Ok(());
+        }
+        let mut date_stamp: Option<String> = None;
+        let mut note = String::new();
+        let mut i = 2usize;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--note" => {
+                    note = args.get(i + 1).cloned().unwrap_or_default();
+                    i += 2;
+                }
+                s if s.starts_with('-') => {
+                    eprintln!("chump ack-rca: unknown flag {s}");
+                    std::process::exit(2);
+                }
+                s => {
+                    if date_stamp.is_none() {
+                        date_stamp = Some(s.to_string());
+                    }
+                    i += 1;
+                }
+            }
+        }
+        let Some(date) = date_stamp else {
+            eprintln!("Usage: chump ack-rca <date-stamp> [--note <str>]");
+            std::process::exit(2);
+        };
+        if date.contains("..") || date.contains('/') || date.contains('\\') {
+            eprintln!("chump ack-rca: invalid date-stamp {date:?}");
+            std::process::exit(2);
+        }
+        let sess = std::env::var("CHUMP_SESSION_ID")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(crate::ambient_stream::env_session_id)
+            .unwrap_or_else(|| "default-session".to_string());
+        let safe_sess: String = sess
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let root = repo_path::worktree_root();
+        let acks_dir = root.join(".chump-locks").join("acks");
+        std::fs::create_dir_all(&acks_dir)?;
+        let ack_path = acks_dir.join(format!("{safe_sess}_{date}.json"));
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let payload = serde_json::json!({
+            "session_id": sess,
+            "rca_date": date,
+            "acked_at": ts,
+            "note": note,
+        });
+        std::fs::write(&ack_path, serde_json::to_string_pretty(&payload)?)?;
+        println!("{}", ack_path.display());
+        return Ok(());
+    }
+
     // INFRA-2028: every `gh` subprocess chump spawns inherits this process's
     // env, but a subprocess spawned by chump doesn't get the macOS keychain
     // entitlement an interactive shell's `gh` has — so `gh` silently falls
@@ -11728,6 +11859,16 @@ async fn main() -> Result<()> {
                 // with external_repo:<owner/repo> in skills_required at reserve time.
                 // Prevents recurrence of the data gap that caused BEAST routing to fail.
                 let reserve_external_repo = flag("--external-repo");
+                let require_mode_d = args.iter().any(|a| a == "--require-mode-d");
+                if let Err(e) = crate::doctor::gap_cmd::check_external_repo_mode_d_guard(
+                    &worktree_root,
+                    reserve_external_repo.as_deref(),
+                    None,
+                    require_mode_d,
+                ) {
+                    eprintln!("{e:#}");
+                    std::process::exit(1);
+                }
                 let force = args.iter().any(|a| a == "--force");
                 // INFRA-592: --quiet suppresses progress; default emits one-line
                 // per phase to stderr so --json piping of stdout is unaffected.
@@ -24072,6 +24213,7 @@ fn validate_gap_mutation_args(
                 "--no-evidence-required",
                 "--no-outcome-required",
                 "--quiet",
+                "--require-mode-d",
                 "--skip-obs-acs",
                 "--why",
             ];

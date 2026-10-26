@@ -223,6 +223,77 @@ fn extract_pr_number_from_subject(subject: &str) -> Option<u64> {
     None
 }
 
+/// INFRA-2170: Guard `chump gap reserve` when `external_repo` is requested
+/// (via `--external-repo <owner/repo>` or `external_repo:` in `skills_required`)
+/// without `CHUMP_MODE_D=1` active in the environment.
+///
+/// Always emits `kind=picker_safety_guard_tripped` to `.chump-locks/ambient.jsonl`
+/// when `CHUMP_MODE_D != 1` and an external repo is tagged. When `enforce` is
+/// true (`--require-mode-d` flag or `CHUMP_ENFORCE_EXTERNAL_REPO_MODE_D=1`),
+/// returns `Err` to refuse the reservation; otherwise warns on stderr so existing
+/// callers that pass `--external-repo` without `CHUMP_MODE_D=1` remain backwards-compatible.
+/// # scanner-anchor: "kind":"picker_safety_guard_tripped"
+pub fn check_external_repo_mode_d_guard(
+    repo_root: &Path,
+    external_repo: Option<&str>,
+    skills_required: Option<&str>,
+    enforce_flag: bool,
+) -> Result<()> {
+    let ext_tag = external_repo
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("external_repo:{s}"))
+        .or_else(|| {
+            skills_required
+                .map(str::trim)
+                .filter(|s| s.contains("external_repo:"))
+                .map(str::to_string)
+        });
+    let Some(tag) = ext_tag else {
+        return Ok(());
+    };
+    let mode_d_active = std::env::var("CHUMP_MODE_D")
+        .ok()
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false);
+    if mode_d_active {
+        return Ok(());
+    }
+
+    use std::io::Write as _;
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let safe_tag = tag.replace(['"', '\\'], "");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"picker_safety_guard_tripped\",\"guard\":\"external_repo_without_mode_d\",\"tag\":\"{safe_tag}\"}}\n"
+    );
+    let locks = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&locks);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(locks.join("ambient.jsonl"))
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+
+    let enforce_env = std::env::var("CHUMP_ENFORCE_EXTERNAL_REPO_MODE_D")
+        .ok()
+        .as_deref()
+        == Some("1");
+    if enforce_flag || enforce_env {
+        bail!(
+            "INFRA-2170: refusing external_repo tag ({tag}) without Mode D active (set CHUMP_MODE_D=1 or omit --require-mode-d)"
+        );
+    }
+    eprintln!(
+        "[reserve] WARN (INFRA-2170): external_repo tag ({tag}) reserved without CHUMP_MODE_D=1 (pass --require-mode-d to enforce hard refusal)"
+    );
+    Ok(())
+}
+
 /// INFRA-1582: List gaps from `store`, honoring `--include-done` (which includes
 /// `done`/`closed` gaps alongside open ones).
 pub fn list_gaps_with_include_done(
@@ -524,5 +595,26 @@ mod tests {
         let amb = std::fs::read_to_string(tmp.path().join(".chump-locks/ambient.jsonl")).unwrap();
         assert!(amb.contains("\"kind\":\"product_delivery_verified\""));
         assert!(amb.contains("\"deploy_id\":\"dep-live-42\""));
+    }
+
+    #[test]
+    #[serial]
+    fn infra_2170_external_repo_guard_emits_and_refuses_when_enforced() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::remove_var("CHUMP_MODE_D");
+        std::env::remove_var("CHUMP_ENFORCE_EXTERNAL_REPO_MODE_D");
+
+        // Enforced without CHUMP_MODE_D=1 -> refuses and emits picker_safety_guard_tripped
+        let err = check_external_repo_mode_d_guard(tmp.path(), Some("owner/repo"), None, true)
+            .expect_err("must refuse when enforce_flag=true and CHUMP_MODE_D is unset");
+        assert!(format!("{err:#}").contains("INFRA-2170"));
+        let amb = std::fs::read_to_string(tmp.path().join(".chump-locks/ambient.jsonl")).unwrap();
+        assert!(amb.contains("\"kind\":\"picker_safety_guard_tripped\""));
+
+        // With CHUMP_MODE_D=1 -> succeeds even when enforced
+        std::env::set_var("CHUMP_MODE_D", "1");
+        check_external_repo_mode_d_guard(tmp.path(), Some("owner/repo"), None, true)
+            .expect("must allow when CHUMP_MODE_D=1");
+        std::env::remove_var("CHUMP_MODE_D");
     }
 }

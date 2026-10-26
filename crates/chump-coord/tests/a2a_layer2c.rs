@@ -75,6 +75,10 @@ fn fixture(
         heartbeat_at,
         ttl_seconds: DEFAULT_TTL_SECONDS,
         external_repo_enabled: false,
+        token_budget_remaining: None,
+        compute_available_pct: None,
+        bandwidth_kbps: None,
+        healthy: true,
     }
 }
 
@@ -227,6 +231,10 @@ async fn file_audit_trail_written_on_publish() {
         heartbeat_at: Utc::now(),
         ttl_seconds: DEFAULT_TTL_SECONDS,
         external_repo_enabled: false,
+        token_budget_remaining: None,
+        compute_available_pct: None,
+        bandwidth_kbps: None,
+        healthy: true,
     };
 
     // Publish twice (startup + one heartbeat).
@@ -255,7 +263,7 @@ async fn file_audit_trail_written_on_publish() {
         let parsed: serde_json::Value =
             serde_json::from_str(line).expect("audit line is valid JSON");
         assert_eq!(parsed["session_id"], sid.as_str());
-        assert_eq!(parsed["schema_version"], "chump-capability-v1");
+        assert_eq!(parsed["schema_version"], CAPABILITY_SCHEMA_VERSION);
     }
 
     std::env::remove_var("CHUMP_LOCKS_DIR");
@@ -340,6 +348,10 @@ fn route_by_skill_returns_correct_session() {
         heartbeat_at: now,
         ttl_seconds: 300,
         external_repo_enabled: false,
+        token_budget_remaining: None,
+        compute_available_pct: None,
+        bandwidth_kbps: None,
+        healthy: true,
     };
 
     let m1 = make("s-shell-only", vec!["shell", "docs"]);

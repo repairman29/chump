@@ -700,18 +700,8 @@ reaper_stuck_class_skipped      # reason: RESILIENT-050; emitted by scripts/ops/
 
 # INFRA-2400: the 16-kind emit-without-register batch reserved below was
 # backfilled with proper EVENT_REGISTRY.yaml entries; reservations removed.
-
-# ── INFRA-2396 register-without-emit batch: 5 orphans ─────────────────────────
-# These kinds are registered in EVENT_REGISTRY.yaml but no source currently
-# emits them. Likely emitters were renamed/removed during recent auto-merge-
-# armer + gh-token-rotate refactors. Reserved here so strict-mode CI gate
-# passes; proper cleanup (either re-add emit sites or prune from registry)
-# tracked under follow-up gap "INFRA-NEW: prune dead EVENT_REGISTRY entries".
-auto_merge_arm_dropped     # reason: INFRA-2396; registered in EVENT_REGISTRY.yaml but no source emit found; prior emitter likely lost in INFRA-2289 watcher refactor
-auto_merge_arm_restored    # reason: INFRA-2396; same as above
-auto_merge_arm_skipped     # reason: INFRA-2396; same as above
-gh_token_rotate_noop       # reason: INFRA-2396; registered but no source emit found; likely lost in gh-token-rotate refactor
-gh_token_rotated           # reason: INFRA-2396; same as above
+# INFRA-2401: the 5-kind register-without-emit batch (auto_merge_arm_*,
+# gh_token_rotate*) was cleaned up via scanner-anchor + deprecated: true.
 
 # ── INFRA-2406: cross-PR contract gate ────────────────────────────────────────
 # Emitted by scripts/ci/test-cross-pr-contract.sh — a CI-gate script in

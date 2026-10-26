@@ -1439,7 +1439,7 @@ jobs:
       - name: pipefail race sweep (INFRA-1658)
         run: bash scripts/ci/test-pipefail-race-sweep.sh
 
-      - name: claude orphan reaper (INFRA-1662)
+      - name: claude orphan reaper (INFRA-1662, INFRA-1680)
         run: bash scripts/ci/test-claude-reaper.sh
 
       - name: stale-process watchdog (INFRA-1663)
