@@ -1758,7 +1758,11 @@ CHUMP_GH_CALL_CRITICALITY=background <noisy-command>
 
 **Call-criticality tagging:** see `CLAUDE.md § Call criticality (INFRA-1080)`.
 
-## Tangled-stack rebase recipe (INFRA-1660, 2026-05-21)
+### Tangled-stack rebase recipe (INFRA-1660, 2026-05-21)
+
+Scenario (a tangled-stack PR): a PR with stacked dependent branches/commits
+needs rebasing onto an updated base, and sibling PRs have merged underneath it
+since you branched.
 
 When a PR has been open for hours through multiple sibling-PR merges and a
 straight `git rebase origin/main` produces a wall of cross-file conflicts
@@ -1784,6 +1788,13 @@ git diff --staged --stat
 git commit -m "feat(GAP-ID): <single-line intent>"
 git push --force-with-lease
 ```
+
+To keep a backup first, run `git branch backup/<gap>-pre-reset`. To start from
+a fresh branch instead:
+`git checkout -b <gap>-v2 origin/main && git checkout <old-branch> -- . && git reset --soft origin/main`.
+
+**Caution:** `--force-with-lease` rewrites remote history. Only use it on a
+branch you own; never on a shared branch or `main`.
 
 **When to use:**
 - PR has 4+ commits including fmt-drift / sibling-cherry-picks / retries
