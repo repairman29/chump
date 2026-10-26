@@ -2592,6 +2592,15 @@ elif [[ ${#GAP_IDS[@]} -gt 0 ]] && command -v chump >/dev/null 2>&1; then
     elif [[ "$_bm_gap_domain" == "EXTERNAL" ]]; then
         _BM_MODE="B"
         _BM_MODE_REASON="EXTERNAL domain (${_bm_route_gap})"
+    else
+        # META-206: docs-only (.md-only) diffs route to Mode B instead of Mode A;
+        # empty or uncomputable diff keeps Mode A (fail-safe).
+        _bm_changed_files="$(git diff --name-only "${BASE_BRANCH:-main}"...HEAD 2>/dev/null || true)"
+        if [[ -n "$_bm_changed_files" ]] && ! printf '%s\n' "$_bm_changed_files" | grep -qvE '\.md$'; then  # pipefail-sweep-allowed
+            _BM_MODE="B"
+            _BM_MODE_REASON="META-206: docs-only (.md-only) diff (${_bm_route_gap})"
+            info "INFRA-2133: $_BM_MODE_REASON — routing to Mode B"
+        fi
     fi
 fi
 

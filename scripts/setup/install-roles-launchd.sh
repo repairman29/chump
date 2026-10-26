@@ -39,11 +39,16 @@ get_label() {
   esac
 }
 
+INSTALLED_COUNT=0
+
 install_one() {
   local example="$1"
   local label
   label="$(get_label "$example")"
-  local src="$ROOT/scripts/$example"
+  local src="$ROOT/scripts/plists/$example"
+  if [[ ! -f "$src" && -f "$ROOT/scripts/$example" ]]; then
+    src="$ROOT/scripts/$example"
+  fi
   local dest="$LAUNCH_AGENTS/${label}.plist"
   if [[ ! -f "$src" ]]; then
     echo "Skip (missing): $example"
@@ -57,6 +62,7 @@ install_one() {
   launchctl unload "$dest" 2>/dev/null || true
   launchctl load "$dest"
   echo "  Loaded: $label"
+  INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
 }
 
 echo "Chump repo: $ROOT"
@@ -66,6 +72,11 @@ echo ""
 for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example doc-keeper.plist.example sentinel.plist.example oven-tender.plist.example restart-vllm-if-down.plist.example hourly-update-to-discord.plist.example shed-load.plist.example cos-weekly-snapshot.plist.example com.chump.autonomy-cron.plist.example; do
   install_one "$ex"
 done
+
+if [[ "$INSTALLED_COUNT" -eq 0 ]]; then
+  echo "ERROR (INFRA-8569): zero launchd plists matched under $ROOT/scripts/plists/ or $ROOT/scripts/." >&2
+  exit 1
+fi
 
 echo ""
 echo "All roles are installed and loaded. They will run at:"

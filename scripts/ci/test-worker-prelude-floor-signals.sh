@@ -82,8 +82,8 @@ else
 fi
 
 # Verify it's called in ALL three required paths.
-# Use grep -A6 — the release-lock line sits between the log and the emit call.
-if grep -A6 "failed pre-pick preflight" "$WORKER" 2>/dev/null | grep -q "_emit_worker_stuck"; then
+# Use grep -A35 — the release-lock + RESILIENT-332 cooldown block sits between the log and the emit call.
+if grep -A35 "failed pre-pick preflight" "$WORKER" 2>/dev/null | grep -q "_emit_worker_stuck"; then
     ok "worker.sh: worker_stuck on preflight_fail"
 else
     fail "worker.sh: worker_stuck NOT called on preflight_fail path"
@@ -148,11 +148,17 @@ chmod +x "$FAKE/scripts/dev/chump-binary-unwedge.sh"
 printf 'import sys\nprint("", end="")\n' > "$FAKE/scripts/dispatch/_pick_and_claim_gap.py"
 
 AMB="$TMP/ambient.jsonl"
+mkdir -p "$TMP/.chump"
+echo 3 > "$TMP/.chump/AUTONOMY_LEVEL"
 
 # Common env for all worker runs (fast exit: stand-down after 1 empty cycle)
 _WORKER_ENV=(
     PATH="$TMP/bin:$PATH"
+    HOME="$TMP"
+    CLAUDE_CODE_OAUTH_TOKEN="test-token"
     REPO_ROOT="$FAKE"
+    CHUMP_REPO="$FAKE"
+    CHUMP_WORKER_SINGLE_TICK="1"
     CHUMP_AMBIENT_LOG="$AMB"
     AGENT_ID="T1"
     FLEET_LOG_DIR="$TMP/logs"

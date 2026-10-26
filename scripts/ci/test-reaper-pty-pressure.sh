@@ -39,11 +39,20 @@ exec /usr/sbin/sysctl "$@"
 EOF
 chmod +x "$FAKEBIN/sysctl"
 
-# We can't reasonably stub `ls /dev/ttys???` via PATH (ls is bash builtin
-# resolution). Instead, the reaper reads the count via wc. We rely on the
-# real /dev/ttys??? for the below-threshold check (this host has ~127, well
-# under the 65% default threshold of 511) and on FAKE_PTMX_MAX=150 for the
-# above-threshold check (127/150 = 84% IS pressure, INFRA-1930).
+# INFRA-3345: stub `wc -l` so the test controls both numerator (allocated ptys)
+# and denominator (FAKE_PTMX_MAX) deterministically, regardless of the host's
+# real /dev/ttys??? count (which may be <20 on a fresh shell or 0 on Linux).
+cat > "$FAKEBIN/wc" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-l" ] && [ -n "${FAKE_PTY_ALLOC:-}" ]; then
+    cat >/dev/null 2>&1 || true
+    echo "$FAKE_PTY_ALLOC"
+    exit 0
+fi
+exec /usr/bin/wc "$@"
+EOF
+chmod +x "$FAKEBIN/wc"
+export FAKE_PTY_ALLOC=127
 
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }

@@ -141,3 +141,24 @@ Productized 2026-05-24 via INFRA-1940 follow-up to INFRA-1936 (inbox-watcher pat
 - `docs/process/WIZARD_STRATEGIC_BACKLOG.md` (META-095) — what-next during slack
 - `docs/process/INBOX_WATCHER_PATTERN.md` (INFRA-1936) — wake-on-message
 - `docs/strategy/ROADMAP_*.md` — what to actually work on
+
+## WHEN_ACTIVE
+
+Activate the orchestrator role whenever the queue needs pulse-and-dispatch coordination, keystone unwedging across multiple lanes, or objective-aligned gap ranking. Stand down once all five wizard-retirement criteria in `docs/process/OPERATOR_PLAYBOOK.md` §8 hold continuously and `chump fleet autopilot` is healthy.
+
+## CURRENT_OBJECTIVE_PROTOCOL
+
+At the start of every iteration, read `.chump-locks/current-objective.json` (or `chump objective show`) and `.chump-locks/iter-agenda.jsonl` before dispatching any curator or claiming any keystone gap. Every dispatched gap must advance the active objective or unblock a CI/trunk wedge blocking that objective.
+
+## DISPATCH_POLICY
+
+Route lane-specific work to the owning curator via `scripts/coord/broadcast.sh --to <curator-session>` with the 4-field directed dispatch contract (`Target`, `Why`, `Verification`, `Deadline`). Only claim keystone gaps directly when a single fix unblocks multiple curator lanes simultaneously.
+
+## CHECKPOINT_DISCIPLINE
+
+Write an iteration checkpoint to `.chump-locks/iter-agenda.jsonl` and emit an ambient status event at the end of each 5-step loop iteration so a successor orchestrator session can resume without rediscovery overhead.
+
+## KPI_REPORTING
+
+Report the four pillar metrics (Credible, Effective, Resilient, Zero-Waste) alongside objective progress (`merged_prs`, `wedged_prs`, `unblocked_lanes`) at each iteration boundary using ground-truth receipts from `state.db` and `github_cache.db`.
+

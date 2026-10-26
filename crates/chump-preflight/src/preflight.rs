@@ -1251,6 +1251,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // pure local (fifo + subshell, no network).
         "scripts/ci/test-parse-token-usage-dead-writer-timeout.sh",
         "scripts/ci/test-event-registry-coverage.sh",
+        "scripts/ci/test-a2a-always-on.sh",
+        "scripts/ci/test-worker-prelude-reads-floor.sh",
+        "scripts/ci/test-worker-prelude-floor-signals.sh",
         // CREDIBLE-1493: SELF_REPORTS.yaml shape + every self-report's source
         // and command exist in the tree (mirrors the ci.yml step). ~1s, local.
         "scripts/ci/test-self-reports-registry.sh",

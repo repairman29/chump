@@ -171,6 +171,7 @@ if [[ "$_WORKER_SINGLE_TICK" != "1" ]]; then
         # scanner-anchor: "kind":"worker_loop_backend"
         printf '{"ts":"%s","kind":"worker_loop_backend","agent":"%s","backend":"rust","bin":"%s"}\n' \
             "$_worker_ts" "$AGENT_ID" "$_chumpd_bin" >> "$_worker_ambient" 2>/dev/null || true
+        export CHUMP_WORKER_SINGLE_TICK=1
         exec "$_chumpd_bin" worker
     fi
     printf '{"ts":"%s","kind":"worker_loop_backend","agent":"%s","backend":"legacy","bin":"none"}\n' \
