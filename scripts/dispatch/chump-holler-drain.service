@@ -1,6 +1,6 @@
 # chump-holler-drain.service — PRODUCT-320
 # Drains user feedback events from Supabase into Chump gaps / Discord DM.
-# Portable across nodes: uses %h/chump and EnvironmentFile=-%h/.chump/node.env
+# Portable across nodes: uses __REPO_ROOT__, __HOME__, and __NODE_ENV__
 # (no host-specific /home/<user> literals).
 
 [Unit]
@@ -10,15 +10,15 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/chump
-EnvironmentFile=-%h/.chump/node.env
-EnvironmentFile=-%h/.chump/providers.env
-EnvironmentFile=-%h/.chump/supabase.env
-EnvironmentFile=-%h/.chump/holler.env
-Environment=CHUMP_REPO_ROOT=%h/chump
-Environment=CHUMP_BIN=%h/.local/bin/chump
-Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/bin/bash %h/chump/scripts/ops/holler-drain.sh
+WorkingDirectory=__REPO_ROOT__
+Environment=HOME=__HOME__
+EnvironmentFile=-__NODE_ENV__
+EnvironmentFile=-__HOME__/.chump/supabase.env
+EnvironmentFile=-__HOME__/.chump/holler.env
+Environment=CHUMP_REPO_ROOT=__REPO_ROOT__
+Environment=CHUMP_BIN=__BIN_DIR__/chump
+Environment=PATH=__BIN_DIR__:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash __REPO_ROOT__/scripts/ops/holler-drain.sh
 TimeoutStartSec=90
-StandardOutput=append:%h/.chump/logs/holler-drain.log
-StandardError=append:%h/.chump/logs/holler-drain.log
+StandardOutput=append:__HOME__/.chump/logs/holler-drain.log
+StandardError=append:__HOME__/.chump/logs/holler-drain.log
