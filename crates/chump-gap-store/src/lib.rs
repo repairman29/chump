@@ -5161,9 +5161,9 @@ impl GapStore {
                 )
                 .unwrap_or(false);
             if !exists_in_db
-                && (g.title.trim().is_empty()
-                    || g.status.trim().is_empty()
-                    || g.domain.trim().is_empty())
+                && g.title.trim().is_empty()
+                && g.status.trim().is_empty()
+                && g.domain.trim().is_empty()
             {
                 skipped += 1;
                 continue;
