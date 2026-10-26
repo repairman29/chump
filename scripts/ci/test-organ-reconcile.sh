@@ -614,4 +614,71 @@ grep -q '"unit":"chump-revive-organ.service"' "$AMBIENT" \
 rm -f "$TMP/bins/journalctl"
 pass "13: paused-timers.txt comment+suffix matching, 60m manual-stop guard, and organ_revived emit (RESILIENT-1692)"
 
+# ── 14. RESILIENT-1734 + INFRA-8160 + PRODUCT-320: restored home=cuphead organs, pre-rehome liveness gate, and nats/holler drain units ──
+for restored_unit in \
+    "chump-ci-flake-rerun.timer" \
+    "chump-ci-health-gate.timer" \
+    "chump-pr-stuck-live-scan.service" \
+    "chump-pr-stuck-cluster-detector.service" \
+    "chump-nats-gap-drain.service" \
+    "chump-holler-drain.timer"; do
+    line="$(grep -E "^enabled[[:space:]]+${restored_unit//./\\.}" "$REAL_MANIFEST")"
+    [[ -n "$line" ]] || fail "14: real manifest missing enabled line for $restored_unit"
+    grep -q 'home=cuphead' <<<"$line" || fail "14: $restored_unit must declare home=cuphead in organ-manifest.txt; got: $line"
+done
+
+for portable_unit in \
+    "$REPO_ROOT/scripts/dispatch/chump-nats-gap-drain.service" \
+    "$REPO_ROOT/scripts/dispatch/chump-holler-drain.service" \
+    "$REPO_ROOT/scripts/dispatch/chump-holler-drain.timer"; do
+    [[ -f "$portable_unit" ]] || fail "14: missing tracked unit $portable_unit"
+    if grep -qE '/home/jeff|/Users/jeffadkins' "$portable_unit"; then
+        fail "14: $portable_unit must not contain hardcoded host paths (/home/jeff or /Users/jeffadkins)"
+    fi
+done
+
+MANIFEST="$TMP/manifest-resilient-1734.txt"
+cat > "$MANIFEST" <<'EOF'
+enabled  chump-rehome-test.timer  role=brain requires=bin:chump-good-binary home=slim
+EOF
+echo "chump-rehome-test.timer" > "$ACTIVE_FILE"
+: > "$ENABLE_FAIL_FILE"; : > "$VERIFY_FAIL_FILE"; : > "$CALL_LOG"; : > "$AMBIENT"
+rm -rf "$BACKOFF_DIR"
+
+# 14a. Target home 'slim' has NO recent heartbeat (<10m) in ambient -> refuse to stop/disable on cuphead.
+rehome_defer_out="$(CHUMP_ORGAN_MANIFEST_NODE=cuphead run_reconcile --apply)"
+grep -qxF "chump-rehome-test.timer" "$ACTIVE_FILE" \
+    || fail "14a: organ must remain active on cuphead when target home slim has no recent heartbeat"
+grep -q "disable.*chump-rehome-test.timer" "$CALL_LOG" \
+    && fail "14a: reconcile must NOT disable chump-rehome-test.timer when target home is offline; calls: $(cat "$CALL_LOG")"
+grep -q '"kind":"organ_rehome_deferred_target_offline"' "$AMBIENT" \
+    || fail "14a: expected kind=organ_rehome_deferred_target_offline in ambient; got: $(cat "$AMBIENT")"
+grep -q '"target_home":"slim"' "$AMBIENT" \
+    || fail "14a: expected target_home=slim in organ_rehome_deferred_target_offline; got: $(cat "$AMBIENT")"
+
+# 14b. Target home 'slim' emits a fresh heartbeat (<10m) -> rehome stops/disables on cuphead.
+printf '{"ts":"%s","kind":"node_heartbeat","host":"slim"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$AMBIENT"
+: > "$CALL_LOG"
+CHUMP_ORGAN_MANIFEST_NODE=cuphead run_reconcile --apply >/dev/null
+grep -q "disable --now chump-rehome-test.timer" "$CALL_LOG" \
+    || fail "14b: expected chump-rehome-test.timer to be disabled on cuphead once slim has a fresh heartbeat; calls: $(cat "$CALL_LOG")"
+
+# 14c. INFRA-8160: nats-to-gap.py --once processes create/update/close envelopes and is idempotent on replay.
+NATS_DRAIN="$REPO_ROOT/scripts/coord/nats-to-gap.py"
+[[ -x "$NATS_DRAIN" ]] || fail "14c: missing executable $NATS_DRAIN"
+NATS_TMP="$TMP/nats-drain"
+mkdir -p "$NATS_TMP"
+NATS_DB="$NATS_TMP/state.db"
+NATS_IN="$NATS_TMP/envelopes.jsonl"
+cat > "$NATS_IN" <<'EOF'
+{"subject":"chump.gaps.create","data":{"id":"INFRA-B99","title":"Synthetic NATS gap","domain":"INFRA","priority":"P2","effort":"s","description":"Created via NATS bridge"}}
+{"subject":"chump.gaps.update","data":{"id":"INFRA-B99","priority":"P1","notes":"Updated via NATS"}}
+{"subject":"chump.gaps.close","data":{"id":"INFRA-B99","closed_pr":"PR#9999","reason":"Closed via NATS"}}
+EOF
+CHUMP_STATE_DB="$NATS_DB" python3 "$NATS_DRAIN" --once --input-jsonl "$NATS_IN" >/dev/null
+CHUMP_STATE_DB="$NATS_DB" python3 "$NATS_DRAIN" --once --input-jsonl "$NATS_IN" >/dev/null
+nats_row="$(sqlite3 "$NATS_DB" "SELECT COUNT(*) || '|' || status || '|' || priority || '|' || closed_pr FROM gaps WHERE id='INFRA-B99';")"
+[[ "$nats_row" == "1|done|P1|PR#9999" ]] || fail "14c: expected 1|done|P1|PR#9999 after replay, got '$nats_row'"
+pass "14: RESILIENT-1734 home=cuphead restoration + pre-rehome liveness gate + INFRA-8160/PRODUCT-320 drain organs"
+
 echo "ALL PASS"

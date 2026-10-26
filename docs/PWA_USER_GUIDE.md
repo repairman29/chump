@@ -15,7 +15,9 @@ chump --web
 CHUMP_WEB_PORT=8080 CHUMP_REPO=/path/to/chump chump --web
 ```
 
-Open **http://localhost:3000** in your browser.
+Open **http://localhost:3000** in your browser. The v2 shell (`/v2/`) lands on
+the `NOW` cockpit view (`<chump-view-cockpit>`) by default; `/v2/?view=cockpit`
+is retained as a compatibility alias (INFRA-1592).
 
 ---
 

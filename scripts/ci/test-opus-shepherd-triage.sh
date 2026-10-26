@@ -57,4 +57,39 @@ if ! grep -q '"kind":"opus_shepherd_triage_skipped"' "$TMP2"; then
 fi
 echo "  ok: bypass emits opus_shepherd_triage_skipped"
 
+# Test 5 (INFRA-2254): running twice in a row with identical inputs suppresses second broadcast
+TMP_DEDUP_DIR=$(mktemp -d)
+mkdir -p "$TMP_DEDUP_DIR/scripts/coord" "$TMP_DEDUP_DIR/.chump-locks"
+git -C "$TMP_DEDUP_DIR" init -q
+cp "$SCRIPT" "$TMP_DEDUP_DIR/scripts/coord/opus-shepherd-triage.sh"
+chmod +x "$TMP_DEDUP_DIR/scripts/coord/opus-shepherd-triage.sh"
+cat > "$TMP_DEDUP_DIR/scripts/coord/broadcast.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "called" >> "$(dirname "$0")/../../broadcast-calls.log"
+exit 0
+EOF
+chmod +x "$TMP_DEDUP_DIR/scripts/coord/broadcast.sh"
+
+(cd "$TMP_DEDUP_DIR" && CHUMP_SESSION_ID="test-dedup" CHUMP_SHEPHERD_WARN_COOLDOWN_M=120 bash scripts/coord/opus-shepherd-triage.sh >/dev/null 2>&1)
+(cd "$TMP_DEDUP_DIR" && CHUMP_SESSION_ID="test-dedup" CHUMP_SHEPHERD_WARN_COOLDOWN_M=120 bash scripts/coord/opus-shepherd-triage.sh >/dev/null 2>&1)
+
+CALL_COUNT=$(wc -l < "$TMP_DEDUP_DIR/broadcast-calls.log" | tr -d '[:space:]')
+if [[ "$CALL_COUNT" != "1" ]]; then
+    echo "FAIL: expected broadcast.sh to be called once across 2 identical runs, got $CALL_COUNT"
+    rm -rf "$TMP_DEDUP_DIR"
+    exit 1
+fi
+if [[ ! -f "$TMP_DEDUP_DIR/.chump-locks/shepherd-triage-last-warn.sentinel" ]]; then
+    echo "FAIL: .chump-locks/shepherd-triage-last-warn.sentinel not created"
+    rm -rf "$TMP_DEDUP_DIR"
+    exit 1
+fi
+if ! grep -q '"kind":"shepherd_warn_suppressed"' "$TMP_DEDUP_DIR/.chump-locks/ambient.jsonl"; then
+    echo "FAIL: second run did not emit kind=shepherd_warn_suppressed"
+    rm -rf "$TMP_DEDUP_DIR"
+    exit 1
+fi
+rm -rf "$TMP_DEDUP_DIR"
+echo "  ok: INFRA-2254 duplicate WARN suppressed within cooldown and emits shepherd_warn_suppressed"
+
 echo "test-opus-shepherd-triage: PASS"

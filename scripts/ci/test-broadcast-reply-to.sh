@@ -101,5 +101,27 @@ echo "$VOTE_LINE" | grep -q "\"corr_id\".*\"${PROPOSAL_CORR}\"" \
     || fail "(c) vote corr_id should be ${PROPOSAL_CORR} (deliberator tally bucket) but got: $VOTE_LINE"
 ok "(c) FEEDBACK preference corr_id=${PROPOSAL_CORR} matches parent proposal"
 
+# ── (d) INFRA-2144 + INFRA-2145: --help/-h exits 0 and prints usage + kind enum ─
+HELP_OUT="$("$BROADCAST" --help 2>&1)"
+[[ "$HELP_OUT" == *"Usage:"* && "$HELP_OUT" == *"defect|proposal|preference|retro"* && "$HELP_OUT" == *"OPUS_MESSAGE_PROTOCOL.md"* ]] \
+    || fail "(d) --help output missing Usage or kind enum: $HELP_OUT"
+ok "(d) --help exits 0 and includes Usage + FEEDBACK kind enum (INFRA-2144, INFRA-2145)"
+
+# ── (e) INFRA-2146: dollar amounts preserved in FEEDBACK body ────────────────
+rm -f "$AMBIENT"
+run_broadcast FEEDBACK preference "budget-cap" 'keep cap at $0.50 per run'
+DOLLAR_LINE="$(tail -1 "$AMBIENT")"
+[[ "$DOLLAR_LINE" == *'$0.50'* ]] || fail "(e) dollar amount \$0.50 corrupted in payload: $DOLLAR_LINE"
+ok "(e) dollar amount \$0.50 preserved in FEEDBACK body (INFRA-2146)"
+
+# ── (f) INFRA-2149: --dry-run resolves targets and prints payload with zero side effects ─
+rm -f "$AMBIENT"
+DRY_OUT="$(cd "$SANDBOX" && CHUMP_SESSION_ID="ci-test-$$" "$BROADCAST" --dry-run --to peer-1 WARN "dry run check" 2>&1)"
+[[ ! -f "$AMBIENT" ]] || fail "(f) --dry-run must not write to ambient.jsonl"
+[[ ! -f "$SANDBOX/.chump-locks/inbox/peer-1.jsonl" ]] || fail "(f) --dry-run must not write to inbox"
+[[ "$DRY_OUT" == *"targets:"* && "$DRY_OUT" == *"peer-1"* && "$DRY_OUT" == *"dry run check"* ]] \
+    || fail "(f) --dry-run output missing targets or payload: $DRY_OUT"
+ok "(f) --dry-run prints targets + JSON payload with zero side effects (INFRA-2149)"
+
 echo ""
 echo "All tests passed."

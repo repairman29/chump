@@ -33,10 +33,10 @@
       "enabled": true
     },
     "almanac": {
-      "command": "$HOME/Projects/almanac/target/release/almanac-mcp",
+      "command": "almanac-mcp",
       "args": [],
       "env": {
-        "ALMANAC_EMBED_URL": "http://100.101.188.30:11434",
+        "ALMANAC_EMBED_URL": "http://127.0.0.1:11434",
         "ALMANAC_DEFAULT_REPO": "chump"
       },
       "enabled": true

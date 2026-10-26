@@ -13,11 +13,10 @@ use chump_coord::capability::{
 };
 
 #[test]
-fn schema_version_pinned_at_v1() {
-    // If this fails, you're introducing a breaking schema change — bump
-    // CAPABILITY_SCHEMA_VERSION to chump-capability-v2 and update readers
-    // that need to support v1 fixtures.
-    assert_eq!(CAPABILITY_SCHEMA_VERSION, "chump-capability-v1");
+fn schema_version_pinned_at_v2() {
+    // INFRA-1805 bumped CAPABILITY_SCHEMA_VERSION to chump-capability-v2 while
+    // keeping v1 forward-compatible via #[serde(default)].
+    assert_eq!(CAPABILITY_SCHEMA_VERSION, "chump-capability-v2");
 }
 
 #[test]
@@ -40,11 +39,15 @@ fn json_round_trip_full_fields() {
         heartbeat_at: now,
         ttl_seconds: DEFAULT_TTL_SECONDS,
         external_repo_enabled: false,
+        token_budget_remaining: Some(120_000),
+        compute_available_pct: Some(75),
+        bandwidth_kbps: Some(50_000),
+        healthy: true,
     };
 
     let json = serde_json::to_string(&m).expect("serialize");
     // Sanity-check key fields are present in the wire form.
-    assert!(json.contains("\"schema_version\":\"chump-capability-v1\""));
+    assert!(json.contains("\"schema_version\":\"chump-capability-v2\""));
     assert!(json.contains("\"session_id\":\"curator-opus-ci-audit-2026-05-23\""));
     assert!(json.contains("\"harness\":\"claude\""));
     assert!(json.contains("\"ttl_seconds\":300"));
@@ -70,6 +73,10 @@ fn json_round_trip_minimal_fields() {
         heartbeat_at: now,
         ttl_seconds: 60,
         external_repo_enabled: false,
+        token_budget_remaining: None,
+        compute_available_pct: None,
+        bandwidth_kbps: None,
+        healthy: true,
     };
     let json = serde_json::to_string(&m).expect("serialize");
     let back: CapabilityManifest = serde_json::from_str(&json).expect("deserialize");
@@ -131,10 +138,41 @@ fn is_alive_respects_ttl() {
         heartbeat_at: t0,
         ttl_seconds: 300,
         external_repo_enabled: false,
+        token_budget_remaining: None,
+        compute_available_pct: None,
+        bandwidth_kbps: None,
+        healthy: true,
     };
     assert!(m.is_alive(t0));
     assert!(m.is_alive(t0 + Duration::seconds(299)));
     assert!(m.is_alive(t0 + Duration::seconds(300)));
     assert!(!m.is_alive(t0 + Duration::seconds(301)));
     assert!(!m.is_alive(t0 + Duration::hours(1)));
+}
+
+#[test]
+fn v1_to_v2_forward_compatibility() {
+    // INFRA-1805: a v1 JSON payload without v2 fields must deserialize cleanly
+    // with None for optional resource fields and healthy=true.
+    let v1_json = r#"{
+        "schema_version": "chump-capability-v1",
+        "session_id": "legacy-v1-worker",
+        "harness": "claude",
+        "model_tier": "sonnet",
+        "skills": ["rust", "shell"],
+        "machine": "macbook",
+        "gpu": null,
+        "ip": null,
+        "started_at": "2026-05-23T05:00:00Z",
+        "heartbeat_at": "2026-05-23T05:30:00Z",
+        "ttl_seconds": 300
+    }"#;
+    let parsed: CapabilityManifest =
+        serde_json::from_str(v1_json).expect("v1 payload must deserialize into v2 struct");
+    assert_eq!(parsed.schema_version, "chump-capability-v1");
+    assert_eq!(parsed.session_id, "legacy-v1-worker");
+    assert_eq!(parsed.token_budget_remaining, None);
+    assert_eq!(parsed.compute_available_pct, None);
+    assert_eq!(parsed.bandwidth_kbps, None);
+    assert!(parsed.healthy, "v1 payload must default healthy to true");
 }

@@ -311,8 +311,9 @@ _sanitize_node_env() {
     return 0
 }
 
-# RESILIENT-1684: ensure chump-organ-reconcile and chump-node-converge are only
-# enabled in ONE systemd scope (no duplicate --user + --system registration on CJ).
+# RESILIENT-1684 + INFRA-8586: ensure chump organs are only enabled in ONE
+# systemd scope (no duplicate --user + --system registration). When a non-manifest
+# duplicate is in system scope and EUID != 0, print the exact sudo disable command.
 _dedupe_single_scope_organs() {
     local sys_dir="${1:-${CHUMP_SYSTEMD_SYSTEM_DIR:-/etc/systemd/system}}"
     local usr_dir="${2:-${CHUMP_SYSTEMD_USER_DIR:-${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/systemd/user}}"
@@ -330,6 +331,71 @@ _dedupe_single_scope_organs() {
             emit organ_scope_deduped "\"organ\":\"$base\",\"kept_scope\":\"system\",\"removed_scope\":\"user\""
         fi
     done
+
+    # INFRA-8586: scan all chump-*.timer units enabled in both system and user scope.
+    if command -v "$sctl" >/dev/null 2>&1 && [[ -d "$sys_dir" && -d "$usr_dir" ]]; then
+        local uf u
+        for uf in "$usr_dir"/chump-*.timer; do
+            [[ -f "$uf" ]] || continue
+            u="$(basename "$uf")"
+            [[ -f "$sys_dir/$u" && ! -L "$sys_dir/$u" ]] || continue
+            if "$sctl" is-enabled --quiet "$u" 2>/dev/null && "$sctl" --user is-enabled --quiet "$u" 2>/dev/null; then
+                log "INFRA-8586: $u is enabled in BOTH system and user scope; to disable non-manifest system scope run: sudo systemctl disable --now $u ${u%.timer}.service"
+                # scanner-anchor: "kind":"organ_dual_scope_detected"
+                emit "organ_dual_scope_detected" "\"unit\":\"$u\",\"remedy\":\"sudo systemctl disable --now $u ${u%.timer}.service\""
+            fi
+        done
+    fi
+    return 0
+}
+
+# RESILIENT-1732: flag (and repair when writable) any system-scope chump-*.service
+# unit lacking a User= directive under [Service].
+_check_system_units_have_user() {
+    local sys_dir="${1:-${CHUMP_SYSTEMD_SYSTEM_DIR:-/etc/systemd/system}}"
+    [[ -d "$sys_dir" ]] || return 0
+    local run_user="${CHUMP_RUN_USER:-${USER:-$(id -un 2>/dev/null || echo ubuntu)}}"
+    [[ "$run_user" == "root" ]] && run_user="ubuntu"
+    local uf ubase
+    for uf in "$sys_dir"/chump-*.service; do
+        [[ -f "$uf" && ! -L "$uf" ]] || continue
+        ubase="$(basename "$uf")"
+        # Units intentionally running as root (organ-deploy, organ-reconcile, node-converge) are exempt.
+        case "$ubase" in
+            chump-organ-deploy.service|chump-organ-reconcile.service|chump-node-converge.service) continue ;;
+        esac
+        if ! grep -Eq '^[[:space:]]*User=[A-Za-z0-9_-]+' "$uf" 2>/dev/null; then
+            log "RESILIENT-1732: system-scope unit $uf is missing User= directive (expected User=$run_user)"
+            # scanner-anchor: "kind":"system_unit_missing_user"
+            emit "system_unit_missing_user" "\"unit\":\"$ubase\",\"path\":\"$uf\",\"expected_user\":\"$run_user\""
+            if [[ -w "$uf" ]]; then
+                sed -i "/^\[Service\]/a User=$run_user" "$uf" 2>/dev/null || true
+                log "RESILIENT-1732: injected User=$run_user into $uf"
+            fi
+        fi
+    done
+    return 0
+}
+
+# RESILIENT-1602: ensure /usr/local/bin/chump does not shadow the managed
+# ~/.cargo/bin/chump with a stale root-owned copy.
+_repoint_stale_root_chump_bin() {
+    local usr_bin="${1:-${CHUMP_USR_LOCAL_CHUMP:-/usr/local/bin/chump}}"
+    local cargo_bin="${2:-${CARGO_HOME:-${HOME:-/root}/.cargo}/bin/chump}"
+    [[ -e "$usr_bin" && -x "$cargo_bin" ]] || return 0
+    local resolved_usr resolved_cargo
+    resolved_usr="$(readlink -f "$usr_bin" 2>/dev/null || printf '%s' "$usr_bin")"
+    resolved_cargo="$(readlink -f "$cargo_bin" 2>/dev/null || printf '%s' "$cargo_bin")"
+    [[ "$resolved_usr" == "$resolved_cargo" ]] && return 0
+    if ln -sf "$cargo_bin" "$usr_bin" 2>/dev/null || sudo -n ln -sf "$cargo_bin" "$usr_bin" 2>/dev/null; then
+        log "RESILIENT-1602: repointed $usr_bin -> $cargo_bin"
+        # scanner-anchor: "kind":"stale_usr_local_chump_repointed"
+        emit "stale_usr_local_chump_repointed" "\"from\":\"$usr_bin\",\"to\":\"$cargo_bin\""
+    else
+        log "ERROR: RESILIENT-1602: stale $usr_bin shadows $cargo_bin and could not be repointed"
+        # scanner-anchor: "kind":"stale_usr_local_chump_shadow"
+        emit "stale_usr_local_chump_shadow" "\"usr_bin\":\"$usr_bin\",\"cargo_bin\":\"$cargo_bin\""
+    fi
     return 0
 }
 
@@ -618,6 +684,8 @@ _reconcile_role_organs() {
     _rerender_installed_units
     _sanitize_node_env
     _dedupe_single_scope_organs
+    _check_system_units_have_user
+    _repoint_stale_root_chump_bin
     _converge_worker_launchers
     _converge_git_noreply_identity
     _ensure_pr_book_timer

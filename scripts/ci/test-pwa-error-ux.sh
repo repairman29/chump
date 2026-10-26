@@ -96,6 +96,39 @@ check "app.js references apiFetch" \
 check "PRODUCT-100 referenced" \
   "grep -q 'PRODUCT-100' '$ERR_JS' '$APP_JS' '$INDEX_HTML'"
 
+# ── 13. INFRA-1470 / INFRA-2213: every static /api/... route in web/v2/*.js is registered in src/web_server.rs ──
+WEB_SERVER_RS="$REPO_ROOT/src/web_server.rs"
+check "/api/decisions route registered in src/web_server.rs (INFRA-1470)" \
+  "grep -q '\"/api/decisions\"' '$WEB_SERVER_RS'"
+check "/api/autopilot/daemon-log route registered in src/web_server.rs (INFRA-2213)" \
+  "grep -q '\"/api/autopilot/daemon-log\"' '$WEB_SERVER_RS'"
+if python3 - "$REPO_ROOT" <<'PY'
+import glob, os, re, sys
+root = sys.argv[1]
+ws = open(os.path.join(root, 'src/web_server.rs'), encoding='utf-8').read()
+routes = set(re.findall(r'"(/api/[a-zA-Z0-9_./{}-]+)"', ws))
+missing = []
+for p in sorted(glob.glob(os.path.join(root, 'web/v2/*.js'))):
+    s = open(p, encoding='utf-8').read()
+    for m in re.finditer(r'(?:fetch|apiFetch)\s*\(\s*[\'"`](/api/[a-zA-Z0-9_./-]+)', s):
+        raw = m.group(1).rstrip('/')
+        if '...' in raw:
+            continue
+        if any(r == raw or r.startswith(raw + '/') or raw.startswith(r.split('/{')[0]) for r in routes):
+            continue
+        missing.append(f'{os.path.basename(p)}:{raw}')
+if missing:
+    print('Unregistered /api routes:', missing, file=sys.stderr)
+    sys.exit(1)
+PY
+then
+  echo "  PASS: all static fetch('/api/...') prefixes in web/v2/*.js match registered routes in src/web_server.rs"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL: all static fetch('/api/...') prefixes in web/v2/*.js match registered routes in src/web_server.rs"
+  FAIL=$((FAIL + 1))
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then

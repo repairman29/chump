@@ -599,26 +599,46 @@ fn scan_readers(
         files
     };
 
-    for writer in writers {
-        let writer_keys: HashSet<&str> = writer.keys.iter().map(|s| s.as_str()).collect();
-
-        for fpath in &all_files {
-            let content = match std::fs::read_to_string(fpath) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
+    // Pre-read and pre-extract consumed keys per file and WriterKind once (O(files) instead of O(writers * files)).
+    struct PreparsedReader {
+        rel_path: String,
+        keys_json: Vec<String>,
+        keys_struct: Vec<String>,
+        keys_ambient: Vec<String>,
+    }
+    let preparsed: Vec<PreparsedReader> = all_files
+        .iter()
+        .filter_map(|fpath| {
+            let content = std::fs::read_to_string(fpath).ok()?;
             let rel_path = fpath
                 .strip_prefix(root)
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| fpath.to_string_lossy().to_string());
+            Some(PreparsedReader {
+                rel_path,
+                keys_json: extract_consumed_keys(&content, &WriterKind::JsonFile),
+                keys_struct: extract_consumed_keys(&content, &WriterKind::Struct),
+                keys_ambient: extract_consumed_keys(&content, &WriterKind::AmbientEvent),
+            })
+        })
+        .collect();
+
+    for writer in writers {
+        let writer_keys: HashSet<&str> = writer.keys.iter().map(|s| s.as_str()).collect();
+
+        for pr in &preparsed {
+            let rel_path = &pr.rel_path;
 
             // Don't match the writer against itself
-            if writer.path.starts_with(&rel_path) || rel_path.starts_with(&writer.path) {
+            if writer.path.starts_with(rel_path) || rel_path.starts_with(&writer.path) {
                 continue;
             }
 
-            let consumed_keys = extract_consumed_keys(&content, &writer.kind);
+            let consumed_keys = match writer.kind {
+                WriterKind::JsonFile => &pr.keys_json,
+                WriterKind::Struct => &pr.keys_struct,
+                WriterKind::AmbientEvent => &pr.keys_ambient,
+            };
 
             if consumed_keys.is_empty() {
                 continue;
@@ -655,9 +675,9 @@ fn scan_readers(
             }
 
             readers.push(ReaderEntry {
-                path: rel_path,
+                path: rel_path.clone(),
                 writer: writer.path.clone(),
-                expected_keys: consumed_keys,
+                expected_keys: consumed_keys.clone(),
                 missing_keys,
                 extra_keys,
             });
@@ -847,33 +867,14 @@ fn extract_consumed_keys(content: &str, writer_kind: &WriterKind) -> Vec<String>
     keys
 }
 
-/// Extract the next quoted string (single or double) from text.
+/// Extract the next quoted string (single or double) from text without allocating the full remainder.
 fn extract_next_quoted_string(text: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let mut i = 0;
-
-    // Skip whitespace and opening parens
-    while i < chars.len() && (chars[i].is_whitespace() || chars[i] == '(') {
-        i += 1;
-    }
-
-    if i >= chars.len() {
-        return String::new();
-    }
-
-    let quote = chars[i];
-    if quote != '"' && quote != '\'' {
-        return String::new();
-    }
-
-    i += 1;
-    let mut result = String::new();
-    while i < chars.len() && chars[i] != quote {
-        result.push(chars[i]);
-        i += 1;
-    }
-
-    result
+    let mut chars = text.chars().skip_while(|c| c.is_whitespace() || *c == '(');
+    let quote = match chars.next() {
+        Some(q) if q == '"' || q == '\'' => q,
+        _ => return String::new(),
+    };
+    chars.take_while(|&c| c != quote).collect()
 }
 
 // ─── file collection helpers ─────────────────────────────────────────────────
@@ -949,6 +950,10 @@ fn get_in_flight_files() -> Result<Vec<String>, String> {
     }
 
     let json_str = String::from_utf8_lossy(&output.stdout);
+    // When <= 1 PR is open, no cross-PR contract comparison is possible (Case 3).
+    if json_str.matches("\"number\":").count() <= 1 {
+        return Ok(Vec::new());
+    }
     // Simple extraction: look for "path":"..." patterns
     let mut files = Vec::new();
     let mut search = json_str.as_ref();

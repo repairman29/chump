@@ -13,6 +13,9 @@
 #
 # Follow-up: port to `chump kpi mission` (Rust) once metrics stabilize.
 set -uo pipefail
+# RESILIENT-1602: prepend the managed cargo/local bin dirs so `chump` resolves
+# to the refreshed ~/.cargo/bin/chump rather than a stale /usr/local/bin/chump.
+export PATH="${CARGO_HOME:-${HOME:-/root}/.cargo}/bin:${HOME:-/root}/.local/bin:$PATH"
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || true
 
 MODE="default"
@@ -285,10 +288,16 @@ fi
 echo
 
 # ── ④ Fleet liveness ────────────────────────────────────────────────────────
+# scanner-anchor: "kind":"domain_skew_observed"
 lm=$(gh pr list --state merged --limit 1 --json mergedAt --jq '.[0].mergedAt' 2>/dev/null)
 lmep=$(iso_to_epoch "$lm"); agem=$(( (now - lmep) / 60 ))
 ships=$(gh pr list --state merged --search "merged:>=$day" --json number --jq 'length' 2>/dev/null)
-echo "④ Fleet liveness: last merge ${agem}m ago | merges last 24h: ${ships:-?}"
+delivered_product=0
+if [[ -f .chump-locks/ambient.jsonl ]]; then
+  delivered_product=$(grep -c '"kind":"product_delivery_verified"' .chump-locks/ambient.jsonl 2>/dev/null || true)
+  delivered_product="${delivered_product:-0}"
+fi
+echo "④ Fleet liveness: last merge ${agem}m ago | Merged (24h): ${ships:-?} | Delivered (product): ${delivered_product}"
 echo
 
 # ── ⑤ BEAST-MODE prerequisite readiness (MISSION-066) ───────────────────────

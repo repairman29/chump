@@ -1264,6 +1264,7 @@ mod tests {
             kind: String::new(),
             depends_on: None,
             closed_date: None,
+            preferred_operator: None,
         }
     }
 

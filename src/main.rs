@@ -1662,6 +1662,137 @@ async fn main() -> Result<()> {
         std::process::exit(run_store_cli(&args));
     }
 
+    // INFRA-1819: `chump ast-shape <repo-path> [--json] [--include-vendor]`
+    // Deterministic AST shape extractor CLI wrapping `chump_ast_crawler`.
+    // Exit codes: 0 = success, 2 = bad usage / missing path, 3 = crawl error.
+    if args.get(1).map(String::as_str) == Some("ast-shape") {
+        if args
+            .iter()
+            .skip(2)
+            .any(|a| matches!(a.as_str(), "--help" | "-h"))
+        {
+            println!("Usage: chump ast-shape <repo-path> [--json] [--include-vendor]");
+            println!("  --json            Emit full CodebaseShape JSON (default)");
+            println!("  --include-vendor  Include vendor/third_party directories");
+            return Ok(());
+        }
+        let mut target_path: Option<std::path::PathBuf> = None;
+        for a in args.iter().skip(2) {
+            match a.as_str() {
+                "--json" | "--include-vendor" => {}
+                s if s.starts_with('-') => {
+                    eprintln!("chump ast-shape: unknown flag {s}");
+                    std::process::exit(2);
+                }
+                s => {
+                    if target_path.is_none() {
+                        target_path = Some(std::path::PathBuf::from(s));
+                    }
+                }
+            }
+        }
+        let Some(repo_dir) = target_path else {
+            eprintln!("Usage: chump ast-shape <repo-path> [--json] [--include-vendor]");
+            std::process::exit(2);
+        };
+        if !repo_dir.exists() || !repo_dir.is_dir() {
+            eprintln!(
+                "chump ast-shape: path does not exist or is not a directory: {}",
+                repo_dir.display()
+            );
+            std::process::exit(2);
+        }
+        match chump_ast_crawler::crawl_repo(&repo_dir) {
+            Ok(shape) => {
+                match serde_json::to_string_pretty(&shape) {
+                    Ok(j) => println!("{j}"),
+                    Err(e) => {
+                        eprintln!("chump ast-shape: serialize error: {e}");
+                        std::process::exit(3);
+                    }
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump ast-shape: crawl error: {e:#}");
+                std::process::exit(3);
+            }
+        }
+    }
+
+    // INFRA-2018: `chump ack-rca <date-stamp> [--note <str>]`
+    // Records an operator/curator session's acknowledgement of an RCA doc
+    // at `.chump-locks/acks/${SESSION_ID}_${DATE}.json`.
+    if args.get(1).map(String::as_str) == Some("ack-rca") {
+        if args
+            .iter()
+            .skip(2)
+            .any(|a| matches!(a.as_str(), "--help" | "-h"))
+        {
+            println!("Usage: chump ack-rca <date-stamp> [--note <str>]");
+            println!("Writes .chump-locks/acks/${{SESSION_ID}}_${{DATE}}.json");
+            return Ok(());
+        }
+        let mut date_stamp: Option<String> = None;
+        let mut note = String::new();
+        let mut i = 2usize;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--note" => {
+                    note = args.get(i + 1).cloned().unwrap_or_default();
+                    i += 2;
+                }
+                s if s.starts_with('-') => {
+                    eprintln!("chump ack-rca: unknown flag {s}");
+                    std::process::exit(2);
+                }
+                s => {
+                    if date_stamp.is_none() {
+                        date_stamp = Some(s.to_string());
+                    }
+                    i += 1;
+                }
+            }
+        }
+        let Some(date) = date_stamp else {
+            eprintln!("Usage: chump ack-rca <date-stamp> [--note <str>]");
+            std::process::exit(2);
+        };
+        if date.contains("..") || date.contains('/') || date.contains('\\') {
+            eprintln!("chump ack-rca: invalid date-stamp {date:?}");
+            std::process::exit(2);
+        }
+        let sess = std::env::var("CHUMP_SESSION_ID")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(crate::ambient_stream::env_session_id)
+            .unwrap_or_else(|| "default-session".to_string());
+        let safe_sess: String = sess
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let root = repo_path::worktree_root();
+        let acks_dir = root.join(".chump-locks").join("acks");
+        std::fs::create_dir_all(&acks_dir)?;
+        let ack_path = acks_dir.join(format!("{safe_sess}_{date}.json"));
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let payload = serde_json::json!({
+            "session_id": sess,
+            "rca_date": date,
+            "acked_at": ts,
+            "note": note,
+        });
+        std::fs::write(&ack_path, serde_json::to_string_pretty(&payload)?)?;
+        println!("{}", ack_path.display());
+        return Ok(());
+    }
+
     // INFRA-2028: every `gh` subprocess chump spawns inherits this process's
     // env, but a subprocess spawned by chump doesn't get the macOS keychain
     // entitlement an interactive shell's `gh` has — so `gh` silently falls
@@ -11199,7 +11330,18 @@ async fn main() -> Result<()> {
                         return Ok(());
                     }
                     Ok(None) => {
+                        // INFRA-1582: fall back to git commit history when not in active state.db.
+                        if let Some(reaped_msg) =
+                            crate::doctor::gap_cmd::lookup_reaped_gap_in_git_history(
+                                &repo_root, &id,
+                            )
+                        {
+                            println!("chump gap show: gap {id} — {reaped_msg}");
+                            eprintln!("chump gap show: gap {id} — {reaped_msg}");
+                            return Ok(());
+                        }
                         eprintln!("chump gap show: gap {} not found", id);
+                        eprintln!("  {}", crate::doctor::gap_cmd::GAP_SHOW_NOT_FOUND_HINT);
                         std::process::exit(1);
                     }
                     Err(e) => {
@@ -11209,7 +11351,9 @@ async fn main() -> Result<()> {
                 }
             }
             "list" => {
-                let status_filter = flag("--status");
+                // INFRA-1582: --include-done shows closed/done gaps alongside open ones.
+                let include_done = args.iter().any(|a| a == "--include-done");
+                let status_filter = if include_done { None } else { flag("--status") };
                 // INFRA-431: include-test-domains opts back in to SPIKE/TEST*
                 // rows. Default is to filter them out of the human-readable
                 // output (kept in --json output unconditionally so tooling
@@ -11715,6 +11859,16 @@ async fn main() -> Result<()> {
                 // with external_repo:<owner/repo> in skills_required at reserve time.
                 // Prevents recurrence of the data gap that caused BEAST routing to fail.
                 let reserve_external_repo = flag("--external-repo");
+                let require_mode_d = args.iter().any(|a| a == "--require-mode-d");
+                if let Err(e) = crate::doctor::gap_cmd::check_external_repo_mode_d_guard(
+                    &worktree_root,
+                    reserve_external_repo.as_deref(),
+                    None,
+                    require_mode_d,
+                ) {
+                    eprintln!("{e:#}");
+                    std::process::exit(1);
+                }
                 let force = args.iter().any(|a| a == "--force");
                 // INFRA-592: --quiet suppresses progress; default emits one-line
                 // per phase to stderr so --json piping of stdout is unaffected.
@@ -13244,6 +13398,25 @@ async fn main() -> Result<()> {
                     },
                     None => None,
                 };
+                // INFRA-2038: detect metadata-only status flip (when state.db already has
+                // closed_pr matching --closed-pr or --closed-pr references an already-merged
+                // PR and --update-yaml is not passed); skip the 15-commit behind-main stale
+                // check and emit kind=gap_ship_metadata_only.
+                let metadata_only_flip = crate::doctor::gap_cmd::is_metadata_only_ship(
+                    &store,
+                    &repo_root,
+                    &gap_id,
+                    closed_pr,
+                    update_yaml,
+                );
+                if metadata_only_flip {
+                    let _ = crate::doctor::gap_cmd::emit_gap_ship_metadata_only(
+                        &repo_root,
+                        &gap_id,
+                        &session_id,
+                        closed_pr,
+                    );
+                }
                 // INFRA-1007: staleness gate — belt-and-suspenders for the CLAUDE.md
                 // "rebase if > 15 commits behind" rule. bot-merge.sh has this gate for
                 // the push path; the manual `chump gap ship` path needs the same check.
@@ -13251,7 +13424,9 @@ async fn main() -> Result<()> {
                     .ok()
                     .and_then(|s| s.trim().parse().ok())
                     .unwrap_or(15);
-                if std::env::var("CHUMP_GAP_SHIP_SKIP_STALE_CHECK").as_deref() != Ok("1") {
+                if !metadata_only_flip
+                    && std::env::var("CHUMP_GAP_SHIP_SKIP_STALE_CHECK").as_deref() != Ok("1")
+                {
                     let _ = std::process::Command::new("git")
                         .args(["fetch", "origin", "main", "--quiet"])
                         .current_dir(&worktree_root)
@@ -24038,6 +24213,7 @@ fn validate_gap_mutation_args(
                 "--no-evidence-required",
                 "--no-outcome-required",
                 "--quiet",
+                "--require-mode-d",
                 "--skip-obs-acs",
                 "--why",
             ];

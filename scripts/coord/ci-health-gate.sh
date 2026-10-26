@@ -63,37 +63,68 @@ if [[ "${CHUMP_CI_HEALTH_GATE_DISABLE:-0}" == "1" ]]; then
     exit 0
 fi
 
+# ── INFRA-8050: load GH_TOKEN from providers.env when absent in timer env ────
+if [[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]; then
+    for _prov_cand in "${HOME:-/root}/.chump/providers.env" "/home/ubuntu/.chump/providers.env"; do
+        if [[ -f "$_prov_cand" ]]; then
+            _prov_gh="$(grep -E '^(export )?GH_TOKEN=' "$_prov_cand" 2>/dev/null | tail -1 | sed -E 's/^(export )?GH_TOKEN=//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' || true)"
+            if [[ -n "$_prov_gh" ]]; then
+                export GH_TOKEN="$_prov_gh"
+                break
+            fi
+        fi
+    done
+    unset _prov_cand _prov_gh
+fi
+
 # ── Pipeline-jam side-check via github_cache.db ──────────────────────────────
 # Source cache lib so we can query open PRs without a live GH API call.
 CACHE_LIB="$REPO_ROOT/scripts/lib/github_cache.sh"
 blocked_pct=0
 total_open=0
 total_blocked=0
-if [[ -f "$CACHE_LIB" ]]; then
+gh_blind=0
+if [[ "${CHUMP_CI_HEALTH_FORCE_GH_ERROR:-0}" == "1" ]]; then
+    gh_blind=1
+elif [[ -f "$CACHE_LIB" ]]; then
     # shellcheck source=/dev/null
     source "$CACHE_LIB" 2>/dev/null || true
     if declare -f cache_query_open_prs >/dev/null 2>&1; then
         # cache_query_open_prs emits "number\ttitle\thead_ref" per row
-        open_prs="$(cache_query_open_prs 2>/dev/null || true)"
-        if [[ -n "$open_prs" ]]; then
-            total_open="$(printf '%s\n' "$open_prs" | wc -l | tr -d ' ')"
-            # A PR is BLOCKED when its mergeStateStatus is BLOCKED.
-            # The cache stores this; we approximate via a dedicated query
-            # if available, else fall back to counting PRs with BLOCKED in
-            # the cached status column.
-            if declare -f cache_query_behind_prs >/dev/null 2>&1; then
-                # cache_query_behind_prs returns one number per line (the PR numbers that are BEHIND/BLOCKED)
-                blocked_rows="$(cache_query_behind_prs 2>/dev/null || true)"
-                total_blocked=0
-                [[ -n "$blocked_rows" ]] && total_blocked="$(printf '%s\n' "$blocked_rows" | grep -c . || true)"
+        if open_prs="$(cache_query_open_prs 2>/dev/null)"; then
+            if [[ -n "$open_prs" ]]; then
+                total_open="$(printf '%s\n' "$open_prs" | wc -l | tr -d ' ')"
+                # A PR is BLOCKED when its mergeStateStatus is BLOCKED.
+                # The cache stores this; we approximate via a dedicated query
+                # if available, else fall back to counting PRs with BLOCKED in
+                # the cached status column.
+                if declare -f cache_query_behind_prs >/dev/null 2>&1; then
+                    # cache_query_behind_prs returns one number per line (the PR numbers that are BEHIND/BLOCKED)
+                    blocked_rows="$(cache_query_behind_prs 2>/dev/null || true)"
+                    total_blocked=0
+                    [[ -n "$blocked_rows" ]] && total_blocked="$(grep -c . <<<"$blocked_rows" || true)"
+                fi
+                if [[ "$total_open" -gt 0 ]]; then
+                    blocked_pct=$(( total_blocked * 100 / total_open ))
+                fi
             fi
-            if [[ "$total_open" -gt 0 ]]; then
-                blocked_pct=$(( total_blocked * 100 / total_open ))
-            fi
+        else
+            gh_blind=1
         fi
     fi
 fi
-echo "[ci-health-gate] pipeline-jam check: total_open=$total_open total_blocked=$total_blocked blocked_pct=${blocked_pct}%"
+if [[ "$gh_blind" -eq 0 && "$total_open" -eq 0 && "${CHUMP_CI_HEALTH_PROBE_GH:-0}" == "1" ]]; then
+    if ! _gh_probe_out="$(gh pr list --state open --json number,mergeStateStatus 2>/dev/null)"; then
+        gh_blind=1
+    elif [[ -n "$_gh_probe_out" && "$_gh_probe_out" != "[]" ]]; then
+        total_open="$(printf '%s' "$_gh_probe_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d))' 2>/dev/null || echo 0)"
+        total_blocked="$(printf '%s' "$_gh_probe_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for x in d if x.get("mergeStateStatus") in ("BLOCKED","BEHIND")))' 2>/dev/null || echo 0)"
+        if [[ "$total_open" -gt 0 ]]; then
+            blocked_pct=$(( total_blocked * 100 / total_open ))
+        fi
+    fi
+fi
+echo "[ci-health-gate] pipeline-jam check: total_open=$total_open total_blocked=$total_blocked blocked_pct=${blocked_pct}% gh_blind=$gh_blind"
 
 # ── SLO check (RESILIENT-146: halt only on L1 SAFETY breaches) ────────────────
 # Parse per-SLO breaches from --json. The fleet-pause gate must fire ONLY for
@@ -153,6 +184,15 @@ if [[ -n "$breach_reason" ]]; then
     _emit "pipeline_health_throttle" \
         '"state":"paused","reason":"'"$breach_reason"'","blocked_pct":'"$blocked_null"',"slo_rc":'"$slo_rc"
     # Reset consecutive-recovery counter on any breach.
+    echo 0 > "$CONSEC_FILE" 2>/dev/null || true
+    exit 0
+fi
+
+# ── INFRA-8050: Fail closed/degraded when gh/cache is blind ──────────────────
+# Never report "healthy" or clear an existing pause when the PR sensor failed.
+if [[ "$gh_blind" -eq 1 ]]; then
+    echo "[ci-health-gate] DEGRADED (ci_health_gate_blind): gh/cache query failed — not reporting healthy and preserving any existing pause"
+    _emit "ci_health_gate_blind" '"reason":"gh_or_cache_unavailable","slo_rc":'"$slo_rc"
     echo 0 > "$CONSEC_FILE" 2>/dev/null || true
     exit 0
 fi

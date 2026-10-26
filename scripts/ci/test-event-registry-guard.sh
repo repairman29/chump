@@ -170,6 +170,23 @@ else
 fi
 git -C "$FAKE_REPO" reset -q HEAD docs/observability/EVENT_REGISTRY.yaml scripts/dispatch/foo.sh
 
+# ── Test 7 (INFRA-2273 + INFRA-2370): live EVENT_REGISTRY.yaml YAML validity + bot_merge_step_stalled ──
+echo "--- Test 7: live EVENT_REGISTRY.yaml parses cleanly and registers bot_merge_step_stalled ---"
+LIVE_REG="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
+if grep -q "kind: bot_merge_step_stalled" "$LIVE_REG" && grep -q "'Overrides logged separately:" "$LIVE_REG"; then
+    if python3 -c "import yaml" >/dev/null 2>&1; then
+        if python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$LIVE_REG" >/dev/null 2>&1; then
+            ok "live EVENT_REGISTRY.yaml parses cleanly via yaml.safe_load and registers bot_merge_step_stalled"
+        else
+            fail "live EVENT_REGISTRY.yaml failed yaml.safe_load"
+        fi
+    else
+        ok "live EVENT_REGISTRY.yaml quotes Overrides logged separately and registers bot_merge_step_stalled"
+    fi
+else
+    fail "live EVENT_REGISTRY.yaml missing bot_merge_step_stalled or quoted Overrides logged separately"
+fi
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="

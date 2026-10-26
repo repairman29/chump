@@ -231,6 +231,46 @@ else
     ok "worker.sh does not reference CHUMP_IGNORE_WASTE_PAUSE — bypass correctly removed"
 fi
 
+# ── 11. INFRA-8050: gh error yields ci_health_gate_blind (not healthy) and preserves pause ──
+cat > "$FAKE_BIN/chump" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "health" && "$2" == "--slo-check" ]]; then
+    echo '{"slo_breaches":0,"slos":[]}'
+    exit 0
+fi
+exit 0
+STUB
+chmod +x "$FAKE_BIN/chump"
+
+PAUSE_FILE_11="$TMPDIR_LOCAL/fleet-paused-11"
+AMBIENT_11="$TMPDIR_LOCAL/ambient-11.jsonl"
+OUT_11="$TMPDIR_LOCAL/out-11.txt"
+printf '{"ts":"2026-01-01T00:00:00Z","kind":"slo_breach","reason":"pipeline_jam","slos_breached":[],"blocked_pct":86}\n' > "$PAUSE_FILE_11"
+
+export PATH="$FAKE_BIN:$PATH"
+CHUMP_CI_HEALTH_FORCE_GH_ERROR=1 \
+    CHUMP_FLEET_PAUSE_FILE="$PAUSE_FILE_11" \
+    CHUMP_CI_HEALTH_CONSEC_FILE="$TMPDIR_LOCAL/ci-health-recovery-11" \
+    CHUMP_AMBIENT_LOG="$AMBIENT_11" \
+    bash "$SCRIPT" >"$OUT_11" 2>&1 || true
+export PATH="$_saved_path"
+
+if grep -q "ci_health_gate_blind" "$AMBIENT_11" 2>/dev/null; then
+    ok "INFRA-8050: gh error emits ci_health_gate_blind to ambient"
+else
+    fail "INFRA-8050: gh error did not emit ci_health_gate_blind"
+fi
+if grep -q "healthy —" "$OUT_11" 2>/dev/null; then
+    fail "INFRA-8050: gh error reported false-healthy"
+else
+    ok "INFRA-8050: gh error does not report healthy"
+fi
+if [[ -f "$PAUSE_FILE_11" ]]; then
+    ok "INFRA-8050: gh error preserves prior fleet-paused file"
+else
+    fail "INFRA-8050: gh error cleared prior fleet-paused file"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="

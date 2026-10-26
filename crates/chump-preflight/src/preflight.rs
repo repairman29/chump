@@ -1087,7 +1087,6 @@ BYPASS:
     only those failing gates with a logged reason. No env override needed.
     CHUMP_PREFLIGHT_SKIP_REGISTRY=1   Skip event-registry-audit (INFRA-1731).
     CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1  Skip docs-delta-trailer (INFRA-1788).
-    CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1   Skip pipefail-race-sweep (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_PATHFILTER=1 Skip path-filter-coverage (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
 
@@ -1252,6 +1251,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // pure local (fifo + subshell, no network).
         "scripts/ci/test-parse-token-usage-dead-writer-timeout.sh",
         "scripts/ci/test-event-registry-coverage.sh",
+        "scripts/ci/test-a2a-always-on.sh",
+        "scripts/ci/test-worker-prelude-reads-floor.sh",
+        "scripts/ci/test-worker-prelude-floor-signals.sh",
         // CREDIBLE-1493: SELF_REPORTS.yaml shape + every self-report's source
         // and command exist in the tree (mirrors the ci.yml step). ~1s, local.
         "scripts/ci/test-self-reports-registry.sh",
@@ -1493,6 +1495,7 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
             }
         }
     }
+    eprintln!("[preflight] discovered {} test script(s)", out.len());
     out
 }
 
@@ -2227,29 +2230,15 @@ pub fn run(argv: &[String]) -> i32 {
         // (INFRA-1810). Each fires in <1s and runs whenever Scripts scope is
         // active. Skip via the gate-specific bypass env with audit-trail emit.
 
-        // INFRA-1658: bash subshell pipefail-race sweep. Catches a class of
-        // races where `cmd | other-cmd` inside a `set -e`-d script swallows
-        // failure because bash's pipefail isn't set. Detecting locally avoids
-        // a CI round-trip on the install/uninstall path.
-        if std::env::var("CHUMP_PREFLIGHT_SKIP_PIPEFAIL").as_deref() == Ok("1") {
-            eprintln!("[preflight] skipping pipefail-race-sweep (CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1)");
-            let _ =
-                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
-                    kind: "preflight_pipefail_bypassed".to_string(),
-                    source: Some("chump-preflight".to_string()),
-                    fields: vec![(
-                        "reason".to_string(),
-                        "CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1".to_string(),
-                    )],
-                    ..Default::default()
-                });
-        } else {
-            steps.push(step(
-                "pipefail-race-sweep",
-                &["bash", "scripts/ci/test-pipefail-race-sweep.sh"],
-                GateKind::Scripts,
-            ));
-        }
+        // INFRA-1658 / INFRA-2427: bash subshell pipefail-race sweep. Catches a
+        // class of races where `cmd | other-cmd` inside a `set -e`-d script swallows
+        // failure because bash's pipefail isn't set. Always-on (bypass removed in
+        // INFRA-2427; main-RED auto-skip handles any trunk-wide breakage).
+        steps.push(step(
+            "pipefail-race-sweep",
+            &["bash", "scripts/ci/test-pipefail-race-sweep.sh"],
+            GateKind::Scripts,
+        ));
 
         // INFRA-682: path-filter allowlist structural coverage. Detects when
         // a contributor adds new code paths but forgets to add them to the
@@ -3706,17 +3695,13 @@ pub fn run(argv: &[String]) -> i32 {
             let should_continue = baseline.is_some() || args.keep_going;
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", s.name);
-                // Truncate to first ~2KB to avoid swamping the terminal.
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                let target_dir = default_preflight_target_dir(Some(repo_root.as_path()));
+                let (trunc, log_path) =
+                    format_and_persist_failed_gate_output(s.name, cap, &target_dir);
                 eprintln!("{}", trunc);
+                if let Some(p) = log_path {
+                    eprintln!("  [preflight] full gate output written to: {}", p.display());
+                }
                 eprintln!("---- end ----");
             }
             if !should_continue {
@@ -3880,6 +3865,77 @@ pub fn run(argv: &[String]) -> i32 {
     }
 }
 
+/// EFFECTIVE-220: Resolve the target directory for `<target_dir>/preflight-logs/<gate>.log`.
+fn default_preflight_target_dir(repo_root: Option<&std::path::Path>) -> std::path::PathBuf {
+    if let Ok(t) = std::env::var("CARGO_TARGET_DIR") {
+        let trimmed = t.trim();
+        if !trimmed.is_empty() {
+            return std::path::PathBuf::from(trimmed);
+        }
+    }
+    match repo_root {
+        Some(r) => r.join("target"),
+        None => std::path::PathBuf::from("target"),
+    }
+}
+
+/// EFFECTIVE-220: Persist full failed-gate output to `<target_dir>/preflight-logs/<gate>.log`
+/// and when the output exceeds the truncation threshold, preserve the last 5 lines of the
+/// full output so the final `error: could not compile` / summary diagnostics are never cut off.
+pub fn format_and_persist_failed_gate_output(
+    gate_name: &str,
+    cap: &str,
+    target_dir: &std::path::Path,
+) -> (String, Option<std::path::PathBuf>) {
+    const TRUNCATE_HEAD_BYTES: usize = 2048;
+    const TAIL_LINES_PRESERVED: usize = 5;
+
+    let sanitized: String = gate_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let stem = if sanitized.is_empty() {
+        "gate"
+    } else {
+        sanitized.as_str()
+    };
+    let logs_dir = target_dir.join("preflight-logs");
+    let log_path = logs_dir.join(format!("{stem}.log"));
+    let persisted = if std::fs::create_dir_all(&logs_dir).is_ok()
+        && std::fs::write(&log_path, cap.as_bytes()).is_ok()
+    {
+        Some(log_path)
+    } else {
+        None
+    };
+
+    if cap.len() <= TRUNCATE_HEAD_BYTES {
+        return (cap.to_string(), persisted);
+    }
+
+    let mut head_end = TRUNCATE_HEAD_BYTES.min(cap.len());
+    while head_end > 0 && !cap.is_char_boundary(head_end) {
+        head_end -= 1;
+    }
+    let head = &cap[..head_end];
+    let all_lines: Vec<&str> = cap.lines().collect();
+    let tail_start = all_lines.len().saturating_sub(TAIL_LINES_PRESERVED);
+    let tail = all_lines[tail_start..].join("\n");
+    let omitted = cap.len().saturating_sub(head_end);
+    let formatted = format!(
+        "{head}\n... [{omitted} more bytes truncated — last {TAIL_LINES_PRESERVED} lines preserved]\n{tail}"
+    );
+    (formatted, persisted)
+}
+
 /// RESILIENT-1622: run ONLY the structural (no-build) subset — the gates in
 /// `STRUCTURAL_GATES`. No cargo compile, no scope auto-detect; the whole subset
 /// runs in <30s warm so it fits inside bot-merge's push-phase budget and the
@@ -3943,16 +3999,13 @@ fn run_structural(
             failed_gates.push(name);
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", name);
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                let target_dir = default_preflight_target_dir(None);
+                let (trunc, log_path) =
+                    format_and_persist_failed_gate_output(name, cap, &target_dir);
                 eprintln!("{}", trunc);
+                if let Some(p) = log_path {
+                    eprintln!("  [preflight] full gate output written to: {}", p.display());
+                }
                 eprintln!("---- end ----");
             }
             if !keep_going {
@@ -4433,6 +4486,55 @@ struct BaselineDiff {
     baseline_sha: String,
     /// Age of the cache in seconds.
     baseline_age_secs: u64,
+}
+
+/// INFRA-1792: Outcome of checking staged-diff top-level directory scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrScopeOutcome {
+    /// Distinct top-level directories touched by the staged paths.
+    pub top_level_dirs: Vec<String>,
+    ///Configured threshold `N` (default 5, overridable via `CHUMP_PRSCOPE_THRESHOLD`).
+    pub threshold: usize,
+    /// True when `top_level_dirs.len() == threshold.saturating_sub(1)` (heads-up before hard fail).
+    pub soft_warn: bool,
+    /// True when `top_level_dirs.len() > threshold`.
+    pub should_fail: bool,
+}
+
+/// INFRA-1792: Resolve the PR scope threshold from `CHUMP_PRSCOPE_THRESHOLD` (default 5).
+pub fn pr_scope_threshold_from_env() -> usize {
+    std::env::var("CHUMP_PRSCOPE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n >= 2)
+        .unwrap_or(5)
+}
+
+/// INFRA-1792: Evaluate staged-diff paths against a top-level directory count threshold.
+/// Soft-warns at `threshold - 1` and fails when `top_level_dirs.len() > threshold`.
+pub fn check_pr_scope(staged_paths: &[&str], threshold: usize) -> PrScopeOutcome {
+    let mut dirs = std::collections::BTreeSet::new();
+    for raw in staged_paths {
+        let p = raw.trim().trim_start_matches("./");
+        if p.is_empty() {
+            continue;
+        }
+        let top = match p.split_once('/') {
+            Some((first, _)) if !first.is_empty() => first.to_string(),
+            _ => "<root>".to_string(),
+        };
+        dirs.insert(top);
+    }
+    let top_level_dirs: Vec<String> = dirs.into_iter().collect();
+    let count = top_level_dirs.len();
+    let should_fail = count > threshold;
+    let soft_warn = !should_fail && threshold > 1 && count == threshold - 1;
+    PrScopeOutcome {
+        top_level_dirs,
+        threshold,
+        soft_warn,
+        should_fail,
+    }
 }
 
 #[cfg(test)]
@@ -5434,5 +5536,89 @@ mod tests {
         );
         let docs = vec!["docs/ROADMAP.md".to_string()];
         assert!(select_shell_tests_for_paths(&docs).is_empty());
+    }
+
+    #[test]
+    fn effective220_truncated_gate_output_preserves_last_5_lines_and_writes_full_log() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut big = String::with_capacity(32_000);
+        while big.len() < 30_000 {
+            big.push_str("   Checking chump-coord v0.1.0 (/workspace/crates/chump-coord)\n");
+        }
+        let tail_lines = [
+            "error[E0425]: cannot find value `missing_ident` in this scope",
+            "  --> src/lib.rs:42:13",
+            "For more information about this error, try `rustc --explain E0425`.",
+            "error: could not compile `chump` (lib) due to 1 previous error",
+            "warning: build failed, waiting for other jobs to finish...",
+        ];
+        for l in &tail_lines {
+            big.push_str(l);
+            big.push('\n');
+        }
+        assert!(big.len() > 30_000);
+
+        let (formatted, log_path) =
+            format_and_persist_failed_gate_output("cargo clippy", &big, dir.path());
+        for l in &tail_lines {
+            assert!(
+                formatted.contains(l),
+                "truncated output must preserve final line {l:?}, got:\n{formatted}"
+            );
+        }
+        let log_path = log_path.expect("log file should be written");
+        assert!(log_path.ends_with("preflight-logs/cargo-clippy.log"));
+        let on_disk = std::fs::read_to_string(&log_path).expect("read persisted log");
+        assert_eq!(
+            on_disk, big,
+            "persisted preflight log must contain complete untruncated output"
+        );
+    }
+
+    #[test]
+    fn infra1652_discover_test_scripts_returns_existing_scripts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ci_dir = dir.path().join("scripts/ci");
+        std::fs::create_dir_all(&ci_dir).expect("mkdir");
+        std::fs::write(
+            ci_dir.join("test-event-registry-coverage.sh"),
+            "#!/bin/sh\n",
+        )
+        .expect("write");
+        let scripts = discover_test_scripts(dir.path());
+        assert_eq!(scripts.len(), 1);
+    }
+
+    #[test]
+    fn infra1792_check_pr_scope_warns_at_n_minus_1_and_fails_above_n() {
+        let three_dirs = ["src/main.rs", "crates/foo/lib.rs", "docs/README.md"];
+        let out_ok = check_pr_scope(&three_dirs, 5);
+        assert_eq!(out_ok.top_level_dirs.len(), 3);
+        assert!(!out_ok.soft_warn);
+        assert!(!out_ok.should_fail);
+
+        let four_dirs = [
+            "src/main.rs",
+            "crates/foo/lib.rs",
+            "docs/README.md",
+            "scripts/ci/test.sh",
+        ];
+        let out_warn = check_pr_scope(&four_dirs, 5);
+        assert_eq!(out_warn.top_level_dirs.len(), 4);
+        assert!(out_warn.soft_warn);
+        assert!(!out_warn.should_fail);
+
+        let six_dirs = [
+            "src/main.rs",
+            "crates/foo/lib.rs",
+            "docs/README.md",
+            "scripts/ci/test.sh",
+            "web/v2/app.js",
+            "launchd/foo.plist",
+        ];
+        let out_fail = check_pr_scope(&six_dirs, 5);
+        assert_eq!(out_fail.top_level_dirs.len(), 6);
+        assert!(!out_fail.soft_warn);
+        assert!(out_fail.should_fail);
     }
 }

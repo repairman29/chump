@@ -285,12 +285,14 @@ def extract_gates(yml_path, infra_jobs):
         if (indent in (8, 10) and re.match(r'^run:', stripped)
                 and current_job and current_step_name
                 and current_job not in infra_jobs):
-            m_inline = re.match(r'^run:\s+(.+)$', stripped)
+            m_inline = re.match(r'^run:\s+(?![|>][-+]?\s*$)(.+)$', stripped)
             if m_inline:
                 run_cmd = m_inline.group(1).strip()
                 extracted.append((current_job, current_step_name, run_cmd))
             else:
-                # Multi-line block: collect lines until dedent
+                # Multi-line block (INFRA-8587): collect all lines until dedent so
+                # a `run: |` step invoking `bash scripts/ci/foo.sh` is recognized
+                # as mirrored when preflight.rs runs `scripts/ci/foo.sh`.
                 block_indent = indent + 2
                 run_lines = []
                 j = i + 1
@@ -303,7 +305,7 @@ def extract_gates(yml_path, infra_jobs):
                         break
                     run_lines.append(body_raw.strip())
                     j += 1
-                run_cmd = run_lines[0] if run_lines else ""
+                run_cmd = "\n".join(run_lines) if run_lines else ""
                 if run_cmd:
                     extracted.append((current_job, current_step_name, run_cmd))
         i += 1

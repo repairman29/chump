@@ -369,7 +369,59 @@ declare -A ORGAN_REQUIRES
 declare -A ORGAN_PLATFORMS
 declare -A ORGAN_NODE_UNUSED
 declare -A ORGAN_RUN_SCOPE
-organ_manifest_parse "$MANIFEST" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES ORGAN_PLATFORMS ORGAN_NODE_UNUSED ORGAN_RUN_SCOPE RETIRED || exit 1
+declare -A ORGAN_HOME
+organ_manifest_parse "$MANIFEST" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES ORGAN_PLATFORMS ORGAN_NODE_UNUSED ORGAN_RUN_SCOPE RETIRED ORGAN_HOME || exit 1
+
+# RESILIENT-1734: pre-rehome liveness gate. Before stopping/disabling an organ
+# on its current host because `home=` changed to another host, verify the target
+# `home` host has emitted a heartbeat within the last 10 minutes (600s). If the
+# target host is dark/unreachable, keep the organ running on its current host
+# and emit kind=organ_rehome_deferred_target_offline.
+organ_target_home_heartbeat_fresh() {
+  local target_home="${1:-}"
+  local max_age="${CHUMP_RECONCILE_HOME_HEARTBEAT_MAX_AGE_S:-600}"
+  [[ -n "$target_home" ]] || return 1
+  if [[ -n "${CHUMP_RECONCILE_HOME_HEARTBEAT_AGE_S:-}" ]]; then
+    [[ "${CHUMP_RECONCILE_HOME_HEARTBEAT_AGE_S}" =~ ^[0-9]+$ ]] || return 1
+    (( CHUMP_RECONCILE_HOME_HEARTBEAT_AGE_S <= max_age ))
+    return $?
+  fi
+  [[ -f "$AMBIENT_LOG" ]] || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$AMBIENT_LOG" "$target_home" "$max_age" <<'PY' 2>/dev/null
+import datetime, json, sys
+ambient_path, target_home, max_age_s = sys.argv[1], sys.argv[2], int(sys.argv[3])
+now = datetime.datetime.now(datetime.timezone.utc)
+with open(ambient_path, "r", encoding="utf-8", errors="replace") as fh:
+    lines = fh.readlines()
+for raw in reversed(lines[-2000:]):
+    raw = raw.strip()
+    if not raw or target_home not in raw:
+        continue
+    try:
+        ev = json.loads(raw)
+    except Exception:
+        continue
+    kind = str(ev.get("kind") or "")
+    if kind not in ("node_heartbeat", "heartbeat", "host_heartbeat"):
+        continue
+    host = str(ev.get("host") or ev.get("node") or ev.get("node_name") or "")
+    if host != target_home:
+        continue
+    ts_raw = str(ev.get("ts") or "")
+    try:
+        if ts_raw.endswith("Z"):
+            ts_raw = ts_raw[:-1] + "+00:00"
+        dt = datetime.datetime.fromisoformat(ts_raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        if (now - dt).total_seconds() <= max_age_s:
+            sys.exit(0)
+    except Exception:
+        continue
+sys.exit(1)
+PY
+}
 
 # INFRA-7764 (docs/strategy/ONE_COMMAND_INSTALL.md section 1): platform
 # scoping. organ-manifest.txt is becoming the single unified roster —
@@ -480,6 +532,33 @@ if [[ -n "$UNIT_ALLOW" && -n "$ROLE_FILTER" ]]; then
     done
   done
   ENABLED=("${FILTERED_ENABLED[@]}")
+fi
+
+# RESILIENT-1734: when the current host identity is known (CHUMP_ORGAN_MANIFEST_NODE
+# or CHUMP_NODE_NAME), any organ whose declared `home=` moved to a different host
+# is checked against organ_target_home_heartbeat_fresh before rehoming off this host.
+REHOME_CURRENT_HOST="${CHUMP_ORGAN_MANIFEST_NODE:-${CHUMP_NODE_NAME:-}}"
+REHOME_READY_UNITS=()
+if [[ -n "$REHOME_CURRENT_HOST" ]]; then
+  HOME_FILTERED_ENABLED=()
+  for unit in "${ENABLED[@]}"; do
+    expected_home="${ORGAN_HOME[$unit]:-}"
+    if [[ -z "$expected_home" ]] || organ_home_matches "$expected_home" "$REHOME_CURRENT_HOST"; then
+      HOME_FILTERED_ENABLED+=("$unit")
+      continue
+    fi
+    if organ_target_home_heartbeat_fresh "$expected_home"; then
+      REHOME_READY_UNITS+=("$unit:$expected_home")
+    else
+      if organ_is_live "$unit"; then
+        echo "DEFER-REHOME: $unit target home '$expected_home' has no recent heartbeat (<10m) — keeping active on $REHOME_CURRENT_HOST"
+        # scanner-anchor: "kind":"organ_rehome_deferred_target_offline" (RESILIENT-1734)
+        emit organ_rehome_deferred_target_offline "\"unit\":\"$unit\",\"current_host\":\"$REHOME_CURRENT_HOST\",\"target_home\":\"$expected_home\""
+        HOME_FILTERED_ENABLED+=("$unit")
+      fi
+    fi
+  done
+  ENABLED=("${HOME_FILTERED_ENABLED[@]}")
 fi
 
 MODE="${1:---apply}"
@@ -651,6 +730,18 @@ for unit in "${PAGING_OFF[@]}"; do
   if "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
     "$SYSTEMCTL_BIN" stop "$unit" 2>/dev/null || true
     CHANGED+=("stopped:$unit")
+  fi
+done
+
+# RESILIENT-1734: for any organ whose target `home` host HAS a fresh heartbeat
+# (<10m) and is currently live on this host, stop/disable it here so it rehomes cleanly.
+for rehome_pair in "${REHOME_READY_UNITS[@]}"; do
+  rehome_unit="${rehome_pair%%:*}"
+  rehome_target="${rehome_pair#*:}"
+  if organ_is_live "$rehome_unit"; then
+    echo "REHOME: $rehome_unit moving from $REHOME_CURRENT_HOST to healthy target home $rehome_target"
+    reap_unit_and_sibling "$rehome_unit"
+    CHANGED+=("rehomed:${rehome_unit}->${rehome_target}")
   fi
 done
 

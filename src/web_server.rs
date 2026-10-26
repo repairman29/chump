@@ -2613,6 +2613,138 @@ async fn handle_autopilot_daemon_status(
     Ok(Json(status))
 }
 
+/// INFRA-2213: Sanitize a daemon label and read the last `lines` (capped at 500)
+/// of `.chump-locks/autopilot-logs/<label>.log` under `base`.
+pub(crate) fn read_daemon_log_tail(
+    base: &std::path::Path,
+    label: &str,
+    lines: usize,
+) -> std::result::Result<serde_json::Value, (StatusCode, String)> {
+    let trimmed = label.trim();
+    if trimmed.is_empty()
+        || trimmed.contains("..")
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || !trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "invalid daemon label (must match [A-Za-z0-9._-]+)".to_string(),
+        ));
+    }
+    let capped = lines.clamp(1, 500);
+    let log_dir = base.join(".chump-locks").join("autopilot-logs");
+    let primary = log_dir.join(format!("{trimmed}.log"));
+    let stripped = trimmed.strip_prefix("com.chump.").unwrap_or(trimmed);
+    let fallback = log_dir.join(format!("{stripped}.log"));
+    let chosen = if primary.is_file() {
+        Some(primary)
+    } else if fallback.is_file() {
+        Some(fallback)
+    } else {
+        None
+    };
+
+    let Some(path) = chosen else {
+        return Ok(serde_json::json!({
+            "label": trimmed,
+            "lines": [],
+            "truncated": false,
+            "missing": true,
+        }));
+    };
+
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    let all_lines: Vec<&str> = raw.lines().collect();
+    let total = all_lines.len();
+    let truncated = total > capped;
+    let start = total.saturating_sub(capped);
+    let tail: Vec<String> = all_lines[start..]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    Ok(serde_json::json!({
+        "label": trimmed,
+        "lines": tail,
+        "truncated": truncated,
+    }))
+}
+
+/// INFRA-2213: GET /api/autopilot/daemon-log?name=<label>&lines=<N>
+async fn handle_autopilot_daemon_log(
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> std::result::Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !check_auth(&headers) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "unauthorized"})),
+        ));
+    }
+    let name = params.get("name").map(String::as_str).unwrap_or("");
+    let lines = params
+        .get("lines")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(50);
+    let base = match std::env::var("CHUMP_REPO") {
+        Ok(r) if !r.trim().is_empty() => PathBuf::from(r),
+        _ => repo_path::runtime_base(),
+    };
+    match read_daemon_log_tail(&base, name, lines) {
+        Ok(val) => Ok(Json(val)),
+        Err((code, msg)) => Err((code, Json(serde_json::json!({"error": msg})))),
+    }
+}
+
+/// INFRA-1699 / INFRA-1470: GET /api/content-bots — return enabled state for the
+/// 4 content-bots (`pmm`, `docubot`, `evangelist`, `copybot`).
+async fn handle_content_bots_list(
+    headers: HeaderMap,
+) -> std::result::Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let base = repo_path::runtime_base();
+    let enabled = crate::content_bots::enabled_set(&base);
+    let bots: Vec<serde_json::Value> = ["pmm", "docubot", "evangelist", "copybot"]
+        .iter()
+        .map(|id| {
+            serde_json::json!({
+                "bot_id": id,
+                "enabled": enabled.contains(*id),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "bots": bots })))
+}
+
+#[derive(serde::Deserialize)]
+struct ContentBotToggleBody {
+    #[serde(default)]
+    enabled: bool,
+}
+
+/// INFRA-1699 / INFRA-1470: PUT /api/content-bots/{bot_id}
+async fn handle_content_bots_put(
+    headers: HeaderMap,
+    axum::extract::Path(bot_id): axum::extract::Path<String>,
+    Json(body): Json<ContentBotToggleBody>,
+) -> std::result::Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let valid = ["pmm", "docubot", "evangelist", "copybot"];
+    if !valid.contains(&bot_id.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(Json(serde_json::json!({
+        "bot_id": bot_id,
+        "enabled": body.enabled,
+    })))
+}
+
 #[derive(serde::Deserialize)]
 struct WorkingRepoBody {
     #[serde(default)]
@@ -9985,6 +10117,13 @@ fn build_api_router() -> Router {
             "/api/autopilot/daemon-status",
             get(handle_autopilot_daemon_status),
         )
+        .route(
+            "/api/autopilot/daemon-log",
+            get(handle_autopilot_daemon_log),
+        )
+        // INFRA-1699 / INFRA-1470: content-bots toggles API backing web/v2/content-bots.js
+        .route("/api/content-bots", get(handle_content_bots_list))
+        .route("/api/content-bots/{bot_id}", put(handle_content_bots_put))
         .route("/api/repo/context", get(handle_repo_context))
         .route("/api/repo/working", post(handle_repo_working))
         .route("/api/repo/init", post(handle_repo_init))
@@ -12304,5 +12443,31 @@ mod repo_init_tests {
             under_allowed,
             "/Users/jeffadkins/Projects/MyRepo should be inside /Users/jeffadkins"
         );
+    }
+
+    #[test]
+    fn infra_2213_read_daemon_log_tail_sanitizes_and_tails() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let log_dir = tmp.path().join(".chump-locks").join("autopilot-logs");
+        std::fs::create_dir_all(&log_dir).expect("mkdir");
+        std::fs::write(
+            log_dir.join("com.chump.ship-heartbeat.log"),
+            "line1\nline2\nline3\nline4\n",
+        )
+        .expect("write log");
+
+        let ok = super::read_daemon_log_tail(tmp.path(), "com.chump.ship-heartbeat", 2)
+            .expect("valid daemon label");
+        assert_eq!(ok["label"], "com.chump.ship-heartbeat");
+        assert_eq!(ok["truncated"], true);
+        assert_eq!(ok["lines"], serde_json::json!(["line3", "line4"]));
+
+        let missing =
+            super::read_daemon_log_tail(tmp.path(), "com.chump.nonexistent", 10).expect("missing");
+        assert_eq!(missing["lines"], serde_json::json!([]));
+        assert_eq!(missing["missing"], true);
+
+        let bad = super::read_daemon_log_tail(tmp.path(), "../etc/passwd", 10);
+        assert!(bad.is_err(), "path traversal must be rejected");
     }
 }

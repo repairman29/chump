@@ -58,7 +58,7 @@ organs:
   - unit: chump-ci-flake-rerun.timer
     state: enabled
     role: brain
-    home: slim
+    home: cuphead
     run_scope: any
     platforms: "systemd"
   - unit: chump-pr-approval.timer
@@ -430,7 +430,7 @@ organs:
   - unit: chump-ci-health-gate.timer
     state: enabled
     role: brain
-    home: slim
+    home: cuphead
     run_scope: any
     platforms: "systemd,launchd"
   - unit: chump-auto-deploy.timer
@@ -526,14 +526,26 @@ organs:
   - unit: chump-pr-stuck-live-scan.service
     state: enabled
     role: brain
-    home: slim
+    home: cuphead
     run_scope: system
     platforms: "systemd"
   - unit: chump-pr-stuck-cluster-detector.service
     state: enabled
     role: brain
-    home: slim
+    home: cuphead
     run_scope: system
+    platforms: "systemd"
+  - unit: chump-nats-gap-drain.service
+    state: enabled
+    role: brain
+    home: cuphead
+    run_scope: any
+    platforms: "systemd"
+  - unit: chump-holler-drain.timer
+    state: enabled
+    role: data
+    home: cuphead
+    run_scope: any
     platforms: "systemd"
   - unit: chump-armed-pr-rebaser.timer
     state: enabled

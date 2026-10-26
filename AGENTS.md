@@ -94,6 +94,10 @@ cargo build --bin chump           # CLI binary only (fastest iteration)
 cargo check --bin chump --tests   # type-check without codegen (use this in tight loops)
 ```
 
+### Local dev hot-reload (INFRA-2245)
+
+For fast incremental feedback on file save (alongside or instead of `cargo-watch`), [`bacon.toml`](./bacon.toml) configures [`bacon`](https://dystroy.org/bacon/) with three jobs: `check` (`cargo check --all --workspace`), `clippy` (`cargo clippy --workspace --all-targets`), and `test-quick` (`cargo nextest run --lib --no-fail-fast`). Install via `cargo binstall bacon`, run `bacon` from the repo root, and switch jobs with `1`/`2`/`3` or `/`. See [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md#local-dev-hot-reload-with-bacon-infra-2245).
+
 ### Linux-first setup (INFRA-3342)
 
 If you are on Linux, standard installation via `brew` might be unavailable or incomplete. Follow the **Linux substrate** path for the most reliable experience:

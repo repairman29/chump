@@ -776,7 +776,7 @@ events:
       chump claim refused because a non-draft OPEN PR already exists on
       the canonical claim branch `chump/<gap>-claim` — prevents the "2 sessions
       wasted creating duplicate worktrees" failure mode observed 2026-05-16.
-      Overrides logged separately:  --allow-duplicate-pr / CHUMP_CLAIM_ALLOW_OPEN_PR
+      'Overrides logged separately: --allow-duplicate-pr / CHUMP_CLAIM_ALLOW_OPEN_PR'
       (rescue), --resume (continue same work), CHUMP_ALLOW_STOMP (abandoned PR
       takeover).
     consumers: [fleet-brief, waste-tally, audit-log]
@@ -8548,6 +8548,7 @@ events:
     fields_required: [ts, kind, remote, base, reason]
   # ── INFRA-1361: GitHub App installation-token rotator ────────────────────
   - kind: gh_token_rotate_noop
+    deprecated: true
     effect_metric: self
     emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
     trigger: chump gh-token rotate was invoked but ~/.chump/github_apps.toml is
@@ -8558,6 +8559,7 @@ events:
     fields_optional: [session, worktree, harness]
 
   - kind: gh_token_rotated
+    deprecated: true
     effect_metric: self
     emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
     trigger: a fresh GitHub App installation token was successfully fetched for
@@ -15089,4 +15091,254 @@ events:
       stalled for >= 4 hours, surfacing it for conflict triage / rebase.
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
+
+  - kind: bot_merge_step_stalled
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-2272, INFRA-2273)
+    emitter_paths: [scripts/coord/bot-merge.sh]
+    trigger: >
+      Emitted by _bm_emit_step_stalled in scripts/coord/bot-merge.sh when a wrapped
+      step exceeds its per-step gtimeout budget (exit 124).
+    consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
+    fields_required: [ts, kind, gap_id, step_name, elapsed_seconds, last_progress_ts, cmd_label, timeout_s, pid]
+
+  - kind: gap_ship_metadata_only
+    status: active
+    effect_metric: self
+    emitter: src/gap_cmd.rs + src/main.rs (INFRA-2038)
+    emitter_paths: [src/gap_cmd.rs, src/main.rs]
+    trigger: >
+      Emitted by chump gap ship when a metadata-only status flip is detected
+      (closed_pr already matches or no code-ship YAML mutation requested), skipping
+      the 15-commit branch staleness gate.
+    consumers: [scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap, session]
+
+  - kind: shepherd_warn_suppressed
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/opus-shepherd-triage.sh (INFRA-2254)
+    emitter_paths: [scripts/coord/opus-shepherd-triage.sh]
+    trigger: >
+      Emitted by scripts/coord/opus-shepherd-triage.sh when an operator WARN
+      broadcast is suppressed because its sha256(ghost_count + plan) fingerprint
+      matches .chump-locks/shepherd-triage-last-warn.sentinel within
+      CHUMP_SHEPHERD_WARN_COOLDOWN_M minutes.
+    consumers: [scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, session, fingerprint, cooldown_m]
+
+  - kind: fleet_identity_missing
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/lib/github.sh + scripts/dispatch/worker.sh + scripts/coord/bot-merge.sh (INFRA-8652)
+    emitter_paths: [scripts/coord/lib/github.sh, scripts/dispatch/worker.sh, scripts/coord/bot-merge.sh]
+    trigger: >
+      Emitted when chump_use_fleet_identity finds neither GH_TOKEN_FLEET nor a configured
+      GitHub App key, falling back to operator GH_TOKEN / gh auth state.
+    consumers: [scripts/ops/vital-signs.sh, scripts/dispatch/fleet-brief.sh]
+    fields_required: [ts, kind, caller, fallback]
+
+  - kind: organ_rehome_deferred_target_offline
+    status: active
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1734)
+    emitter_paths: [scripts/ops/organ-reconcile.sh]
+    trigger: >
+      Emitted by organ-reconcile.sh when a non-home host evaluates a unit whose target
+      home node has no fresh heartbeat (<10m), deferring disable/mask so the unit is not
+      stranded on an offline home node.
+    consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
+    fields_required: [ts, kind, unit, host, target_home]
+
+  - kind: product_delivery_verified
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/verify-product-delivery.sh + src/gap_cmd.rs (CREDIBLE-1647)
+    emitter_paths: [scripts/coord/verify-product-delivery.sh, src/gap_cmd.rs]
+    trigger: >
+      Emitted when a PRODUCT-* gap passes live delivery verification (deploy_id +
+      health probe / build artifact verification) before or during ship.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/dev/mission-scoreboard.sh]
+    fields_required: [ts, kind, gap_id, deploy_id, probe_status]
+
+  - kind: domain_skew_observed
+    status: active
+    effect_metric: self
+    emitter: scripts/ci/test-no-anthropic-smoke.sh + scripts/dev/mission-scoreboard.sh (INFRA-1414)
+    emitter_paths: [scripts/ci/test-no-anthropic-smoke.sh, scripts/dev/mission-scoreboard.sh]
+    trigger: >
+      Emitted as a non-fatal warning when the top gap domain exceeds
+      ALERT_DOMAIN_SKEW_WARN_PCT (default 50%) but remains at or below
+      ALERT_DOMAIN_SKEW_FATAL_PCT (default 80%).
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, domain, pct, warn_pct, fatal_pct]
+
+  - kind: claim_aborted_open_pr
+    status: active
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs (INFRA-1636)
+    emitter_paths: [crates/chump-atomic-claim/src/atomic_claim.rs]
+    trigger: >
+      Emitted when chump claim aborts because the current branch already has an open PR,
+      preventing silent overwrite of an active PR branch.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap_id, session, branch, open_pr]
+
+  - kind: claim_completed
+    status: active
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs (INFRA-1652)
+    emitter_paths: [crates/chump-atomic-claim/src/atomic_claim.rs]
+    trigger: >
+      Emitted at the end of run_claim with outcome (claimed|failed), cost_ms, and
+      failure_class so claim latency and failure modes are observable.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap_id, session, outcome, cost_ms, failure_class]
+
+  - kind: picker_safety_guard_tripped
+    status: active
+    effect_metric: resilient
+    emitter: src/gap_cmd.rs (INFRA-2170)
+    emitter_paths: [src/gap_cmd.rs]
+    trigger: >
+      Emitted when chump gap reserve detects an external_repo skill tag without
+      a Mode D authorization marker (--require-mode-d, CHUMP_MODE_D=1, or Mode D in notes).
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, guard, title, skills, enforced]
+
+  - kind: stale_closed_pr_ref
+    status: active
+    effect_metric: credible
+    emitter: scripts/dev/audit-stale-closed-pr-refs.sh (INFRA-1911)
+    emitter_paths: [scripts/dev/audit-stale-closed-pr-refs.sh]
+    trigger: >
+      Emitted per open gap in state.db whose description or notes reference a PR
+      that is CLOSED without merge in github_cache.db.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, gap_id, pr_number, applied]
+
+  - kind: inbox_watcher_missing
+    status: active
+    effect_metric: resilient
+    emitter: scripts/hooks/inbox-watcher-nag.sh (INFRA-1941)
+    emitter_paths: [scripts/hooks/inbox-watcher-nag.sh]
+    trigger: >
+      Emitted (debounced 10m) when a session's inbox-watcher heartbeat file is
+      missing or older than 600s.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, session, age_s]
+
+  - kind: inbox_watcher_opted_out
+    status: active
+    effect_metric: self
+    emitter: scripts/hooks/inbox-watcher-nag.sh (INFRA-1941)
+    emitter_paths: [scripts/hooks/inbox-watcher-nag.sh]
+    trigger: >
+      Emitted when CHUMP_INBOX_WATCHER_OPTOUT=1 suppresses the inbox-watcher nag hook.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, session]
+
+  - kind: a2a_msg_sent
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when an A2A inbox message is sent via a2a_emit_lifecycle.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, msg_id, from, to]
+
+  - kind: a2a_msg_delivered
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when an A2A inbox message is delivered to a recipient inbox via a2a_emit_lifecycle.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, msg_id, from, to]
+
+  - kind: a2a_msg_acked
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when an A2A inbox message is acknowledged by the recipient via a2a_emit_lifecycle.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, msg_id, from, to]
+
+  - kind: a2a_msg_schema_violation
+    status: active
+    effect_metric: credible
+    emitter: scripts/coord/lib/a2a_schema.sh (INFRA-1948)
+    emitter_paths: [scripts/coord/lib/a2a_schema.sh]
+    trigger: >
+      Emitted when a2a_validate_message_json rejects a malformed or incomplete A2A message payload.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, reason, missing_fields]
+
+  - kind: wedge_auto_filed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh (INFRA-2068)
+    emitter_paths: [scripts/coord/wizard-daemon.sh]
+    trigger: >
+      Emitted when wizard-daemon Step 7 auto-reserves a P1/xs gap for a novel wedge_class_detected signature.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, signature_hash, gap_id, priority, effort]
+
+  - kind: ci_health_gate_blind
+    status: active
+    effect_metric: credible
+    emitter: scripts/coord/ci-health-gate.sh (INFRA-8050)
+    emitter_paths: [scripts/coord/ci-health-gate.sh]
+    trigger: >
+      Emitted when ci-health-gate.sh cannot query open PRs via github_cache.db or gh (auth/transport failure), refusing to report false-healthy or clear an existing pause.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, reason, slo_rc]
+
+  - kind: organ_dual_scope_detected
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (INFRA-8586)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when node-converge detects a chump-*.timer enabled in both system and user systemd scopes.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, unit, remedy]
+
+  - kind: system_unit_missing_user
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (RESILIENT-1732)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when node-converge detects a system-scope chump-*.service lacking a User= directive under [Service].
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, unit, path, expected_user]
+
+  - kind: stale_usr_local_chump_repointed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (RESILIENT-1602)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when node-converge repoints a stale /usr/local/bin/chump to the managed ~/.cargo/bin/chump binary.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, from, to]
+
+  - kind: stale_usr_local_chump_shadow
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-converge.sh (RESILIENT-1602)
+    emitter_paths: [scripts/ops/node-converge.sh]
+    trigger: >
+      Emitted when /usr/local/bin/chump shadows ~/.cargo/bin/chump and cannot be repointed due to permissions.
+    consumers: [scripts/dispatch/fleet-brief.sh, scripts/ops/vital-signs.sh]
+    fields_required: [ts, kind, usr_bin, cargo_bin]
+
+
+
 

@@ -409,6 +409,78 @@ pub struct ClaimReport {
     pub paths: Option<String>,
 }
 
+/// INFRA-1636: typed error variants for atomic-claim preflight refusals.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimError {
+    OpenPullRequest {
+        gap_id: String,
+        branch: String,
+        pr_number: u64,
+        author: String,
+    },
+}
+
+impl std::fmt::Display for ClaimError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClaimError::OpenPullRequest {
+                gap_id,
+                branch,
+                pr_number,
+                author,
+            } => {
+                let author_label = if author.is_empty() {
+                    "unknown"
+                } else {
+                    author.as_str()
+                };
+                write!(
+                    f,
+                    "INFRA-1636: open PR #{pr_number} already exists for {gap_id} by {author_label} on branch `{branch}` — gap is in-flight.\n  \
+                     Pick a different gap, wait for the PR to land/close, or pass --allow-duplicate-pr / --resume."
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ClaimError {}
+
+/// INFRA-1636: pre-claim guard checking whether an open PR already exists on
+/// `branch`. When an open PR is found (and neither `resume`, `allow_duplicate_pr`,
+/// `CHUMP_ALLOW_STOMP`, nor `CHUMP_CLAIM_ALLOW_OPEN_PR` is set), emits both
+/// `claim_aborted_pr_in_flight` and `claim_aborted_open_pr` to ambient.jsonl
+/// and returns `Err(ClaimError::OpenPullRequest)`.
+pub fn guard_no_open_pr_on_branch(
+    repo_root: &Path,
+    gap_id: &str,
+    branch: &str,
+    resume: bool,
+    allow_duplicate_pr: bool,
+) -> std::result::Result<(), ClaimError> {
+    let stomp_bypass = std::env::var("CHUMP_ALLOW_STOMP")
+        .map(|v| !v.trim().is_empty() && v.trim() != "0")
+        .unwrap_or(false);
+    let allow_open_pr_bypass = allow_duplicate_pr
+        || std::env::var("CHUMP_CLAIM_ALLOW_OPEN_PR")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+    if !resume && !stomp_bypass && !allow_open_pr_bypass {
+        if let Some((pr_num, author)) = open_pr_info(repo_root, branch) {
+            let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+            emit_claim_aborted_pr_in_flight_event(&ambient_log, gap_id, pr_num, &author);
+            emit_claim_aborted_open_pr_event(&ambient_log, gap_id, branch, pr_num, &author);
+            return Err(ClaimError::OpenPullRequest {
+                gap_id: gap_id.to_string(),
+                branch: branch.to_string(),
+                pr_number: pr_num,
+                author,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Print a friendly multi-line summary suitable for a terminal.
 pub fn print_report(r: &ClaimReport) {
     println!();
@@ -968,7 +1040,36 @@ fn run_claim_lease_only(args: ClaimArgs) -> Result<ClaimReport> {
     })
 }
 
-pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
+pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
+    let start = std::time::Instant::now();
+    let repo_root = args.repo_root.clone();
+    let gap_id = args.gap_id.clone();
+    let res = run_claim_inner(args);
+    let cost_ms = start.elapsed().as_millis() as u64;
+    match &res {
+        Ok(_) => {
+            emit_claim_completed_event(&repo_root, &gap_id, "success", cost_ms, "none");
+        }
+        Err(err) => {
+            let msg = format!("{err:#}").to_ascii_lowercase();
+            let (outcome, failure_class) = if msg.contains("timed out") || msg.contains("timeout") {
+                ("timeout", "transient")
+            } else if msg.contains("nats")
+                || msg.contains("gitdir")
+                || msg.contains("temporary")
+                || msg.contains("connection")
+            {
+                ("failure", "transient")
+            } else {
+                ("failure", "permanent")
+            };
+            emit_claim_completed_event(&repo_root, &gap_id, outcome, cost_ms, failure_class);
+        }
+    }
+    res
+}
+
+fn run_claim_inner(mut args: ClaimArgs) -> Result<ClaimReport> {
     if args.lease_only {
         return run_claim_lease_only(args);
     }
@@ -1470,48 +1571,15 @@ pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
         );
     }
 
-    // 5b. INFRA-1328: stomp-prevention pre-claim PR check.
-    //
-    // If an OPEN PR exists upstream with `chump/<gap>-claim` as its head,
-    // the prior agent's work is in flight even if their lease lapsed (claim
-    // TTL is 30 min; ship cycles often run longer while CI sits in the
-    // queue). Re-claiming would force the next push to either bail or
-    // stomp the open PR — that's the failure mode PR #2008 lost work to
-    // when sibling-PR #2013 took the same branch.
-    //
-    // The check is best-effort: `gh` failures return None and we fall
-    // through to today's behavior. `--resume` and CHUMP_ALLOW_STOMP=1 are
-    // legitimate overrides (resume = same agent retrying, stomp = operator
-    // explicitly takes over an abandoned PR).
-    let stomp_bypass = std::env::var("CHUMP_ALLOW_STOMP")
-        .map(|v| !v.trim().is_empty() && v.trim() != "0")
-        .unwrap_or(false);
-    // INFRA-1503: separate operator-explicit bypass for the "rescue an in-flight
-    // open PR" workflow. Distinct from CHUMP_ALLOW_STOMP so audit logs can tell
-    // intentional rescue (this) apart from abandoned-PR takeover (stomp).
-    let allow_open_pr_bypass = args.allow_duplicate_pr
-        || std::env::var("CHUMP_CLAIM_ALLOW_OPEN_PR")
-            .map(|v| !v.trim().is_empty() && v.trim() != "0")
-            .unwrap_or(false);
-    if !args.resume && !stomp_bypass && !allow_open_pr_bypass {
-        if let Some((pr_num, author)) = open_pr_info(&args.repo_root, &branch) {
-            // INFRA-1503: emit ambient event BEFORE bail so the waste signal is
-            // captured even when the operator dismisses the diagnostic and
-            // moves on (this is the "2 sessions wasted" failure mode we want to
-            // count).
-            let ambient_log = args.repo_root.join(".chump-locks/ambient.jsonl");
-            emit_claim_aborted_pr_in_flight_event(&ambient_log, &args.gap_id, pr_num, &author);
-            bail!(
-                "INFRA-1503 (was INFRA-1328): open PR #{} already exists for {} by {} on branch `{}` — gap is in-flight.\n  \
-                 Pick a different gap, or wait for the PR to land/close.\n  \
-                 Overrides: --allow-duplicate-pr | CHUMP_CLAIM_ALLOW_OPEN_PR=1 (rescue) | \
-                 --resume (continue same work) | CHUMP_ALLOW_STOMP=1 (abandoned PR takeover).",
-                pr_num,
-                args.gap_id,
-                if author.is_empty() { "unknown" } else { author.as_str() },
-                branch,
-            );
-        }
+    // 5b. INFRA-1328 / INFRA-1636: stomp-prevention pre-claim PR check.
+    if let Err(err) = guard_no_open_pr_on_branch(
+        &args.repo_root,
+        &args.gap_id,
+        &branch,
+        args.resume,
+        args.allow_duplicate_pr,
+    ) {
+        return Err(err.into());
     }
 
     // 5.5. INFRA-1116: Check for overlapping INTENT from other live sessions,
@@ -2267,6 +2335,30 @@ pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
 /// Best-effort: any failure returns `None`. Author may be empty string if the
 /// PR has no `user.login` (rare; some GitHub Apps).
 pub(crate) fn open_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, String)> {
+    // INFRA-1636: allow hermetic test command override via CHUMP_CLAIM_OPEN_PR_PROBE_CMD
+    if let Ok(probe_cmd) = std::env::var("CHUMP_CLAIM_OPEN_PR_PROBE_CMD") {
+        let probe_cmd = probe_cmd.trim();
+        if !probe_cmd.is_empty() {
+            let out = Command::new("sh")
+                .args(["-c", probe_cmd])
+                .env("CHUMP_CLAIM_BRANCH", branch)
+                .current_dir(repo_root)
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let line = stdout.trim();
+            if line.is_empty() {
+                return None;
+            }
+            let mut parts = line.splitn(2, '\t');
+            let num = parts.next()?.trim().parse::<u64>().ok()?;
+            let author = parts.next().unwrap_or("").trim().to_string();
+            return Some((num, author));
+        }
+    }
     let owner_repo = gh_owner_repo(repo_root)?;
     let owner = owner_repo.split('/').next()?;
     let head = format!("{}:{}", owner, branch);
@@ -2777,6 +2869,79 @@ fn emit_claim_aborted_pr_in_flight_event(
         .create(true)
         .append(true)
         .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-1636: emit `claim_aborted_open_pr` when an open PR already exists on the
+/// claim branch (`chump/<gap>-claim`).
+fn emit_claim_aborted_open_pr_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    branch: &str,
+    existing_pr: u64,
+    existing_author: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_aborted_open_pr\",\
+         \"gap_id\":\"{}\",\"branch\":\"{}\",\"existing_pr\":{},\"existing_author\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(branch),
+        existing_pr,
+        json_escape(existing_author),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-1652: emit `claim_completed` with `outcome`, `cost_ms`, and `failure_class`
+/// (`transient` | `permanent` | `none`) for every `run_claim` invocation.
+pub(crate) fn emit_claim_completed_event(
+    repo_root: &Path,
+    gap_id: &str,
+    outcome: &str,
+    cost_ms: u64,
+    failure_class: &str,
+) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_completed\",\
+         \"gap_id\":\"{}\",\"outcome\":\"{}\",\"cost_ms\":{},\"failure_class\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(outcome),
+        cost_ms,
+        json_escape(failure_class),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
         .and_then(|mut f| {
             use std::io::Write;
             f.write_all(line.as_bytes())
@@ -7903,16 +8068,29 @@ mod tests {
             stderr_msg.replace('"', "\\\""),
             rc
         );
-        // sync_all() + explicit drop before chmod avoids ETXTBSY (os error 26)
-        // on Linux when the kernel still sees the inode open for writing at exec time.
+        // INFRA-1530: OpenOptions write+truncate + write_all + flush + sync_all +
+        // explicit drop(f) before chmod + parent dir sync_all() avoids ETXTBSY
+        // (os error 26) on Linux when exec() races inode writeback.
         {
-            let mut f = std::fs::File::create(path).unwrap();
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(path)
+                .unwrap();
             f.write_all(body.as_bytes()).unwrap();
+            f.flush().unwrap();
             f.sync_all().unwrap();
+            drop(f);
         }
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
     }
 
     #[test]
@@ -9518,5 +9696,64 @@ mod gap_claim_marker_tests {
             "competing session must be rejected by --lease-only"
         );
         assert!(!lock_dir.join("sess-beta.json").exists());
+    }
+
+    #[test]
+    fn infra_1636_open_pr_on_claim_branch_returns_open_pull_request_and_emits_event() {
+        let dir = tempdir().unwrap();
+        let lock_dir = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&lock_dir).unwrap();
+        unsafe {
+            std::env::set_var(
+                "CHUMP_CLAIM_OPEN_PR_PROBE_CMD",
+                "printf '4242\\tchump-fleet-bot\\n'",
+            );
+            std::env::remove_var("CHUMP_ALLOW_STOMP");
+            std::env::remove_var("CHUMP_CLAIM_ALLOW_OPEN_PR");
+        }
+        let res = guard_no_open_pr_on_branch(
+            dir.path(),
+            "INFRA-1636",
+            "chump/infra-1636-claim",
+            false,
+            false,
+        );
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_OPEN_PR_PROBE_CMD");
+        }
+        assert_eq!(
+            res,
+            Err(ClaimError::OpenPullRequest {
+                gap_id: "INFRA-1636".to_string(),
+                branch: "chump/infra-1636-claim".to_string(),
+                pr_number: 4242,
+                author: "chump-fleet-bot".to_string(),
+            })
+        );
+        let amb = std::fs::read_to_string(lock_dir.join("ambient.jsonl")).unwrap();
+        assert!(
+            amb.contains("\"kind\":\"claim_aborted_open_pr\""),
+            "expected claim_aborted_open_pr in ambient: {amb}"
+        );
+        assert!(
+            amb.contains("\"kind\":\"claim_aborted_pr_in_flight\""),
+            "expected claim_aborted_pr_in_flight in ambient: {amb}"
+        );
+    }
+
+    #[test]
+    fn infra_1652_emit_claim_completed_records_outcome_cost_ms_and_failure_class() {
+        let dir = tempdir().unwrap();
+        emit_claim_completed_event(dir.path(), "INFRA-1652", "success", 42, "none");
+        emit_claim_completed_event(dir.path(), "INFRA-1652", "failure", 120, "permanent");
+        let amb = std::fs::read_to_string(dir.path().join(".chump-locks/ambient.jsonl")).unwrap();
+        assert!(
+            amb.contains("\"kind\":\"claim_completed\",\"gap_id\":\"INFRA-1652\",\"outcome\":\"success\",\"cost_ms\":42,\"failure_class\":\"none\""),
+            "unexpected ambient: {amb}"
+        );
+        assert!(
+            amb.contains("\"kind\":\"claim_completed\",\"gap_id\":\"INFRA-1652\",\"outcome\":\"failure\",\"cost_ms\":120,\"failure_class\":\"permanent\""),
+            "unexpected ambient: {amb}"
+        );
     }
 }

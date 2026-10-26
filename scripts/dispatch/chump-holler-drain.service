@@ -1,0 +1,24 @@
+# chump-holler-drain.service — PRODUCT-320
+# Drains user feedback events from Supabase into Chump gaps / Discord DM.
+# Portable across nodes: uses __REPO_ROOT__, __HOME__, and __NODE_ENV__
+# (no host-specific /home/<user> literals).
+
+[Unit]
+Description=Holler feedback drain (Supabase -> Chump gap + Discord DM) (PRODUCT-320)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_ROOT__
+Environment=HOME=__HOME__
+EnvironmentFile=-__NODE_ENV__
+EnvironmentFile=-__HOME__/.chump/supabase.env
+EnvironmentFile=-__HOME__/.chump/holler.env
+Environment=CHUMP_REPO_ROOT=__REPO_ROOT__
+Environment=CHUMP_BIN=__BIN_DIR__/chump
+Environment=PATH=__BIN_DIR__:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash __REPO_ROOT__/scripts/ops/holler-drain.sh
+TimeoutStartSec=90
+StandardOutput=append:__HOME__/.chump/logs/holler-drain.log
+StandardError=append:__HOME__/.chump/logs/holler-drain.log

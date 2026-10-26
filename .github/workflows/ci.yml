@@ -1439,8 +1439,16 @@ jobs:
       - name: pipefail race sweep (INFRA-1658)
         run: bash scripts/ci/test-pipefail-race-sweep.sh
 
-      - name: claude orphan reaper (INFRA-1662)
+      - name: claude orphan reaper (INFRA-1662, INFRA-1680)
         run: bash scripts/ci/test-claude-reaper.sh
+
+      - name: A2A always-on consensus and deliberator nudge (INFRA-2791)
+        run: bash scripts/ci/test-a2a-always-on.sh
+
+      - name: worker prelude floor signals and floor readers (INFRA-3353)
+        run: |
+          bash scripts/ci/test-worker-prelude-reads-floor.sh
+          bash scripts/ci/test-worker-prelude-floor-signals.sh
 
       - name: stale-process watchdog (INFRA-1663)
         run: bash scripts/ci/test-stale-process-watchdog.sh

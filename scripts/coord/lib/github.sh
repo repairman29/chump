@@ -73,6 +73,10 @@ _chump_gh_ambient_path() {
         printf '%s' "$CHUMP_AMBIENT_OVERRIDE"
         return
     fi
+    if [[ -n "${CHUMP_AMBIENT_LOG:-}" ]]; then
+        printf '%s' "$CHUMP_AMBIENT_LOG"
+        return
+    fi
     local root
     root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
     printf '%s/.chump-locks/ambient.jsonl' "$root"
@@ -476,6 +480,97 @@ _chump_gh_is_secondary_limit() {
     echo "${1:-}" | grep -qE 'rate limit already exceeded|You have exceeded a secondary rate limit'
 }
 
+# INFRA-1076 + INFRA-1668: lane-routed GitHub-App installation tokens with
+# day-level sentinel deduplication for short-lived cron processes.
+#
+# Each lane (critical | background) reads from its own installation token
+# file written by the chump-gh-app rotator. When the lane file is absent,
+# falls back to the legacy GH_TOKEN / gh-CLI keyring path and emits a
+# one-shot ambient event (`kind=github_app_fallback`) once per UTC day via
+# a day-level sentinel file (`gh-fallback-noticed-YYYY-MM-DD.sentinel`)
+# alongside the in-process `_CHUMP_GH_FALLBACK_NOTICED=1` guard.
+_chump_gh_lane_token() {
+    local criticality="${CHUMP_GH_CALL_CRITICALITY:-critical}"
+    case "$criticality" in
+        critical|background) ;;
+        *) return 1 ;;
+    esac
+    local lane_file="${CHUMP_GH_LANE_TOKEN_DIR:-$HOME/.chump}/oauth-token-${criticality}.json"
+    if [[ ! -f "$lane_file" ]]; then
+        if [[ "${_CHUMP_GH_FALLBACK_NOTICED:-0}" != "1" ]]; then
+            export _CHUMP_GH_FALLBACK_NOTICED=1
+            local ambient lock_dir day_utc sentinel ts
+            ambient="$(_chump_gh_ambient_path)"
+            lock_dir="${CHUMP_LOCK_DIR:-$(dirname "$ambient")}"
+            day_utc="$(date -u +%Y-%m-%d)"
+            sentinel="$lock_dir/gh-fallback-noticed-${day_utc}.sentinel"
+            mkdir -p "$lock_dir" "$(dirname "$ambient")" 2>/dev/null || true
+            if [[ ! -f "$sentinel" ]]; then
+                : > "$sentinel" 2>/dev/null || true
+                ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                # scanner-anchor: "kind":"github_app_fallback"
+                printf '{"ts":"%s","kind":"github_app_fallback","criticality":"%s","reason":"lane_token_missing","expected_file":"%s"}\n' \
+                    "$ts" "$criticality" "$lane_file" \
+                    >> "$ambient" 2>/dev/null || true
+            fi
+        fi
+        return 1
+    fi
+    local tok
+    tok="$(python3 - "$lane_file" <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    print(d.get("token") or d.get("access_token") or "")
+except Exception:
+    pass
+PYEOF
+)"
+    if [[ -n "$tok" ]]; then
+        printf '%s' "$tok"
+        return 0
+    fi
+    return 1
+}
+
+# INFRA-8652: dedicated fleet machine-account identity split.
+#
+# When GH_TOKEN_FLEET is set (non-empty), worker git pushes and `gh pr create`
+# authenticate as the dedicated fleet machine account (`chump-fleet-bot`) so
+# that `review-organ-tick.sh` (which retains the operator's `GH_TOKEN`,
+# `repairman29`) has a distinct GitHub login and can post a formal
+# `gh pr review --approve` without GitHub rejecting self-approval
+# ("Can not approve your own pull request").
+#
+# When GH_TOKEN_FLEET is unset or empty, behaves identically to today and
+# emits `kind=fleet_identity_missing` once per boot (deduped via stamp file).
+chump_apply_fleet_identity() {
+    local caller="${1:-worker}"
+    if [[ -n "${GH_TOKEN_FLEET:-}" ]]; then
+        export GH_TOKEN="$GH_TOKEN_FLEET"
+        export GIT_AUTHOR_NAME="${FLEET_GIT_USER_NAME:-chump-fleet-bot}"
+        export GIT_AUTHOR_EMAIL="${FLEET_GIT_USER_EMAIL:-chump-fleet-bot@users.noreply.github.com}"
+        export GIT_COMMITTER_NAME="${FLEET_GIT_USER_NAME:-chump-fleet-bot}"
+        export GIT_COMMITTER_EMAIL="${FLEET_GIT_USER_EMAIL:-chump-fleet-bot@users.noreply.github.com}"
+        export CHUMP_FLEET_IDENTITY_ACTIVE=1
+        return 0
+    fi
+    export CHUMP_FLEET_IDENTITY_ACTIVE=0
+    local ambient lock_dir stamp ts
+    ambient="$(_chump_gh_ambient_path)"
+    lock_dir="${CHUMP_LOCK_DIR:-$(dirname "$ambient")}"
+    stamp="$lock_dir/fleet_identity_missing.stamp"
+    mkdir -p "$lock_dir" "$(dirname "$ambient")" 2>/dev/null || true
+    if [[ ! -f "$stamp" ]]; then
+        : > "$stamp" 2>/dev/null || true
+        ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        # scanner-anchor: "kind":"fleet_identity_missing"
+        printf '{"ts":"%s","kind":"fleet_identity_missing","caller":"%s","note":"GH_TOKEN_FLEET unset; falling back to default GH_TOKEN"}\n' \
+            "$ts" "$caller" >> "$ambient" 2>/dev/null || true
+    fi
+    return 0
+}
+
 chump_gh() {
     local api_tag started rc ended used_ms script_tag api_class
     api_tag="$(chump_gh_api_tag "$@")"
@@ -486,6 +581,9 @@ chump_gh() {
     _chump_gh_throttle_wait "$script_tag" "$api_class"
     # INFRA-1080: pre-emptive backoff when graphql bucket is low (background only).
     _chump_gh_preempt_if_low "$script_tag" "$api_tag"
+    # INFRA-1076 / INFRA-1668: lane-routed App-installation token (with daily fallback sentinel).
+    local _lane_tok=""
+    _lane_tok="$(_chump_gh_lane_token 2>/dev/null || true)"
     started="$(_chump_gh_now_ms)"
 
     # INFRA-1111: exponential backoff on secondary rate-limit.
@@ -502,11 +600,19 @@ chump_gh() {
         if [[ -n "$_tmp_stderr" ]]; then
             # INFRA-1103: CHUMP_GH_SHIM_RECORDING=1 signals to the PATH shim that
             # this call is already throttled (_chump_gh_throttle_wait ran above).
-            CHUMP_GH_SHIM_RECORDING=1 gh "$@" 2>"$_tmp_stderr"
+            if [[ -n "$_lane_tok" ]]; then
+                CHUMP_GH_SHIM_RECORDING=1 GH_TOKEN="$_lane_tok" gh "$@" 2>"$_tmp_stderr"
+            else
+                CHUMP_GH_SHIM_RECORDING=1 gh "$@" 2>"$_tmp_stderr"
+            fi
             rc=$?
             cat "$_tmp_stderr" >&2 2>/dev/null || true
         else
-            CHUMP_GH_SHIM_RECORDING=1 gh "$@"
+            if [[ -n "$_lane_tok" ]]; then
+                CHUMP_GH_SHIM_RECORDING=1 GH_TOKEN="$_lane_tok" gh "$@"
+            else
+                CHUMP_GH_SHIM_RECORDING=1 gh "$@"
+            fi
             rc=$?
         fi
         set -e

@@ -73,3 +73,34 @@ bespoke LLM calls exist; the reviewer (#1) is migrated (INFRA-3462), and
 allowlist entries (INFRA-3465, see "Legitimately-direct sites" above — not
 migration debt). Remaining: `code-reviewer-agent.sh:288` (Tier-1),
 `src/main.rs` (`gap decompose --verify`).
+
+## Fleet machine-account identity split (`GH_TOKEN_FLEET`, INFRA-8652)
+
+GitHub rejects self-approval (`Can not approve your own pull request`), so when
+fleet workers (`scripts/dispatch/worker.sh`, `scripts/coord/bot-merge.sh`) and
+the review organ (`scripts/dispatch/review-organ-tick.sh`) share the same
+`GH_TOKEN` (`repairman29`), the review organ cannot post a formal GitHub
+`APPROVE` review (`gh pr review --approve`).
+
+- **Worker / PR creation token (`GH_TOKEN_FLEET`):** When `GH_TOKEN_FLEET` is
+  configured in `~/.chump/providers.env`, `chump_apply_fleet_identity`
+  (`scripts/coord/lib/github.sh`, sourced by `worker.sh` and `bot-merge.sh`)
+  exports `GH_TOKEN="$GH_TOKEN_FLEET"` and sets `GIT_AUTHOR_NAME` /
+  `GIT_COMMITTER_NAME` (`FLEET_GIT_USER_NAME`, default `chump-fleet-bot`) and
+  `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` (`FLEET_GIT_USER_EMAIL`, default
+  `chump-fleet-bot@users.noreply.github.com`) for worker git pushes and
+  `gh pr create`.
+- **Reviewer / merger token (`GH_TOKEN`):** `review-organ-tick.sh` retains the
+  operator's `GH_TOKEN` (`repairman29`) so `author != ORGAN_LOGIN` holds on
+  fleet PRs and `gh pr review --approve` succeeds alongside the verdict comment.
+- **Fallback when unset:** When `GH_TOKEN_FLEET` is unset or empty, workers
+  behave identically to today (falling back to `GH_TOKEN`) and emit
+  `kind=fleet_identity_missing` once per boot (deduped via
+  `.chump-locks/fleet_identity_missing.stamp`).
+- **Required fine-grained PAT scopes for `GH_TOKEN_FLEET`:**
+  - Repository access: `repairman29/chump`, `repairman29/froogle`
+  - Permissions: `Contents: Read and write` (`contents: write`),
+    `Pull requests: Read and write` (`pull_requests: write`),
+    `Metadata: Read-only` (`metadata: read`).
+- **Rotation schedule:** Rotate `GH_TOKEN_FLEET` every **90 days** (tracked in
+  `~/.chump/providers.env` on owned nodes).

@@ -467,3 +467,46 @@ impl CoordClient {
 fn subtask_key(subtask_id: &str) -> String {
     format!("subtask.{}", subtask_id)
 }
+
+/// INFRA-2107: Format a human-actionable message for a work-board transition miss.
+/// Specifically gives the exact remedy command when `complete` is called on a
+/// subtask that is still in `Open` state.
+pub fn format_transition_miss(verb: &str, id: &str, miss: &TransitionMiss) -> String {
+    match miss {
+        TransitionMiss::NotFound => format!("[chump-coord] cannot {} {}: not found", verb, id),
+        TransitionMiss::StaleRevision => format!(
+            "[chump-coord] cannot {} {}: another agent updated it first (stale revision)",
+            verb, id
+        ),
+        TransitionMiss::WrongState(SubtaskStatus::Open) if verb == "complete" => format!(
+            "[chump-coord] cannot complete {} from state Open: run `chump-coord work-board claim {}` first",
+            id, id
+        ),
+        TransitionMiss::WrongState(s) => format!(
+            "[chump-coord] cannot {} {}: subtask is in state {:?}, not the expected state",
+            verb, id, s
+        ),
+        TransitionMiss::NotClaimHolder { holder, caller } => format!(
+            "[chump-coord] cannot {} {}: claim is held by {} but caller is {}",
+            verb, id, holder, caller
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn infra_2107_complete_from_open_error_includes_claim_remedy() {
+        let msg = format_transition_miss(
+            "complete",
+            "SUBTASK-123",
+            &TransitionMiss::WrongState(SubtaskStatus::Open),
+        );
+        assert_eq!(
+            msg,
+            "[chump-coord] cannot complete SUBTASK-123 from state Open: run `chump-coord work-board claim SUBTASK-123` first"
+        );
+    }
+}

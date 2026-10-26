@@ -26,6 +26,11 @@
 >
 > Chump-internal agents read both files at session start (AGENTS.md first,
 > then CLAUDE.md as overlay).
+>
+> **Quick index:**
+> - [Tangled-stack rebase recipe (`tangled-stack`, INFRA-1660)](#tangled-stack-rebase-recipe-infra-1660-2026-05-21)
+> - [Reaped gap lookup (`chump gap show`, INFRA-1582)](#reaped-gap-lookup-infra-1582)
+> - [Local dev hot-reload with `bacon` (INFRA-2245)](#local-dev-hot-reload-with-bacon-infra-2245)
 
 ## MANDATORY: run before anything else
 
@@ -1764,9 +1769,9 @@ CHUMP_GH_CALL_CRITICALITY=background <noisy-command>
 
 **Call-criticality tagging:** see `CLAUDE.md § Call criticality (INFRA-1080)`.
 
-## Tangled-stack rebase recipe (INFRA-1660, 2026-05-21)
+### Tangled-stack rebase recipe (INFRA-1660, 2026-05-21)
 
-When a PR has been open for hours through multiple sibling-PR merges and a
+When a tangled-stack PR has been open for hours through multiple sibling-PR merges and a
 straight `git rebase origin/main` produces a wall of cross-file conflicts
 that aren't really conflicts (sibling PRs touched the same main-state files
 you also touched, but the changes ARE the right answer in main now), don't
@@ -2339,3 +2344,16 @@ trips the emit-without-register CI gate (`scripts/ci/test-event-registry-coverag
 **Smoke test**: `scripts/ci/test-decisions-endpoint.sh` — emits a synthetic
 `operator_decision_needed` line, asserts it's in the GET response, resolves
 it, asserts it disappears.
+
+## Reaped gap lookup (INFRA-1582)
+
+chump gap show not found can mean shipped+reaped — verify with git log --all --oneline | grep <ID> before assuming the gap never existed. `chump gap show <ID>` now automatically scans `git log --all --grep=<ID>` and reports `"closed via PR #<N> (commit <sha>) on <YYYY-MM-DD>, reaped"`, and `chump gap list --include-done` lists closed/done gaps alongside open ones.
+
+## Local dev hot-reload with `bacon` (INFRA-2245)
+
+`bacon.toml` at the repo root defines three incremental hot-reload jobs as a fast modern alternative to `cargo-watch`:
+- `check`: `cargo check --all --workspace`
+- `clippy`: `cargo clippy --workspace --all-targets`
+- `test-quick`: `cargo nextest run --lib --no-fail-fast`
+
+Install via `cargo binstall bacon` (or `cargo install --locked bacon`), run `bacon` in the repo root, and switch between jobs interactively using the `1` / `2` / `3` or `/` keys.

@@ -17,7 +17,7 @@ pub mod routing;
 pub mod self_test;
 pub mod thompson;
 
-pub use routing::{Candidate, RoutingTable};
+pub use routing::{Candidate, RoutingHint, RoutingHintApplied, RoutingTable};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -50,6 +50,10 @@ pub struct Gap {
     /// Used by the domain-bias logic (FLEET-045) to order recent ships.
     #[serde(default)]
     pub closed_date: Option<String>,
+    /// INFRA-1775: Optional routing hint specifying the preferred operator
+    /// session or harness for m-to-n fleet routing.
+    #[serde(default)]
+    pub preferred_operator: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -320,6 +324,7 @@ mod tests {
             kind: String::new(), // default: user gap
             depends_on: deps.map(|v| v.into_iter().map(String::from).collect()),
             closed_date: None,
+            preferred_operator: None,
         }
     }
 
@@ -333,6 +338,7 @@ mod tests {
             kind: String::new(),
             depends_on: None,
             closed_date: Some(closed.into()),
+            preferred_operator: None,
         }
     }
 

@@ -434,3 +434,49 @@ PYDEP
     echo "[dependabot-scope-guard] CREDIBLE-1564: refusing to arm auto-merge on PR #${pr} (${verdict})" >&2
     return 1
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CREDIBLE-1649: Repository landing-strategy selector (`organ_merge` vs `auto_merge`)
+#
+# Private repositories on GitHub's free plan have `allow_auto_merge: false`, so
+# `gh pr merge --auto` fails with `Pull request Auto merge is not allowed for
+# this repository` and GitHub merge queues are unavailable.
+#
+# Usage:
+#   arm_policy_select_strategy [owner/repo]
+#
+# Sets:
+#   ARM_POLICY_STRATEGY        ("organ_merge" | "auto_merge")
+#   ARM_POLICY_STRATEGY_REASON ("allow_auto_merge_false_free_plan_private_repo" | "allow_auto_merge_true")
+# And prints JSON:
+#   {"strategy":"<strategy>","reason":"<reason>"}
+# ─────────────────────────────────────────────────────────────────────────────
+arm_policy_select_strategy() {
+    local repo="${1:-${REPO:-}}"
+    local gh_bin="${GH:-gh}"
+    local allow_raw="${CHUMP_REPO_ALLOW_AUTO_MERGE:-}"
+
+    if [[ -z "$allow_raw" && -z "$repo" ]]; then
+        local remote_url=""
+        remote_url="$(git remote get-url chump 2>/dev/null || git remote get-url origin 2>/dev/null || true)"
+        if [[ -n "$remote_url" ]]; then
+            repo="$(printf '%s' "$remote_url" | sed 's|.*github.com[:/]||; s|\.git$||')"
+        fi
+    fi
+
+    if [[ -z "$allow_raw" && -n "$repo" ]]; then
+        allow_raw="$("$gh_bin" api "repos/${repo}" --jq '.allow_auto_merge' 2>/dev/null || true)"
+    fi
+
+    allow_raw="$(printf '%s' "$allow_raw" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+    if [[ "$allow_raw" == "false" || "$allow_raw" == "0" ]]; then
+        ARM_POLICY_STRATEGY="organ_merge"
+        ARM_POLICY_STRATEGY_REASON="allow_auto_merge_false_free_plan_private_repo"
+    else
+        ARM_POLICY_STRATEGY="auto_merge"
+        ARM_POLICY_STRATEGY_REASON="allow_auto_merge_true"
+    fi
+    export ARM_POLICY_STRATEGY ARM_POLICY_STRATEGY_REASON
+    printf '{"strategy":"%s","reason":"%s"}\n' "$ARM_POLICY_STRATEGY" "$ARM_POLICY_STRATEGY_REASON"
+    return 0
+}

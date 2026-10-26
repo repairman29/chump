@@ -180,3 +180,11 @@ Each of these can be filed separately; not in scope here.
 Every opus-curator session opens with the MANDATORY pre-flight in
 [`CLAUDE.md`](../../CLAUDE.md). Add this document to that list. Goal: zero
 re-occurrence of Collision 1 + Collision 2 patterns by next 24h.
+
+After reading, record your session's acknowledgement receipt (INFRA-2018):
+
+```bash
+chump ack-rca 2026-05-24 --note "read and applied Change 1 + Change 2"
+bash scripts/dev/rca-ack-status.sh 2026-05-24
+```
+

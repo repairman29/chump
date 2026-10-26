@@ -285,6 +285,62 @@ impl RoutingTable {
     }
 }
 
+/// INFRA-1775: m-to-n operator routing hint carried on a gap or dispatch request.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RoutingHint {
+    #[serde(default)]
+    pub preferred_operator: Option<String>,
+    #[serde(default)]
+    pub gap_id: Option<String>,
+    #[serde(default)]
+    pub repo: Option<String>,
+}
+
+/// INFRA-1775: Outcome of evaluating a [`RoutingHint`] against an operator identity.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RoutingHintApplied {
+    pub gap_id: String,
+    pub preferred_operator: Option<String>,
+    pub routing_hint_cost: u64,
+    pub matched: bool,
+}
+
+impl RoutingHint {
+    /// Evaluate this routing hint against `current_operator`, logging the
+    /// `routing_hint_cost` field via `tracing::info!` for observability.
+    ///
+    /// - No `preferred_operator` set → `matched = true`, `routing_hint_cost = 0`
+    /// - `preferred_operator` matches `current_operator` → `matched = true`, `routing_hint_cost = 0`
+    /// - `preferred_operator` differs from `current_operator` → `matched = false`, `routing_hint_cost = 10`
+    pub fn apply(&self, current_operator: Option<&str>) -> RoutingHintApplied {
+        let gap_id = self.gap_id.clone().unwrap_or_default();
+        let (matched, routing_hint_cost) = match (
+            self.preferred_operator
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty()),
+            current_operator.map(str::trim).filter(|s| !s.is_empty()),
+        ) {
+            (None, _) => (true, 0),
+            (Some(pref), Some(cur)) if pref == cur => (true, 0),
+            (Some(_), _) => (false, 10),
+        };
+        tracing::info!(
+            gap_id = %gap_id,
+            preferred_operator = ?self.preferred_operator,
+            routing_hint_cost = routing_hint_cost,
+            matched = matched,
+            "applied routing hint"
+        );
+        RoutingHintApplied {
+            gap_id,
+            preferred_operator: self.preferred_operator.clone(),
+            routing_hint_cost,
+            matched,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,5 +573,30 @@ routes:
             "expected a violation for an xs route that pays for claude"
         );
         assert!(violations.iter().any(|v| v.contains("effort=xs")));
+    }
+
+    #[test]
+    fn infra_1775_routing_hint_apply_and_serde() {
+        let hint_match = RoutingHint {
+            preferred_operator: Some("op-alpha".to_string()),
+            gap_id: Some("INFRA-1775".to_string()),
+            repo: Some("repairman29/chump".to_string()),
+        };
+        let applied_ok = hint_match.apply(Some("op-alpha"));
+        assert!(applied_ok.matched);
+        assert_eq!(applied_ok.routing_hint_cost, 0);
+
+        let applied_miss = hint_match.apply(Some("op-beta"));
+        assert!(!applied_miss.matched);
+        assert_eq!(applied_miss.routing_hint_cost, 10);
+
+        let hint_none = RoutingHint {
+            preferred_operator: None,
+            gap_id: Some("INFRA-1775".to_string()),
+            repo: None,
+        };
+        let applied_none = hint_none.apply(Some("op-beta"));
+        assert!(applied_none.matched);
+        assert_eq!(applied_none.routing_hint_cost, 0);
     }
 }

@@ -11,7 +11,9 @@
 # Bypass: CHUMP_AM_WATCHER=0
 #
 # Emits: auto_merge_arm_dropped, auto_merge_arm_restored, auto_merge_arm_skipped
-# scanner-anchor: scripts/coord/auto-merge-arm-watcher.sh
+# scanner-anchor: "kind":"auto_merge_arm_dropped"
+# scanner-anchor: "kind":"auto_merge_arm_restored"
+# scanner-anchor: "kind":"auto_merge_arm_skipped"
 
 set -uo pipefail
 

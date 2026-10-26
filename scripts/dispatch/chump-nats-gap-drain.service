@@ -1,0 +1,21 @@
+# chump-nats-gap-drain.service — INFRA-8160
+# Drains actionable NATS / ambient events (voa, holler, fleet_alert, etc.) into
+# deduplicated gaps via scripts/coord/nats-to-gap.py.
+# Portable across nodes: uses __REPO_ROOT__, __HOME__, and __NODE_ENV__
+# (zero host-specific path literals).
+
+[Unit]
+Description=Chump NATS-to-gap drain (VOA/holler/alerts -> state.db gaps) (INFRA-8160)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_ROOT__
+Environment=HOME=__HOME__
+EnvironmentFile=-__NODE_ENV__
+Environment=CHUMP_REPO=__REPO_ROOT__
+Environment=PATH=__BIN_DIR__:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash -c 'while true; do /usr/bin/python3 __REPO_ROOT__/scripts/coord/nats-to-gap.py || true; sleep 120; done'
+Restart=always
+RestartSec=30

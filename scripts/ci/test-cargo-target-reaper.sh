@@ -233,5 +233,28 @@ else
     kill "$_fake_rustc_pid" 2>/dev/null || true
 fi
 
+# ── Test 11: ZERO-WASTE-034 — shared target ($HOME/.cargo/chump-shared-target + $CARGO_TARGET_DIR) ──
+echo "--- Test 11: shared target scan & prune (ZERO-WASTE-034) ---"
+if pgrep -x "cargo" > /dev/null 2>&1 || pgrep -f "rustc " > /dev/null 2>&1; then
+    echo "  SKIP (active cargo process detected)"
+else
+    FAKE_HOME_SHARED="${TMPDIR_BASE}/fakehome"
+    SHARED_DBG="${FAKE_HOME_SHARED}/.cargo/chump-shared-target/debug"
+    mkdir -p "${SHARED_DBG}/.fingerprint/stale-shared-123" "${SHARED_DBG}/deps" "${SHARED_DBG}/incremental/stale-inc-123"
+    python3 -c "import os,time; t=time.time()-2592000; os.utime('${SHARED_DBG}/.fingerprint/stale-shared-123',(t,t)); os.utime('${SHARED_DBG}/incremental/stale-inc-123',(t,t))"
+    touch "${SHARED_DBG}/deps/libstale_shared-123.rlib"
+    python3 -c "import os,time; t=time.time()-2592000; os.utime('${SHARED_DBG}/deps/libstale_shared-123.rlib',(t,t))"
+    mkdir -p "${SHARED_DBG}/.fingerprint/fresh-shared-456"
+
+    HOME="$FAKE_HOME_SHARED" CHUMP_CARGO_REAPER_TMP_GLOB="" \
+        bash "$PATCHED_REAPER" --include-shared --fingerprint-age-d 14 --execute >/dev/null 2>&1 || true
+
+    [[ ! -d "${SHARED_DBG}/.fingerprint/stale-shared-123" ]] || fail "ZERO-WASTE-034: stale shared .fingerprint not reaped"
+    [[ ! -d "${SHARED_DBG}/incremental/stale-inc-123" ]] || fail "ZERO-WASTE-034: stale shared incremental dir not reaped"
+    [[ ! -f "${SHARED_DBG}/deps/libstale_shared-123.rlib" ]] || fail "ZERO-WASTE-034: stale shared rlib not reaped"
+    [[ -d "${SHARED_DBG}/.fingerprint/fresh-shared-456" ]] || fail "ZERO-WASTE-034: fresh shared .fingerprint was deleted"
+    pass "ZERO-WASTE-034: ~/.cargo/chump-shared-target stale artifacts reaped, fresh preserved"
+fi
+
 echo ""
 echo "All cargo-target-reaper tests passed."

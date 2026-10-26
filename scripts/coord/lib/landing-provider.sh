@@ -90,3 +90,49 @@ landing_queue_mode() {
     esac
     _landing_provider_detect_queue "${1:-}"
 }
+
+# CREDIBLE-1649: Detect whether `allow_auto_merge` is enabled on the repository.
+# Echoes "true" or "false" (defaults to "true" if probe fails so existing
+# callers preserve behaviour unless `allow_auto_merge: false` is observed).
+_landing_provider_detect_allow_auto_merge() {
+    case "${CHUMP_REPO_ALLOW_AUTO_MERGE:-}" in
+        0|false|FALSE) printf 'false'; return 0 ;;
+        1|true|TRUE)   printf 'true'; return 0 ;;
+    esac
+    local owner_repo
+    owner_repo="$(_landing_provider_owner_repo "${1:-}")"
+    if [[ -z "$owner_repo" || "$owner_repo" != */* ]]; then
+        printf 'true'; return 0
+    fi
+    local gh_bin="${GH:-gh}"
+    if ! command -v "$gh_bin" >/dev/null 2>&1; then
+        printf 'true'; return 0
+    fi
+    local res
+    res="$("$gh_bin" api "repos/${owner_repo}" --jq '.allow_auto_merge' 2>/dev/null || true)"
+    res="$(printf '%s' "$res" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+    if [[ "$res" == "false" ]]; then
+        printf 'false'
+    else
+        printf 'true'
+    fi
+}
+
+# CREDIBLE-1649: Select the landing strategy (`organ_merge` | `merge_queue` | `auto_merge`)
+# and reason. Auto-selects `organ_merge` with
+# `reason="allow_auto_merge_false_free_plan_private_repo"` when the repo has
+# `allow_auto_merge: false` (e.g. private repo on GitHub's free plan).
+landing_provider_strategy() {
+    local owner_repo="${1:-}"
+    local allow_auto
+    allow_auto="$(_landing_provider_detect_allow_auto_merge "$owner_repo")"
+    if [[ "$allow_auto" == "false" ]]; then
+        printf '{"strategy":"organ_merge","reason":"allow_auto_merge_false_free_plan_private_repo"}\n'
+        return 0
+    fi
+    if [[ "$(landing_queue_mode "$owner_repo")" == "true" ]]; then
+        printf '{"strategy":"merge_queue","reason":"merge_queue_enabled"}\n'
+        return 0
+    fi
+    printf '{"strategy":"auto_merge","reason":"allow_auto_merge_true"}\n'
+}

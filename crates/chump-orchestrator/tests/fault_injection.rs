@@ -48,6 +48,7 @@ fn test_gap(id: &str) -> Gap {
         kind: String::new(),
         depends_on: None,
         closed_date: None,
+        preferred_operator: None,
     }
 }
 

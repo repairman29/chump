@@ -13,7 +13,15 @@
 # Glob recipients (e.g. --to fleet-worker-*) expand at send-time against
 # live session lease files in .chump-locks/.
 #
+# INFRA-2145 — FEEDBACK kind enum (defect|proposal|preference|retro):
+#   defect      — bug, regression, or workflow friction observed by the agent
+#   proposal    — concrete design or process improvement proposal
+#   preference  — +1 / -1 / 0 vote on an active proposal (pair with --reply-to)
+#   retro       — post-ship retrospective on what worked or didn't
+#   See docs/process/OPUS_MESSAGE_PROTOCOL.md for full FEEDBACK semantics.
+#
 # Usage:
+#   scripts/coord/broadcast.sh [--help|-h] [--dry-run] [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] <EVENT> [args...]
 #   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] INTENT  <gap-id> [file1,file2,...]
 #   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] HANDOFF <gap-id> <to-session>
 #   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] STUCK   <gap-id> "<reason>"
@@ -160,9 +168,10 @@ build_json() {
 # ── Write to ambient.jsonl (always — file-based fallback) ────────────────────
 emit_to_file() {
     local json="$1"
+    [[ "${DRY_RUN:-0}" == "1" ]] && return 0
     mkdir -p "$LOCK_DIR"
     if [[ -x "$EMIT_SCRIPT" ]]; then
-        echo "$json" | "$EMIT_SCRIPT" 2>/dev/null && return
+        printf '%s\n' "$json" | "$EMIT_SCRIPT" 2>/dev/null && return
     fi
     local tmp
     tmp="$(mktemp "$LOCK_DIR/.broadcast_XXXXXX")"
@@ -173,6 +182,7 @@ emit_to_file() {
 
 # ── Publish to NATS JetStream (Phase 1 — when chump-coord available) ─────────
 emit_to_nats() {
+    [[ "${DRY_RUN:-0}" == "1" ]] && return 0
     local event_type="$1"
     shift
     local coord_bin
@@ -195,6 +205,7 @@ emit_to_nats() {
 # The --no-fanout flag or CHUMP_NO_FANOUT=1 suppresses this and falls through
 # to the current single-recipient behaviour (silent no-op for empty recipient).
 emit_to_inbox() {
+    [[ "${DRY_RUN:-0}" == "1" ]] && return 0
     local recipient="$1" json="$2" fanout_event="${3:-0}"
     # META-158: FEEDBACK fan-out path (feature-flagged, best-effort)
     if [[ -z "$recipient" && "$fanout_event" == "1" \
@@ -286,6 +297,7 @@ emit_to_inbox() {
 # recipients (a glob resolves to N recipients server-side in emit_to_inbox;
 # tracking per-recipient receipts for those is out of scope for slice A).
 record_sent_pending() {
+    [[ "${DRY_RUN:-0}" == "1" ]] && return 0
     local to="$1" corr_id="$2"
     [[ -n "$to" ]] || return 0
     [[ "$to" == *[*?[]* ]] && return 0
@@ -322,6 +334,7 @@ place() {
 #
 # scanner-anchor: "kind":"urgent_broadcast"
 route_by_urgency() {
+    [[ "${DRY_RUN:-0}" == "1" ]] && return 0
     local urgency="$1" json="$2" msg_body="$3"
     case "$urgency" in
         INFO|"") return 0 ;;  # no extra routing; default / legacy path
@@ -385,8 +398,57 @@ print(json.dumps(entry))
     esac
 }
 
+print_broadcast_help() {
+    cat <<'EOF'
+Usage:
+  scripts/coord/broadcast.sh [FLAGS] <EVENT> [ARGS...]
+
+Valid event types:
+  INTENT HANDOFF STUCK DONE WARN ALERT FEEDBACK
+
+Event forms:
+  INTENT   <gap-id> [file1,file2,...]
+  HANDOFF  <gap-id> <to-session>
+  STUCK    <gap-id> "<reason>"
+  DONE     <gap-id> [commit-sha]
+  WARN     "<message>"
+  ALERT    kind=<kind> "<message>"
+  FEEDBACK <defect/proposal/preference/retro> <subject> ["<rationale>"] [+1|-1|0]
+
+FEEDBACK kinds (defect|proposal|preference|retro — see docs/process/OPUS_MESSAGE_PROTOCOL.md):
+  defect      — bug, regression, or workflow friction observed by the agent
+  proposal    — concrete design or process improvement proposal
+  preference  — +1 / -1 / 0 vote on an active proposal (pair with --reply-to)
+  retro       — post-ship reflection on what worked or didn't
+
+Flags:
+  --to <recipient>              Target session ID, glob (e.g. curator-opus-*), or role:<name>
+  --reply-to <parent-corr-id>   Thread event under parent broadcast corr_id
+  --corr <id>                   Override correlation_id explicitly
+  --urgency <TIER>              INFO (default) | WARN | CRIT | EMERGENCY
+  --strict                      Reject calls with missing/defaulted required fields
+  --await <seconds>             Wait up to <seconds> for delivery confirmation
+  --no-fanout                   Suppress FEEDBACK fan-out to curator inboxes
+  --dry-run                     Print resolved target list + JSON payload and exit 0 without side effects
+  -h, --help                    Print this help and exit 0
+
+Note (INFRA-2146): Wrap messages containing dollar amounts in single quotes
+  (e.g. 'cost: $0.32 vs $2.20') so zsh/bash does not expand $0 / $2.
+EOF
+}
+
+# INFRA-2144: support --help and -h anywhere in args or as $1.
+for _bcast_arg in "$@"; do
+    case "$_bcast_arg" in
+        --help|-h)
+            print_broadcast_help
+            exit 0
+            ;;
+    esac
+done
+
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 [--to <recipient>] INTENT|HANDOFF|STUCK|DONE|WARN|ALERT [args...]" >&2
+    echo "Usage: $0 [--help] [--dry-run] [--to <recipient>] INTENT|HANDOFF|STUCK|DONE|WARN|ALERT|FEEDBACK [args...]" >&2
     exit 1
 fi
 
@@ -418,8 +480,17 @@ URGENCY="INFO"
 NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
 AWAIT=0
 STRICT=0
+DRY_RUN=0
 while :; do
     case "${1:-}" in
+        --help|-h)
+            print_broadcast_help
+            exit 0
+            ;;
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
         --strict)
             STRICT=1
             shift
@@ -467,8 +538,46 @@ while :; do
     esac
 done
 
-EVENT="$1"
+EVENT="${1:-}"
+[[ -n "$EVENT" ]] || { echo "Usage: $0 [--help] [--dry-run] [--to <recipient>] <EVENT> [args...]" >&2; exit 1; }
 shift
+
+# INFRA-2146: detect accidental zsh/bash $0 parameter expansion on dollar amounts
+# (e.g. unquoted $0.32 expanding to /bin/zsh.32 or bash.32) and warn on stderr.
+for _pos_arg in "$@"; do
+    if [[ "$_pos_arg" =~ (^|[^a-zA-Z0-9_])(/bin/)?(zsh|bash|sh)\.[0-9]+ ]]; then
+        printf '[broadcast] WARN (INFRA-2146): argument %q looks like shell $0 expansion of a dollar amount — wrap in single quotes (e.g. '\''cost: $0.32'\'')\n' "$_pos_arg" >&2
+    fi
+done
+
+_resolve_dry_run_targets() {
+    local recipient="$1"
+    if [[ -z "$recipient" ]]; then
+        printf 'ambient.jsonl'
+        return
+    fi
+    if [[ "$recipient" == *[*?[]* ]]; then
+        local matches=()
+        shopt -s nullglob
+        for f in "$LOCK_DIR"/*.json; do
+            local base
+            base="$(basename "$f" .json)"
+            [[ "$base" == fleet-state || "$base" == health-* ]] && continue
+            # shellcheck disable=SC2053
+            if [[ "$base" == $recipient ]]; then
+                matches+=("$base")
+            fi
+        done
+        shopt -u nullglob
+        if [[ ${#matches[@]} -gt 0 ]]; then
+            printf 'ambient.jsonl, inbox:%s (expanded: %s)' "$recipient" "${matches[*]}"
+        else
+            printf 'ambient.jsonl, inbox:%s (expanded: 0 live sessions)' "$recipient"
+        fi
+    else
+        printf 'ambient.jsonl, inbox:%s' "$recipient"
+    fi
+}
 
 # INFRA-1945 (INFRA-1862 slice B): role-typed routing. When --to starts
 # with "role:" (e.g. role:shepherd), resolve it against the most-recent
@@ -526,17 +635,20 @@ if [[ "$TO" == role:* ]]; then
     RESOLVED_SESSION="$(_resolve_role_to_session "$ROLE_NAME" 2>/dev/null || true)"
     if [[ -n "$RESOLVED_SESSION" ]]; then
         TO="$RESOLVED_SESSION"
-        printf '{"ts":"%s","kind":"a2a_role_resolved","role":"%s","resolved_session":"%s","session":"%s"}\n' \
-            "$TS" "$ROLE_NAME" "$TO" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+        if [[ "$DRY_RUN" != "1" ]]; then
+            printf '{"ts":"%s","kind":"a2a_role_resolved","role":"%s","resolved_session":"%s","session":"%s"}\n' \
+                "$TS" "$ROLE_NAME" "$TO" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+        fi
     elif [[ "$STRICT" == "1" ]]; then
         echo "[broadcast --strict] no alive session for role:$ROLE_NAME (checked $LOCK_DIR/fleet-registry.jsonl, ${CHUMP_A2A_ROLE_FRESHNESS_MIN:-30}min freshness window)" >&2
         exit 1
     else
-        # No --strict: fall back to the slice-C dead-letter queue (same
-        # shape a2a-dead-letter-reaper.sh writes) rather than silently
-        # dropping the message or guessing a recipient.
-        mkdir -p "$LOCK_DIR/inbox" 2>/dev/null || true
-        python3 -c "
+        if [[ "$DRY_RUN" != "1" ]]; then
+            # No --strict: fall back to the slice-C dead-letter queue (same
+            # shape a2a-dead-letter-reaper.sh writes) rather than silently
+            # dropping the message or guessing a recipient.
+            mkdir -p "$LOCK_DIR/inbox" 2>/dev/null || true
+            python3 -c "
 import json, sys
 entry = {
     'ts': sys.argv[1],
@@ -551,8 +663,9 @@ entry = {
 with open(sys.argv[5], 'a') as f:
     f.write(json.dumps(entry) + '\n')
 " "$TS" "$ROLE_NAME" "$SESSION_ID" "$EVENT" "$LOCK_DIR/inbox/dead-letter.jsonl" 2>/dev/null || true
-        printf '{"ts":"%s","kind":"a2a_role_resolve_failed","role":"%s","session":"%s"}\n' \
-            "$TS" "$ROLE_NAME" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"a2a_role_resolve_failed","role":"%s","session":"%s"}\n' \
+                "$TS" "$ROLE_NAME" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+        fi
         TO=""
     fi
 fi
@@ -750,6 +863,13 @@ case "$EVENT" in
             echo "Usage: $0 FEEDBACK <defect|proposal|preference|retro> <subject> [\"rationale\"] [+1|-1|0]" >&2
             exit 1
         }
+        # INFRA-2146: when FEEDBACK is invoked with 2 positional args
+        # (e.g. `FEEDBACK proposal 'cost: $0.32 vs $2.20'`), preserve the
+        # message in `rationale` as well as `subject` so dollar amounts are
+        # intact in both fields.
+        if [[ -z "$FB_RATIONALE" ]]; then
+            FB_RATIONALE="$FB_SUBJECT"
+        fi
         case "$FB_KIND" in
             # META-189: vote-request — a curator/daemon asks the fleet to cast
             # consensus votes on a subject (e.g. "pr-N" for a MERGEABLE PR).
@@ -775,9 +895,11 @@ case "$EVENT" in
         # record is sandboxable in tests (matches deliberator/consensus-tally,
         # which already respect it) and the e2e path can be verified end-to-end.
         emit_to_file "$JSON"
-        _fb_log="${CHUMP_FEEDBACK_LOG:-$LOCK_DIR/feedback.jsonl}"
-        mkdir -p "$(dirname "$_fb_log")" 2>/dev/null || true
-        printf '%s\n' "$JSON" >> "$_fb_log"
+        if [[ "$DRY_RUN" != "1" ]]; then
+            _fb_log="${CHUMP_FEEDBACK_LOG:-$LOCK_DIR/feedback.jsonl}"
+            mkdir -p "$(dirname "$_fb_log")" 2>/dev/null || true
+            printf '%s\n' "$JSON" >> "$_fb_log"
+        fi
         # META-158: fan-out FEEDBACK kinds to all live curator inboxes.
         # When --to is set, behave as before (single-recipient inbox write).
         # When --to is unset and CHUMP_FLEET_RECV_SIDE_V0=1 and --no-fanout is not set,
@@ -801,6 +923,13 @@ case "$EVENT" in
         exit 1
         ;;
 esac
+
+if [[ "$DRY_RUN" == "1" ]]; then
+    _dry_target="${TO:-${EFFECTIVE_TO:-}}"
+    printf '[broadcast --dry-run] targets: %s\n' "$(_resolve_dry_run_targets "$_dry_target")"
+    printf '[broadcast --dry-run] payload: %s\n' "$JSON"
+    exit 0
+fi
 
 # INFRA-1944: --await <seconds> — block waiting for the recipient's
 # chump-inbox.sh read to consume this message (kind=a2a_msg_delivered).

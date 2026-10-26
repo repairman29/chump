@@ -1,0 +1,22 @@
+# bacon.toml — INFRA-2245 operator dev hot-reload configuration
+# Install: cargo binstall bacon
+# Run:     bacon (in repo root; switch jobs with 1/2/3 or / keys)
+
+default_job = "check"
+
+[jobs.check]
+command = ["cargo", "check", "--all", "--workspace", "--color", "always"]
+need_stdout = false
+
+[jobs.clippy]
+command = ["cargo", "clippy", "--workspace", "--all-targets", "--color", "always"]
+need_stdout = false
+
+[jobs.test-quick]
+command = ["cargo", "nextest", "run", "--lib", "--no-fail-fast", "--color", "always"]
+need_stdout = true
+
+[keybindings]
+"1" = "job:check"
+"2" = "job:clippy"
+"3" = "job:test-quick"

@@ -186,11 +186,69 @@ def verdict(s, M):
     return "MOTION"
 
 
+FORBIDDEN_RUNNER_PATHS = (
+    "/etc/nats/nats.conf",
+    "oauth-token.json",
+    "providers.env",
+    "ngs-chump.creds",
+)
+
+
+def evaluate_runner_isolation():
+    """RESILIENT-253: check self-hosted runner privilege & credential isolation.
+
+    Returns {"verdict": "GO"|"NO-GO", "violations": [...]}.
+    Honors CHUMP_RELEASE_AUDIT_RUNNER_SPEC (JSON string or path to JSON file)
+    for deterministic CI/release auditing.
+    """
+    raw_spec = os.environ.get("CHUMP_RELEASE_AUDIT_RUNNER_SPEC", "").strip()
+    runners = []
+    if raw_spec:
+        try:
+            if os.path.isfile(raw_spec):
+                with open(raw_spec, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+            else:
+                data = json.loads(raw_spec)
+            if isinstance(data, dict):
+                runners = data.get("runners", [data])
+            elif isinstance(data, list):
+                runners = data
+        except Exception as exc:
+            return {
+                "verdict": "NO-GO",
+                "violations": [f"invalid_runner_spec:{exc}"],
+            }
+
+    violations = []
+    for r in runners:
+        if not isinstance(r, dict):
+            continue
+        name = str(r.get("name") or r.get("host") or "runner")
+        user = str(r.get("user") or "").strip()
+        uid = r.get("uid")
+        allow_root = bool(r.get("allow_run_as_root") or r.get("RUNNER_ALLOW_RUNASROOT"))
+        if user == "root" or uid == 0 or allow_root:
+            violations.append(f"{name}:runs_as_root")
+        readable = r.get("readable_paths") or []
+        for p in readable:
+            p_str = str(p)
+            for forbidden in FORBIDDEN_RUNNER_PATHS:
+                if forbidden in p_str:
+                    violations.append(f"{name}:can_read:{forbidden}")
+    return {
+        "verdict": "NO-GO" if violations else "GO",
+        "violations": violations,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="7d")
     ap.add_argument("--worksheet", action="store_true")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--require-runner-isolation", action="store_true",
+                    help="Exit non-zero if RESILIENT-253 runner isolation gate is NO-GO")
     a = ap.parse_args()
 
     repo_root = sh("git", "rev-parse", "--show-toplevel").strip() or "."
@@ -211,13 +269,16 @@ def main():
     debt = [s for s in graded if s["gates"]]
     auditable = [s for s in graded if not s["unauditable"]]
     qs = [s["Q"] for s in auditable]
+    runner_isolation = evaluate_runner_isolation()
+    rc = 1 if (a.require_runner_isolation and runner_isolation["verdict"] != "GO") else 0
 
     if a.json:
         print(json.dumps({"window": since, "db": db, "total_commits": total_commits,
                           "noise": noise, "real_ships": len(ships),
                           "unauditable": len(unaud), "debt": len(debt),
+                          "runner_isolation": runner_isolation,
                           "ships": graded}, indent=2))
-        return 0
+        return rc
 
     if a.worksheet:
         print(f"# Ship audit worksheet ({since})")
@@ -304,7 +365,11 @@ def main():
 
     print("6. THE BINARY")
     print("   run: bash scripts/dev/mission-scoreboard.sh   (section 1)")
-    return 0
+    print()
+    print(f"7. RUNNER ISOLATION GATE (RESILIENT-253): {runner_isolation['verdict']}")
+    for v in runner_isolation["violations"]:
+        print(f"   violation: {v}")
+    return rc
 
 
 if __name__ == "__main__":

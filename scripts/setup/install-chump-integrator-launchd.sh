@@ -90,10 +90,8 @@ esac
 # INSTALL path
 INTEGRATOR_BIN="$(locate_binary)"
 if [[ -z "$INTEGRATOR_BIN" ]]; then
-    echo "ERROR: chump-integrator not found on PATH or ~/.local/bin/" >&2
-    echo "  Build it with: cargo build --release -p chump-integrator" >&2
-    echo "  Then copy: cp target/release/chump-integrator ~/.local/bin/" >&2
-    exit 1
+    echo "[WARN] chump-integrator not found on PATH or ~/.local/bin/ — skipping install (INFRA-2312)" >&2
+    exit 0
 fi
 
 mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
