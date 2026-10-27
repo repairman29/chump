@@ -15090,3 +15090,17 @@ events:
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
 
+  - kind: fleet_identity_missing
+    status: active
+    effect_metric: self
+    emitter: scripts/coord/lib/fleet-identity.sh (INFRA-8652)
+    emitter_paths: [scripts/coord/lib/fleet-identity.sh]
+    trigger: >
+      Emitted by fleet_identity_init (sourced by bot-merge.sh) when
+      GH_TOKEN_FLEET is unset, so fleet PRs/commits fall back to whatever
+      identity `gh`/`git` already has (today: the operator's own login).
+      Debounced once per boot via a /tmp sentinel. See
+      docs/process/FLEET_IDENTITY.md.
+    consumers: []
+    fields_required: [ts, kind, script]
+

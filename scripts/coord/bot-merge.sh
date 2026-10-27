@@ -1982,6 +1982,13 @@ source "$(dirname "$0")/lib/bot-merge-autocommit.sh"
 # shellcheck source=lib/github.sh
 # INFRA-999: chump_gh + chump_gh_record for API cost telemetry.
 source "$(dirname "$0")/lib/github.sh"
+# INFRA-8652: when GH_TOKEN_FLEET is set, author PRs/commits as the fleet
+# machine account (not the operator's repairman29 login) so the review
+# organ's approval isn't a GitHub-refused self-review. No-op fallback when
+# unset — logs kind=fleet_identity_missing once per boot.
+# shellcheck source=lib/fleet-identity.sh
+source "$(dirname "$0")/lib/fleet-identity.sh"
+fleet_identity_init
 # INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
 # shellcheck source=lib/ambient-write.sh
 source "$(dirname "$0")/lib/ambient-write.sh"
