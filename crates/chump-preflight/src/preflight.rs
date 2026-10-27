@@ -2921,6 +2921,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "fleet-identity-token-split-infra-8652",
+            &["bash", "scripts/ci/test-fleet-identity.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "reaper-bot-merge-live-smoke",
             &["bash", "scripts/ci/test-reaper-bot-merge-live.sh"],
             GateKind::Scripts,
