@@ -2955,6 +2955,12 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             # manual gh pr create + gh pr merge --auto.
             _already_in_lease_wt=0
             if [[ "${CHUMP_BOT_MERGE_CLAIM_LAX:-0}" == "1" ]]; then
+                # INFRA-8652: LAX's whole point is to skip the `chump claim`
+                # re-invocation (it previously only emitted the telemetry
+                # event below and then fell through to call `chump claim`
+                # anyway when the worktree's lease row had an empty
+                # `worktree` column — defeating the flag).
+                _already_in_lease_wt=1
                 # scanner-anchor: "kind":"bot_merge_skip_claim_lax"
                 chump ambient emit bot_merge_skip_claim_lax "gap=$gid" >/dev/null 2>&1 || true
             else
