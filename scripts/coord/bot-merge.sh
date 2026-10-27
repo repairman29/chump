@@ -2961,6 +2961,8 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                 # anyway when the worktree's lease row had an empty
                 # `worktree` column — defeating the flag).
                 _already_in_lease_wt=1
+                _lease_wt="$PWD"
+                _lease_src="CHUMP_BOT_MERGE_CLAIM_LAX"
                 # scanner-anchor: "kind":"bot_merge_skip_claim_lax"
                 chump ambient emit bot_merge_skip_claim_lax "gap=$gid" >/dev/null 2>&1 || true
             else
