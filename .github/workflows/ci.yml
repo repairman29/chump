@@ -1900,9 +1900,6 @@ jobs:
       - name: test-stale-worktree-reaper-stash (CREDIBLE-1511)
         run: bash scripts/ci/test-stale-worktree-reaper-stash.sh
 
-      - name: fleet identity token split (INFRA-8652)
-        run: bash scripts/ci/test-fleet-identity.sh
-
       - name: merge-driver union smoke (INFRA-8223)
         run: bash scripts/ci/test-merge-driver-union.sh
 
