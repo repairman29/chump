@@ -311,9 +311,16 @@ _install_worker_template_unit() {
         sysd_dir="${HOME:-/root}/.config/systemd/user"
     fi
     mkdir -p "$sysd_dir" 2>/dev/null || return 0
-    cp -f "$tpl" "$sysd_dir/chump-worker@.service" 2>/dev/null || return 0
+    local home_dir="${HOME:-/root}"
+    local tmp
+    tmp="$(mktemp "${sysd_dir}/.chump-worker@.service.XXXXXX")" || return 0
+    sed \
+        -e "s|__REPO_ROOT__|$REPO_ROOT|g" \
+        -e "s|__HOME__|$home_dir|g" \
+        "$tpl" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+    mv -f "$tmp" "$sysd_dir/chump-worker@.service" 2>/dev/null || { rm -f "$tmp"; return 0; }
     command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1 || true
-    log "INFRA-8639: installed chump-worker@.service -> $sysd_dir/chump-worker@.service"
+    log "INFRA-8639: installed chump-worker@.service (rendered __REPO_ROOT__=$REPO_ROOT __HOME__=$home_dir) -> $sysd_dir/chump-worker@.service"
 }
 
 _reconcile_role_organs() {
