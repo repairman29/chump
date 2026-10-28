@@ -3744,3 +3744,8 @@ CHUMP_COMMIT_MSG_FILE
 CHUMP_SYSTEMD_UNIT_DIRS
 CHUMP_SYSTEMCTL_BIN
 
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BUILD_SHA

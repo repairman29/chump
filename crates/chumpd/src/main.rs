@@ -189,6 +189,13 @@ impl Config {
     fn ambient(&self) -> PathBuf {
         self.repo.join(".chump-locks/ambient.jsonl")
     }
+
+    /// RESILIENT-1738: pids this supervisor's worker pool currently owns,
+    /// rewritten every tick. `takeover()` reads this on startup to kill only
+    /// a *previous* chumpd instance's children — never a host-wide pkill.
+    fn owned_pids_path(&self) -> PathBuf {
+        self.state_dir().join("chumpd-owned-pids.json")
+    }
 }
 
 fn emit(cfg: &Config, json: &str) {
@@ -200,6 +207,12 @@ fn emit(cfg: &Config, json: &str) {
         let _ = writeln!(f, "{}", json);
     }
     println!("{}", json);
+}
+
+/// Short git SHA baked at build time by `build.rs` (RESILIENT-1738), or
+/// "unknown" outside a git checkout.
+fn chumpd_build_sha() -> &'static str {
+    env!("CHUMPD_BUILD_SHA")
 }
 
 fn heartbeat_dir() -> String {
@@ -345,17 +358,63 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
         .spawn()
 }
 
-/// Clean-slate takeover: chumpd is the sole owner of the pool. Kill any
-/// pre-existing tmux fleet and orphan worker loops so we never double-spawn.
-fn takeover(_cfg: &Config) {
-    // Test harness / cohabitation guard: CHUMPD_TAKEOVER=0 skips the global
-    // sweep (a CI fixture must never pkill a live fleet's workers).
+/// Pids this (or a prior) supervisor's pool owns, as last written by
+/// `write_owned_pids`. Missing/unparseable file reads as empty — a fresh
+/// state dir or a CI fixture must never be treated as "something to kill".
+fn read_owned_pids(cfg: &Config) -> Vec<i32> {
+    fs::read_to_string(cfg.owned_pids_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<i32>>(&s).ok())
+        .unwrap_or_default()
+}
+
+/// RESILIENT-1738: rewritten every tick with exactly the pids chumpd's
+/// current slots hold. `takeover()` on the NEXT chumpd start reads this to
+/// scope its sweep to pids a prior chumpd actually spawned.
+fn write_owned_pids(cfg: &Config, pids: &[i32]) {
+    let path = cfg.owned_pids_path();
+    let tmp = path.with_extension("json.tmp");
+    if fs::write(
+        &tmp,
+        serde_json::to_string(pids).unwrap_or_else(|_| "[]".into()),
+    )
+    .is_ok()
+    {
+        let _ = fs::rename(&tmp, &path);
+    }
+}
+
+/// Clean-slate takeover: chumpd is the sole owner of the pool. Kills only
+/// pids a PRIOR chumpd instance owned (per the pidfile it wrote every tick),
+/// and only after confirming via `ps` that the pid is still actually a
+/// `dispatch/worker.sh` process — never a blind host-wide pkill. RESILIENT-1738:
+/// a plain `chumpd --version` (or any other non-worker argv) used to reach
+/// this function and pkill -f every worker.sh on the host, which a watchdog
+/// probing `--version` every 5-10 min turned into a standing worker-killer.
+fn takeover(cfg: &Config) {
+    // Test harness / cohabitation guard: CHUMPD_TAKEOVER=0 skips the sweep
+    // (a CI fixture must never kill a live fleet's workers).
     if std::env::var("CHUMPD_TAKEOVER").as_deref() == Ok("0") {
         return;
     }
-    let _ = Command::new("/usr/bin/pkill")
-        .args(["-f", "dispatch/worker.sh"])
-        .status();
+    for pid in read_owned_pids(cfg) {
+        if pid <= 0 {
+            continue;
+        }
+        let cmd = Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+        if cmd.contains("dispatch/worker.sh") {
+            unsafe {
+                libc::kill(pid, libc::SIGTERM);
+            }
+        }
+    }
+    write_owned_pids(cfg, &[]);
     let _ = Command::new("/bin/bash")
         .args([
             "-lc",
@@ -531,6 +590,36 @@ async fn main() {
     let argv: Vec<String> = std::env::args().collect();
     if argv.get(1).map(String::as_str) == Some("worker") {
         std::process::exit(worker_loop::run(&argv[2..]));
+    }
+
+    // RESILIENT-1738: --version/-V/--help must be answerable WITHOUT ever
+    // starting the supervisor — a watchdog probing `chumpd --version` used
+    // to fall through to the normal startup path, whose takeover() did a
+    // host-wide `pkill -f dispatch/worker.sh` every 5-10 min. Unrecognized
+    // argv also refuses (exit 2) rather than silently starting a supervisor.
+    match argv.get(1).map(String::as_str) {
+        None => {}
+        Some("--version") | Some("-V") => {
+            println!(
+                "chumpd {} ({})",
+                env!("CARGO_PKG_VERSION"),
+                chumpd_build_sha()
+            );
+            std::process::exit(0);
+        }
+        Some("--help") | Some("-h") => {
+            println!("chumpd — MISSION-051 fleet worker-pool supervisor.");
+            println!();
+            println!("Usage: chumpd            start the supervisor (owns the worker pool)");
+            println!("       chumpd worker ... run the thin per-worker loop (exec'd by worker.sh)");
+            println!("       chumpd --version   print version + build sha, no side effects");
+            println!("       chumpd --help      this message, no side effects");
+            std::process::exit(0);
+        }
+        Some(other) => {
+            eprintln!("chumpd: unrecognized argument '{other}' (try --help)");
+            std::process::exit(2);
+        }
     }
 
     // SAFETY: signal() with a signal-safe handler that only stores an atomic.
@@ -740,6 +829,11 @@ async fn main() {
         }
 
         write_status(&cfg, &mode, desired, &slots);
+        let owned_pids: Vec<i32> = slots
+            .values()
+            .filter_map(|s| s.child.as_ref().map(|c| c.id() as i32))
+            .collect();
+        write_owned_pids(&cfg, &owned_pids);
         scan_worker_sandbox_denials(&cfg, TICK_SECS);
         std::thread::sleep(Duration::from_secs(TICK_SECS));
     }
@@ -755,6 +849,7 @@ async fn main() {
             let _ = child.wait();
         }
     }
+    write_owned_pids(&cfg, &[]);
     // scanner-anchor: "kind":"chumpd_stopped"
     emit(
         &cfg,
