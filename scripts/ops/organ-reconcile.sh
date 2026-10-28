@@ -775,10 +775,9 @@ done
 #     had actually come up before the old one stopped serving. So: only stop
 #     a unit that is live on THIS host because its home moved elsewhere if
 #     the new home has heartbeated (organ_home_heartbeat_fresh) within the
-#     last CHUMP_ORGAN_RECONCILE_HOME_HEARTBEAT_MAX_AGE seconds (default
-#     600 = 10 min); otherwise leave it running here as the fail-safe
+#     last 600s (10 min); otherwise leave it running here as the fail-safe
 #     fallback and emit a refusal event instead of a silent no-op.
-HOME_HEARTBEAT_MAX_AGE="${CHUMP_ORGAN_RECONCILE_HOME_HEARTBEAT_MAX_AGE:-600}"
+HOME_HEARTBEAT_MAX_AGE=600
 _RECONCILE_THIS_NODE="$(organ_current_node)"
 for unit in "${ENABLED[@]}"; do
   home="${ORGAN_HOME[$unit]:-}"
