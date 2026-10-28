@@ -369,7 +369,8 @@ declare -A ORGAN_REQUIRES
 declare -A ORGAN_PLATFORMS
 declare -A ORGAN_NODE_UNUSED
 declare -A ORGAN_RUN_SCOPE
-organ_manifest_parse "$MANIFEST" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES ORGAN_PLATFORMS ORGAN_NODE_UNUSED ORGAN_RUN_SCOPE RETIRED || exit 1
+declare -A ORGAN_HOME
+organ_manifest_parse "$MANIFEST" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES ORGAN_PLATFORMS ORGAN_NODE_UNUSED ORGAN_RUN_SCOPE RETIRED ORGAN_HOME || exit 1
 
 # INFRA-7764 (docs/strategy/ONE_COMMAND_INSTALL.md section 1): platform
 # scoping. organ-manifest.txt is becoming the single unified roster —
@@ -763,6 +764,43 @@ for unit in "${ENABLED[@]}"; do
     record_backoff "$unit" "verify_failed"
     CHANGED+=("backoff:$unit")
     emit organ_reconcile_backoff "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"verify_failed\""
+  fi
+done
+
+# 2b) Home-migration guard (RESILIENT-1734). An ENABLED unit whose manifest
+#     `home=` points somewhere other than THIS node is still left running
+#     here unless the new home is confirmed up — RESILIENT-1698 re-homed 4
+#     detector organs to `slim` and they went dark the moment slim's
+#     tailscale link dropped, because nothing checked whether the new home
+#     had actually come up before the old one stopped serving. So: only stop
+#     a unit that is live on THIS host because its home moved elsewhere if
+#     the new home has heartbeated (organ_home_heartbeat_fresh) within the
+#     last CHUMP_ORGAN_RECONCILE_HOME_HEARTBEAT_MAX_AGE seconds (default
+#     600 = 10 min); otherwise leave it running here as the fail-safe
+#     fallback and emit a refusal event instead of a silent no-op.
+HOME_HEARTBEAT_MAX_AGE="${CHUMP_ORGAN_RECONCILE_HOME_HEARTBEAT_MAX_AGE:-600}"
+_RECONCILE_THIS_NODE="$(organ_current_node)"
+for unit in "${ENABLED[@]}"; do
+  home="${ORGAN_HOME[$unit]:-}"
+  [[ -z "$home" || "$home" == "any" ]] && continue
+  organ_home_matches "$home" "$_RECONCILE_THIS_NODE" && continue  # this node IS a declared home
+  organ_is_live "$unit" || continue                                # not running here, nothing to migrate
+  if organ_home_heartbeat_fresh "$home" "$HOME_HEARTBEAT_MAX_AGE"; then
+    echo "HOME-MIGRATE: $unit home=$home is up — stopping on $_RECONCILE_THIS_NODE"
+    "$SYSTEMCTL_BIN" disable --now "$unit" 2>/dev/null || true
+    CHANGED+=("home-migrated:$unit")
+    # scanner-anchor: "kind":"organ_reconcile_home_migrated" (RESILIENT-1734;
+    # fires when this node stops a unit whose new declared home has a fresh
+    # heartbeat — the confirmed-safe half of the home-migration guard)
+    emit organ_reconcile_home_migrated "\"unit\":\"$unit\",\"home\":\"$home\",\"from_node\":\"$_RECONCILE_THIS_NODE\""
+  else
+    echo "HOME-MIGRATE-REFUSED: $unit home=$home has no fresh heartbeat — leaving it running on $_RECONCILE_THIS_NODE"
+    # scanner-anchor: "kind":"organ_reconcile_home_migration_refused"
+    # (RESILIENT-1734; fires when the reconcile REFUSES to stop a live unit
+    # because its new declared home has no heartbeat within the last 10 min
+    # — the fail-safe half that keeps a detector alive on its old host
+    # instead of going dark the way RESILIENT-1698 did)
+    emit organ_reconcile_home_migration_refused "\"unit\":\"$unit\",\"home\":\"$home\",\"from_node\":\"$_RECONCILE_THIS_NODE\",\"reason\":\"home_heartbeat_stale\""
   fi
 done
 
