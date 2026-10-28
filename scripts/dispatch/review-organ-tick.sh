@@ -67,6 +67,10 @@ CLAUDE_BIN="claude"
 # sandbox); --checkout, which the unit NEVER passes, overrides it for tests that
 # cannot relocate HOME. NEVER an env var on this safety input (Chief 2026-10-20).
 CHECKOUT="$HOME/chump"
+# CREDIBLE-1650: the sandboxed mutant runner. A test sets --mutant-run-bin to a
+# stub/fixture binary; the systemd unit never passes it — production always
+# uses the real scripts/review/mutant-run.sh shipped alongside this script.
+MUTANT_RUN_BIN="$SELF_DIR/../review/mutant-run.sh"
 SELF_LOGIN=""          # own-lane skip: a PR authored by the review organ's own lane is not reviewed (CREDIBLE-1608)
 SKIP_SAME_LOGIN_NON_FLEET=1
 REPO=""                # owner/repo; empty = current checkout's repo
@@ -80,6 +84,7 @@ ORIG_ARGC=$#
 while (( $# )); do
     case "$1" in
         --claude-bin)     CLAUDE_BIN="${2:-}"; shift 2 ;;
+        --mutant-run-bin) MUTANT_RUN_BIN="${2:-}"; shift 2 ;;
         --checkout)       CHECKOUT="${2:-}"; shift 2 ;;
         --self-login)     SELF_LOGIN="${2:-}"; shift 2 ;;
         --skip-same-login-non-fleet) SKIP_SAME_LOGIN_NON_FLEET=1; shift ;;
@@ -109,10 +114,17 @@ REVIEW_GATE_FILE_GLOBS=("${CHUMP_SHIP_GATE_GLOBS[@]}")
 # When the list changes, a head held under the old list is re-evaluated; a real
 # model CHANGES REQUIRED carries no such stamp and is never re-reviewed.
 GATE_LIST_VERSION="$(chump_ship_gate_list_version)"
-# A sandboxed mutant runner does not exist yet; until it does, gate-file PRs are
-# held for a mutant-capable reviewer (repair item 8). This is a CONSTANT, not an
-# env read — flipping it on without a real runner would defeat the mutation rule.
+# CREDIBLE-1650: REVIEW_MUTANT_RUNNER_AVAILABLE is now a PROBE, not a constant.
+# scripts/review/mutant-run.sh exists, is executable, AND its --self-test
+# fixture (one KILLED mutant, one SURVIVED mutant, asserted) actually passes —
+# a local throwaway git repo, no network, <2s. Run ONCE per tick (not per PR).
+# A missing/broken runner still fails closed to the pre-CREDIBLE-1650 "NOT RUN"
+# hold below — nothing here can flip this on without the runner proving itself
+# first, and no CHUMP_* env var can override it (Chief 2026-10-20 standing rule).
 REVIEW_MUTANT_RUNNER_AVAILABLE=0
+if [[ -x "$MUTANT_RUN_BIN" ]] && "$MUTANT_RUN_BIN" --self-test >/dev/null 2>&1; then
+    REVIEW_MUTANT_RUNNER_AVAILABLE=1
+fi
 
 # CREDIBLE-1589 (AC3): until the lane-1 Rust slice teaches `chump dispatch` an
 # explicit --repair flag (DispatchMode::Repair without the banned
@@ -207,6 +219,51 @@ gate_files_touched() {
             case "$f" in $glob) printf '%s\n' "$f"; return 0 ;; esac
         done
     done <<< "$files"
+    return 1
+}
+
+# gate_test_for_file <gate-file-path> — prints the shell command that proves
+# this gate file's behaviour (CREDIBLE-1650), rc 0. rc 1 when no test is
+# mapped for this file (the mutant runner is skipped for it; the PR stays
+# held exactly as before CREDIBLE-1650 — fail closed, never a guess). A
+# LITERAL mapping, never derived from an env var (same standing rule as the
+# gate-file globs themselves): this decides which test result the organ
+# trusts to kill a mutant.
+gate_test_for_file() {
+    local f="$1"
+    case "$f" in
+        *verified-wait*)                 printf '%s' "bash scripts/ci/test-verified-wait.sh" ;;
+        scripts/coord/bot-merge.sh)      printf '%s' "bash scripts/ci/test-bot-merge-preflight.sh" ;;
+        scripts/git-hooks/pre-commit)    printf '%s' "bash scripts/ci/test-preflight-ci-parity.sh" ;;
+        scripts/git-hooks/pre-push)      printf '%s' "bash scripts/ci/test-pre-push-preflight-hook.sh" ;;
+        crates/chump-preflight/*)        printf '%s' "cargo test -p chump-preflight" ;;
+        *) return 1 ;;
+    esac
+}
+
+# dispatch_mutant_runner <pr> <head> <patch-id> <gate-file> <run-dir> —
+# CREDIBLE-1650. Runs scripts/review/mutant-run.sh against the gate file this
+# head touches and, on a record naming >=1 mutant, posts it as a PR comment
+# under the organ's OWN trusted login (ORGAN_LOGIN) so mutant_record_satisfies
+# can accept it on this very same tick. A runner that finds no mapped test or
+# no mutable operator is a NO-OP here — the PR stays held exactly as before
+# CREDIBLE-1650 (fail closed; this never fabricates a record).
+dispatch_mutant_runner() {
+    local pr="$1" head="$2" pid="$3" gate_hit="$4" run_dir="$5"
+    local test_cmd
+    if ! test_cmd="$(gate_test_for_file "$gate_hit")"; then
+        log "PR #$pr: no mapped mutation test for gate file '$gate_hit' — mutant runner skipped"
+        return 1
+    fi
+    local mrec
+    if mrec="$("$MUTANT_RUN_BIN" --repo "$CHECKOUT" --head "$head" --base origin/main \
+            --file "$gate_hit" --test "$test_cmd" --pr "$pr" --patch-id "$pid" 2>"$run_dir/mutant.err")"; then
+        log "PR #$pr: mutant runner produced a record for '$gate_hit' (patch-id ${pid:0:12}) — posting under $ORGAN_LOGIN"
+        CHUMP_GH_CALL_CRITICALITY=background GH pr comment "$pr" ${REPO:+--repo "$REPO"} --body "$mrec" >/dev/null 2>&1 \
+            || log "PR #$pr: WARN posting mutant record failed"
+        return 0
+    fi
+    log "PR #$pr: mutant runner found no result for '$gate_hit' — staying held ($(tail -1 "$run_dir/mutant.err" 2>/dev/null))"
     return 1
 }
 
@@ -914,14 +971,25 @@ else:
     if [[ "$gate_rc" == 3 ]]; then gate_hit="(diff uncomputable — fail closed)"; gate_rc=0; fi
 
     local verdict mutants
-    if [[ "$gate_rc" == 0 && "$REVIEW_MUTANT_RUNNER_AVAILABLE" != "1" ]]; then
-        # Gate-file PR, no sandboxed mutant runner. CREDIBLE-1600: the organ can
-        # still clear the hold when a mutant-capable review RECORD for THIS exact
-        # PR-diff patch-id has been posted under the organ marker format by the
-        # trusted login. It then runs its OWN model review and arms on model
-        # APPROVE PLUS that record — never the record alone (the arm path still
-        # gates on review_hold_allows reading back the organ's written APPROVE).
+    if [[ "$gate_rc" == 0 ]]; then
+        # Gate-file PR. CREDIBLE-1600: the organ can still clear the hold when a
+        # mutant-capable review RECORD for THIS exact PR-diff patch-id has been
+        # posted under the organ marker format by the trusted login. It then
+        # runs its OWN model review and arms on model APPROVE PLUS that record —
+        # never the record alone (the arm path still gates on review_hold_allows
+        # reading back the organ's written APPROVE).
         # patch_id was already computed at the top of this fresh path (CREDIBLE-1599).
+        #
+        # CREDIBLE-1650: when no such record exists yet AND the sandboxed mutant
+        # runner has proven itself available (REVIEW_MUTANT_RUNNER_AVAILABLE),
+        # dispatch it ONCE here — on a produced record it posts under the
+        # organ's own trusted login (ORGAN_LOGIN) so the very next check below
+        # accepts it, with no human step (AC1). A runner that is unavailable, or
+        # that finds no mapped test / no mutable operator for this gate file, is
+        # a no-op: the PR falls straight through to the pre-CREDIBLE-1650 hold.
+        if [[ "$REVIEW_MUTANT_RUNNER_AVAILABLE" == "1" ]] && ! mutant_record_satisfies "$pr" "$head" "$patch_id"; then
+            dispatch_mutant_runner "$pr" "$head" "$patch_id" "$gate_hit" "$run_dir" || true
+        fi
         if mutant_record_satisfies "$pr" "$head" "$patch_id"; then
             log "PR #$pr: gate-file with a trusted mutant-capable record for patch-id ${patch_id:0:12} → running model review (arms on model APPROVE + record)"
             # The record satisfies the mutant requirement — clear a prior MECHANICAL

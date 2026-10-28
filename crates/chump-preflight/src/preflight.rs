@@ -2875,6 +2875,15 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-arm-policy.sh"],
             GateKind::Scripts,
         ));
+        // CREDIBLE-1650: the sandboxed mutant runner (scripts/review/mutant-run.sh)
+        // that lets the review organ clear review-needs-mutants without a human —
+        // killed + survived outcomes proven on a fixture diff. Mirrors the ci.yml
+        // step (INFRA-1867 parity).
+        steps.push(step(
+            "mutant-run",
+            &["bash", "scripts/ci/test-mutant-run.sh"],
+            GateKind::Scripts,
+        ));
         steps.push(step(
             "gap-ship-single-source",
             &["bash", "scripts/ci/test-gap-ship-single-source.sh"],
