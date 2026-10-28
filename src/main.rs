@@ -15203,12 +15203,18 @@ async fn main() -> Result<()> {
                         vague_pickable.len()
                     ));
                 }
-                if !done_with_closed_pr.is_empty() {
-                    fail_reasons.push(format!(
-                        "{} done gap(s) with closed_pr set — review closure consistency",
-                        done_with_closed_pr.len()
-                    ));
-                }
+                // INFRA-8711: done_with_closed_pr counts EVERY gap that was
+                // ever shipped normally (status=done, closed_pr=N is the
+                // expected post-ship state, not drift) — it was never a
+                // verified check that the PR is actually merged on GitHub
+                // (that requires a gh API call, done by the dedicated
+                // test-gap-closure-consistency.sh / premature-closure-watch.sh
+                // daemon per GAP_REGISTRY_INVARIANTS.md I-1). Gating the exit
+                // code on it made audit-priorities — and therefore
+                // fleet-doctor-strict.sh's gap-drift check — permanently FAIL
+                // once any gap had ever shipped. Kept as an informational
+                // JSON/text field only; real premature-closure detection
+                // stays with the GitHub-verified daemon.
                 if fail_reasons.is_empty() {
                     return Ok(());
                 }
