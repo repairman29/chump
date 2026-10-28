@@ -3,7 +3,7 @@
 # See docs/process/VOICE_OF_AGENT.md for protocol.
 
 id: VOA-020
-filed_at: "2026-10-18T15:02:18Z"
+filed_at: "2026-10-28T21:11:22Z"
 
 reporter:
   agent_role: unknown-role
@@ -14,13 +14,13 @@ reporter:
 
 wedge_observations:
 
-  - wedge_class: armed-pr-behind-under-strict
-    minutes_lost: 40
+  - wedge_class: fmt-drift-queue-wide
+    minutes_lost: 30
     workaround_used:
-      summary: "architect ran gh api update-branch by hand ~8 times (#5582 x2, #5584, #5590, ...)"
+      summary: "manually ran cargo fmt --all after CI caught formatting drift on PR #2769, then re-pushed and waited on a second CI round-trip"
     proposed_fix:
-      shape: tooling
-      fix: "install and run armed-pr-rebaser (RESILIENT-1632)"
-    impact_estimate_minutes_per_session: 40
+      shape: gate
+      fix: "chump preflight mirrors CI parity"
+    impact_estimate_minutes_per_session: 30
     evidence:
-      - "RESILIENT-1632"
+      - "PR #2769"
