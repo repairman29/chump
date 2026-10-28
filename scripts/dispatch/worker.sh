@@ -229,6 +229,12 @@ if [ -r "$REPO_ROOT/scripts/dispatch/lib/worker-timeout.sh" ]; then
     # shellcheck source=lib/worker-timeout.sh
     source "$REPO_ROOT/scripts/dispatch/lib/worker-timeout.sh"
 fi
+# RESILIENT-1739: effort/load-scaled stall-detector threshold + stall-kill
+# classification (see lib for rationale).
+if [ -r "$REPO_ROOT/scripts/dispatch/lib/stall-threshold.sh" ]; then
+    # shellcheck source=lib/stall-threshold.sh
+    source "$REPO_ROOT/scripts/dispatch/lib/stall-threshold.sh"
+fi
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
@@ -2309,10 +2315,18 @@ Operator or sibling worker can rescue this branch via:
                 fi
 
                 # INFRA-705: stall-detector — kills cycle if no new output for
-                # CHUMP_STALL_THRESHOLD_S consecutive seconds (default 120).
+                # the effective threshold (RESILIENT-1739: scaled by gap effort
+                # and node load, re-read from node.env every cycle so a config
+                # change takes effect without restarting chump-worker@N).
                 # Complements the first-output watchdog: that one fires on zero
                 # initial output; this one fires on mid-cycle output stalls.
-                _stall_threshold="${CHUMP_STALL_THRESHOLD_S:-120}"
+                _sd_loadavg="$(awk '{print $1}' /proc/loadavg 2>/dev/null || true)"
+                _sd_cores="$(nproc 2>/dev/null || echo 4)"
+                if command -v compute_stall_threshold >/dev/null 2>&1; then
+                    _stall_threshold="$(compute_stall_threshold "${_gap_effort:-s}" "${_sd_loadavg:-0}" "${_sd_cores:-4}")"
+                else
+                    _stall_threshold="${CHUMP_STALL_THRESHOLD_S:-600}"
+                fi
                 # RESILIENT-1449: once the cycle has SHIPPED (PR created +
                 # auto-merge armed, visible in the cycle log) the session
                 # commonly sits QUIET polling `gh pr view` for its own PR's
@@ -2327,8 +2341,13 @@ Operator or sibling worker can rescue this branch via:
                 # the cycle is silently COMPILING (a workspace clippy/build can run
                 # 3-5min streaming no output to claude stdout), not stuck. Walks the
                 # process tree breadth-first (claude → sh → cargo → rustc).
+                # RESILIENT-1739: also recognizes `git` (long rebase/fetch) and a
+                # bash-invoked test runner (this repo's scripts/ci/test-*.sh
+                # convention, pytest, npm/jest test) — same silent-but-working
+                # shape as a cargo build, just under a `bash`/`sh` comm instead
+                # of its own binary name, so the match needs the full cmdline.
                 _has_build_descendant() {
-                    local frontier="$1" next pid kid cmd
+                    local frontier="$1" next pid kid cmd args
                     local -i depth=0
                     while [[ -n "${frontier// /}" && $depth -lt 8 ]]; do
                         next=""
@@ -2336,7 +2355,11 @@ Operator or sibling worker can rescue this branch via:
                             for kid in $(pgrep -P "$pid" 2>/dev/null); do
                                 cmd=$(ps -o comm= -p "$kid" 2>/dev/null)
                                 case "$cmd" in
-                                    *cargo*|*rustc*|*clippy-driver*|*sccache*) return 0 ;;
+                                    *cargo*|*rustc*|*clippy-driver*|*sccache*|*git*) return 0 ;;
+                                esac
+                                args=$(ps -o args= -p "$kid" 2>/dev/null)
+                                case "$args" in
+                                    *test-*.sh*|*' test '*|*pytest*|*jest*) return 0 ;;
                                 esac
                                 next="$next $kid"
                             done
@@ -2346,6 +2369,14 @@ Operator or sibling worker can rescue this branch via:
                     done
                     return 1
                 }
+                # RESILIENT-1739: marker the subshell below touches right
+                # before it kills the cycle, so the parent (after `wait`) can
+                # tell "rc=143 because THIS stall-detector fired" apart from
+                # "rc=143 for any other reason" and classify it class=stall_kill
+                # — never credit-exhausted/rate-limit — so RESILIENT-575 does
+                # not demote the backend for a self-inflicted SIGTERM.
+                _stall_kill_marker="${cycle_log}.stall-killed"
+                rm -f "$_stall_kill_marker" 2>/dev/null || true
                 (
                     _sd_last_sz=0
                     _sd_last_active=$SECONDS
@@ -2381,13 +2412,16 @@ Operator or sibling worker can rescue this branch via:
                                 _sd_last_active=$SECONDS
                                 continue
                             fi
-                            printf '{"ts":"%s","kind":"cycle_stall_killed","gap_id":"%s","agent_id":"%s","idle_s":%d}\n' \
+                            printf '{"ts":"%s","kind":"cycle_stall_killed","class":"stall_kill","gap_id":"%s","agent_id":"%s","idle_s":%d}\n' \
                                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                                 "${GAP_ID:-unknown}" \
                                 "${AGENT_ID:-unknown}" \
                                 "$_sd_idle" \
                                 >> "${CHUMP_LOCKS_DIR:-.chump-locks}/ambient.jsonl" 2>/dev/null || true
                             log "INFRA-705: stall-detector firing (no output for ${_sd_idle}s ≥ threshold ${_eff_threshold}s) — killing cycle"
+                            # RESILIENT-1739: mark BEFORE killing so the parent
+                            # sees the marker no matter how fast `wait` returns.
+                            : > "$_stall_kill_marker" 2>/dev/null || true
                             # INFRA-3832: reap the whole tree (see _kill_cycle_tree)
                             # so the hung claude grandchild dies now, not at
                             # FLEET_TIMEOUT_S.
@@ -2404,6 +2438,16 @@ Operator or sibling worker can rescue this branch via:
                 [[ "$_fo_watchdog_pid" -ne 0 ]] && wait "$_fo_watchdog_pid" 2>/dev/null || true
                 kill "$_stall_detector_pid" 2>/dev/null || true
                 wait "$_stall_detector_pid" 2>/dev/null || true
+
+                # RESILIENT-1739: did THIS cycle's rc come from the stall
+                # detector above, not some other SIGTERM source? Checked via
+                # the marker (not rc==143 alone) so a real backend-sent 143
+                # still classifies normally.
+                _was_stall_killed=0
+                if [[ -f "$_stall_kill_marker" ]]; then
+                    _was_stall_killed=1
+                    rm -f "$_stall_kill_marker" 2>/dev/null || true
+                fi
 
                 # Check for wedge: near-empty log + timeout or clean exit.
                 _log_sz=0
@@ -2868,7 +2912,7 @@ for p in prs:
         # block below to skip writing a new cooldown for THIS cycle — never
         # silently block a gap for an outage that isn't its fault.
         _backend_outage_fail=0
-        if [[ "$_orig_backend" == "claude" ]] && [[ "$rc" -ne 124 ]]; then
+        if [[ "$_orig_backend" == "claude" ]] && [[ "$rc" -ne 124 ]] && [[ "${_was_stall_killed:-0}" -ne 1 ]]; then
             _sub_fail_class="$(classify_sub_failure "$cycle_log")"
             if [[ "$_sub_fail_class" != "none" ]]; then
                 _backend_outage_fail=1

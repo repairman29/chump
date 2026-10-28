@@ -2499,6 +2499,23 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // RESILIENT-1739: stall-detector threshold scaler + kill classifier
+        // gate. Mirrors the audit.yml test-stall-threshold.sh step — proves
+        // the stall-detector threshold scales by gap effort and node load
+        // (xs=300s s/m=600s l/xl=900s, x1.5 when loadavg > cores*0.7), a
+        // node.env CHUMP_STALL_THRESHOLD_S override is re-read fresh every
+        // call (no chump-worker@N restart needed), and a stall kill is
+        // classified class=stall_kill and structurally excluded from the
+        // RESILIENT-575 sub-backend-outage classifier. Pure bash arithmetic
+        // over the sourced compute_stall_threshold()/stall_kill_classify()
+        // helpers: no network, no chump binary, <1s. Always-on, NO bypass
+        // env var.
+        steps.push(step(
+            "stall-threshold",
+            &["bash", "scripts/ci/test-stall-threshold.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-3379 (META-086 cluster 1/5, gap/state-registry consistency):
         // mirror 14 gap/state-registry gates that were previously only
         // allowlisted in preflight-ci-parity-exceptions.txt. Each is pure
