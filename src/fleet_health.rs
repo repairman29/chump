@@ -1001,6 +1001,13 @@ pub struct SloResult {
     pub current: String,
     pub breached: bool,
     pub detail: String,
+    /// RESILIENT-1740: "instant" = reflects a live/current condition safe to
+    /// halt the fleet on; "rolling" = a cumulative multi-day/week count that
+    /// a single past incident can keep breached long after the condition
+    /// cleared. Halt-class gates (ci-health-gate.sh) must only pause on
+    /// "instant" L1 breaches — pausing on a "rolling" breach is a deadlock
+    /// the pause itself cannot clear (see docs/process/FLEET_SLOS.md).
+    pub window_kind: &'static str,
 }
 
 /// Evaluate all fleet SLOs against live data.
@@ -1019,6 +1026,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let silent_7d = count_kind_since(&contents, "silent_agent", week_ago);
     results.push(SloResult {
         id: "L1-SLO-1",
+        window_kind: "rolling",
         target: "silent_agent = 0/week",
         current: format!("{}", silent_7d),
         breached: silent_7d > 0,
@@ -1029,6 +1037,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let orphan_today = count_kind_since(&contents, "orphan_claude", day_start);
     results.push(SloResult {
         id: "L1-SLO-2",
+        window_kind: "instant",
         target: "orphan_claude = 0/day",
         current: format!("{}", orphan_today),
         breached: orphan_today > 0,
@@ -1042,6 +1051,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let restart_rate = (ok_24h * 100).checked_div(total_restarts).unwrap_or(100);
     results.push(SloResult {
         id: "L1-SLO-3",
+        window_kind: "instant",
         target: "auto-restart success > 95%",
         current: format!("{}%", restart_rate),
         breached: total_restarts > 0 && restart_rate < 95,
@@ -1059,6 +1069,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let p50_min = p50_ship_time_minutes(repo_root);
     results.push(SloResult {
         id: "L2-SLO-1",
+        window_kind: "rolling",
         target: "P50 ship-time < 30min",
         current: p50_min
             .map(|m| format!("{}min", m))
@@ -1075,6 +1086,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let waste_pct = waste_7d * 100 / sessions_7d;
     results.push(SloResult {
         id: "L2-SLO-2",
+        window_kind: "rolling",
         target: "waste < 5% of tokens",
         current: format!("~{}%", waste_pct),
         breached: waste_pct >= 5,
@@ -1088,6 +1100,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let p0_count = count_p0_gaps(repo_root);
     results.push(SloResult {
         id: "L2-SLO-3",
+        window_kind: "rolling",
         target: "P0 count ≤ 5",
         current: format!("{}", p0_count),
         breached: p0_count > 5,
@@ -1105,6 +1118,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let pillars_under_two = pillar_counts.iter().filter(|(_, c)| *c < 2).count();
     results.push(SloResult {
         id: "L2-SLO-4",
+        window_kind: "rolling",
         target: "pillar balance ≥ 2 pickable each",
         current: format!("{} under target", pillars_under_two),
         breached: pillars_under_two > 0,
@@ -1121,6 +1135,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let ghosts = count_ghost_gaps(repo_root);
     results.push(SloResult {
         id: "L2-SLO-5",
+        window_kind: "rolling",
         target: "ghost-gap count < 2",
         current: format!("{}", ghosts),
         breached: ghosts >= 2,
@@ -1134,6 +1149,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let recall_7d = count_kind_since(&contents, "operator_recall", week_ago);
     results.push(SloResult {
         id: "L3-SLO-1",
+        window_kind: "rolling",
         target: "operator-recall < 1/week",
         current: format!("{}", recall_7d),
         breached: recall_7d >= 1,
@@ -1159,6 +1175,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     };
     results.push(SloResult {
         id: "L2-SLO-6",
+        window_kind: "rolling",
         target: "bisect-quarantine rate < 5%",
         current: if cycles_7d == 0 {
             "no data".into()
@@ -1186,6 +1203,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let paramedic_breached = heartbeat_last_hour > 0 && heartbeat_recent == 0;
     results.push(SloResult {
         id: "L4-SLO-1",
+        window_kind: "instant",
         target: "paramedic heartbeat fresh (< 15min gap)",
         current: if heartbeat_recent > 0 {
             "fresh".into()
@@ -1240,6 +1258,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     }
     results.push(SloResult {
         id: "L5-SLO-1",
+        window_kind: "rolling",
         target: "organ liveness: curator_heartbeat < 96h for every active role",
         current: format!("{} stale", stale_organs.len()),
         breached: !stale_organs.is_empty(),
@@ -1266,6 +1285,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         .unwrap_or_default();
     results.push(SloResult {
         id: "L5-SLO-2",
+        window_kind: "rolling",
         target: "outcome movement: open-children outcomes ship a child within 21d",
         current: format!("{} stale", stale_outcomes.len()),
         breached: !stale_outcomes.is_empty(),
@@ -1298,6 +1318,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         .count();
     results.push(SloResult {
         id: "L5-SLO-3",
+        window_kind: "rolling",
         target: "P2 is not a one-way door: 0 open P2 gaps > 90d old",
         current: format!("{}", stale_p2),
         breached: stale_p2 > 0,
@@ -1322,6 +1343,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         .collect();
     results.push(SloResult {
         id: "L5-SLO-4",
+        window_kind: "rolling",
         target: "P1 unclaimed < 5d — else say wrong/blocked/mis-prioritized",
         current: format!("{} unclaimed", stale_p1.len()),
         breached: !stale_p1.is_empty(),
@@ -1393,12 +1415,13 @@ pub fn render_slo_json(results: &[SloResult]) -> String {
         .iter()
         .map(|r| {
             format!(
-                r#"{{"id":"{}","target":"{}","current":"{}","breached":{},"detail":"{}"}}"#,
+                r#"{{"id":"{}","target":"{}","current":"{}","breached":{},"detail":"{}","window_kind":"{}"}}"#,
                 r.id,
                 r.target,
                 r.current,
                 r.breached,
-                json_escape(&r.detail)
+                json_escape(&r.detail),
+                r.window_kind
             )
         })
         .collect();
