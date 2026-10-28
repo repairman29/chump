@@ -218,6 +218,12 @@ if [[ -n "$WATCHDOG_SRC" ]]; then
         [[ -n "${CHUMP_NODE_BIN:-}" ]]  && echo "Environment=CHUMP_NODE_BIN=${CHUMP_NODE_BIN}"
         echo "ExecStart=/usr/bin/env bash ${WATCHDOG_SRC}"
         echo "Nice=10"
+        # RESILIENT-1738 AC3: bounded well under the 5min timer cadence
+        # (OnUnitActiveSec below) so a hung invocation gets killed by systemd
+        # long before the NEXT tick fires, instead of stacking overlapping
+        # runs. The script itself should finish in low single-digit seconds
+        # now that `chumpd --version` is a side-effect-free probe.
+        echo "TimeoutStartSec=120"
     } > "$UNIT_DIR/chump-node-deploy-lag-watchdog.service"
     {
         echo "[Unit]"
