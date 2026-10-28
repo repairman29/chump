@@ -69,13 +69,13 @@ num-traits = { version = "0.2", features = ["i128", "libm"] }
 object-a569ef59a45ff95e = { package = "object", version = "0.40", default-features = false, features = ["read_core", "unaligned", "write"] }
 object-f645eb7eb1285ab4 = { package = "object", version = "0.39", default-features = false, features = ["elf", "read_core", "unaligned"] }
 once_cell = { version = "1" }
-parking_lot = { version = "0.12" }
+parking_lot = { version = "0.13" }
 percent-encoding = { version = "2" }
 phf = { version = "0.14", features = ["macros"] }
 phf_shared = { version = "0.14" }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulley-interpreter = { version = "49", default-features = false, features = ["disas", "interp", "std"] }
+pulley-interpreter = { version = "50", default-features = false, features = ["disas", "interp", "std"] }
 quote = { version = "1" }
 rand = { version = "0.8", features = ["small_rng"] }
 rand_core = { version = "0.6", default-features = false, features = ["std"] }
@@ -113,12 +113,12 @@ typenum = { version = "1", default-features = false, features = ["const-generics
 ureq = { version = "3", features = ["json", "native-tls", "socks-proxy"] }
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["fast-rng", "serde", "v4"] }
-wasm-encoder = { version = "0.261", features = ["wasmparser"] }
+wasm-encoder = { version = "0.262", features = ["wasmparser"] }
 wasmparser-392e55d8254dfa46 = { package = "wasmparser", version = "0.258", default-features = false, features = ["component-model", "features", "hash-collections", "serde", "simd", "std", "validate"] }
 wasmparser-90bcb329d096495 = { package = "wasmparser", version = "0.251", default-features = false, features = ["component-model", "features", "serde", "simd", "std", "validate"] }
 wasmtime-environ-250b128af4f17eb8 = { package = "wasmtime-environ", version = "49", default-features = false, features = ["anyhow", "backtrace", "compile", "component-model", "demangle", "gc-copying", "gc-drc", "gc-null", "stack-switching", "threads"] }
 wasmtime-environ-94deaba418f814bd = { package = "wasmtime-environ", version = "46", default-features = false, features = ["component-model"] }
-wasmtime-internal-core = { version = "49", default-features = false, features = ["anyhow", "backtrace", "serde"] }
+wasmtime-internal-core = { version = "50", default-features = false, features = ["anyhow", "backtrace", "serde"] }
 yoke = { version = "0.8", features = ["derive"] }
 zerocopy = { version = "0.8", default-features = false, features = ["derive", "simd"] }
 zerofrom = { version = "0.1", default-features = false, features = ["alloc", "derive"] }
@@ -181,13 +181,13 @@ num-traits = { version = "0.2", features = ["i128", "libm"] }
 object-a569ef59a45ff95e = { package = "object", version = "0.40", default-features = false, features = ["read_core", "unaligned", "write"] }
 object-f645eb7eb1285ab4 = { package = "object", version = "0.39", default-features = false, features = ["elf", "read_core", "unaligned"] }
 once_cell = { version = "1" }
-parking_lot = { version = "0.12" }
+parking_lot = { version = "0.13" }
 percent-encoding = { version = "2" }
 phf = { version = "0.14", features = ["macros"] }
 phf_shared = { version = "0.14" }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
-pulley-interpreter = { version = "49", default-features = false, features = ["disas", "interp", "std"] }
+pulley-interpreter = { version = "50", default-features = false, features = ["disas", "interp", "std"] }
 quote = { version = "1" }
 rand = { version = "0.8", features = ["small_rng"] }
 rand_core = { version = "0.6", default-features = false, features = ["std"] }
@@ -229,12 +229,12 @@ typenum = { version = "1", default-features = false, features = ["const-generics
 ureq = { version = "3", features = ["json", "native-tls", "socks-proxy"] }
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["fast-rng", "serde", "v4"] }
-wasm-encoder = { version = "0.261", features = ["wasmparser"] }
+wasm-encoder = { version = "0.262", features = ["wasmparser"] }
 wasmparser-392e55d8254dfa46 = { package = "wasmparser", version = "0.258", default-features = false, features = ["component-model", "features", "hash-collections", "serde", "simd", "std", "validate"] }
 wasmparser-90bcb329d096495 = { package = "wasmparser", version = "0.251", default-features = false, features = ["component-model", "features", "serde", "simd", "std", "validate"] }
 wasmtime-environ-250b128af4f17eb8 = { package = "wasmtime-environ", version = "49", default-features = false, features = ["anyhow", "backtrace", "compile", "component-model", "demangle", "gc-copying", "gc-drc", "gc-null", "stack-switching", "threads"] }
 wasmtime-environ-94deaba418f814bd = { package = "wasmtime-environ", version = "46", default-features = false, features = ["component-model"] }
-wasmtime-internal-core = { version = "49", default-features = false, features = ["anyhow", "backtrace", "serde"] }
+wasmtime-internal-core = { version = "50", default-features = false, features = ["anyhow", "backtrace", "serde"] }
 yoke = { version = "0.8", features = ["derive"] }
 zerocopy = { version = "0.8", default-features = false, features = ["derive", "simd"] }
 zerofrom = { version = "0.1", default-features = false, features = ["alloc", "derive"] }
