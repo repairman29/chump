@@ -121,11 +121,14 @@ export STUB_LOG="$TMP/gh.log"
 #   101 labeled no-auto-merge   102 unlabeled, clean   103 body marker
 #   104 comment marker          105 gh view fails      106 legacy `hold` label
 #   107 "Auto-merge: holding" (not a hold)
+# CREDIBLE-1651: 110 unlabeled, clean, but NO organ verdict for the current
+# head (the fleet-lane hole); 111 unlabeled, clean, WITH a current-head
+# VERDICT: APPROVE from the trusted organ login.
 cat >"$TMP/bin/gh" <<'GH'
 #!/usr/bin/env bash
 echo "$*" >>"$STUB_LOG"
 args="$*"
-pr_of() { grep -oE '(^| )(10[0-9])( |$)' <<<"$1" | tr -d ' ' | head -1; }
+pr_of() { grep -oE '(^| )([0-9]{3})( |$)' <<<"$1" | tr -d ' ' | head -1; }
 if [[ "$1 $2" == "pr view" ]]; then
     n="$(pr_of "$args")"
     if [[ "$args" == *"labels,body,comments"* ]]; then
@@ -137,6 +140,8 @@ if [[ "$1 $2" == "pr view" ]]; then
             105) exit 1 ;;
             106) echo '{"labels":[{"name":"hold"}],"body":"","comments":[]}' ;;
             107) echo '{"labels":[],"body":"Auto-merge: holding pattern explained","comments":[]}' ;;
+            110) echo '{"labels":[],"body":"plain","comments":[{"body":"lgtm"}]}' ;;
+            111) echo '{"labels":[],"body":"plain","comments":[{"body":"lgtm"}]}' ;;
             109)
                 # Stateful (INFRA-8221): clean on the first policy read, HELD from the
                 # second on, i.e. a hold placed while the serializer waits for verified.
@@ -151,6 +156,24 @@ if [[ "$1 $2" == "pr view" ]]; then
     if [[ "$args" == *"state,title"* ]]; then echo '{"state":"OPEN","title":"stub pr","url":"https://example.invalid/pr","isDraft":false}'; exit 0; fi
     if [[ "$args" == *statusCheckRollup* ]]; then
         if [[ "$args" == *--jq* ]]; then echo SUCCESS; else echo '{"statusCheckRollup":[]}'; fi
+        exit 0
+    fi
+    # CREDIBLE-1651: arm_policy_require_review_approve resolves the current
+    # head sha via headRefOid when the caller does not pass one explicitly.
+    # Every fixture PR resolves to the same organ-approved head EXCEPT 110,
+    # which models the fleet-lane hole: a current head the organ has not
+    # reviewed yet (no VERDICT comment at all).
+    if [[ "$args" == *headRefOid* ]]; then
+        echo cafefeed1234567890abcdef
+        exit 0
+    fi
+    # review-hold.sh's own fetch: labels,comments (distinct from the
+    # labels,body,comments shape above) — the organ-verdict read path.
+    if [[ "$args" == *"labels,comments"* ]]; then
+        case "$n" in
+            110) echo '{"labels":[],"comments":[{"body":"lgtm"}]}' ;;
+            *)   echo '{"labels":[],"comments":[{"author":{"login":"repairman29"},"createdAt":"2026-10-28T00:00:00Z","body":"head: cafefeed1234567890abcdef\nVERDICT: APPROVE\nblockers: none"}]}' ;;
+        esac
         exit 0
     fi
     exit 0
@@ -223,20 +246,57 @@ grep -q '"armer":"audit-off"' "$CHUMP_AMBIENT_LOG" \
     && bad "CHUMP_ARM_POLICY_REARM_AUDIT=0 still emitted pr_rearmed" \
     || ok "CHUMP_ARM_POLICY_REARM_AUDIT=0 skips the timeline lookup"
 
-# End to end through the central armer: labeled 101 skipped, unlabeled 102 armed.
+# ── CREDIBLE-1651: GateAction::Arm fails closed on NO organ verdict, not only
+# on a hold label — PR 110 carries neither a label nor a verdict for its
+# current head (the fleet-lane hole: bot-merge / auto-merge-armer must refuse
+# it, not just a PR the organ has already labeled review-held).
+echo "[b2] CREDIBLE-1651: require-review-approve fails closed with no organ verdict"
+require_approve() { ( unset _CHUMP_ARM_POLICY_SOURCED; source "$LIB"; arm_policy_require_review_approve "$@" ) 2>/dev/null; }
+
+: >"$CHUMP_AMBIENT_LOG"
+if require_approve 110 "" "test-armer" "o/r"; then
+    bad "PR 110 (no organ verdict) → allowed, want held"
+else
+    ok "PR 110 (no organ verdict) → held"
+fi
+grep -q '"kind":"pr_arm_skipped_hold","pr":110,"armer":"test-armer","reason":"no_verdict"' "$CHUMP_AMBIENT_LOG" \
+    && ok "PR 110 emitted pr_arm_skipped_hold reason=no_verdict" \
+    || bad "PR 110: no pr_arm_skipped_hold reason=no_verdict in ambient"
+grep -qE 'pr edit 110 .*--add-label review-held' "$STUB_LOG" \
+    && ok "PR 110 labelled review-held so the organ picks it up" \
+    || bad "PR 110: no review-held label applied"
+
+: >"$CHUMP_AMBIENT_LOG"
+if require_approve 111 "" "test-armer" "o/r"; then
+    ok "PR 111 (current-head VERDICT: APPROVE from the organ) → allowed"
+else
+    bad "PR 111 (organ APPROVE) → held, want allowed"
+fi
+grep -q '"kind":"pr_arm_skipped_hold","pr":111' "$CHUMP_AMBIENT_LOG" \
+    && bad "PR 111 (organ APPROVE) unexpectedly emitted pr_arm_skipped_hold" \
+    || ok "PR 111: no hold event once the organ has approved the current head"
+
+# End to end through the central armer (auto-merge-armer.sh now always
+# requires an organ verdict, CREDIBLE-1651): labeled 101 skipped, verdict-less
+# 110 held (the fleet-lane hole, no longer armable), organ-approved 111 armed.
 : >"$STUB_LOG.arms"
 CHUMP_AUTO_MERGE_SPACING_S=0 CHUMP_AUTO_MERGE_REST_DIRECT=0 CHUMP_MERGE_QUEUE_ENABLED=0 \
 GITHUB_REPOSITORY="o/r" LOCKS_DIR="$TMP" \
-    bash "$ARMER" --pr 101 --pr 102 >"$TMP/armer.out" 2>&1 || true
+    bash "$ARMER" --pr 101 --pr 110 --pr 111 >"$TMP/armer.out" 2>&1 || true
 if grep -q '^ARMED 101' "$STUB_LOG.arms"; then
     bad "auto-merge-armer.sh armed held PR 101"
 else
     ok "auto-merge-armer.sh did not arm labeled PR 101"
 fi
-if grep -q '^ARMED 102' "$STUB_LOG.arms"; then
-    ok "auto-merge-armer.sh armed unlabeled PR 102"
+if grep -q '^ARMED 110' "$STUB_LOG.arms"; then
+    bad "auto-merge-armer.sh armed PR 110 with no organ verdict (CREDIBLE-1651 regression)"
 else
-    bad "auto-merge-armer.sh did not arm unlabeled PR 102 (out: $(tr '\n' ' ' <"$TMP/armer.out" | cut -c1-300))"
+    ok "auto-merge-armer.sh did not arm PR 110 with no organ verdict"
+fi
+if grep -q '^ARMED 111' "$STUB_LOG.arms"; then
+    ok "auto-merge-armer.sh armed PR 111 with a current-head organ APPROVE"
+else
+    bad "auto-merge-armer.sh did not arm organ-approved PR 111 (out: $(tr '\n' ' ' <"$TMP/armer.out" | cut -c1-300))"
 fi
 grep -q 'PR #101: held' "$TMP/armer.out" && ok "armer logged the hold for PR 101" \
     || bad "armer did not log the hold for PR 101"
