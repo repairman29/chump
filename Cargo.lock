@@ -1758,6 +1758,7 @@ dependencies = [
  "chump-bench",
  "chump-ship",
  "chump-store-path",
+ "libc",
  "postgres",
  "reqwest 0.12.28",
  "rusqlite",

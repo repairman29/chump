@@ -13,6 +13,8 @@ readme = "README.md"
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
+# RESILIENT-1736: kill(pid, 0) liveness probe for lease_identity::pid_is_alive.
+libc = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # EFFECTIVE-834 (EFFECTIVE-364 slice): resolve_publication() looks up
 # registered publish targets for a shipped gap's artifact_type.
