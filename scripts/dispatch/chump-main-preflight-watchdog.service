@@ -1,0 +1,27 @@
+# chump-main-preflight-watchdog.service — INFRA-8659 / INFRA-2397.
+#
+# Runs scripts/coord/main-preflight-watchdog-daemon.sh tick: executes
+# `chump preflight` against a fresh origin/main worktree and writes
+# .chump/main-preflight-state.json (consumed by check_main_health_gate in
+# crates/chump-atomic-claim/src/atomic_claim.rs, which hard-blocks `chump
+# claim` while main is RED). Without this unit enabled via the organ
+# manifest, the state file never refreshes and a stale/missing read is the
+# only input the claim gate ever sees (INFRA-8659).
+#
+# Placeholders (__HOME__, __REPO_ROOT__) are substituted at install time by
+# chump-node-install.sh place_role_unit_files / organ-unit-install-lib.sh.
+
+[Unit]
+Description=chump main-preflight-watchdog — detect preflight-red on origin/main before any PR inherits it (INFRA-8659, INFRA-2397)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_ROOT__
+Environment=HOME=__HOME__
+Environment=CHUMP_REPO_ROOT=__REPO_ROOT__
+Environment=CHUMP_AMBIENT_PATH=__REPO_ROOT__/.chump-locks/ambient.jsonl
+Environment=PATH=__HOME__/.local/bin:__HOME__/.cargo/bin:__REPO_ROOT__/target/release:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash -c 'source __REPO_ROOT__/scripts/dispatch/lib/load-provider-auth.env __HOME__/.chump/providers.env 2>/dev/null; exec bash __REPO_ROOT__/scripts/coord/main-preflight-watchdog-daemon.sh tick'
+TimeoutStartSec=1800

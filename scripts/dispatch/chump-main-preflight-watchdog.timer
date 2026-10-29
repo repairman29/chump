@@ -1,0 +1,20 @@
+# chump-main-preflight-watchdog.timer — pairs with chump-main-preflight-watchdog.service.
+# 10-minute cadence (INFRA-8659, matches the daemon's historical launchd
+# StartInterval). ZERO-WASTE-142 cadence floor/sha-skip inside the daemon
+# itself keeps real (worktree+cargo) ticks to no more than once per
+# CHUMP_MAIN_PREFLIGHT_MIN_INTERVAL_S (default 1800s), so a tighter timer
+# cadence just means "check whether origin/main moved" more often, not more
+# cargo builds.
+[Unit]
+Description=Run the Chump main-preflight-watchdog every 10 minutes (INFRA-8659, INFRA-2397)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+OnUnitInactiveSec=10min
+AccuracySec=30s
+Persistent=true
+Unit=chump-main-preflight-watchdog.service
+
+[Install]
+WantedBy=timers.target
