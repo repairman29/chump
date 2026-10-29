@@ -184,6 +184,7 @@ emit() { printf '%s\n' "$1" >> "$AMBIENT" 2>/dev/null || true; }
 # scanner-anchor: "kind":"review_organ_gap_store_miss"
 # scanner-anchor: "kind":"review_organ_gap_ship_failed"
 # scanner-anchor: "kind":"pr_repair_dispatched"
+# scanner-anchor: "kind":"pr_disarmed_negative_verdict"
 
 REVIEWED=0; APPROVED=0; CHANGES=0; HELD_MUTANTS=0; ARMED=0; DISPATCHED=0; SKIPPED=0
 # CREDIBLE-1602: set to 1 when the post-merge gap step hits a loud failure (a
@@ -371,6 +372,31 @@ _label_op_failed() {
     log "WARN: label $op '$lbl' on PR #$pr REFUSED by gh — hold not applied (not silent)"
     emit "$(printf '{"ts":"%s","kind":"review_organ_label_error","pr":%s,"op":"%s","label":"%s"}' \
         "$(ts)" "$pr" "$(json_str "$op")" "$(json_str "$lbl")")"
+}
+
+# disarm_if_armed <pr> — CREDIBLE-1653: a PR the organ marks CHANGES REQUIRED /
+# review-held that is ALREADY armed (autoMergeRequest set, usually by
+# bot-merge BEFORE the negative verdict landed) keeps riding the merge queue
+# to a green CI — GitHub's auto-merge has no idea a review-held comment
+# exists. Receipts: #5742 and #5749 merged with CHANGES REQUIRED as the last
+# organ verdict on the exact merged head because nothing ever called
+# `gh pr merge --disable-auto`. Called (a) immediately after posting a
+# negative verdict / applying review-held, same tick, and (b) as a reconcile
+# pass at the top of process_pr for every PR that STILL carries review-held +
+# an active autoMergeRequest (covers the case where (a) ran on an earlier tick
+# before autoMergeRequest was set, i.e. armed-after-held). A PR with no active
+# autoMergeRequest is a cheap no-op (one read, no write).
+disarm_if_armed() {
+    local pr="$1" armed
+    armed="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
+        --json autoMergeRequest --jq '(.autoMergeRequest != null)' 2>/dev/null || echo false)"
+    [[ "$armed" == "true" ]] || return 0
+    if GH pr merge "$pr" ${REPO:+--repo "$REPO"} --disable-auto >/dev/null 2>&1; then
+        log "PR #$pr: disarmed auto-merge (negative organ verdict / review-held)"
+        emit "$(printf '{"ts":"%s","kind":"pr_disarmed_negative_verdict","pr":%s}' "$(ts)" "$pr")"
+    else
+        log "WARN: PR #$pr: --disable-auto failed (may already be disarmed)"
+    fi
 }
 
 # approve_clear_holds <pr> <gate_rc> — CREDIBLE-1597: on an APPROVE, ALWAYS clear
@@ -808,7 +834,7 @@ process_pr() {
     local pr="$1"
     local meta author head draft fork head_ref own_lane
     meta="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
-        --json isDraft,isCrossRepository,headRefOid,author,headRefName,labels,title,body 2>/dev/null || true)"
+        --json isDraft,isCrossRepository,headRefOid,author,headRefName,labels,title,body,autoMergeRequest 2>/dev/null || true)"
     if [[ -z "$meta" ]]; then log "PR #$pr: unreadable — skip"; SKIPPED=$((SKIPPED+1)); return 0; fi
     draft="$(printf '%s' "$meta" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("isDraft"))' 2>/dev/null)"
     fork="$(printf '%s'  "$meta" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("isCrossRepository"))' 2>/dev/null)"
@@ -852,6 +878,19 @@ else:
         log "PR #$pr: author=$author matches --self-login but branch=$head_ref is an independent fleet lane (CREDIBLE-1608) — reviewing"
     fi
     [[ "$head" =~ ^[0-9a-fA-F]{7,40}$ ]] || { log "PR #$pr: no head sha — skip"; SKIPPED=$((SKIPPED+1)); return 0; }
+
+    # CREDIBLE-1653 (AC3): reconcile pass, every tick, independent of which
+    # branch below runs this cycle — any PR that STILL carries review-held
+    # while armed never gets a second chance to self-correct otherwise (e.g.
+    # it was held on an earlier tick, then armed by bot-merge on a LATER tick
+    # with no organ re-review in between).
+    local has_review_held
+    has_review_held="$(printf '%s' "$meta" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(any(((l or {}).get("name") or "") == "review-held" for l in d.get("labels") or []))
+' 2>/dev/null)"
+    [[ "$has_review_held" == "True" ]] && disarm_if_armed "$pr"
 
     # Idempotency (design item (a)): if THIS head already has a verdict comment,
     # do NOT re-review, re-post a verdict, or re-dispatch a repair — only reconcile
@@ -938,6 +977,7 @@ else:
             post_verdict "$pr" "$verdict" "$head" "$mutants" "" "$GATE_LIST_VERSION"
             label_add "$pr" "$REVIEW_NEEDS_MUTANTS_LABEL"
             label_add "$pr" "$REVIEW_HOLD_LABEL"
+            disarm_if_armed "$pr"
             HELD_MUTANTS=$((HELD_MUTANTS+1)); REVIEWED=$((REVIEWED+1))
             rm -rf "$run_dir"; return 0
         fi
@@ -980,6 +1020,7 @@ else:
     else
         CHANGES=$((CHANGES+1))
         label_add "$pr" "$REVIEW_HOLD_LABEL"
+        disarm_if_armed "$pr"
         dispatch_repair "$pr" "$head"
     fi
     rm -rf "$run_dir"

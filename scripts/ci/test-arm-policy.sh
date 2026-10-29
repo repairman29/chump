@@ -582,6 +582,19 @@ case "$1 $2" in
       echo "{\"isDraft\":false,\"isCrossRepository\":$cross,\"headRefOid\":\"deadbeef1234567890abcdef1234567890abcdef\",\"author\":{\"login\":\"$_pr_author\"},\"headRefName\":\"$_pr_ref\",\"labels\":$_pr_labels,\"title\":\"$_pr_title\",\"body\":\"\"}"; exit 0; fi
     # Serves both review_hold_allows (labels,comments) and current_head_verdict (comments).
     if [[ "$a" == *comments* ]]; then cat "$ORGCMT" 2>/dev/null || echo '{"labels":[],"comments":[]}'; exit 0; fi
+    # CREDIBLE-1653: disarm_if_armed's own probe. ORG_ARMED_PRS is a space-
+    # separated allowlist of PR numbers modeling an active autoMergeRequest
+    # (set by bot-merge before the organ ran, or still armed from an earlier
+    # tick). --jq is honoured here (unlike real gh, this stub has no jq) so the
+    # boolean the organ actually reads back is correct.
+    if [[ "$a" == *autoMergeRequest* ]]; then
+      is_armed=false
+      for _p in ${ORG_ARMED_PRS:-}; do [[ "$_p" == "$pr" ]] && is_armed=true; done
+      if [[ "$a" == *--jq* ]]; then echo "$is_armed"
+      elif [[ "$is_armed" == true ]]; then echo '{"autoMergeRequest":{"enabledBy":{"login":"bot-merge"}}}'
+      else echo '{"autoMergeRequest":null}'; fi
+      exit 0
+    fi
     if [[ "$a" == *statusCheckRollup* ]]; then
       # Test fixture only: ORG_ROLLUP lets a case drive a specific check rollup so
       # verified_green can be pinned behaviorally. Default is all-green.
@@ -1032,6 +1045,101 @@ grep -qE 'CHUMP_CLAIM_ALLOW_DUPLICATE_PR' "$ORGLOG.chump" \
 grep -q 'auto-merge\|--auto' "$ORGLOG.chump" && bad "organ AC4: repair dispatch used auto-merge" \
     || ok "organ AC4: repair dispatch carried no auto-merge"
 [[ -s "$ORGLOG.merges" ]] && bad "organ AC4: a CHANGES REQUIRED PR was merged (switch on)" || ok "organ AC4: CHANGES REQUIRED PR not merged (switch on)"
+unset ORG_ARMED_PRS
+
+# ── CREDIBLE-1653: armed-then-negative — a PR bot-merge already armed BEFORE
+# the organ reviewed it must be disarmed the SAME tick the organ posts CHANGES
+# REQUIRED. Receipts: #5742 (ba71ec162) and #5749 (e11079f84) merged with
+# CHANGES REQUIRED as the last organ verdict on the merged head because
+# nothing ever called `gh pr merge --disable-auto`. MUTANT (killed here): drop
+# the `disarm_if_armed "$pr"` call from the CHANGES branch of process_pr →
+# ORGLOG.merges never gets a --disable-auto line and this fails.
+echo "[CREDIBLE-1653] armed-then-negative: organ disarms a PR armed before its CHANGES REQUIRED verdict"
+ORG_ARMED_PRS=204 organ_run --pr 204
+grep -qE '^MERGE pr merge 204 --disable-auto( |$)' "$ORGLOG.merges" \
+    && ok "CREDIBLE-1653 AC1: organ disarmed PR 204 (--disable-auto) same tick as its CHANGES REQUIRED verdict" \
+    || bad "CREDIBLE-1653 AC1: no --disable-auto for armed PR 204 (merges: $(cat "$ORGLOG.merges"))"
+grep -q '"kind":"pr_disarmed_negative_verdict","pr":204' "$D/amb.jsonl" \
+    && ok "CREDIBLE-1653 AC1: emitted kind=pr_disarmed_negative_verdict for PR 204" \
+    || bad "CREDIBLE-1653 AC1: no pr_disarmed_negative_verdict event for PR 204 ($(cat "$D/amb.jsonl" 2>/dev/null))"
+unset ORG_ARMED_PRS
+# Negative control: an UNARMED CHANGES REQUIRED PR never calls --disable-auto
+# (a cheap no-op read, not a spurious disarm write) — mutant: always call
+# --disable-auto regardless of autoMergeRequest.
+organ_run --pr 204
+grep -q -- '--disable-auto' "$ORGLOG.merges" \
+    && bad "CREDIBLE-1653: organ called --disable-auto on an unarmed PR (spurious write)" \
+    || ok "CREDIBLE-1653: unarmed CHANGES REQUIRED PR → no --disable-auto call (no-op)"
+
+# ── CREDIBLE-1653 AC3: reconcile pass — a PR that STILL carries review-held
+# from an earlier tick, and is NOW armed (e.g. bot-merge armed it on a LATER
+# tick with no organ re-review in between, or the disarm raced a re-arm), gets
+# disarmed on the very next tick even though the organ does not re-review the
+# head (idempotency: current_head_verdict already names this head). MUTANT
+# (killed here): drop the top-of-process_pr reconcile check → this fails.
+echo "[CREDIBLE-1653] AC3: reconcile pass disarms a review-held PR that got (re-)armed"
+cat > "$ORGCMT" <<'EOF'
+{"labels":[{"name":"review-held"}],"comments":[{"body":"VERDICT: CHANGES REQUIRED\nhead: deadbeef1234567890abcdef1234567890abcdef","author":{"login":"organbot"},"createdAt":"2026-10-28T20:52:15Z"}]}
+EOF
+( export PATH="$D/bin:$PATH" CHUMP_AMBIENT_LOG="$D/amb.jsonl" ORG_ARMED_PRS=204 ORG_PR_LABELS='[{"name":"review-held"}]'
+  : >"$ORGLOG.merges"; : >"$ORGLOG.chump"; : >"$D/amb.jsonl"
+  bash "$ORGAN" --claude-bin "$D/bin/claude" --checkout "$D/checkout" --pr 204 ) >/dev/null 2>&1 || true
+grep -qE '^MERGE pr merge 204 --disable-auto( |$)' "$ORGLOG.merges" \
+    && ok "CREDIBLE-1653 AC3: reconcile pass disarmed a review-held + armed PR with no re-review" \
+    || bad "CREDIBLE-1653 AC3: reconcile pass did not disarm (merges: $(cat "$ORGLOG.merges"))"
+ndisp_reconcile="$(grep -c 'chump dispatch' "$ORGLOG.chump" 2>/dev/null || true)"; ndisp_reconcile="${ndisp_reconcile:-0}"
+[[ "$ndisp_reconcile" == 0 ]] \
+    && ok "CREDIBLE-1653 AC3: reconcile-only pass re-dispatched no repair (idempotency preserved)" \
+    || bad "CREDIBLE-1653 AC3: reconcile pass unexpectedly re-dispatched a repair ($ndisp_reconcile)"
+
+# ── CREDIBLE-1653 AC2: negative-then-arm — arm_policy_allows (the gate every
+# OTHER armer in the fleet calls) refuses a PR whose current head carries an
+# organ CHANGES REQUIRED verdict EVEN WHEN the review-held label has not been
+# applied yet — the 3-minute window seen on #5744 (armed 21:37:29Z, three
+# minutes after CHANGES REQUIRED 21:34:54Z on the same head). MUTANT (killed
+# here): drop the _arm_policy_organ_verdict_reason check from arm_policy_allows
+# → this PR reads as allowed (no label, no marker) and the test fails.
+echo "[CREDIBLE-1653] AC2: arm_policy_allows refuses a CHANGES REQUIRED head with no hold label yet (closes the #5744 window)"
+C1653_DIR="$D/c1653"; mkdir -p "$C1653_DIR/bin"
+C1653_HEAD="cafed00d1234567890abcdef1234567890abcdef"
+cat > "$C1653_DIR/bin/gh" <<GH1653
+#!/usr/bin/env bash
+a="\$*"
+if [[ "\$1 \$2" == "pr view" ]]; then
+    if [[ "\$a" == *headRefOid* ]]; then printf '%s\n' "$C1653_HEAD"; exit 0; fi
+    # Deliberately NO review-held / no-auto-merge label — the window BEFORE
+    # the organ's label_add has landed. printf '%s' (not a format string with
+    # an embedded \n) so the literal two-char \n escape in the JSON survives
+    # as-written instead of being converted to a raw newline byte, which
+    # python's strict json.loads would reject as an unescaped control char.
+    printf '%s' '{"labels":[],"body":"","comments":[{"body":"VERDICT: CHANGES REQUIRED\nhead: $C1653_HEAD","author":{"login":"repairman29"},"createdAt":"z"}]}'
+    exit 0
+fi
+exit 0
+GH1653
+chmod +x "$C1653_DIR/bin/gh"
+if PATH="$C1653_DIR/bin:$PATH" bash -c "unset _CHUMP_ARM_POLICY_SOURCED; source '$LIB'; arm_policy_allows 599 test-armer repairman29/chump" >/dev/null 2>&1; then
+    bad "CREDIBLE-1653 AC2: arm_policy_allows ALLOWED a head with an un-labeled CHANGES REQUIRED organ verdict"
+else
+    ok "CREDIBLE-1653 AC2: arm_policy_allows HELD a head with an un-labeled CHANGES REQUIRED organ verdict"
+fi
+# Positive control: the SAME head with an APPROVE verdict (no label either) is allowed.
+cat > "$C1653_DIR/bin/gh" <<GH1653B
+#!/usr/bin/env bash
+a="\$*"
+if [[ "\$1 \$2" == "pr view" ]]; then
+    if [[ "\$a" == *headRefOid* ]]; then printf '%s\n' "$C1653_HEAD"; exit 0; fi
+    printf '%s' '{"labels":[],"body":"","comments":[{"body":"VERDICT: APPROVE\nhead: $C1653_HEAD","author":{"login":"repairman29"},"createdAt":"z"}]}'
+    exit 0
+fi
+exit 0
+GH1653B
+chmod +x "$C1653_DIR/bin/gh"
+if PATH="$C1653_DIR/bin:$PATH" bash -c "unset _CHUMP_ARM_POLICY_SOURCED; source '$LIB'; arm_policy_allows 599 test-armer repairman29/chump" >/dev/null 2>&1; then
+    ok "CREDIBLE-1653 AC2 (control): a current-head organ APPROVE with no label is still allowed"
+else
+    bad "CREDIBLE-1653 AC2 (control): a current-head organ APPROVE with no label was held (false positive)"
+fi
 
 # AC5: a gate-file PR is never blind-APPROVED — held review-needs-mutants, with a
 # `mutants: NOT RUN …` line, and never merged.

@@ -17,9 +17,15 @@
 #   A PR is HELD — no armer may enable auto-merge on it, and the central armer
 #   will not REST-merge it either — when ANY of these is true:
 #     * it carries the label `no-auto-merge` (canonical), or one of the legacy
-#       hold labels `hold`, `do-not-merge`, `CHUMP_HOLD`;
+#       hold labels `hold`, `do-not-merge`, `CHUMP_HOLD`, `review-held`,
+#       `review-needs-mutants`;
 #     * its body, or ANY of its comments, contains a line matching
-#       `^Auto-merge: hold` (case-insensitive, leading whitespace allowed).
+#       `^Auto-merge: hold` (case-insensitive, leading whitespace allowed);
+#     * the review organ's (ARM_POLICY_REVIEW_ORGAN_LOGIN) newest comment that
+#       names the CURRENT headRefOid is `VERDICT: CHANGES REQUIRED` — checked
+#       even without the review-held label present (CREDIBLE-1653: closes the
+#       window between the organ posting a negative verdict and it applying
+#       the label, receipt #5744 armed 3 minutes into that window).
 #   Remove the label / edit the marker line out to release the hold.
 #
 # USAGE
@@ -133,6 +139,63 @@ for c in d.get("comments") or []:
 ' "$1" "$ARM_POLICY_HOLD_LABELS"
 }
 
+# _arm_policy_organ_verdict_reason <comments-json> <head-sha>
+#   CREDIBLE-1653 (AC2): a deliberate hold label is one signal, but the organ's
+#   own VERDICT comment is the ground truth and can exist for 1-3 minutes
+#   BEFORE the organ gets around to applying the review-held label (receipt:
+#   #5744 armed 3 minutes after CHANGES REQUIRED on the same head). Reading the
+#   comment directly, keyed on THIS PR's current head sha, closes that window
+#   without waiting on the label write to land. head-sha is passed as a
+#   SEPARATE arg (not read off a `headRefOid` key in the payload) so this
+#   reuses whatever `comments` payload the caller already has, fetched by
+#   whatever `--json` shape it used — no need to grow every caller's query
+#   string to include headRefOid. Prints "organ-verdict:changes-required"
+#   when the newest organ-authored (ARM_POLICY_REVIEW_ORGAN_LOGIN) comment that
+#   names the current head is CHANGES REQUIRED; prints nothing otherwise
+#   (no head, no trusted comment, or the newest verdict for this head is
+#   APPROVE — label-based holds are unaffected either way).
+_arm_policy_organ_verdict_reason() { # <payload-json-with-comments> <head-sha>
+    HEAD_SHA="$2" TRUSTED_AUTHOR="$ARM_POLICY_REVIEW_ORGAN_LOGIN" python3 -c '
+import json, os, re, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+if not isinstance(d, dict):
+    sys.exit(0)
+head = (os.environ.get("HEAD_SHA", "") or "").lower()
+trusted = (os.environ.get("TRUSTED_AUTHOR", "") or "").strip().lower()
+if not head or not trusted:
+    sys.exit(0)
+verd = re.compile(r"^[ \t]*VERDICT:[ \t]*(APPROVE|CHANGES[ \t]+REQUIRED)[ \t]*$", re.I | re.M)
+headmark = re.compile(r"^[ \t]*head:[ \t]*([0-9a-fA-F]{7,40})", re.I | re.M)
+cands = []
+for c in d.get("comments") or []:
+    b = c.get("body", "") if isinstance(c, dict) else str(c)
+    hm = headmark.search(b or "")
+    if not hm:
+        continue
+    if not head.startswith(hm.group(1).lower()):
+        continue
+    author = ""
+    a = c.get("author") if isinstance(c, dict) else None
+    if isinstance(a, dict):
+        author = (a.get("login") or "")
+    if author.strip().lower() != trusted:
+        continue
+    cands.append((c.get("createdAt", "") if isinstance(c, dict) else "", b))
+if not cands:
+    sys.exit(0)
+cands.sort(key=lambda t: t[0])
+body = cands[-1][1]
+hits = verd.findall(body)
+if not hits:
+    sys.exit(0)
+if hits[-1].upper().startswith("CHANGES"):
+    print("organ-verdict:changes-required")
+' "$1"
+}
+
 _arm_policy_gh() {
     if declare -F chump_gh >/dev/null 2>&1; then
         chump_gh "$@"
@@ -219,6 +282,21 @@ arm_policy_allows() {
     rc=2
     if [[ -n "$payload" ]]; then
         reason="$(_arm_policy_hold_reason "$payload" 2>/dev/null)" && rc=0 || rc=$?
+        # CREDIBLE-1653 (AC2): a label-only hold check misses the window between
+        # the organ posting CHANGES REQUIRED and it applying review-held. Check
+        # the comment directly too, regardless of require_approve mode — this
+        # applies to EVERY caller of arm_policy_allows, not just the ones that
+        # opt into the stricter review_hold_allows wrapper. A separate head-sha
+        # read (not folded into the query above) keeps every existing caller's
+        # fixture/stub untouched.
+        if [[ "$rc" -eq 0 && -z "$reason" ]]; then
+            local verdict_head
+            verdict_head="$(CHUMP_GH_CALL_CRITICALITY=background _arm_policy_gh pr view "$pr" ${_ap_repo_arg[@]+"${_ap_repo_arg[@]}"} \
+                --json headRefOid --jq '.headRefOid' 2>/dev/null || true)"
+            if [[ -n "$verdict_head" ]]; then
+                reason="$(_arm_policy_organ_verdict_reason "$payload" "$verdict_head" 2>/dev/null || true)"
+            fi
+        fi
     fi
     if [[ "$rc" -ne 0 ]]; then
         if [[ "$require_approve" -eq 1 ]]; then

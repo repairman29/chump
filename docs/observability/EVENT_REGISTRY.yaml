@@ -14792,6 +14792,23 @@ events:
       and not already dispatched for `(pr, head_sha)`).
     consumers: [ambient, fleet-brief, ops-audit]
     fields_required: [ts, kind, pr, gap, head, reason, failed_check]
+
+  # ── CREDIBLE-1653: review organ disarms a PR armed over a negative verdict ──
+  - kind: pr_disarmed_negative_verdict
+    status: active
+    effect_metric: credible
+    emitter: scripts/dispatch/review-organ-tick.sh (CREDIBLE-1653)
+    emitter_paths: [scripts/dispatch/review-organ-tick.sh]
+    trigger: the review organ found an open PR carrying a CHANGES REQUIRED
+      verdict (or the review-held label) with an active autoMergeRequest and
+      called `gh pr merge --disable-auto` on it — either right after posting
+      the negative verdict, or as the every-tick reconcile pass for a PR that
+      carried review-held while already armed (receipts PR 5742 and PR 5749
+      merged with CHANGES REQUIRED as the last organ verdict on the merged
+      head because nothing ever disarmed them).
+    consumers: [ambient, fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr]
+
   # ── CREDIBLE-1543: open P0 budget override on gap reserve / gap set ──────────
   # anchor: p0_budget_override
   - kind: p0_budget_override
