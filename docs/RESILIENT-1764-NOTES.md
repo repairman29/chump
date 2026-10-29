@@ -27,7 +27,7 @@ fixture rows into the production `state.db` instead of an isolated fixture
 DB — the same root cause already tracked by the INFRA follow-up filed
 alongside RESILIENT-1761's close.
 
-There is no feature or bug for RESILIENT-1764 to implement — it is leaked
+There is no concrete behavior or bug for RESILIENT-1764 to implement — it is leaked
 test scaffolding, not a work item. Closing as not-a-bug per the
 reality-check doctrine (`AGENTS.md` → Reality-check before alarm-class
 beliefs, CREDIBLE-090) rather than inventing fictional work against an
