@@ -806,6 +806,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-worker-timeout-scale.sh
 
+      - name: stall-detector threshold scaler + kill classifier — effort/load scaling, stall_kill never counts as backend outage (RESILIENT-1739)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-stall-threshold.sh
+
       - name: auth-status validity probe — catches depleted-credential-wins-precedence trap (RESILIENT-086)
         if: matrix.shard == 3
         run: bash scripts/ci/test-auth-status.sh
