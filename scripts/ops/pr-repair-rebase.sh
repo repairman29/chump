@@ -121,15 +121,34 @@ while IFS='|' read -r pr_num branch created_at has_auto_merge; do
         fi
     fi
 
-    # INFRA-8221: a held PR (label no-auto-merge / hold / do-not-merge /
-    # CHUMP_HOLD, or an `Auto-merge: hold` line) is left alone entirely: no
-    # rebase, no force-push, no arm, and no cooldown consumed. Before this, the
-    # hold was only honored at the arm step, so the force-push still happened
-    # and CI restarted on a PR the architect had parked (#5494, 02:52Z).
+    # INFRA-8221: a deliberately-held PR (label no-auto-merge / hold /
+    # do-not-merge / CHUMP_HOLD, or an `Auto-merge: hold` line) is left alone
+    # entirely: no rebase, no force-push, no arm, and no cooldown consumed.
+    # Before this, the hold was only honored at the arm step, so the
+    # force-push still happened and CI restarted on a PR the architect had
+    # parked (#5494, 02:52Z).
+    #
+    # RESILIENT-1763: a review-organ hold (label review-held /
+    # review-needs-mutants) is a DIFFERENT kind of hold — it means "the organ
+    # hasn't reviewed this head yet", not "a human parked this PR". Treating
+    # it like a deliberate hold left review-held PRs to rot DIRTY/BEHIND with
+    # no rebase owner once queue-tender retired (#5739, #5728, #5720). So a
+    # review-held PR still gets rebased and pushed below; it just never gets
+    # armed, and the organ is told to re-review the new head
+    # (pr_repair_rebased_held + re-applied label).
+    held_review=0
     if ! arm_policy_allows "$pr_num" "pr-repair-rebase.sh"; then
-        log "PR #$pr_num ($branch) is HELD (arm policy) — skipping rebase/force-push/arm"
-        skipped_held=$((skipped_held + 1))
-        continue
+        case "${ARM_POLICY_LAST_HOLD_LABEL:-}" in
+            label:review-held|label:review-needs-mutants)
+                held_review=1
+                log "PR #$pr_num ($branch) is review-held — will rebase/push, NOT arm"
+                ;;
+            *)
+                log "PR #$pr_num ($branch) is HELD (arm policy) — skipping rebase/force-push/arm"
+                skipped_held=$((skipped_held + 1))
+                continue
+                ;;
+        esac
     fi
 
     log "PR #$pr_num ($branch) has failing required checks — attempting rebase"
@@ -182,6 +201,17 @@ while IFS='|' read -r pr_num branch created_at has_auto_merge; do
             log "  OK: rebased and pushed $branch — CI will re-run"
             repaired=$((repaired + 1))
 
+            # RESILIENT-1763: a review-held PR gets rebased/pushed above but
+            # is never armed here — the new head hasn't been reviewed by the
+            # organ yet. Re-apply the label (force-push does not strip
+            # labels, but this keeps the signal explicit and idempotent) and
+            # tell the organ a new head is waiting via pr_repair_rebased_held.
+            if (( held_review == 1 )); then
+                gh pr edit "$pr_num" --add-label "review-held" >/dev/null 2>&1 || true
+                _held_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                printf '{"ts":"%s","kind":"pr_repair_rebased_held","pr":%d}\n' \
+                    "$_held_ts" "$pr_num" >> "$AMBIENT_LOG"
+                log "  #$pr_num review-held — rebased and pushed, NOT armed (organ must re-review new head)"
             # Arm auto-merge if not already armed.
             # INFRA-1223: route through centralized armer (5s spacing +
             # secondary-rate-limit backoff). Repair loops are a common
@@ -191,7 +221,7 @@ while IFS='|' read -r pr_num branch created_at has_auto_merge; do
             # 02:52:37Z (force-push 02:52:27Z). A rebase repairs a branch; it
             # never overrides a hold. (The armer re-checks; this keeps the log
             # honest instead of claiming an arm that did not happen.)
-            if [[ "$has_auto_merge" == "false" ]]; then
+            elif [[ "$has_auto_merge" == "false" ]]; then
                 if arm_policy_allows "$pr_num" "pr-repair-rebase.sh"; then
                     "${REPO_ROOT}/scripts/coord/auto-merge-armer.sh" --pr "$pr_num" 2>/dev/null || true
                     log "  armed auto-merge on #$pr_num"
