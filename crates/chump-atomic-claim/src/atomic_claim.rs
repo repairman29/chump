@@ -9221,6 +9221,7 @@ mod release_lease_tests {
     //! release. (The JSON sidecar deletion is covered by scrap_cmd tests; the
     //! NATS-KV leg is a best-effort `chump-coord release` shell-out.)
     use super::*;
+    use chump_test_helpers::TestSandbox;
     use tempfile::tempdir;
 
     // ZERO-WASTE-028: the disk admission gate must actually fire. Two regressions
@@ -9267,10 +9268,21 @@ mod release_lease_tests {
             .unwrap()
     }
 
+    // RESILIENT-1759: `write_db_claim`/`release_db_lease` resolve the store
+    // through `chump_store_path::state_db_path`, which honors `CHUMP_STATE_DB`
+    // over the `repo_root` argument these tests pass in (INFRA-8190). On any
+    // node where CHUMP_STATE_DB is exported process-wide (every
+    // `chump-node-install.sh`-provisioned shell/daemon, INFRA-3632) these
+    // tests silently read/wrote the REAL canonical state.db instead of the
+    // tempdir, so `lease_count(root)` on the tempdir saw 0 rows and the
+    // assertions failed — a real trunk-red, not a flake. `TestSandbox` pins
+    // CHUMP_STATE_DB (and friends) at a scratch dir for the test's duration,
+    // so `root` and the resolver agree regardless of the ambient env.
     #[test]
+    #[serial_test::serial(atomic_claim_state_db_env)]
     fn release_clears_row_written_by_claim() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
+        let sandbox = TestSandbox::new().unwrap();
+        let root = sandbox.path();
         setup_db(root);
 
         // Use the exact claim-side writer `chump claim` takes.
@@ -9294,12 +9306,13 @@ mod release_lease_tests {
     }
 
     #[test]
+    #[serial_test::serial(atomic_claim_state_db_env)]
     fn release_clears_by_gap_id_when_session_drifts() {
         // INFRA-2744 scenario: a re-claim wrote the row under a DIFFERENT session
         // name, so the releasing session_id won't match. Release-by-gap_id must
         // still clear it (the cross-session same-gap case).
-        let dir = tempdir().unwrap();
-        let root = dir.path();
+        let sandbox = TestSandbox::new().unwrap();
+        let root = sandbox.path();
         setup_db(root);
         write_db_claim(root, "RESILIENT-103", "some-other-session", "/tmp/wt", 900).unwrap();
 
@@ -9313,18 +9326,20 @@ mod release_lease_tests {
     }
 
     #[test]
+    #[serial_test::serial(atomic_claim_state_db_env)]
     fn release_is_best_effort_when_db_absent() {
         // Fresh clone has no state.db — release must not error.
-        let dir = tempdir().unwrap();
-        let n = release_db_lease(dir.path(), "s", "GAP-1").unwrap();
+        let sandbox = TestSandbox::new().unwrap();
+        let n = release_db_lease(sandbox.path(), "s", "GAP-1").unwrap();
         assert_eq!(n, 0);
     }
 
     #[test]
+    #[serial_test::serial(atomic_claim_state_db_env)]
     fn release_leaves_unrelated_leases_untouched() {
         // Releasing one session/gap must NOT nuke an unrelated active lease.
-        let dir = tempdir().unwrap();
-        let root = dir.path();
+        let sandbox = TestSandbox::new().unwrap();
+        let root = sandbox.path();
         setup_db(root);
         write_db_claim(root, "RESILIENT-103", "session-a", "/tmp/a", 900).unwrap();
         write_db_claim(root, "EFFECTIVE-216", "session-b", "/tmp/b", 900).unwrap();
