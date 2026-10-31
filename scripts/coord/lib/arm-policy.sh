@@ -204,6 +204,19 @@ _arm_policy_gh() {
     fi
 }
 
+# _arm_policy_request_review <pr> [repo] — CREDIBLE-1651: when a require-approve
+# arm is refused for lack of a current-head organ verdict, label the PR
+# review-held so the review organ's own queue picks it up (idempotent; a
+# label-add on an already-labelled PR is a no-op). Best-effort: a label-apply
+# failure must not change the HELD verdict, so errors are swallowed.
+_arm_policy_request_review() {
+    local pr="$1" repo="${2:-}"
+    local -a repo_arg=()
+    [[ -n "$repo" ]] && repo_arg=(--repo "$repo")
+    CHUMP_GH_CALL_CRITICALITY=background _arm_policy_gh pr edit "$pr" \
+        ${repo_arg[@]+"${repo_arg[@]}"} --add-label "review-held" >/dev/null 2>&1 || true
+}
+
 _arm_policy_emit_hold() { # <pr> <armer> <reason> <source>
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -304,7 +317,10 @@ arm_policy_allows() {
                 # shellcheck source=scripts/coord/lib/review-hold.sh
                 source "${_arm_policy_lib_dir}/review-hold.sh" || return 1
             fi
-            review_hold_allows "$pr" "${head_arg:-0000000}" "$repo" "$armer" "${trusted_arg:-${ARM_POLICY_REVIEW_ORGAN_LOGIN}}"
+            review_hold_allows "$pr" "${head_arg:-0000000}" "$repo" "$armer" "${trusted_arg:-${ARM_POLICY_REVIEW_ORGAN_LOGIN}}" || true
+            _arm_policy_request_review "$pr" "$repo"
+            _arm_policy_emit_hold "$pr" "$armer" "no_verdict" "organ"
+            echo "[arm-policy] PR #${pr}: HELD (no_verdict) — ${armer} will not arm it; labelled review-held for the organ" >&2
             return 1
         fi
         echo "[arm-policy] WARN: PR #${pr}: could not read labels/body/comments — failing open" >&2
@@ -326,7 +342,12 @@ arm_policy_allows() {
             resolved_head="$(CHUMP_GH_CALL_CRITICALITY=background _arm_policy_gh pr view "$pr" ${_ap_repo_arg[@]+"${_ap_repo_arg[@]}"} \
                 --json headRefOid --jq '.headRefOid' 2>/dev/null || true)"
         fi
-        review_hold_allows "$pr" "$resolved_head" "$repo" "$armer" "${trusted_arg:-${ARM_POLICY_REVIEW_ORGAN_LOGIN}}" || return 1
+        if ! review_hold_allows "$pr" "$resolved_head" "$repo" "$armer" "${trusted_arg:-${ARM_POLICY_REVIEW_ORGAN_LOGIN}}"; then
+            _arm_policy_request_review "$pr" "$repo"
+            _arm_policy_emit_hold "$pr" "$armer" "no_verdict" "organ"
+            echo "[arm-policy] PR #${pr}: HELD (no_verdict) — ${armer} will not arm it; labelled review-held for the organ" >&2
+            return 1
+        fi
     fi
 
     _arm_policy_audit_rearm "$pr" "$armer" "$repo"

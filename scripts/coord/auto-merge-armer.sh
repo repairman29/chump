@@ -540,9 +540,12 @@ for PR_NUM in "${PR_NUMS[@]}"; do
     fi
 
     # RESILIENT-1613: honor a deliberate hold BEFORE any arm or REST-direct
-    # merge. arm_policy_allows emits pr_arm_skipped_hold when it blocks.
-    if ! arm_policy_allows "${PR_NUM}" "${ARMER_NAME}" "${REPO}"; then
-        echo "[auto-merge-armer] PR #${PR_NUM}: held (no-auto-merge / Auto-merge: hold) — skipping."
+    # merge. CREDIBLE-1651: require_review_approve (not plain arm_policy_allows)
+    # so a PR the review organ has not yet seen is HELD too — a fleet-lane PR
+    # carries neither a hold label nor an organ verdict in the window between
+    # PR-open and the organ's next tick, and that window must not be armable.
+    if ! arm_policy_require_review_approve "${PR_NUM}" "" "${ARMER_NAME}" "${REPO}"; then
+        echo "[auto-merge-armer] PR #${PR_NUM}: held (no-auto-merge / Auto-merge: hold / no organ verdict) — skipping."
         LAST_ARM_TS="$(date -u +%s)"
         continue
     fi

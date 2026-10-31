@@ -76,6 +76,26 @@ elif [[ "\$combined" == *".head.sha"* ]]; then
     fi
 elif [[ "\$combined" == *".state"* ]]; then
     echo "open"
+elif [[ "\$combined" == *"headRefOid"* ]]; then
+    # CREDIBLE-1651: arm_policy_require_review_approve resolves the current
+    # head sha the same way the red-head check (above) does.
+    if [[ "\$pr_num" == "${RED_PR}" ]]; then
+        echo "${RED_SHA}"
+    else
+        echo "${PENDING_SHA}"
+    fi
+elif [[ "\$combined" == *"labels,comments"* ]]; then
+    # CREDIBLE-1651: both fixtures already carry a current-head organ
+    # APPROVE — this test is about the red-head gate, not the review gate.
+    if [[ "\$pr_num" == "${RED_PR}" ]]; then
+        echo '{"labels":[],"comments":[{"author":{"login":"repairman29"},"createdAt":"2026-10-28T00:00:00Z","body":"head: '"${RED_SHA}"'\nVERDICT: APPROVE\nblockers: none"}]}'
+    else
+        echo '{"labels":[],"comments":[{"author":{"login":"repairman29"},"createdAt":"2026-10-28T00:00:00Z","body":"head: '"${PENDING_SHA}"'\nVERDICT: APPROVE\nblockers: none"}]}'
+    fi
+elif [[ "\$combined" == *"labels,body,comments"* ]]; then
+    echo '{"labels":[],"body":"","comments":[]}'
+elif [[ "\${args[0]:-}" == "pr" && "\${args[1]:-}" == "edit" ]]; then
+    :
 elif [[ "\${args[0]:-}" == "pr" && "\${args[1]:-}" == "view" ]]; then
     if [[ "\$pr_num" == "${RED_PR}" ]]; then
         echo '${RED_ROLLUP}'
