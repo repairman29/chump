@@ -15107,3 +15107,28 @@ events:
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
 
+  - kind: organ_reconcile_home_migrated
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1734)
+    trigger: >-
+      a unit that was live on THIS node had a manifest `home=` pointing to a
+      different node, and that new home has heartbeated (tailscale
+      Online/LastSeen) within the last 10 minutes — the reconcile stopped it
+      here, the confirmed-safe half of the home-migration guard added after
+      RESILIENT-1698 re-homed 4 detector organs to `slim` with no such check.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, home, from_node]
+
+  - kind: organ_reconcile_home_migration_refused
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1734)
+    trigger: >-
+      a unit that is live on THIS node has a manifest `home=` pointing to a
+      different node, but that new home has NO heartbeat within the last 10
+      minutes — the reconcile REFUSES to stop it, leaving the organ running
+      on its old (working) host instead of going dark the way the 4
+      detector organs did when RESILIENT-1698 re-homed them to an offline
+      `slim` with no fallback.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, home, from_node, reason]
+

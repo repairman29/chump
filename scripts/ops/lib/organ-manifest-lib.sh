@@ -333,6 +333,62 @@ organ_home_matches() {
   return 1
 }
 
+# organ_home_heartbeat_fresh <home-node> [<max-age-seconds>]
+#
+# RESILIENT-1734: has <home-node> been seen alive within the last
+# <max-age-seconds> (default 600 = 10 min)? This is the guard
+# organ-reconcile's home-migration pass consults before it stops a
+# still-running organ on THIS host just because the manifest's `home=` now
+# points elsewhere — RESILIENT-1698 re-homed 4 detector organs to `slim`
+# while `slim` was offline, and nothing in the reconcile checked whether the
+# new home had actually come up before letting the detectors go dark on
+# their old (working) host. `any`/empty/self is always "fresh" (no cross-node
+# check needed — there's no migration to guard). Reachability is read from
+# `tailscale status --json`'s Online/LastSeen fields (the one cross-node
+# liveness signal every node already has, no new infra required). ANY
+# failure to determine liveness (tailscale missing/not logged in, JSON
+# unparseable, peer absent from the tailnet) returns NOT-fresh — fail safe,
+# refuse to stop a live organ on uncertain data rather than fail open to
+# killing it on bad data.
+organ_home_heartbeat_fresh() {
+  local node="${1:-}" max_age="${2:-600}"
+  [[ -z "$node" || "$node" == "any" ]] && return 0
+  [[ "$node" == "$(organ_current_node)" ]] && return 0
+  local tailscale_bin="${TAILSCALE_BIN:-tailscale}"
+  command -v "$tailscale_bin" >/dev/null 2>&1 || return 1
+  local json
+  json="$("$tailscale_bin" status --json 2>/dev/null)" || return 1
+  [[ -z "$json" ]] && return 1
+  local python_bin="${PYTHON_BIN:-python3}"
+  command -v "$python_bin" >/dev/null 2>&1 || return 1
+  printf '%s' "$json" | "$python_bin" -c '
+import json, sys, datetime
+node = sys.argv[1].lower()
+max_age = float(sys.argv[2])
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    sys.exit(1)
+now = datetime.datetime.now(datetime.timezone.utc)
+for peer in data.get("Peer", {}).values():
+    host = str(peer.get("HostName", "")).lower()
+    if host != node:
+        continue
+    if peer.get("Online"):
+        sys.exit(0)
+    last_seen = peer.get("LastSeen")
+    if not last_seen:
+        continue
+    try:
+        ts = datetime.datetime.fromisoformat(str(last_seen).replace("Z", "+00:00"))
+    except ValueError:
+        continue
+    if (now - ts).total_seconds() <= max_age:
+        sys.exit(0)
+sys.exit(1)
+' "$node" "$max_age"
+}
+
 # organ_is_applicable <unit> <requires-string> <reason-var-name>
 #
 # RESILIENT-347 / RESILIENT-1055: is <unit> applicable to THIS node given its
