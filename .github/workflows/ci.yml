@@ -1836,6 +1836,11 @@ jobs:
         # closer; pre-existing ones are tracked in the allowlist. Hermetic grep.
         run: bash scripts/ci/test-no-title-regex-gap-closers.sh
 
+      - name: fixture-leak guards + no new NOTES docs (ZERO-WASTE-150)
+        # Store refuses fixture titles outside a sandbox, preflight refuses hollow
+        # gaps, `chump gap close --not-a-bug` exists, no docs/<ID>-NOTES.md files.
+        run: bash scripts/ci/test-zero-waste-150-fixture-leak.sh
+
       - name: no-title-closer gate proximity-window proof (CREDIBLE-1551 AC4)
         # Meta-test for the gate above: drives it against verbatim-M2 (main's
         # chump-pr-triage closer shape) and a regex-17-lines-above-ship fixture,

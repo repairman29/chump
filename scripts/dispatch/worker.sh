@@ -2071,6 +2071,7 @@ ${_hard_rules_inject}
 - NEVER set ${_c_pfx}_*_GATE=0, ${_c_pfx}_BYPASS_*, or ${_c_pfx}_PREFLIGHT_SKIP=1. If git push or pre-push fails or times out, push WIP to origin refs/stash/${GAP_ID}-wip and exit/file a blocker instead of bypassing gates.
 - Never push directly to main. Never use git commit --no-verify.
 - Mutate gaps via 'chump gap set' / 'chump gap ship' (state.db canonical post-INFRA-498).
+- If the gap is a false premise, a leaked test fixture, or its work already shipped: close it with 'chump gap close ${GAP_ID} --not-a-bug --reason "<why>"' (ZERO-WASTE-150) and STOP. Do NOT open a PR or write docs/${GAP_ID}-NOTES.md.
 - If you spot a real bug along the way, file it: 'chump gap reserve --domain INFRA --title \"...\"'
 
 ══ BEFORE CALLING BOT-MERGE: Self-Verify (INFRA-717) ══
