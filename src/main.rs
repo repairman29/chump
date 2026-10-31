@@ -8259,6 +8259,13 @@ async fn main() -> Result<()> {
                     println!("Auto-fixed: {auto_fixed}  flake-rerun+lint");
                     println!("Manual rescues: {manual_rescues}");
                     println!("Alerts(30m): {alerts}");
+                    // CREDIBLE-1526: PRs held by independent review, with diff stat.
+                    if let Ok(o) = std::process::Command::new("bash")
+                        .arg(repo_root.join("scripts/coord/review-held-list.sh"))
+                        .output()
+                    {
+                        print!("{}", String::from_utf8_lossy(&o.stdout));
+                    }
                     if !suggestions.iter().all(|s| s.starts_with('✓')) {
                         println!("\nActions:");
                         for s in &suggestions {

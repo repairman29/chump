@@ -150,6 +150,37 @@ Gate-file PRs land exclusively via the independent review organ
 and `review-needs-mutants` and merges head-pinned only after a written
 `VERDICT: APPROVE` with mutant-kill receipts.
 
+### Server-side review hold (`CREDIBLE-1526`)
+
+The verdict must not live only in the client: a script that arms auto-merge
+past an ESCALATE (receipts: #5581, #5602, #5606) used to land unreviewed. The
+hold is therefore enforced by GitHub itself:
+
+- The reviewer / review organ labels an ESCALATE / CHANGES REQUIRED PR
+  `review-held` (or `review-needs-mutants`); only an APPROVE verdict (organ) or
+  a human removing the label clears it.
+- `.github/workflows/review-hold.yml` runs on every label change and fails the
+  required status `review-hold` (`scripts/ci/review-hold-check.sh`, fail-closed
+  on unreadable labels) while a hold label is present. With `review-hold` in
+  main's required contexts, a held PR cannot merge even if auto-merge is armed.
+- Every client arm path is already funnelled through one predicate
+  (`arm_policy_allows` / `chump_ship::arm_policy`); `scripts/ci/test-arm-policy.sh`
+  and `scripts/ci/test-no-direct-auto-merge-arm.sh` fail on a new
+  `gh pr merge --auto` call site that bypasses it.
+- Held PRs, with diff stat, are listed by `scripts/coord/review-held-list.sh` in
+  `chump fleet brief` and the SessionStart digest.
+- Gate-file PRs cannot self-arm: see "Gate-file `--auto-merge` refusal" above.
+
+**Operator action (branch protection is not changed by a PR).** After this
+merges and the `review-hold` check has run once, add it to the required
+contexts (the baseline `docs/baselines/branch-protection-main.json` already
+lists it, so the drift detector goes quiet once applied):
+
+```bash
+gh api repos/repairman29/chump/branches/main/protection/required_status_checks/contexts \
+  -X POST -f 'contexts[]=review-hold'
+```
+
 ### Rust auto-merge policy (`CREDIBLE-1583`)
 
 Every Rust caller that invokes `gh pr merge ... --auto` (`crates/chump-ship/src/lib.rs`,
