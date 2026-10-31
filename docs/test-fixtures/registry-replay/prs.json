@@ -1,0 +1,27 @@
+[
+ {
+  "number": 101,
+  "title": "RESILIENT-1829: foo",
+  "state": "MERGED"
+ },
+ {
+  "number": 102,
+  "title": "INFRA-8828: bar",
+  "state": "OPEN"
+ },
+ {
+  "number": 103,
+  "title": "EFFECTIVE-1933: mac",
+  "state": "MERGED"
+ },
+ {
+  "number": 104,
+  "title": "no id here",
+  "state": "MERGED"
+ },
+ {
+  "number": 105,
+  "title": "CREDIBLE-1653: baz",
+  "state": "MERGED"
+ }
+]
