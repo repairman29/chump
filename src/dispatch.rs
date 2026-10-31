@@ -5066,6 +5066,25 @@ mod tests {
             err.contains("RESILIENT-1494") && err.contains("not found in canonical gap store"),
             "unexpected error: {err}"
         );
+
+        // 3. RESILIENT-1749: a row with a blank title (import bug / partial
+        // write) must never be returned as resolved — fail loud instead.
+        let store = chump_gap_store::GapStore::open(&main_repo).expect("reopen canonical store");
+        store
+            .conn_for_test()
+            .execute(
+                "INSERT INTO gaps (id, domain, title, status) VALUES (?1, 'RESILIENT', '', 'open')",
+                rusqlite::params!["RESILIENT-0000"],
+            )
+            .expect("insert blank-title row");
+        drop(store);
+
+        let err = crate::dispatch_repair::load_canonical_gap(&wt, "RESILIENT-0000")
+            .expect_err("blank-title row must not resolve");
+        assert!(
+            err.contains("RESILIENT-0000") && err.contains("not found in canonical gap store"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
