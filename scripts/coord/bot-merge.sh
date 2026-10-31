@@ -1982,6 +1982,13 @@ source "$(dirname "$0")/lib/bot-merge-autocommit.sh"
 # shellcheck source=lib/github.sh
 # INFRA-999: chump_gh + chump_gh_record for API cost telemetry.
 source "$(dirname "$0")/lib/github.sh"
+# INFRA-8652: when GH_TOKEN_FLEET is set, author PRs/commits as the fleet
+# machine account (not the operator's repairman29 login) so the review
+# organ's approval isn't a GitHub-refused self-review. No-op fallback when
+# unset — logs kind=fleet_identity_missing once per boot.
+# shellcheck source=lib/fleet-identity.sh
+source "$(dirname "$0")/lib/fleet-identity.sh"
+fleet_identity_init
 # INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
 # shellcheck source=lib/ambient-write.sh
 source "$(dirname "$0")/lib/ambient-write.sh"
@@ -2948,6 +2955,14 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             # manual gh pr create + gh pr merge --auto.
             _already_in_lease_wt=0
             if [[ "${CHUMP_BOT_MERGE_CLAIM_LAX:-0}" == "1" ]]; then
+                # INFRA-8652: LAX's whole point is to skip the `chump claim`
+                # re-invocation (it previously only emitted the telemetry
+                # event below and then fell through to call `chump claim`
+                # anyway when the worktree's lease row had an empty
+                # `worktree` column — defeating the flag).
+                _already_in_lease_wt=1
+                _lease_wt="$PWD"
+                _lease_src="CHUMP_BOT_MERGE_CLAIM_LAX"
                 # scanner-anchor: "kind":"bot_merge_skip_claim_lax"
                 chump ambient emit bot_merge_skip_claim_lax "gap=$gid" >/dev/null 2>&1 || true
             else
