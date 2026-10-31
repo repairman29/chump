@@ -43,14 +43,21 @@ BIN="$TMP/bin"; mkdir -p "$BIN"
 cat > "$BIN/chump" << 'STUB_EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "health" && "${2:-}" == "--slo-check" ]]; then
-    # RESILIENT-146: the gate parses --json for L1 (safety) breaches, not just
-    # the exit code. Map the test's CHUMP_TEST_SLO_RC to an L1-breach payload
-    # (halt-class) when non-zero, else an all-pass payload.
+    # RESILIENT-146/RESILIENT-1740: the gate parses --json for L1 (safety)
+    # breaches, not just the exit code, and now also reads window_kind to
+    # tell an acute breach from a week-window echo of a past incident. Map
+    # the test's CHUMP_TEST_SLO_RC to an L1-breach payload (halt-class,
+    # window_kind=instant) when non-zero, else an all-pass payload.
+    # CHUMP_TEST_SLO_MODE=rolling overrides to a week-window L1-SLO-1
+    # breach (window_kind=rolling) — the RESILIENT-1740 deadlock case.
     rc="${CHUMP_TEST_SLO_RC:-0}"
+    mode="${CHUMP_TEST_SLO_MODE:-instant}"
     if [[ "$rc" == "0" ]]; then
-        echo '{"slo_breaches":0,"slos":[{"id":"L1-SLO-1","breached":false}]}'
+        echo '{"slo_breaches":0,"slos":[{"id":"L1-SLO-1","breached":false,"window_kind":"rolling"}]}'
+    elif [[ "$mode" == "rolling" ]]; then
+        echo '{"slo_breaches":1,"slos":[{"id":"L1-SLO-1","breached":true,"window_kind":"rolling"}]}'
     else
-        echo '{"slo_breaches":1,"slos":[{"id":"L1-SLO-1","breached":true}]}'
+        echo '{"slo_breaches":1,"slos":[{"id":"L1-SLO-1","breached":true,"window_kind":"instant"}]}'
     fi
     exit "$rc"
 fi
@@ -209,5 +216,47 @@ else
     fail "Test 8b: install-ghost-gap-reaper-launchd.sh missing from optional-installers-allowlist.txt"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 9 (RESILIENT-1740): week-window L1 breach from a past incident does
+# NOT write the sentinel — only an INSTANT L1 signal is halt-class. A
+# window_kind=rolling breach with no recent silent_agent event in ambient
+# must leave the fleet running and emit kind=slo_chronic_breach instead.
+# ─────────────────────────────────────────────────────────────────────────────
+rm -f "$PAUSE_FILE"
+echo 0 > "$CONSEC_FILE"
+> "$KICKED_LOG"
+> "$AMBIENT"   # no silent_agent events at all — nothing "live"
+env "${COMMON_ENV[@]}" CHUMP_TEST_SLO_RC=1 CHUMP_TEST_SLO_MODE=rolling bash "$GATE" 2>/dev/null
+
+if [[ ! -f "$PAUSE_FILE" ]]; then
+    ok "Test 9a: rolling-window L1-SLO-1 breach (no live signal) → fleet NOT paused"
+else
+    fail "Test 9a: fleet-paused written for a week-window breach with no instant signal (RESILIENT-1740 deadlock)"
+fi
+
+if grep -q '"kind":"slo_chronic_breach"' "$AMBIENT" 2>/dev/null; then
+    ok "Test 9b: slo_chronic_breach emitted for the rolling-window breach"
+else
+    fail "Test 9b: slo_chronic_breach not emitted for the rolling-window breach"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 10 (RESILIENT-1740): same rolling-window breach, BUT a silent_agent
+# event fired within the live window (last 30 min) — this IS an acute
+# condition happening right now, so the gate must still pause.
+# ─────────────────────────────────────────────────────────────────────────────
+rm -f "$PAUSE_FILE"
+echo 0 > "$CONSEC_FILE"
+> "$KICKED_LOG"
+now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '{"ts":"%s","kind":"silent_agent","reason":"test"}\n' "$now_ts" > "$AMBIENT"
+env "${COMMON_ENV[@]}" CHUMP_TEST_SLO_RC=1 CHUMP_TEST_SLO_MODE=rolling bash "$GATE" 2>/dev/null
+
+if [[ -f "$PAUSE_FILE" ]]; then
+    ok "Test 10: rolling-window L1-SLO-1 breach WITH a live silent_agent event → fleet still paused (acute condition)"
+else
+    fail "Test 10: fleet-paused not written despite a live silent_agent event in the last 30min"
+fi
+
 echo ""
-echo "=== test-fleet-pause-autolift.sh PASSED (RESILIENT-066) ==="
+echo "=== test-fleet-pause-autolift.sh PASSED (RESILIENT-066 / RESILIENT-1740) ==="
