@@ -9220,7 +9220,20 @@ mod release_lease_tests {
     //! a 3-command manual recovery. These tests assert ZERO state.db residue after
     //! release. (The JSON sidecar deletion is covered by scrap_cmd tests; the
     //! NATS-KV leg is a best-effort `chump-coord release` shell-out.)
+    //!
+    //! INFRA-8747: `write_db_claim`/`release_db_lease` resolve their DB path via
+    //! `chump_store_path::state_db_path(repo_root)`, which checks `CHUMP_STATE_DB`
+    //! FIRST and only falls back to `repo_root` when that env var is unset. The
+    //! tempdir-rooted assertions below (`setup_db`/`lease_count`) always read
+    //! `repo_root.join(".chump/state.db")` directly — so if `CHUMP_STATE_DB`
+    //! leaked in from the surrounding process env (e.g. a fleet watchdog), the
+    //! writer/releaser silently hit the REAL state.db while the assertions kept
+    //! reading the empty tempdir, producing a false-RED split-brain. `TestSandbox`
+    //! pins `CHUMP_STATE_DB` at the tempdir for the duration of each test so both
+    //! sides always agree on the path. Mutates process env — tests MUST be `#[serial]`.
     use super::*;
+    use chump_test_helpers::TestSandbox;
+    use serial_test::serial;
     use tempfile::tempdir;
 
     // ZERO-WASTE-028: the disk admission gate must actually fire. Two regressions
@@ -9268,9 +9281,10 @@ mod release_lease_tests {
     }
 
     #[test]
+    #[serial]
     fn release_clears_row_written_by_claim() {
-        let dir = tempdir().unwrap();
-        let root = dir.path();
+        let sandbox = TestSandbox::new().unwrap();
+        let root = sandbox.path();
         setup_db(root);
 
         // Use the exact claim-side writer `chump claim` takes.
@@ -9294,12 +9308,13 @@ mod release_lease_tests {
     }
 
     #[test]
+    #[serial]
     fn release_clears_by_gap_id_when_session_drifts() {
         // INFRA-2744 scenario: a re-claim wrote the row under a DIFFERENT session
         // name, so the releasing session_id won't match. Release-by-gap_id must
         // still clear it (the cross-session same-gap case).
-        let dir = tempdir().unwrap();
-        let root = dir.path();
+        let sandbox = TestSandbox::new().unwrap();
+        let root = sandbox.path();
         setup_db(root);
         write_db_claim(root, "RESILIENT-103", "some-other-session", "/tmp/wt", 900).unwrap();
 
@@ -9313,18 +9328,20 @@ mod release_lease_tests {
     }
 
     #[test]
+    #[serial]
     fn release_is_best_effort_when_db_absent() {
         // Fresh clone has no state.db — release must not error.
-        let dir = tempdir().unwrap();
-        let n = release_db_lease(dir.path(), "s", "GAP-1").unwrap();
+        let sandbox = TestSandbox::new().unwrap();
+        let n = release_db_lease(sandbox.path(), "s", "GAP-1").unwrap();
         assert_eq!(n, 0);
     }
 
     #[test]
+    #[serial]
     fn release_leaves_unrelated_leases_untouched() {
         // Releasing one session/gap must NOT nuke an unrelated active lease.
-        let dir = tempdir().unwrap();
-        let root = dir.path();
+        let sandbox = TestSandbox::new().unwrap();
+        let root = sandbox.path();
         setup_db(root);
         write_db_claim(root, "RESILIENT-103", "session-a", "/tmp/a", 900).unwrap();
         write_db_claim(root, "EFFECTIVE-216", "session-b", "/tmp/b", 900).unwrap();
@@ -9336,6 +9353,47 @@ mod release_lease_tests {
             .query_row("SELECT gap_id FROM leases", [], |r| r.get(0))
             .unwrap();
         assert_eq!(surviving, "EFFECTIVE-216");
+    }
+
+    #[test]
+    #[serial]
+    fn release_db_lease_ignores_leaked_chump_state_db_env() {
+        // INFRA-8747: simulate a leaked CHUMP_STATE_DB pointing at a "real"
+        // decoy db (e.g. inherited from a fleet watchdog's env). Before the
+        // fix, write_db_claim/release_db_lease resolve through
+        // chump_store_path::state_db_path(), which prefers CHUMP_STATE_DB over
+        // repo_root — so they would silently read/write the decoy instead of
+        // the tempdir the test asserts against. TestSandbox must win: it pins
+        // CHUMP_STATE_DB at its own tempdir for the lifetime of the sandbox.
+        let decoy_dir = tempdir().unwrap();
+        let decoy_db = decoy_dir.path().join("decoy-state.db");
+        std::env::set_var("CHUMP_STATE_DB", &decoy_db);
+
+        let sandbox = TestSandbox::new().unwrap();
+        assert_ne!(
+            std::env::var("CHUMP_STATE_DB").unwrap(),
+            decoy_db.to_string_lossy(),
+            "TestSandbox must override a leaked CHUMP_STATE_DB, not inherit it"
+        );
+        let root = sandbox.path();
+        setup_db(root);
+
+        write_db_claim(root, "INFRA-8747", "session-x", "/tmp/x", 900).unwrap();
+        assert_eq!(
+            lease_count(root),
+            1,
+            "claim must land in the sandbox db, not the leaked decoy path"
+        );
+        assert!(
+            !decoy_db.exists(),
+            "the decoy db must stay untouched when CHUMP_STATE_DB leaks"
+        );
+
+        let deleted = release_db_lease(root, "session-x", "INFRA-8747").unwrap();
+        assert_eq!(deleted, 1, "release must clear the sandbox row");
+        assert_eq!(lease_count(root), 0);
+
+        std::env::remove_var("CHUMP_STATE_DB");
     }
 }
 
