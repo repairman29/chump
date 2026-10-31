@@ -597,6 +597,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/check-mass-deletion.sh
 
+      - name: Rulebook budget + hook registry (ZERO-WASTE-125)
+        run: bash scripts/ci/test-rulebook-budget.sh
+
       - name: Harness doc injection test (RESILIENT-1167)
         run: bash scripts/ci/test-agents-md-injection.sh
 

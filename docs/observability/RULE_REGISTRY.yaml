@@ -13,11 +13,11 @@ budgets:
   claude_md:
     path: CLAUDE.md
     target_lines: 150
-    ceiling_lines: 720
+    ceiling_lines: 340
   agents_md:
     path: AGENTS.md
     target_lines: 300
-    ceiling_lines: 1200
+    ceiling_lines: 1190
 
 rules:
   # ── Protected Floor (protected: true — NEVER auto-deleted) ──────────────────
@@ -349,3 +349,30 @@ rules:
     estimated_cost_per_fire_s: 2
     description: Reject staged gap YAMLs with TODO/TBD in acceptance_criteria or description < 200 chars (RESILIENT-037).
 
+
+  - id: git-hook-commit-msg
+    source: git_hook
+    path: scripts/git-hooks/commit-msg
+    signal: git_hook_commit_msg_fired
+    bypass_signal: ""
+    protected: false
+    estimated_cost_per_fire_s: 2
+    description: Registered so the rulebook-budget gate sees every hook (ZERO-WASTE-125).
+
+  - id: git-hook-post-checkout
+    source: git_hook
+    path: scripts/git-hooks/post-checkout
+    signal: git_hook_post_checkout_fired
+    bypass_signal: ""
+    protected: false
+    estimated_cost_per_fire_s: 2
+    description: Registered so the rulebook-budget gate sees every hook (ZERO-WASTE-125).
+
+  - id: git-hook-post-commit
+    source: git_hook
+    path: scripts/git-hooks/post-commit
+    signal: git_hook_post_commit_fired
+    bypass_signal: ""
+    protected: false
+    estimated_cost_per_fire_s: 2
+    description: Registered so the rulebook-budget gate sees every hook (ZERO-WASTE-125).
