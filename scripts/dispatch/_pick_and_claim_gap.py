@@ -663,25 +663,89 @@ def get_lock_dir() -> Path:
     return Path(repo_root) / ".chump-locks"
 
 
+def _emit_chump_bin_skew(path: str, reason: str) -> None:
+    ambient_path = os.environ.get("AMBIENT_JSONL", ".chump-locks/ambient.jsonl")
+    try:
+        with open(ambient_path, "a") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "kind": "chump_bin_skew",
+                        "event": "chump_bin_skew",
+                        "bin": path,
+                        "reason": reason,
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+
+
+def _chump_bin_skew_reason(cand: str, repo: Path) -> str:
+    """Return why `cand` is contract-skewed against this checkout, or ''."""
+    try:
+        h = subprocess.run(
+            [cand, "claim", "--help"], capture_output=True, text=True, timeout=10
+        )
+        if h.returncode != 0 or "--role" not in (h.stdout + h.stderr):
+            return "claim --help lacks --role"
+    except Exception as exc:
+        return f"claim --help failed: {exc}"
+    try:
+        v = subprocess.run([cand, "--version"], capture_output=True, text=True, timeout=10)
+        m = re.search(r"\b([0-9a-f]{7,40})\b", v.stdout + v.stderr)
+        if m:
+            sha = m.group(1)
+            known = subprocess.run(
+                ["git", "-C", str(repo), "cat-file", "-e", f"{sha}^{{commit}}"],
+                capture_output=True,
+                timeout=10,
+            )
+            if known.returncode == 0:
+                anc = subprocess.run(
+                    ["git", "-C", str(repo), "merge-base", "--is-ancestor", sha, "HEAD"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if anc.returncode != 0:
+                    return f"build commit {sha} is not an ancestor of HEAD"
+    except Exception:
+        pass
+    return ""
+
+
 def _resolve_chump_bin() -> str:
     """Resolve the `chump` CLI binary for `--lease-only` delegation.
 
     Checks CHUMP_BIN first, then worktree-local target dirs, then the freshest
     compiled binary across shared/host target dirs, then PATH (`shutil.which`).
+    Candidates that reject `--role` or whose build commit is not an ancestor of
+    the checkout HEAD are skipped (kind=chump_bin_skew) and the next is tried.
     """
     import shutil
+
+    script_repo = Path(__file__).resolve().parents[2]
+
+    def usable(cand: str) -> bool:
+        reason = _chump_bin_skew_reason(cand, script_repo)
+        if reason:
+            _emit_chump_bin_skew(cand, reason)
+            print(f"chump_bin_skew: skipping {cand}: {reason}", file=sys.stderr)
+            return False
+        return True
 
     explicit = os.environ.get("CHUMP_BIN", "").strip()
     if explicit and os.path.isfile(explicit) and os.access(explicit, os.X_OK):
         return explicit
 
-    script_repo = Path(__file__).resolve().parents[2]
     for local_cand in (
         script_repo / "target" / "release" / "chump",
         script_repo / "target" / "debug" / "chump",
     ):
         try:
-            if local_cand.is_file() and os.access(local_cand, os.X_OK):
+            if local_cand.is_file() and os.access(local_cand, os.X_OK) and usable(str(local_cand)):
                 return str(local_cand)
         except OSError:
             continue
@@ -701,45 +765,59 @@ def _resolve_chump_bin() -> str:
                 existing.append((cand.stat().st_mtime, str(cand)))
         except OSError:
             continue
-    if existing:
-        existing.sort(reverse=True)
-        return existing[0][1]
+    existing.sort(reverse=True)
+    for _, cand in existing:
+        if usable(cand):
+            return cand
 
     found = shutil.which("chump")
     return found if found else "chump"
 
-def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
-    """Attempt to claim a lease for gap_id atomically via `chump claim --lease-only`.
 
-    INFRA-8580 (PHASE-R R6, INFRA-8195 AC2): _pick_and_claim_gap.py no longer
-    writes `.gap-<gap>.lock` or `<session>.json` directly; `crates/chump-atomic-claim`
-    is the single lease writer across the fleet. Prior INFRA-676 same-session
-    stale marker cleanup is performed inside `chump claim --lease-only`.
-    """
+# Last stderr line from a failed (non-conflict) claim; read by the main loop.
+_LAST_CLAIM_ERROR = ""
+
+
+def claim_gap_detail(gap_id: str, session_id: str, lock_dir: Path) -> tuple[bool, str]:
+    """Return (claimed, failure_kind). failure_kind is '' on success,
+    'claim_race_lost' for a lease conflict, 'claim_cmd_failed' otherwise."""
+    global _LAST_CLAIM_ERROR
     lock_dir.mkdir(parents=True, exist_ok=True)
     chump_bin = _resolve_chump_bin()
     env = os.environ.copy()
     env["CHUMP_LOCK_DIR"] = str(lock_dir)
     try:
         res = subprocess.run(
-            [
-                chump_bin,
-                "claim",
-                gap_id,
-                "--role",
-                "fleet",
-                "--session",
-                session_id,
-                "--lease-only",
-            ],
+            [chump_bin, "claim", gap_id, "--role", "fleet", "--session", session_id, "--lease-only"],
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
             timeout=15,
         )
-        return res.returncode == 0
-    except Exception:
-        return False
+    except Exception as exc:
+        _LAST_CLAIM_ERROR = f"{type(exc).__name__}: {exc}"
+        return False, "claim_cmd_failed"
+    if res.returncode == 0:
+        return True, ""
+    lines = [ln for ln in (res.stderr or "").strip().splitlines() if ln.strip()]
+    last = lines[-1] if lines else f"exit {res.returncode}"
+    low = (res.stderr or "").lower()
+    conflict = any(k in low for k in ("already claimed", "already leased", "conflict", "held by", "claimed by", "another session", "holds", "lost race", "race"))
+    usage = res.returncode == 2 or "unknown flag" in low or "usage" in low or "unrecognized" in low
+    if usage or not conflict:  # exit 2 / usage errors are never a lease conflict
+        _LAST_CLAIM_ERROR = last
+        return False, "claim_cmd_failed"
+    return False, "claim_race_lost"
+
+
+def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
+    """Attempt to claim a lease for gap_id atomically via `chump claim --lease-only`.
+
+    INFRA-8580: `crates/chump-atomic-claim` is the single lease writer across
+    the fleet; stale same-session marker cleanup (INFRA-676) happens inside the CLI.
+    """
+    return claim_gap_detail(gap_id, session_id, lock_dir)[0]
 
 
 def cooled_down_gaps(cooldown_dir: str, worker_id: str = "") -> set[str]:
@@ -1728,7 +1806,16 @@ def main() -> int:
                     continue
                 if has_pr is None:
                     reasons["open_pr_lookup_unknown"] += 1
-            if not try_claim_gap(gap_id, session_id, lock_dir):
+            claimed, claim_fail = claim_gap_detail(gap_id, session_id, lock_dir)
+            if not claimed:
+                if claim_fail == "claim_cmd_failed":
+                    reasons["claim_cmd_failed"] += 1
+                    if reasons["claim_cmd_failed"] == 1:
+                        print(
+                            f"claim_cmd_failed: chump claim error: {_LAST_CLAIM_ERROR}",
+                            file=sys.stderr,
+                        )
+                    continue
                 # RESILIENT-1509: a candidate that passed every filter but
                 # lost the atomic claim race (another worker got there
                 # first). Distinct from the filter-reason counters above —
