@@ -3328,6 +3328,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "lease-orphan-freed",
+            &["bash", "scripts/ci/test-lease-orphan-freed.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "pick-gap-cooldown",
             &["bash", "scripts/ci/test-pick-gap-cooldown.sh"],
             GateKind::Scripts,

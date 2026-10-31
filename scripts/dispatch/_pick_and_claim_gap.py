@@ -813,6 +813,51 @@ def cooled_down_gaps(cooldown_dir: str, worker_id: str = "") -> set[str]:
 # so worker.sh picks exactly as it did before this change.
 
 
+def _parse_session_identity(session_id: str) -> tuple[str, int] | None:
+    """RESILIENT-1736: mirror of Rust lease_identity::parse_identity.
+
+    Worker session ids look like `fleet-<fleet>-agent<N>@<host>-<pid>-<epoch>`
+    (scripts/dispatch/worker.sh). Returns (stable_identity, pid) or None when
+    the string doesn't match that shape (manual/foreign session ids are left
+    alone rather than guessed at).
+    """
+    if not session_id:
+        return None
+    parts = session_id.rsplit("-", 2)
+    if len(parts) != 3:
+        return None
+    identity, pid_str, epoch_str = parts
+    if not identity or not pid_str.isdigit() or not epoch_str.isdigit():
+        return None
+    return identity, int(pid_str)
+
+
+def _session_pid_is_alive(pid: int) -> bool:
+    """kill(pid, 0) existence probe — no signal delivered."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        # Unknown failure mode — don't claim a live pid is dead on a guess.
+        return True
+
+
+def _is_orphaned_lease_session(session_id: str) -> bool:
+    """A lease session id is orphaned when it parses as a worker session AND
+    its embedded pid is not alive on this host."""
+    parsed = _parse_session_identity(session_id)
+    if parsed is None:
+        return False
+    _identity, pid = parsed
+    return not _session_pid_is_alive(pid)
+
+
 def _load_active_leased_gaps(repo_root: str, lock_dir: str) -> set[str]:
     """INFRA-8640: collect gap_ids held by live .chump-locks/*.json leases or state.db leases."""
     import time
@@ -857,11 +902,12 @@ def _load_active_leased_gaps(repo_root: str, lock_dir: str) -> set[str]:
             import sqlite3
             conn = sqlite3.connect(db_path)
             rows = conn.execute("SELECT gap_id, expires_at, session_id FROM leases").fetchall()
-            conn.close()
+            orphans_freed: list[tuple[str, str]] = []
             for rgid, rexp, rsess in rows:
                 if not rgid:
                     continue
-                if cur_session and str(rsess or "").strip() == cur_session:
+                rsess_str = str(rsess or "").strip()
+                if cur_session and rsess_str == cur_session:
                     continue
                 if isinstance(rexp, (int, float)):
                     if rexp <= now_epoch:
@@ -877,7 +923,37 @@ def _load_active_leased_gaps(repo_root: str, lock_dir: str) -> set[str]:
                                 continue
                     except Exception:
                         pass
-                leased.add(str(rgid).strip())
+                # RESILIENT-1736: a lease whose session pid died on this host
+                # (or whose stable identity matches ours after a tick
+                # restart, same agent slot/new pid) is freed immediately
+                # instead of excluding the gap until expires_at (16h starve,
+                # incident 2026-10-28).
+                gid_str = str(rgid).strip()
+                parsed_cur = _parse_session_identity(cur_session) if cur_session else None
+                parsed_other = _parse_session_identity(rsess_str)
+                same_identity = (
+                    parsed_cur is not None
+                    and parsed_other is not None
+                    and parsed_cur[0] == parsed_other[0]
+                )
+                if same_identity or _is_orphaned_lease_session(rsess_str):
+                    orphans_freed.append((gid_str, rsess_str))
+                    continue
+                leased.add(gid_str)
+            if orphans_freed:
+                try:
+                    conn.executemany(
+                        "DELETE FROM leases WHERE gap_id=? AND session_id=?",
+                        orphans_freed,
+                    )
+                    conn.commit()
+                except Exception:
+                    pass
+                for gid_str, rsess_str in orphans_freed:
+                    _emit_picker_event(
+                        "lease_orphan_freed", gap_id=gid_str, session_id=rsess_str
+                    )
+            conn.close()
         except Exception:
             pass
     return leased

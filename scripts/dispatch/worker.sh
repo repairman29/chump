@@ -211,12 +211,17 @@ fi
 # multiple SWARM-* claims overwriting an active interactive INFRA-458
 # lease.
 #
-# Session ID shape: fleet-<tmux-session>-agent<N>-<pid>-<epoch>. tmux
-# session name is unique per fleet spawn; PID + epoch make sibling
-# workers in the same fleet collision-free.
+# Session ID shape: fleet-<tmux-session>-agent<N>@<host>-<pid>-<epoch>. tmux
+# session name is unique per fleet spawn; PID + epoch make sibling workers
+# in the same fleet collision-free. RESILIENT-1736: the `@<host>` segment
+# makes `fleet-<tmux-session>-agent<N>@<host>` a stable per-slot identity
+# that survives a tick restart (new pid) — chump-gap-store's
+# lease_identity::{parse_identity,same_identity} strip the trailing
+# `-<pid>-<epoch>` to recover it, so a restarted tick's own prior lease is
+# recognized as self/orphaned instead of foreign-held until the 16h TTL.
 if [[ -z "${CHUMP_SESSION_ID:-}" ]]; then
     # shellcheck disable=SC2155  # single-use identifier; masking return value acceptable
-    export CHUMP_SESSION_ID="fleet-${FLEET_SESSION:-fleet}-agent${AGENT_ID}-$$-$(date +%s)"
+    export CHUMP_SESSION_ID="fleet-${FLEET_SESSION:-fleet}-agent${AGENT_ID}@$(hostname -s 2>/dev/null || hostname)-$$-$(date +%s)"
 fi
 FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-default}"
 FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"

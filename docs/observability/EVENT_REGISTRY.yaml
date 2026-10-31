@@ -6653,6 +6653,16 @@ events:
       concurrently); emitted as ALERT; caller must retry with a new ID
     consumers: [fleet-brief, curator, operator-recall]
 
+  - kind: lease_orphan_freed
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs (claim/preflight — RESILIENT-1736)
+    trigger: a lease row's session id parsed as a worker session (fleet-<f>-agent<N>@<host>-<pid>-<ts>)
+      whose embedded pid is dead on this host (or whose stable identity matches the
+      claiming session after a tick restart); the row is deleted immediately instead
+      of waiting for expires_at (was a 16h starve window — incident 2026-10-28)
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, gap_id, session_id]
+
   # ── INFRA-1020: opencode identity residue audit ───────────────────────────
   - kind: identity_residue_swept
     effect_metric: self

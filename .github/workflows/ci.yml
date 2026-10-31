@@ -1918,6 +1918,9 @@ jobs:
       - name: picker test claimer exclusion-reason dump (RESILIENT-1509) (CREDIBLE-1513)
         run: bash scripts/ci/test-pick-and-claim-exclusion-reasons.sh
 
+      - name: picker test dead-pid lease orphan freeing (RESILIENT-1736)
+        run: bash scripts/ci/test-lease-orphan-freed.sh
+
       - name: picker test rc=1 cooldown (INFRA-361) (CREDIBLE-1513)
         run: bash scripts/ci/test-pick-gap-cooldown.sh
 
