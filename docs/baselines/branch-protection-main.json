@@ -31,10 +31,15 @@
       {
         "app_id": 15368,
         "context": "verified"
+      },
+      {
+        "app_id": 15368,
+        "context": "review-hold"
       }
     ],
     "contexts": [
-      "verified"
+      "verified",
+      "review-hold"
     ],
     "strict": true
   },
