@@ -13043,6 +13043,13 @@ async fn main() -> Result<()> {
                 });
                 match store.preflight(&gap_id) {
                     Ok(gap_store::PreflightResult::Available) => {
+                        if store.is_hollow(&gap_id) {
+                            eprintln!(
+                                "[preflight] FAIL {} — empty description AND no acceptance criteria (ZERO-WASTE-150: unpickable; likely a leaked fixture). Close it: chump gap close {} --not-a-bug --reason '...'",
+                                gap_id, gap_id
+                            );
+                            std::process::exit(1);
+                        }
                         // INFRA-2472: local state.db only reflects claims this
                         // machine has seen (synced via periodic coherence-sync
                         // commits). Consult the shared NATS registry too — it
@@ -13880,7 +13887,7 @@ async fn main() -> Result<()> {
                     .any(|a| matches!(a.as_str(), "--help" | "-h"))
                 {
                     println!(
-                        "Usage: chump gap close <GAP-ID> --reason <superseded|wontfix|obsolete|duplicate> [--session ID]\n\n\
+                        "Usage: chump gap close <GAP-ID> --reason <superseded|wontfix|obsolete|duplicate> [--session ID]\n       chump gap close <GAP-ID> --not-a-bug --reason '<why>'   (ZERO-WASTE-150)\n\n\
                          Triage-close a gap that will never ship a PR. Updates state.db (canonical).\n\
                          Does NOT require a clean/current worktree or a merge commit naming the gap —\n\
                          those guards are for `chump gap ship`, not triage-closes.\n\n\
@@ -13895,6 +13902,26 @@ async fn main() -> Result<()> {
                     eprintln!("Usage: chump gap close <GAP-ID> --reason <superseded|wontfix|obsolete|duplicate>");
                     std::process::exit(2);
                 });
+                // ZERO-WASTE-150: PR-less not-a-bug close (replaces docs/<ID>-NOTES.md PRs).
+                if args.iter().any(|a| a == "--not-a-bug") {
+                    let reason = flag("--reason").unwrap_or_else(|| {
+                        eprintln!("chump gap close --not-a-bug: --reason '<why>' is required");
+                        std::process::exit(2);
+                    });
+                    let session_id = flag("--session")
+                        .or_else(|| crate::ambient_stream::env_session_id())
+                        .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                    match store.close_not_a_bug(&gap_id, &session_id, &reason) {
+                        Ok(()) => {
+                            println!("closed {gap_id} (not-a-bug)");
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            eprintln!("chump gap close --not-a-bug: {e:#}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
                 let reason = flag("--reason").unwrap_or_else(|| {
                     eprintln!(
                         "chump gap close: --reason is required (superseded|wontfix|obsolete|duplicate)"

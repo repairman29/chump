@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/test-resilient-1209-organ-merge-install-fire.sh — RESILIENT-1209
 #
-# Regression slice of RESILIENT-1205 (see docs/RESILIENT-1207-NOTES.md for the
+# Regression slice of RESILIENT-1205 (see docs/process/FIXTURE_LEAK_2026-10.md for the
 # root-cause writeup). Proves "Problem A" from that note end-to-end: once the
 # green-main BINARY pin lags behind raw HEAD (routine — a coherence-sync
 # commit with no build artifact), node-refresh-chump.sh must still converge
