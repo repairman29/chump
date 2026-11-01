@@ -20,7 +20,7 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # Resolve to MAIN repo when run from a worktree (logs/ live in main)
-MAIN_REPO="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {print $2; exit}')"
+MAIN_REPO="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {if (!f) print $2; f=1}')"
 [[ -z "$MAIN_REPO" || ! -d "$MAIN_REPO/logs/ab" ]] && MAIN_REPO="$REPO_ROOT"
 cd "$MAIN_REPO"
 
@@ -55,7 +55,7 @@ echo
 
 # ── 2. Recent A/B summaries (last 10) ────────────────────────────────────────
 echo "${BOLD}▸ recent A/B summaries (last 10 by mtime)${RESET}"
-summaries=$(ls -t logs/ab/*summary*.json 2>/dev/null | head -10)
+summaries=$(ls -t logs/ab/*summary*.json 2>/dev/null | head -10 || true)
 if [[ -n "$summaries" ]]; then
     while IFS= read -r s; do
         # Extract delta + model + n from the summary
@@ -99,8 +99,8 @@ import sys; sys.path.insert(0, 'scripts/ab-harness')
 from cost_ledger import total
 t = total(since_iso='$today')
 print(f\"today: \${t['all']:.2f} ({t['calls']} calls)\")
-" 2>/dev/null)
-    lifetime=$(python3.12 scripts/ab-harness/cost_ledger.py --summary 2>/dev/null | head -1)
+" 2>/dev/null || true)
+    lifetime=$(python3 scripts/ab-harness/cost_ledger.py --summary 2>/dev/null | head -1 || true)
     echo "  $today_total"
     echo "  $lifetime"
 else
