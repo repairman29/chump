@@ -59,7 +59,7 @@ pr_state() {
 }
 
 # One row per gap: newlines inside descriptions are flattened first.
-CAND="$(sqlite3 -separator '|' "$DB" "SELECT id, title, REPLACE(COALESCE(description,''), char(10), ' ') FROM gaps WHERE status='open' AND (title LIKE 'PR #%failing%' OR title LIKE 'EFFECTIVE: Wire%' OR title LIKE '%worktree cleanup%') ORDER BY id;" 2>/dev/null)"
+CAND="$(sqlite3 -separator '|' "$DB" "SELECT id, title, replace(COALESCE(description,''), char(10), ' ') FROM gaps WHERE status='open' AND (title LIKE 'PR #%failing%' OR title LIKE 'EFFECTIVE: Wire%' OR title LIKE '%worktree cleanup%') ORDER BY id;" 2>/dev/null)"
 
 closed=0; skipped=0; errors=0
 while IFS='|' read -r id title desc; do
