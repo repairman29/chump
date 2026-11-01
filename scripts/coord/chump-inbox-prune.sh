@@ -169,13 +169,8 @@ do_prune() {
 
         # Get file mtime epoch
         local mtime_epoch
-        if stat --version 2>/dev/null | grep -q GNU; then
-            # GNU stat (Linux)
-            mtime_epoch="$(stat -c %Y "$inbox_file")"
-        else
-            # BSD stat (macOS)
-            mtime_epoch="$(stat -f %m "$inbox_file")"
-        fi
+        # GNU-first: `stat --version | grep -q` SIGPIPEs under pipefail and misdetects GNU as BSD.
+        mtime_epoch="$(stat -c %Y "$inbox_file" 2>/dev/null || stat -f %m "$inbox_file")"
         local age_secs=$(( now_epoch - mtime_epoch ))
 
         # Age pruning: whole-file archive
