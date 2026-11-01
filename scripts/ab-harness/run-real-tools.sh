@@ -57,7 +57,7 @@ TRIALS="$ROOT/logs/ab/${TAG}-${TS}.jsonl"
 
 echo ""
 echo "[run-real-tools] Applying v2 multi-axis rescoring…"
-python3 "$SCRIPT_DIR/rescore-with-v2.py" "$TRIALS"
+python3.12 "$SCRIPT_DIR/rescore-with-v2.py" "$TRIALS"
 
 echo ""
 echo "[run-real-tools] done."

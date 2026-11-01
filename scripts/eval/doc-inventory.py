@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """
 DOC-005 / Phase 1 — doc inventory.
 
@@ -7,7 +7,7 @@ inbound references across the repo, and writes docs/_inventory.csv.
 
 Run from the repo root:
 
-    python3 scripts/eval/doc-inventory.py [--out docs/_inventory.csv]
+    python3.12 scripts/eval/doc-inventory.py [--out docs/_inventory.csv]
 
 Subsequent runs overwrite the CSV. Diff against the committed copy to spot
 drift (new untagged file, doc that lost all inbound refs, etc.).

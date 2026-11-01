@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """
 RESEARCH-023 — Counterfactual mediation analysis (Pearl 2001 / VanderWeele 2015).
 
@@ -18,10 +18,10 @@ References:
 
 Usage:
     # Self-test with synthetic data where NDE/NIE are known
-    python3 scripts/ab-harness/mediation-analysis.py --self-test
+    python3.12 scripts/ab-harness/mediation-analysis.py --self-test
 
     # Apply to an eval JSONL
-    python3 scripts/ab-harness/mediation-analysis.py \\
+    python3.12 scripts/ab-harness/mediation-analysis.py \\
         --jsonl path/to/eval.jsonl \\
         --exposure cell \\
         --exposure-treatment A --exposure-control B \\

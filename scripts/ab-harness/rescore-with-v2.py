@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """rescore-with-v2.py — apply v2 multi-axis scoring to existing v1 jsonl.
 
 Useful when you have v1 A/B output (from run.sh against local Ollama, or
@@ -10,8 +10,8 @@ Outputs a -rescored.summary.json next to the input jsonl. Existing files
 are not modified.
 
 Usage:
-    python3 scripts/ab-harness/rescore-with-v2.py path/to/run.jsonl
-    python3 scripts/ab-harness/rescore-with-v2.py path/to/run.jsonl --threshold 0.5
+    python3.12 scripts/ab-harness/rescore-with-v2.py path/to/run.jsonl
+    python3.12 scripts/ab-harness/rescore-with-v2.py path/to/run.jsonl --threshold 0.5
 """
 from __future__ import annotations
 

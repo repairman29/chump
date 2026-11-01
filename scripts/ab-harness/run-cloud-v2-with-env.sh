@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-PY="${PYTHON:-python3}"
+PY="${PYTHON:-python3.12}"
 if [[ -f .env ]]; then
   set -a
   # shellcheck disable=SC1091

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """
 RESEARCH-026 — Fixture naturalizer. Applies rewrite rules P1–P6 from the
 docs/eval/RESEARCH-026-naturalization-pilot.md spec to each task prompt
@@ -26,13 +26,13 @@ Pilot rules: docs/eval/RESEARCH-026-naturalization-pilot.md
 
 Usage:
     # Apply to reflection fixture, emit casual variant
-    python3 scripts/ab-harness/naturalize-fixture.py \\
+    python3.12 scripts/ab-harness/naturalize-fixture.py \\
         --input scripts/ab-harness/fixtures/reflection_tasks.json \\
         --output scripts/ab-harness/fixtures/reflection_tasks_casual_v1.json \\
         --n-tasks 50
 
     # Self-test against the 10-task pilot
-    python3 scripts/ab-harness/naturalize-fixture.py --self-test
+    python3.12 scripts/ab-harness/naturalize-fixture.py --self-test
 """
 
 from __future__ import annotations

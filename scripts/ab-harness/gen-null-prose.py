@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """
 RESEARCH-018 — Length-matched null-prose generator.
 
@@ -22,14 +22,14 @@ Design requirements (from docs/eval/preregistered/RESEARCH-018.md §11):
 Preregistration: docs/eval/preregistered/RESEARCH-018.md
 Usage:
     # Stand-alone generator
-    python3 scripts/ab-harness/gen-null-prose.py --target-chars 2000 --seed 42
+    python3.12 scripts/ab-harness/gen-null-prose.py --target-chars 2000 --seed 42
 
     # Against a real lessons block to get an exactly-length-matched placebo:
-    python3 scripts/ab-harness/gen-null-prose.py \\
+    python3.12 scripts/ab-harness/gen-null-prose.py \\
         --match-file path/to/lessons_block.txt --seed 42 --out placebo.md
 
     # Self-test
-    python3 scripts/ab-harness/gen-null-prose.py --self-test
+    python3.12 scripts/ab-harness/gen-null-prose.py --self-test
 """
 
 from __future__ import annotations

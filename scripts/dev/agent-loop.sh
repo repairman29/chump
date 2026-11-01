@@ -34,7 +34,7 @@ Pick ONE gap, do the work, ship it via scripts/coord/bot-merge.sh --gap <ID> --a
 then exit. Do not call ScheduleWakeup — the shell loop handles retries."
 
 check_queue() {
-    python3 scripts/coord/musher.py --pick >/dev/null 2>&1
+    python3.12 scripts/coord/musher.py --pick >/dev/null 2>&1
 }
 
 echo "[agent-loop] Starting. max_gaps=${MAX_GAPS:-unlimited} interval=${INTERVAL}s"

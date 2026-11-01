@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """
 roadmap-update-agent.py — INFRA-1147
 
@@ -10,11 +10,11 @@ for operator review. Never auto-merges.
 Cost target: <$0.05/run with haiku-4-5 = ~$2.60/yr at weekly cadence.
 
 Usage:
-  python3 scripts/auto-docs/roadmap-update-agent.py
-  python3 scripts/auto-docs/roadmap-update-agent.py --dry-run     # don't open PR
-  python3 scripts/auto-docs/roadmap-update-agent.py --high-fidelity  # sonnet
-  python3 scripts/auto-docs/roadmap-update-agent.py --force        # override same-week idempotency
-  python3 scripts/auto-docs/roadmap-update-agent.py --since-days 7 # window (default 7)
+  python3.12 scripts/auto-docs/roadmap-update-agent.py
+  python3.12 scripts/auto-docs/roadmap-update-agent.py --dry-run     # don't open PR
+  python3.12 scripts/auto-docs/roadmap-update-agent.py --high-fidelity  # sonnet
+  python3.12 scripts/auto-docs/roadmap-update-agent.py --force        # override same-week idempotency
+  python3.12 scripts/auto-docs/roadmap-update-agent.py --since-days 7 # window (default 7)
 
 Companion to INFRA-1145 (chump roadmap-status drift detection) and INFRA-1146
 (SessionStart inject). 1145 measures drift, 1146 surfaces drift, 1147 closes

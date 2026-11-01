@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """EVAL-021: Longitudinal accumulation A/B driver.
 
 For each checkpoint C in [10, 25, 50, 75, 100]:

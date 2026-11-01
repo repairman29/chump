@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """rescore-jsonl.py — re-score existing A/B JSONL files with a non-Anthropic judge.
 
 Reads a JSONL produced by run-catattack-sweep.py or the cloud harness
@@ -7,12 +7,12 @@ judge, and emits per-row judge_score_<slug> + judge_reasoning_<slug> fields
 to a new JSONL.  Computes and prints judge-agreement statistics.
 
 Usage:
-    python3 scripts/ab-harness/rescore-jsonl.py \\
+    python3.12 scripts/ab-harness/rescore-jsonl.py \\
         --input logs/ab/eval-042-crossjudge-reflection-*.jsonl \\
         --rescore-with-judge together:Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8 \\
         --output logs/ab/eval-068-crossjudge-qwen3.jsonl
 
-    python3 scripts/ab-harness/rescore-jsonl.py \\
+    python3.12 scripts/ab-harness/rescore-jsonl.py \\
         --input logs/ab/eval-042-crossjudge-*.jsonl \\
         --rescore-with-judge together:deepseek-ai/DeepSeek-V3 \\
         --output logs/ab/eval-068-crossjudge-deepseek.jsonl

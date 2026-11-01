@@ -50,7 +50,7 @@ fi
 SMOKE_OUT="/tmp/${GAP}-smoke-${TS//[:-]/}"
 mkdir -p "${SMOKE_OUT}"
 OPENAI_API_BASE="http://127.0.0.1:11434/v1" \
-  python3 scripts/ab-harness/run-binary-ablation.py \
+  python3.12 scripts/ab-harness/run-binary-ablation.py \
     --module neuromod \
     --n-per-cell 1 \
     --binary "${BIN}" \
@@ -67,7 +67,7 @@ SMOKE_JSONL="$(ls -t "${SMOKE_OUT}"/eval049-binary-llmjudge-*.jsonl 2>/dev/null 
 # ~120s wall-clock per trial means the harness's old 120s timeout fires
 # first and produces scorer=llm_judge but output_chars=0). Either failure
 # would silently produce a fake delta=0 result.
-if [[ -z "${SMOKE_JSONL}" ]] || ! python3 -c "
+if [[ -z "${SMOKE_JSONL}" ]] || ! python3.12 -c "
 import json, sys
 rows = [json.loads(l) for l in open('${SMOKE_JSONL}')]
 scorer_ok = all(r.get('scorer') == 'llm_judge' for r in rows)
@@ -89,7 +89,7 @@ fi
 echo "[${TS}] ${GAP}: smoke OK, starting n=20/cell sweep"
 mkdir -p logs/ab
 OPENAI_API_BASE="http://127.0.0.1:11434/v1" \
-  python3 scripts/ab-harness/run-binary-ablation.py \
+  python3.12 scripts/ab-harness/run-binary-ablation.py \
     --module neuromod \
     --n-per-cell 20 \
     --binary "${BIN}" \
@@ -104,7 +104,7 @@ JSONL="$(ls -t logs/ab/eval049-binary-llmjudge-*.jsonl 2>/dev/null | head -1)"
 echo "[${TS}] ${GAP}: sweep complete — $(wc -l < "${JSONL}") rows in ${JSONL}"
 
 # Quick analysis line so the daytime agent doesn't have to recompute
-python3 - "${JSONL}" <<'PY'
+python3.12 - "${JSONL}" <<'PY'
 import json, sys, collections
 rows = [json.loads(l) for l in open(sys.argv[1])]
 cells = collections.defaultdict(list)

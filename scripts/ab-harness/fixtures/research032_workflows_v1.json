@@ -129,28 +129,28 @@
       "name": "eval-harness invocation",
       "starting_state": {
         "branch": "origin/main",
-        "preconditions": "A clean fixture worktree with the reflection_tasks_casual_v1.json fixture already committed under scripts/ab-harness/fixtures/ and an A/A-capable harness entrypoint on PATH. python3 is installed and resolvable. The Anthropic API key is provided via env (the harness's default judge family). No prior runs are queued in logs/ab/."
+        "preconditions": "A clean fixture worktree with the reflection_tasks_casual_v1.json fixture already committed under scripts/ab-harness/fixtures/ and an A/A-capable harness entrypoint on PATH. python3.12 is installed and resolvable. The Anthropic API key is provided via env (the harness's default judge family). No prior runs are queued in logs/ab/."
       },
       "instruction": "Run a small A/B (n=5/cell pilot) on the reflection fixture comparing Cell A vs Cell A (an A/A run) and report whether judge variance is within ±0.03.",
       "success_criteria": {
-        "primary": "Agent (a) launches the harness with the correct `--scorer llm-judge`, `--aa-calibrate` (or equivalent), `python3` shebang, (b) waits for completion without spawning duplicate runs, (c) reports the A/A delta with a Wilson CI and a pass/fail call. The agent does NOT need to produce a *correct* numerical answer — only run the harness without violating any of the foot-guns documented in `RESEARCH_INTEGRITY.md` §154-170 (interpreter choice, n=5 calibration before n≥30, exit-code-0 scorer).",
+        "primary": "Agent (a) launches the harness with the correct `--scorer llm-judge`, `--aa-calibrate` (or equivalent), `python3.12` shebang, (b) waits for completion without spawning duplicate runs, (c) reports the A/A delta with a Wilson CI and a pass/fail call. The agent does NOT need to produce a *correct* numerical answer — only run the harness without violating any of the foot-guns documented in `RESEARCH_INTEGRITY.md` §154-170 (`python3` vs `python3.12`, n=5 calibration before n≥30, exit-code-0 scorer).",
         "all_must_hold": [
-          "Agent invokes the harness with `python3` (the repo-pinned interpreter, not a hand-picked minor) — visible in the tool-call log",
+          "Agent invokes the harness with `python3.12` (NOT `python3`) — visible in the tool-call log",
           "Agent passes `--scorer llm-judge` (or the documented equivalent) and an A/A flag (`--aa-calibrate` or equivalent — the harness exposes one such flag)",
           "Agent runs at n=5 (the calibration tier; NOT jumping to n≥30 before A/A passes)",
           "Agent waits for completion (no duplicate harness invocations spawned in parallel; tool-call log shows a single long-running run)",
           "Agent's final response includes (i) a numeric A/A delta, (ii) a Wilson CI, (iii) a binary pass/fail call against the ±0.03 threshold"
         ]
       },
-      "expected_frontier_behavior": "Frontier reads the n=5 + A/A + ±0.03 hint, runs `python3 scripts/ab-harness/run-binary-ablation.py --fixture reflection_tasks_casual_v1.json --cells A,A --n 5 --scorer llm-judge --aa-calibrate`, lets it complete, parses the JSONL output, computes Wilson CI on the success-rate delta, and reports `delta=0.0X, Wilson95=[lo,hi], pass=true/false`.",
-      "expected_local_failure_modes": "qwen3:14b plausibly: (a) uses a different interpreter than the harness expects (the foot-gun the prereg explicitly tests), (b) skips the A/A flag and runs A/B on a fresh fixture, (c) jumps to n=30 because 'more is better' (violates the calibration-first discipline), (d) spawns duplicate runs because the first one's stdout is silent for several minutes and the agent re-fires, (e) reports a free-text 'looks fine' instead of a numeric Wilson CI.",
+      "expected_frontier_behavior": "Frontier reads the n=5 + A/A + ±0.03 hint, runs `python3.12 scripts/ab-harness/run-binary-ablation.py --fixture reflection_tasks_casual_v1.json --cells A,A --n 5 --scorer llm-judge --aa-calibrate`, lets it complete, parses the JSONL output, computes Wilson CI on the success-rate delta, and reports `delta=0.0X, Wilson95=[lo,hi], pass=true/false`.",
+      "expected_local_failure_modes": "qwen3:14b plausibly: (a) uses `python3` not `python3.12` (the foot-gun the prereg explicitly tests), (b) skips the A/A flag and runs A/B on a fresh fixture, (c) jumps to n=30 because 'more is better' (violates the calibration-first discipline), (d) spawns duplicate runs because the first one's stdout is silent for several minutes and the agent re-fires, (e) reports a free-text 'looks fine' instead of a numeric Wilson CI.",
       "exclusion_reasons": {
-        "infrastructure_failure": "python3 is not installed in the fixture container, the Anthropic API key is missing/invalid, or the harness entrypoint script is broken at HEAD.",
-        "substrate_ceiling": "Agent uses the wrong interpreter, jumps to n>5, or fails to compute Wilson CI in the report — these are the discipline-failure modes the prereg's foot-gun list expects to discriminate on.",
+        "infrastructure_failure": "python3.12 is not installed in the fixture container, the Anthropic API key is missing/invalid, or the harness entrypoint script is broken at HEAD.",
+        "substrate_ceiling": "Agent runs `python3` instead of `python3.12`, jumps to n>5, or fails to compute Wilson CI in the report — these are the discipline-failure modes the prereg's foot-gun list expects to discriminate on.",
         "agent_error": "Agent runs the correct harness flags but parses the wrong JSONL field for the success rate (e.g. picks the per-trial latency mean instead). Substrate had the discipline; the report is wrong for a non-substrate reason."
       },
       "scope_estimate_minutes": 45,
-      "rationale": "Exercises the research-integrity discipline that distinguishes shipping-quality from cargo-cult evals (RESEARCH_INTEGRITY.md §154-170). The foot-guns (interpreter choice, n=5 first, exit-code-0 scorer) are documented because they have repeatedly bitten frontier models too — a substrate that respects them is empirically capable of contributing to research; one that does not silently produces invalid sweeps. Critically, success here is procedural, not numerical: the agent doesn't have to produce a 'correct' delta, only run the harness correctly."
+      "rationale": "Exercises the research-integrity discipline that distinguishes shipping-quality from cargo-cult evals (RESEARCH_INTEGRITY.md §154-170). The foot-guns (`python3` vs `python3.12`, n=5 first, exit-code-0 scorer) are documented because they have repeatedly bitten frontier models too — a substrate that respects them is empirically capable of contributing to research; one that does not silently produces invalid sweeps. Critically, success here is procedural, not numerical: the agent doesn't have to produce a 'correct' delta, only run the harness correctly."
     },
     {
       "id": "W5-multiturn-debugging",

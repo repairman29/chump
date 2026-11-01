@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-spawn-lessons-ab.py — MEM-006-VALIDATE: spawn-loaded lessons A/B harness.
 
 Purpose
@@ -45,7 +45,7 @@ Total: ~$0.03 for the full sweep.
 Usage
 -----
     # Option A: chump binary path
-    python3 scripts/ab-harness/run-spawn-lessons-ab.py \\
+    python3.12 scripts/ab-harness/run-spawn-lessons-ab.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --tag mem006-spawn-lessons-qwen7b \\
         --mode binary \\
@@ -55,7 +55,7 @@ Usage
         --limit 50
 
     # Option B: Python-side injection (no binary needed)
-    python3 scripts/ab-harness/run-spawn-lessons-ab.py \\
+    python3.12 scripts/ab-harness/run-spawn-lessons-ab.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --tag mem006-spawn-lessons-qwen7b-py \\
         --mode python \\

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 # INFRA-2000 Phase 1 feature-flag shim (META-107 Rust-first migration).
 # When CHUMP_GAP_MAINTENANCE_RUST=1 AND the operator passes one of the
 # audit-only flags (--check / --audit / --json), the Rust binary handles

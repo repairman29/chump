@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """COG-006 Section 3.3 gate evaluator.
 
 Reads the summary.json produced by scripts/ab-harness/score.py for a
@@ -31,7 +31,7 @@ Rationale for conservative threshold:
     for documentation regardless.
 
 Usage:
-    python3 scripts/ab-harness/score-cog006.py <summary.json>
+    python3.12 scripts/ab-harness/score-cog006.py <summary.json>
 
 Exit codes:
     0 — gate passed (or passed with warning)

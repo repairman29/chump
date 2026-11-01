@@ -43,7 +43,7 @@ DATE_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 MODEL="${OPENAI_MODEL:-unknown}"
 ENDPOINT="${OPENAI_API_BASE:-unknown}"
 
-python3 - "$SUMMARY" "$GAP_ID" "$DATE_ISO" "$MODEL" "$ENDPOINT" "$NOTE" <<'PY' >>"$RESULTS"
+python3.12 - "$SUMMARY" "$GAP_ID" "$DATE_ISO" "$MODEL" "$ENDPOINT" "$NOTE" <<'PY' >>"$RESULTS"
 import json, sys
 summary_path, gap_id, date_iso, model, endpoint, note = sys.argv[1:]
 s = json.loads(open(summary_path).read())

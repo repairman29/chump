@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-catattack-sweep.py — EVAL-047: CatAttack full n=50 sweep (Attention faculty graduation).
 
 Cell layout (corrects EVAL-028 methodology flaw):
@@ -11,16 +11,16 @@ pilot could not produce.
 
 Usage:
     # Dry-run — no API calls
-    python3 scripts/ab-harness/run-catattack-sweep.py --dry-run
+    python3.12 scripts/ab-harness/run-catattack-sweep.py --dry-run
 
     # Small pilot (n=5, default)
-    python3 scripts/ab-harness/run-catattack-sweep.py
+    python3.12 scripts/ab-harness/run-catattack-sweep.py
 
     # Full n=50 sweep (EVAL-047 acceptance criteria)
-    python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50
+    python3.12 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50
 
     # Full sweep with explicit model + judge
-    python3 scripts/ab-harness/run-catattack-sweep.py \\
+    python3.12 scripts/ab-harness/run-catattack-sweep.py \\
         --n-per-cell 50 \\
         --model claude-haiku-4-5 \\
         --judge claude-sonnet-4-5
@@ -377,7 +377,7 @@ def main() -> int:
         print(f"[eval-047] total trials: {total_trials}  (no API calls in dry-run)")
         print(f"[eval-047] output: scripts/ab-harness/results/eval-047-catattack-<model>-<cell>-<ts>.jsonl")
         print(f"[eval-047] full sweep command:")
-        print(f"  python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50")
+        print(f"  python3.12 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50")
         return 0
 
     api_key = load_env()

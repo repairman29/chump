@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """seed-reflection-db.py — EVAL-039: seed N synthetic prior reflection episodes.
 
 Seeds `chump_reflections` + `chump_improvement_targets` in the chump memory DB
@@ -13,12 +13,12 @@ drawn from the same vocabulary as the existing COG-011/COG-016/EVAL-022 lessons.
 
 Usage
 -----
-    python3 scripts/ab-harness/seed-reflection-db.py \\
+    python3.12 scripts/ab-harness/seed-reflection-db.py \\
         --n 50 \\
         --db sessions/chump_memory.db
 
     # Clear previously seeded longitudinal rows only:
-    python3 scripts/ab-harness/seed-reflection-db.py \\
+    python3.12 scripts/ab-harness/seed-reflection-db.py \\
         --n 0 \\
         --db sessions/chump_memory.db \\
         --clear

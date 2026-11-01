@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-coordination-ab.py — EVAL-037: Multi-agent coordination A/B harness.
 
 Purpose
@@ -37,21 +37,21 @@ run-cloud-v2.py summary block.
 Usage
 -----
     # Cell A only (no NATS required):
-    python3 scripts/ab-harness/run-coordination-ab.py \\
+    python3.12 scripts/ab-harness/run-coordination-ab.py \\
         --fixture scripts/ab-harness/fixtures/coordination_tasks.json \\
         --model claude-haiku-4-5 \\
         --tag eval037-baseline \\
         --cell a
 
     # Full A/B (requires chump-coord NATS broker running on localhost:4222):
-    python3 scripts/ab-harness/run-coordination-ab.py \\
+    python3.12 scripts/ab-harness/run-coordination-ab.py \\
         --fixture scripts/ab-harness/fixtures/coordination_tasks.json \\
         --model claude-haiku-4-5 \\
         --tag eval037-ab \\
         --cell ab
 
     # With explicit chump binary:
-    python3 scripts/ab-harness/run-coordination-ab.py \\
+    python3.12 scripts/ab-harness/run-coordination-ab.py \\
         --fixture scripts/ab-harness/fixtures/coordination_tasks.json \\
         --model claude-haiku-4-5 \\
         --chump-bin ./target/release/chump \\

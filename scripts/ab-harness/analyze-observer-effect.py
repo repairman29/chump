@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """RESEARCH-026 — Compare formal vs casual harness JSONLs (observer framing).
 
 run-observer-effect-ab.sh produces two JSONLs per tier (formal + casual tags).
@@ -12,7 +12,7 @@ on per-task Δ = correct_formal − correct_casual (McNemar-style binomial on
 discordant pairs).
 
 Usage:
-    python3 scripts/ab-harness/analyze-observer-effect.py \\
+    python3.12 scripts/ab-harness/analyze-observer-effect.py \\
         --formal-jsonl logs/ab/research-026-haiku-formal-1710000000.jsonl \\
         --casual-jsonl logs/ab/research-026-haiku-casual-1710000000.jsonl \\
         --cell A

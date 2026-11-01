@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Normalize a ship/release artifact JSON into a LaunchContext object.
 
 Usage:

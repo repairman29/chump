@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """EVAL-013: Task-specific real lessons A/B driver.
 
 For each task in real_lessons_tasks.json:

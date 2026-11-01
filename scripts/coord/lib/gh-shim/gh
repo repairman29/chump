@@ -194,9 +194,10 @@ fi
 if [[ "${CHUMP_GH_SHIM_NO_REWRITE:-0}" != "1" ]] \
         && [[ "${1:-}" == "pr" ]] && [[ "${2:-}" == "view" ]]; then
     _translator="$SHIM_DIR/pr-view-translate.py"
-    if [[ -x "$_translator" ]] && command -v python3 >/dev/null 2>&1; then
+    _py="$(command -v python3.12 || command -v python3 || true)"
+    if [[ -x "$_translator" ]] && [[ -n "$_py" ]]; then
         # Shift past "pr" "view"; pass remaining args.
-        python3 "$_translator" "${@:3}"
+        "$_py" "$_translator" "${@:3}"
         _rc=$?
         if [[ "$_rc" == "0" ]]; then
             # Translation succeeded — record as a synthetic call and exit.

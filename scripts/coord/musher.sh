@@ -12,7 +12,7 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCRIPT_DIR="$REPO_ROOT/scripts"
 
-PYTHON="${PYTHON:-python3}"
+PYTHON="${PYTHON:-python3.12}"
 if ! "$PYTHON" -c "import sys; assert sys.version_info >= (3,9)" 2>/dev/null; then
     PYTHON=python3
 fi

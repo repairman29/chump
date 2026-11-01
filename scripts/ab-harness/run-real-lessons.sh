@@ -53,21 +53,21 @@ echo "[run-real-lessons] judge: $JUDGE"
 echo ""
 
 # Read all tasks from the fixture.
-TASKS=$(python3 -c "
+TASKS=$(python3.12 -c "
 import json, sys
 d = json.load(open('$FIXTURE'))
 tasks = d['tasks'][:$LIMIT]
 print(json.dumps(tasks))
 ")
 
-TOTAL=$(python3 -c "import json; print(len(json.loads('$TASKS')))")
+TOTAL=$(python3.12 -c "import json; print(len(json.loads('$TASKS')))")
 echo "[run-real-lessons] Running $TOTAL tasks × 2 modes = $((TOTAL * 2)) trials"
 echo ""
 
 # Run trials. For each task:
 #   Mode A: inject the task's matching lesson as the LESSONS system-prefix block
 #   Mode B: no system prefix (baseline)
-python3 "$SCRIPT_DIR/run-real-lessons-driver.py" \
+python3.12 "$SCRIPT_DIR/run-real-lessons-driver.py" \
     --fixture "$FIXTURE" \
     --lessons-dir "$LESSONS_DIR" \
     --out "$OUT" \

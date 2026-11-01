@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-PY="${PYTHON:-python3}"
+PY="${PYTHON:-python3.12}"
 if ! command -v "$PY" >/dev/null 2>&1; then
     PY=python3
 fi

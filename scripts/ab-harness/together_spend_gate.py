@@ -58,7 +58,7 @@ def judge_list_uses_together(judges: list[str] | None) -> bool:
 
 
 def _lane_a_self_test() -> None:
-    """Stdlib-only checks (no network). Run: python3 scripts/ab-harness/together_spend_gate.py"""
+    """Stdlib-only checks (no network). Run: python3.12 scripts/ab-harness/together_spend_gate.py"""
     assert uses_together_model_prefix("together:meta-llama/Llama-3-8b")
     assert not uses_together_model_prefix("anthropic:claude-3-5-haiku-latest")
     assert judge_list_uses_together(["together:j1", "anthropic:j2"])

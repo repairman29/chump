@@ -145,7 +145,7 @@ echo "=== CREDIBLE-1493 SELF_REPORTS.yaml registry gate ==="
 # First interpreter with PyYAML wins (Homebrew python3 often lacks it; the
 # system one usually has it; CI's ubuntu python3 does).
 PY=""
-for cand in python3 /usr/bin/python3 python3.11 python3.13; do
+for cand in python3 /usr/bin/python3 python3.12 python3.11 python3.13; do
     if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import yaml' 2>/dev/null; then
         PY="$cand"; break
     fi

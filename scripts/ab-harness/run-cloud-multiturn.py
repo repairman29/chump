@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-cloud-multiturn.py — EVAL-012: multi-turn conversation A/B harness.
 
 Tests whether the cognitive framework (lessons block) compounds, washes out,
@@ -16,7 +16,7 @@ Key differences from run-cloud-v2.py (single-shot):
   whether the delta WIDENS, NARROWS, or REVERSES across turns.
 
 Usage:
-    python3 scripts/ab-harness/run-cloud-multiturn.py \\
+    python3.12 scripts/ab-harness/run-cloud-multiturn.py \\
         --fixture scripts/ab-harness/fixtures/multiturn_tasks.json \\
         --tag multiturn-reflection-haiku45 \\
         --model claude-haiku-4-5 \\

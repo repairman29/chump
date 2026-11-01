@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """
 musher.py — Chump multi-agent dispatcher (python3 port, replaces bash musher.sh)
 
 Usage:
-  python3 scripts/coord/musher.py --pick
-  python3 scripts/coord/musher.py --check <GAP-ID>
-  python3 scripts/coord/musher.py --assign <N>
-  python3 scripts/coord/musher.py --status
-  python3 scripts/coord/musher.py --why <GAP-ID>
+  python3.12 scripts/coord/musher.py --pick
+  python3.12 scripts/coord/musher.py --check <GAP-ID>
+  python3.12 scripts/coord/musher.py --assign <N>
+  python3.12 scripts/coord/musher.py --status
+  python3.12 scripts/coord/musher.py --why <GAP-ID>
 
 INFRA-8224 (one-picker consolidation): the `--pick` arm here is a priority-only
 dispatcher view over docs/gaps.yaml and is NOT the fleet's ranking picker. The
