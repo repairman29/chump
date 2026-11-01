@@ -63,6 +63,27 @@ pub fn check_and_save(
     base: &str,
     logs_dir: &Path,
 ) -> std::io::Result<Option<Stranded>> {
+    check_and_save_inner(worktree, gap_id, base, logs_dir, true)
+}
+
+/// RESILIENT-2224: save uncommitted work as a patch even when the branch
+/// already has commits above `base` (a killed child leaves both). Returns
+/// `Ok(None)` only for a clean tree.
+pub fn save_dirty_patch(
+    worktree: &Path,
+    gap_id: &str,
+    logs_dir: &Path,
+) -> std::io::Result<Option<Stranded>> {
+    check_and_save_inner(worktree, gap_id, "origin/main", logs_dir, false)
+}
+
+fn check_and_save_inner(
+    worktree: &Path,
+    gap_id: &str,
+    base: &str,
+    logs_dir: &Path,
+    require_no_commits: bool,
+) -> std::io::Result<Option<Stranded>> {
     let Some(status) = git_ok(
         worktree,
         &["status", "--porcelain", "--untracked-files=all"],
@@ -78,7 +99,7 @@ pub fn check_and_save(
     let ahead: u64 = git_ok(worktree, &["rev-list", "--count", &range], None)
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
-    if ahead > 0 {
+    if require_no_commits && ahead > 0 {
         return Ok(None);
     }
 
