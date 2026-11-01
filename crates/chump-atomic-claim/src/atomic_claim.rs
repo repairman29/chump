@@ -8665,7 +8665,12 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
 
     let (last_status, last_tick_at, failing_gates, filed_gaps) = parse_main_health_state(&raw);
 
-    // Compute age.
+    // Compute age. INFRA-8659: a missing/zero `last_tick_at` (daemon never
+    // ticked, or an old state file predating the field) must NOT read as
+    // age_secs=0 ("fresh") — that silently defeated the stale-state fail-open
+    // below and let a dead daemon's last RED reading hard-block every `chump
+    // claim` forever instead of timing out after STALE_THRESHOLD_SECS. Treat
+    // it as maximally stale (u64::MAX) so it always takes the stale path.
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -8673,15 +8678,19 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
     let age_secs = if last_tick_at > 0 && now_secs >= last_tick_at {
         now_secs - last_tick_at
     } else {
-        0
+        u64::MAX
     };
 
     // Stale state (> 30 min) → warn and proceed.
     const STALE_THRESHOLD_SECS: u64 = 1800;
     if age_secs > STALE_THRESHOLD_SECS {
-        let age_str = format_duration_secs(age_secs);
+        let age_str = if age_secs == u64::MAX {
+            "unknown — no last_tick_at recorded".to_string()
+        } else {
+            format!("{} old", format_duration_secs(age_secs))
+        };
         eprintln!(
-            "[claim] WARN: main-preflight-watchdog state is stale ({age_str} old) — \
+            "[claim] WARN: main-preflight-watchdog state is stale ({age_str}) — \
              watchdog may be down. Proceeding with claim."
         );
         // scanner-anchor: "kind":"claim_main_health_stale"
@@ -9036,6 +9045,50 @@ mod main_health_gate_tests {
             "trunk_fix_gap_id missing: {content}"
         );
         assert!(content.contains("cargo-fmt"), "gate missing: {content}");
+    }
+
+    // INFRA-8659: a RED state with NO last_tick_at (absent from the JSON, or
+    // 0) must fail-OPEN via the stale path, not fail-CLOSED via the RED
+    // block. Before the fix, age_secs computed as 0 ("fresh"), so
+    // check_main_health_gate would call process::exit(3) here instead of
+    // returning Ok(()) — a dead daemon's last RED reading blocked every
+    // `chump claim` forever.
+    #[test]
+    fn missing_last_tick_at_fails_open_instead_of_blocking_on_red() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).expect("mkdir .chump");
+        let state_path = chump_dir.join("main-preflight-state.json");
+        std::fs::write(
+            &state_path,
+            r#"{"last_status":"red","failing_gates":["cargo-fmt"],"filed_gaps":["INFRA-1"]}"#,
+        )
+        .expect("write state");
+
+        let result = check_main_health_gate(dir.path(), "INFRA-8659-TEST");
+        assert!(
+            result.is_ok(),
+            "missing last_tick_at must fail-open (treated as stale), not block on RED: {result:?}"
+        );
+    }
+
+    #[test]
+    fn zero_last_tick_at_fails_open_instead_of_blocking_on_red() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).expect("mkdir .chump");
+        let state_path = chump_dir.join("main-preflight-state.json");
+        std::fs::write(
+            &state_path,
+            r#"{"last_tick_at":0,"last_status":"red","failing_gates":["cargo-fmt"],"filed_gaps":["INFRA-1"]}"#,
+        )
+        .expect("write state");
+
+        let result = check_main_health_gate(dir.path(), "INFRA-8659-TEST");
+        assert!(
+            result.is_ok(),
+            "last_tick_at=0 must fail-open (treated as stale), not block on RED: {result:?}"
+        );
     }
 }
 

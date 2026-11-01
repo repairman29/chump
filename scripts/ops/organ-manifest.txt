@@ -204,6 +204,14 @@ enabled     chump-pr-lander.timer  role=brain requires=bin:gh home=cuphead
 # instead of looping. Declared here so reconcile re-arms it if it drifts/fails
 # (it sat in `failed` all night on 2026-08-13 — a SIGPIPE bug, now fixed).
 enabled     chump-ci-flake-rerun.timer  role=brain requires=bin:gh home=slim
+# chump-main-preflight-watchdog.timer: runs `chump preflight` against a fresh
+# origin/main worktree every 10 min and writes .chump/main-preflight-state.json
+# (INFRA-8659, INFRA-2397). check_main_health_gate (chump-atomic-claim) reads
+# that file to hard-block `chump claim` while main is RED — this unit was never
+# declared in the manifest, so it was never placed/enabled on any node and the
+# state sat 45h+ stale with zero main_preflight_red/recovered events ever
+# emitted. Declared here so reconcile re-arms it if it drifts/fails.
+enabled     chump-main-preflight-watchdog.timer  role=brain requires=bin:chump,bin:cargo,bin:git home=cuphead
 # chump-pr-approval.timer: the approve-from-phone SURFACER (RESILIENT-265).
 # Detects OS-authored PRs on external product repos (default repairman29/olive)
 # that need Jeff's approval and DMs each to his phone with ✅ Merge / ❌ Reject
