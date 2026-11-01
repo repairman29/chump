@@ -277,6 +277,10 @@ enabled     chump-organ-watchdog.timer  role=brain home=cuphead
 # health check.
 enabled     chump-apex-watchdog.timer  role=brain requires=bin:curl home=cuphead
 
+# chump-peer-deadman.timer (RESILIENT-1901): off-node deadman for the hub. Runs on
+# slim (not the hub) so a dark hub is paged by a node that is still alive.
+enabled     chump-peer-deadman.timer  role=brain requires=bin:curl home=slim
+
 # chump-process-organ-heal.timer: the process-level sibling of
 # chump-organ-watchdog.timer (INFRA-3650, PEER-HEAL-03). organ-watchdog heals
 # chump-*.service/.timer SYSTEMD units; nothing revived a raw background bash
