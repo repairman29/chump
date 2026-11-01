@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """EVAL-073 — join both-strict rescore outputs and compute cross-judge agreement per fixture."""
 import json
 import sys

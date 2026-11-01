@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """run-social-cognition-ab.py — EVAL-050: Social Cognition A/B sweep (ask-vs-guess).
 
 Loads the EVAL-038 fixture (docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml)
@@ -44,28 +44,28 @@ Wilson 95% CI is computed per cell per category on clarification_rate.
 
 Usage:
     # Dry run — no API calls
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py --dry-run
+    python3 scripts/ab-harness/run-social-cognition-ab.py --dry-run
 
     # Pilot run (n_repeats=1, all categories)
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py
+    python3 scripts/ab-harness/run-social-cognition-ab.py
 
     # Specific category only
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py --category ambiguous/static
+    python3 scripts/ab-harness/run-social-cognition-ab.py --category ambiguous/static
 
     # Full run with repeats
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 2
+    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 2
 
     # Custom model
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py --model claude-sonnet-4-5
+    python3 scripts/ab-harness/run-social-cognition-ab.py --model claude-sonnet-4-5
 
     # LLM judge sweep (EVAL-057) — replaces heuristic scorer with an LLM judge
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all --use-llm-judge
+    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all --use-llm-judge
 
     # LLM judge with a specific judge model
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --use-llm-judge --judge-model claude-haiku-4-5
+    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --use-llm-judge --judge-model claude-haiku-4-5
 
     # EVAL-065 (n≥200/cell strict judge) — do not pass both --n-repeats and --n-per-cell
-    python3.12 scripts/ab-harness/run-social-cognition-ab.py \\
+    python3 scripts/ab-harness/run-social-cognition-ab.py \\
         --use-llm-judge --strict-judge --n-per-cell 200 --category all
 
 See docs/eval/EVAL-050-social-cognition.md for methodology and results.
@@ -941,7 +941,7 @@ def main() -> int:
             n_flag = f" --n-per-cell {args.n_per_cell}"
         else:
             n_flag = f" --n-repeats {args.n_repeats}"
-        print(f"  python3.12 {__file__}{n_flag} --category {args.category} --model {args.model}{judge_flag}{strict_flag}")
+        print(f"  python3 {__file__}{n_flag} --category {args.category} --model {args.model}{judge_flag}{strict_flag}")
         return 0
 
     # Live run

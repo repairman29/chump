@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """EVAL-019: Cross-session continuity A/B driver.
 
 For each pair-task in cross_session_tasks.json:

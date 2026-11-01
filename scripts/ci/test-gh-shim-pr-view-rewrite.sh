@@ -20,7 +20,7 @@ mkdir -p "$TMP/.chump" "$TMP/.chump-locks"
 
 PR_JSON='{"number":9999,"state":"open","title":"test PR","html_url":"https://github.com/owner/repo/pull/9999","draft":false,"mergeable":true,"mergeable_state":"dirty","head":{"ref":"test-branch","sha":"abc123"},"base":{"ref":"main","sha":"def456"},"user":{"login":"octocat"},"created_at":"2026-05-14T10:00:00Z","updated_at":"2026-05-14T10:30:00Z","closed_at":null,"merged_at":null,"auto_merge":{"merge_method":"squash","enabled_by":{"login":"octocat"}}}'
 
-python3.12 - "$TMP/.chump/github_cache.db" "$PR_JSON" <<'PY'
+python3 - "$TMP/.chump/github_cache.db" "$PR_JSON" <<'PY'
 import json, sqlite3, sys
 from datetime import datetime, timezone
 db_path, payload = sys.argv[1], sys.argv[2]
@@ -43,32 +43,32 @@ PY
 
 export CHUMP_REPO="$TMP"
 
-out=$(python3.12 "$TRANSLATOR" 9999 --json state)
+out=$(python3 "$TRANSLATOR" 9999 --json state)
 echo "$out" | grep -q '"state": "OPEN"' || fail "state not uppercased: $out"
 ok "numeric arg: state field uppercased OPEN"
 
-out=$(python3.12 "$TRANSLATOR" test-branch --json number,state)
+out=$(python3 "$TRANSLATOR" test-branch --json number,state)
 echo "$out" | grep -q '"number": 9999' || fail "branch lookup failed: $out"
 echo "$out" | grep -q '"state": "OPEN"' || fail "branch lookup state: $out"
 ok "branch-name arg: resolved via cache head_ref"
 
-python3.12 "$TRANSLATOR" 9999 --json state --watch >/dev/null 2>&1
+python3 "$TRANSLATOR" 9999 --json state --watch >/dev/null 2>&1
 [[ "$?" == "2" ]] || fail "--watch should fall through"
 ok "--watch falls through (rc=2)"
 
-python3.12 "$TRANSLATOR" 9999 --json statusCheckRollup >/dev/null 2>&1
+python3 "$TRANSLATOR" 9999 --json statusCheckRollup >/dev/null 2>&1
 [[ "$?" == "2" ]] || fail "unsupported field should fall through"
 ok "unsupported field (statusCheckRollup) falls through"
 
-out=$(python3.12 "$TRANSLATOR" 9999 --json mergeStateStatus)
+out=$(python3 "$TRANSLATOR" 9999 --json mergeStateStatus)
 echo "$out" | grep -q '"mergeStateStatus": "DIRTY"' || fail "mergeStateStatus not uppercased: $out"
 ok "mergeStateStatus uppercased DIRTY"
 
-out=$(python3.12 "$TRANSLATOR" 9999 --json autoMergeRequest)
+out=$(python3 "$TRANSLATOR" 9999 --json autoMergeRequest)
 echo "$out" | grep -q '"mergeMethod": "SQUASH"' || fail "autoMergeRequest missing mergeMethod: $out"
 ok "autoMergeRequest reshape: mergeMethod added"
 
-out=$(python3.12 "$TRANSLATOR" 9999 --json headRefName -q .headRefName)
+out=$(python3 "$TRANSLATOR" 9999 --json headRefName -q .headRefName)
 [[ "$out" == "test-branch" ]] || fail "jq projection failed: '$out'"
 ok "-q jq post-processing works"
 
@@ -79,8 +79,8 @@ ok "shim wires CHUMP_GH_SHIM_NO_REWRITE bypass"
 grep -q '"kind": "cache_hit"' "$TMP/.chump-locks/ambient.jsonl" || fail "no cache_hit event"
 ok "ambient cache_hit event emitted"
 
-out=$(python3.12 "$TRANSLATOR" 9999 --json state,mergeStateStatus,headRefName,number)
-echo "$out" | python3.12 -c "
+out=$(python3 "$TRANSLATOR" 9999 --json state,mergeStateStatus,headRefName,number)
+echo "$out" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 assert d['state'] == 'OPEN' and d['mergeStateStatus'] == 'DIRTY'
@@ -88,7 +88,7 @@ assert d['headRefName'] == 'test-branch' and d['number'] == 9999
 " 2>&1 || fail "multi-field projection broken: $out"
 ok "multi-field projection: state, mergeStateStatus, headRefName, number"
 
-python3.12 "$TRANSLATOR" nonexistent-branch --json state >/dev/null 2>&1
+python3 "$TRANSLATOR" nonexistent-branch --json state >/dev/null 2>&1
 [[ "$?" == "2" ]] || fail "branch-not-in-cache should fall through"
 ok "branch not in cache: falls through"
 

@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-python3.12 scripts/ab-harness/sync-reflection-paired-formal.py
+python3 scripts/ab-harness/sync-reflection-paired-formal.py
 
-python3.12 - <<'PY'
+python3 - <<'PY'
 import json
 from pathlib import Path
 base = Path("scripts/ab-harness/fixtures")
@@ -17,7 +17,7 @@ assert len(casual) == 50
 print("[research-026-preflight] paired fixtures OK (50 tasks, matching order)")
 PY
 
-python3.12 - "$ROOT/scripts/ab-harness/fixtures/reflection_tasks_formal_paired_v1.json" \
+python3 - "$ROOT/scripts/ab-harness/fixtures/reflection_tasks_formal_paired_v1.json" \
   "$ROOT/scripts/ab-harness/fixtures/reflection_tasks_casual_v1.json" <<'PYEOF'
 import json, sys
 formal = json.loads(open(sys.argv[1]).read())
@@ -31,7 +31,7 @@ print("[research-026-preflight] observer subset check OK")
 PYEOF
 
 # Argparse smoke (no cloud).
-python3.12 scripts/ab-harness/run-cloud-v2.py --help >/dev/null
-python3.12 scripts/ab-harness/analyze-observer-effect.py --help >/dev/null
+python3 scripts/ab-harness/run-cloud-v2.py --help >/dev/null
+python3 scripts/ab-harness/analyze-observer-effect.py --help >/dev/null
 
 echo "[research-026-preflight] OK"

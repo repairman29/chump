@@ -77,7 +77,7 @@ TIMESTAMP=$(date +%s)
 # Validation: casual fixture task count and IDs must match the formal
 # fixture subset used. Enforces the paired-task design from the
 # preregistration §4.
-python3.12 - "$FORMAL_FIXTURE" "$CASUAL_FIXTURE" <<'PYEOF'
+python3 - "$FORMAL_FIXTURE" "$CASUAL_FIXTURE" <<'PYEOF'
 import json, sys
 formal = json.loads(open(sys.argv[1]).read())
 casual = json.loads(open(sys.argv[2]).read())
@@ -110,7 +110,7 @@ for TIER in $TIERS; do
 
     echo ""
     echo "[obs-effect] === $TIER × FORMAL framing ==="
-    python3.12 scripts/ab-harness/run-cloud-v2.py \
+    python3 scripts/ab-harness/run-cloud-v2.py \
         --fixture "$FORMAL_FIXTURE" \
         --tag "$FORMAL_TAG" \
         --model "$MODEL" \
@@ -119,7 +119,7 @@ for TIER in $TIERS; do
 
     echo ""
     echo "[obs-effect] === $TIER × CASUAL framing ==="
-    python3.12 scripts/ab-harness/run-cloud-v2.py \
+    python3 scripts/ab-harness/run-cloud-v2.py \
         --fixture "$CASUAL_FIXTURE" \
         --tag "$CASUAL_TAG" \
         --model "$MODEL" \
@@ -137,6 +137,6 @@ echo ""
 echo "[obs-effect] JSONLs written to $OUT_DIR (tag prefix 'research-026-'):"
 ls -1t "$OUT_DIR"/research-026-*-${TIMESTAMP}.jsonl 2>/dev/null | head -4
 echo ""
-echo "[obs-effect] Next: python3.12 scripts/ab-harness/analyze-observer-effect.py \\"
+echo "[obs-effect] Next: python3 scripts/ab-harness/analyze-observer-effect.py \\"
 echo "[obs-effect]        --formal-jsonl <formal.jsonl> --casual-jsonl <casual.jsonl> --cell A"
 echo "[obs-effect] Result memo: docs/eval/RESEARCH-026-observer-effect.md"

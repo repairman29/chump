@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """Build formal reflection fixture paired to casual_v1 (same task IDs + order).
 
 RESEARCH-026 observer-effect runs two harness passes (formal vs casual). The
@@ -9,7 +9,7 @@ containing exactly the formal tasks for the IDs in reflection_tasks_casual_v1.js
 in the same order as the casual file.
 
 Usage:
-    python3.12 scripts/ab-harness/sync-reflection-paired-formal.py
+    python3 scripts/ab-harness/sync-reflection-paired-formal.py
 """
 
 from __future__ import annotations
