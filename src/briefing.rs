@@ -2298,6 +2298,11 @@ gaps:
     /// This test seeds ONLY the database (no YAML mirror) and asserts the
     /// briefing renders fully populated — the architectural property that
     /// closes the 184-of-199-open-gaps degradation hole.
+    ///
+    /// INFRA-760-A is a reserved test-fixture ID (seeded below, in an
+    /// isolated tempdir): a real gap was once reserved under this same
+    /// ID in the shared fleet `state.db`, colliding with this fixture's
+    /// name. Never reuse `INFRA-760-A` for an actual gap.
     #[test]
     fn build_briefing_at_reads_from_state_db_when_no_yaml() {
         let dir = tempfile::tempdir().unwrap();

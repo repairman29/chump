@@ -106,10 +106,13 @@ validate_pr_title() {
         return 1
     fi
 
-    # Rule 2: require a canonical uppercase gap ID (DOMAIN-NNNN, e.g. INFRA-8594 or ZERO-WASTE-136)
-    # either as a leading prefix 'DOMAIN-NNNN:' or in a conventional commit title.
+    # Rule 2: require a canonical uppercase gap ID (DOMAIN-NNNN, e.g. INFRA-8594 or
+    # ZERO-WASTE-136), optionally with a single-letter decompose sub-gap suffix
+    # (DOMAIN-NNNN-A, e.g. INFRA-760-A per `chump gap decompose` — CLAUDE.md
+    # "Two-phase decomposition"), either as a leading prefix 'DOMAIN-NNNN:' or in
+    # a conventional commit title.
     if printf '%s
-' "$stripped_title" | grep -qE '^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]+([[:space:],+/]+[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]+)*:'; then
+' "$stripped_title" | grep -qE '^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]+(-[A-Z])?([[:space:],+/]+[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]+(-[A-Z])?)*:'; then
         printf 'VALID: leading gap ID prefix'
         return 0
     fi
@@ -117,7 +120,7 @@ validate_pr_title() {
     if printf '%s
 ' "$stripped_title" | grep -qE '^(feat|fix|chore|docs|test|refactor|perf|ci|build|style)(\([^)]*\))?!?:' \
        && printf '%s
-' "$stripped_title" | grep -qE '[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]+'; then
+' "$stripped_title" | grep -qE '[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]+(-[A-Z])?'; then
         printf 'VALID: conventional commit with canonical gap ID'
         return 0
     fi
@@ -149,6 +152,7 @@ done
 for case_spec in \
     "INFRA-8594: refuse branch-derived PR titles in pr-hygiene|fix/INFRA-8594-title-guard|repairman29|leading DOMAIN-NNNN:" \
     "ZERO-WASTE-136: orphan sweeper pagination|fix/ZERO-WASTE-136-sweeper|repairman29|hyphenated domain leading ID" \
+    "INFRA-760-A: document reserved test-fixture gap ID to prevent real-gap collision|chump/infra-760-a-fleet-2|repairman29|decompose sub-gap letter-suffix ID" \
     "fix(CREDIBLE-1574): use json_extract for closed PR state|fix/CREDIBLE-1574-cache|repairman29|conventional commit scoped gap ID" \
     "fix(coord): guard bot-merge dry-run staging (CREDIBLE-1584, INFRA-8594)|fix/CREDIBLE-1574-cache|repairman29|conventional commit trailing gap IDs" \
     "census: 2026-10-23 (unwired 1204, red 371)|census/2026-10-23|repairman29|allowlisted nightly census PR" \
