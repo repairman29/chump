@@ -416,7 +416,6 @@ _converge_stale_binaries() {
 # RESILIENT-408 / INFRA-8051: after install, verify the binary a worker's PATH
 # actually resolves `chump` to (not just $TARGET_BIN) embeds the deployed SHA.
 # Ported from the (dead, macOS-only) scripts/ops/auto-deploy.sh. Override hook:
-# CHUMP_WORKER_BIN. Disable: CHUMP_NODE_VERIFY_WORKER_BIN=0.
 _resolve_worker_bin() {
     if [[ -n "${CHUMP_WORKER_BIN:-}" ]]; then printf '%s' "$CHUMP_WORKER_BIN"; return 0; fi
     if [[ -x "$HOME/.cargo/bin/chump" ]]; then printf '%s' "$HOME/.cargo/bin/chump"; return 0; fi
@@ -427,7 +426,6 @@ _resolve_worker_bin() {
 
 _verify_worker_path_binary() {
     local want="$1"
-    [[ "${CHUMP_NODE_VERIFY_WORKER_BIN:-1}" == "0" ]] && return 0
     local wbin wsha
     wbin="$(_resolve_worker_bin)"
     wsha="$("$wbin" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || true)"
