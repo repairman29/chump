@@ -3268,6 +3268,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "vercel-resolve",
+            &["bash", "scripts/ci/test-vercel-resolve.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "infra-258-reaper-partial-delivery",
             &[
                 "bash",
