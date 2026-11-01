@@ -290,4 +290,71 @@ else
     fail "CREDIBLE-1609: target/ fallback did not emit kind=worker_dev_binary (ambient: $(cat "$C1609_DIR/repo/.chump-locks/ambient.jsonl" 2>/dev/null || echo none))"
 fi
 
+# ── Test 6 (INFRA-8658): chump-worker@.service is RENDERED (not raw-copied) ──
+# LIVE BUG: node-refresh's _install_worker_template_unit used `cp -f` to drop
+# the template straight into ~/.config/systemd/user, so __REPO_ROOT__ and
+# __HOME__ placeholders landed verbatim. `systemctl --user show` on the
+# installed unit then reports a bad-setting / unrendered WorkingDirectory even
+# though the process itself still runs (ExecStart's /bin/bash resolves the
+# literal path argument lazily). Fixed by sed-rendering before install, mirroring
+# render_worker_launcher()'s pattern in chump-node-install.sh.
+#
+# Self-contained fixture (the stock Test 1/4 mirrors don't carry the worker
+# template): seed a fresh mirror with scripts/dispatch/chump-worker@.service.
+WU_ORIGIN="$TMP/wu-origin.git"
+WU_MIRROR="$TMP/wu-mirror"
+git init --bare -q "$WU_ORIGIN"
+git clone -q "$WU_ORIGIN" "$WU_MIRROR"
+git -C "$WU_MIRROR" config user.email test@example.com
+git -C "$WU_MIRROR" config user.name "Test"
+mkdir -p "$WU_MIRROR/scripts/dispatch"
+cp "$REPO_ROOT/scripts/dispatch/chump-worker@.service" "$WU_MIRROR/scripts/dispatch/"
+echo "v1" > "$WU_MIRROR/f.txt"
+git -C "$WU_MIRROR" add -A
+git -C "$WU_MIRROR" commit -q -m "seed chump-worker@.service template"
+git -C "$WU_MIRROR" push -q origin HEAD:main
+WU_GREEN_SHA="$(git -C "$WU_MIRROR" rev-parse HEAD)"
+
+WU_HOME="$TMP/wu-home"
+mkdir -p "$WU_HOME/.cargo/bin"
+WU_AMBIENT="$TMP/wu-ambient.jsonl"
+
+env -u CHUMP_NODE_BIN \
+CHUMP_NODE_REPO="$WU_MIRROR" \
+NODE_AMBIENT="$WU_AMBIENT" \
+CHUMP_NODE_REFRESH_LOGDIR="$TMP/wu-logs" \
+CHUMP_NODE_REFRESH_TEST_GREEN_SHA="$WU_GREEN_SHA" \
+HOME="$WU_HOME" \
+PATH="$TMP/bin:/usr/bin:/bin" \
+    bash "$SCRIPT" > "$TMP/out6.log" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] || fail "INFRA-8658 fixture run exited $rc: $(cat "$TMP/out6.log")"
+
+WORKER_UNIT_INSTALLED="$WU_HOME/.config/systemd/user/chump-worker@.service"
+[ -f "$WORKER_UNIT_INSTALLED" ] || fail "INFRA-8658: node-refresh did not install chump-worker@.service into $WU_HOME/.config/systemd/user"
+
+if grep -qE '__REPO_ROOT__|__HOME__' "$WORKER_UNIT_INSTALLED"; then
+    fail "INFRA-8658: installed chump-worker@.service still contains unrendered __REPO_ROOT__/__HOME__ placeholder(s): $(grep -E '__REPO_ROOT__|__HOME__' "$WORKER_UNIT_INSTALLED")"
+else
+    ok "INFRA-8658: installed chump-worker@.service has no unrendered __REPO_ROOT__/__HOME__ placeholders"
+fi
+
+grep -qE "^WorkingDirectory=$WU_MIRROR\$" "$WORKER_UNIT_INSTALLED" \
+    || fail "INFRA-8658: installed chump-worker@.service missing rendered WorkingDirectory=$WU_MIRROR (got: $(grep '^WorkingDirectory=' "$WORKER_UNIT_INSTALLED"))"
+ok "INFRA-8658: WorkingDirectory rendered to the real repo root ($WU_MIRROR)"
+
+grep -qE "^EnvironmentFile=-$WU_HOME/\.chump/node\.env\$" "$WORKER_UNIT_INSTALLED" \
+    || fail "INFRA-8658: installed chump-worker@.service missing rendered EnvironmentFile under \$HOME (got: $(grep '^EnvironmentFile=' "$WORKER_UNIT_INSTALLED"))"
+ok "INFRA-8658: EnvironmentFile rendered to the real \$HOME"
+
+if command -v systemd-analyze >/dev/null 2>&1; then
+    if systemd-analyze verify "$WORKER_UNIT_INSTALLED" 2>&1 | grep -qE 'is not absolute|bad unit file setting'; then
+        fail "INFRA-8658: systemd-analyze verify flags the installed chump-worker@.service as a bad setting"
+    else
+        ok "INFRA-8658: systemd-analyze verify raises no bad-setting complaint on the installed unit"
+    fi
+else
+    ok "INFRA-8658: systemd-analyze not available on this host — skipping verify step"
+fi
+
 exit 0
