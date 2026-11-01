@@ -151,20 +151,41 @@ else
     fail "RESILIENT-2223: preflight was wedge-killed or wrong output: '$OUT'"
 fi
 
-# Short non-exempt command still hits the wedge timeout (rc 124 after retry)
 cat >"$FAKE_BIN/chump" <<'BIN'
+#!/usr/bin/env bash
+sleep 4
+echo "dispatch-done"
+exit 0
+BIN
+chmod +x "$FAKE_BIN/chump"
+OUT=$(CHUMP_REAL_BINARY="$FAKE_BIN/chump" \
+      CHUMP_INTERNAL_TIMEOUT=2 \
+      CHUMP_DOCTOR_PATH="$TMPDIR_BASE/scripts/dev/chump-binary-unwedge.sh" \
+      "$SHIM" dispatch GAP-1 2>/dev/null || true)
+if [[ "$OUT" == "dispatch-done" ]]; then
+    ok "RESILIENT-2223: dispatch exceeding CHUMP_INTERNAL_TIMEOUT is not killed"
+else
+    fail "RESILIENT-2223: dispatch was wedge-killed or wrong output: '$OUT'"
+fi
+
+# Short non-exempt command still hits the wedge timeout (rc 124 after retry)
+if command -v timeout >/dev/null 2>&1; then
+    cat >"$FAKE_BIN/chump" <<'BIN'
 #!/usr/bin/env bash
 sleep 60
 BIN
-chmod +x "$FAKE_BIN/chump"
-RC=0
-CHUMP_REAL_BINARY="$FAKE_BIN/chump" CHUMP_INTERNAL_TIMEOUT=1 \
-    CHUMP_DOCTOR_PATH="$TMPDIR_BASE/scripts/dev/chump-binary-unwedge.sh" \
-    "$SHIM" gap list >/dev/null 2>&1 || RC=$?
-if [[ "$RC" -eq 124 || "$RC" -eq 137 ]]; then
-    ok "hung short command still triggers wedge timeout (rc=$RC)"
+    chmod +x "$FAKE_BIN/chump"
+    RC=0
+    CHUMP_REAL_BINARY="$FAKE_BIN/chump" CHUMP_INTERNAL_TIMEOUT=1 \
+        CHUMP_DOCTOR_PATH="$TMPDIR_BASE/scripts/dev/chump-binary-unwedge.sh" \
+        "$SHIM" gap list >/dev/null 2>&1 || RC=$?
+    if [[ "$RC" -eq 124 || "$RC" -eq 137 ]]; then
+        ok "hung short command still triggers wedge timeout (rc=$RC)"
+    else
+        fail "hung short command: expected rc 124/137, got $RC"
+    fi
 else
-    fail "hung short command: expected rc 124/137, got $RC"
+    echo "SKIP: no timeout binary; hung-short-command check skipped"
 fi
 
 echo
