@@ -348,38 +348,46 @@ check_dirty_prs() {
 check_gap_drift() {
     # Use chump gap audit-priorities if available — it detects open-with-closed-pr,
     # double-encoded depends_on, missing-dep refs, etc.
+    #
+    # INFRA-8712: `gap audit-priorities` exits non-zero on ANY of several
+    # unrelated hygiene findings (vague_pickable AC, done_with_closed_pr —
+    # the latter is the NORMAL state for every shipped gap, not a drift
+    # signal). Keying this check off the command's overall exit code made
+    # it FAIL permanently and re-file this same investigate-gap-drift gap
+    # every cycle even when the actual drift metric (open_with_closed_pr —
+    # status=open with a closed_pr already set, I-2 in
+    # docs/process/GAP_REGISTRY_INVARIANTS.md) was zero. Parse the JSON
+    # directly and key off that field instead of the exit code.
     if ! command -v "$CHUMP_BIN" &>/dev/null; then
         register_check "gap-drift" "skip" "chump binary not found — skipping" ""
         return
     fi
 
-    local audit_out audit_rc
-    audit_rc=0
-    audit_out="$("$CHUMP_BIN" gap audit-priorities --json 2>/dev/null)" || audit_rc=$?
+    local audit_out
+    audit_out="$("$CHUMP_BIN" gap audit-priorities --json 2>/dev/null)"
 
-    if [[ "$audit_rc" -ne 0 ]]; then
-        register_check "gap-drift" "fail" \
-            "gap audit-priorities exited $audit_rc — drift detected" \
-            "$CHUMP_BIN gap audit-priorities  # review output; fix open-with-closed-pr via 'chump gap ship'"
-    else
-        local open_closed_count
-        open_closed_count="$(echo "$audit_out" | python3 -c "
+    local open_closed_count
+    open_closed_count="$(echo "$audit_out" | python3 -c "
 import sys,json
 try:
     d=json.load(sys.stdin)
     print(d.get('open_with_closed_pr',0))
 except:
-    print(0)
-" 2>/dev/null || echo 0)"
-        if [[ "$open_closed_count" -gt 0 ]]; then
-            register_check "gap-drift" "fail" \
-                "$open_closed_count gap(s) have status=open but closed_pr set" \
-                "$CHUMP_BIN gap audit-priorities  # then 'chump gap ship <ID>' per flagged gap"
-        else
-            register_check "gap-drift" "pass" \
-                "no gap drift detected" \
-                ""
-        fi
+    print('')
+" 2>/dev/null)"
+
+    if [[ -z "$open_closed_count" ]]; then
+        register_check "gap-drift" "fail" \
+            "gap audit-priorities produced no parseable open_with_closed_pr field" \
+            "$CHUMP_BIN gap audit-priorities --json  # inspect raw output"
+    elif [[ "$open_closed_count" -gt 0 ]]; then
+        register_check "gap-drift" "fail" \
+            "$open_closed_count gap(s) have status=open but closed_pr set" \
+            "$CHUMP_BIN gap audit-priorities  # then 'chump gap ship <ID>' per flagged gap"
+    else
+        register_check "gap-drift" "pass" \
+            "no gap drift detected" \
+            ""
     fi
 }
 
