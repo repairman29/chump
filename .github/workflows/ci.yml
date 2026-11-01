@@ -1822,6 +1822,9 @@ jobs:
           CHUMP_CENSUS_ALLOW_GROWTH: ${{ startsWith(github.head_ref, 'census/') && '1' || '0' }}
         run: bash scripts/ci/test-census-shrink-only.sh
 
+      - name: mutants organ posts cargo-mutants records (RESILIENT-2219)
+        run: bash scripts/ci/test-mutants-organ.sh
+
       - name: structural preflight subset on the bot-merge push path (RESILIENT-1622)
         # Proves `chump preflight --structural` exists + lists the seven no-build
         # gates, bot-merge runs it before push, the pre-push hook runs it under
