@@ -599,26 +599,50 @@ fn scan_readers(
         files
     };
 
-    for writer in writers {
-        let writer_keys: HashSet<&str> = writer.keys.iter().map(|s| s.as_str()).collect();
-
+    // One pass over the tree: read each file once and extract consumed keys
+    // once per writer kind present, instead of once per (writer, file).
+    let kind_idx = |k: &WriterKind| match k {
+        WriterKind::JsonFile => 0usize,
+        WriterKind::Struct => 1,
+        WriterKind::AmbientEvent => 2,
+    };
+    let mut kinds_present: Vec<(usize, WriterKind)> = Vec::new();
+    for w in writers {
+        let i = kind_idx(&w.kind);
+        if !kinds_present.iter().any(|(j, _)| *j == i) {
+            kinds_present.push((i, w.kind.clone()));
+        }
+    }
+    let mut file_keys: Vec<(String, [Vec<String>; 3])> = Vec::new();
+    if !writers.is_empty() {
         for fpath in &all_files {
             let content = match std::fs::read_to_string(fpath) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
-
             let rel_path = fpath
                 .strip_prefix(root)
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| fpath.to_string_lossy().to_string());
+            let mut per_kind: [Vec<String>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+            for (i, kind) in &kinds_present {
+                per_kind[*i] = extract_consumed_keys(&content, kind);
+            }
+            file_keys.push((rel_path, per_kind));
+        }
+    }
 
+    for writer in writers {
+        let writer_keys: HashSet<&str> = writer.keys.iter().map(|s| s.as_str()).collect();
+        let wi = kind_idx(&writer.kind);
+
+        for (rel_path, per_kind) in &file_keys {
             // Don't match the writer against itself
-            if writer.path.starts_with(&rel_path) || rel_path.starts_with(&writer.path) {
+            if writer.path.starts_with(rel_path.as_str()) || rel_path.starts_with(&writer.path) {
                 continue;
             }
 
-            let consumed_keys = extract_consumed_keys(&content, &writer.kind);
+            let consumed_keys = per_kind[wi].clone();
 
             if consumed_keys.is_empty() {
                 continue;
@@ -655,7 +679,7 @@ fn scan_readers(
             }
 
             readers.push(ReaderEntry {
-                path: rel_path,
+                path: rel_path.clone(),
                 writer: writer.path.clone(),
                 expected_keys: consumed_keys,
                 missing_keys,
@@ -1250,5 +1274,136 @@ pub fn run(args: &[String]) -> i32 {
         .ok();
         writeln!(err, "[contract-scan]   before either PR merged.").ok();
         1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pre-RESILIENT-1900 algorithm: re-read and re-parse every file per writer.
+    fn scan_readers_reference(
+        root: &Path,
+        writers: &[WriterEntry],
+    ) -> (Vec<ReaderEntry>, Vec<Mismatch>) {
+        let mut readers = Vec::new();
+        let mut mismatches = Vec::new();
+        let mut all_files = collect_files(root, &["src", "crates"], &[".rs"], None);
+        all_files.extend(collect_files(root, &["scripts"], &[".sh", ".py"], None));
+        for writer in writers {
+            let writer_keys: HashSet<&str> = writer.keys.iter().map(|s| s.as_str()).collect();
+            for fpath in &all_files {
+                let Ok(content) = std::fs::read_to_string(fpath) else {
+                    continue;
+                };
+                let rel_path = fpath
+                    .strip_prefix(root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| fpath.to_string_lossy().to_string());
+                if writer.path.starts_with(&rel_path) || rel_path.starts_with(&writer.path) {
+                    continue;
+                }
+                let consumed_keys = extract_consumed_keys(&content, &writer.kind);
+                if consumed_keys.is_empty() {
+                    continue;
+                }
+                let consumed_set: HashSet<&str> =
+                    consumed_keys.iter().map(|s| s.as_str()).collect();
+                if writer_keys.intersection(&consumed_set).next().is_none() {
+                    continue;
+                }
+                let missing_keys: Vec<String> = consumed_keys
+                    .iter()
+                    .filter(|k| !writer_keys.contains(k.as_str()))
+                    .cloned()
+                    .collect();
+                let extra_keys: Vec<String> = writer
+                    .keys
+                    .iter()
+                    .filter(|k| !consumed_set.contains(k.as_str()))
+                    .cloned()
+                    .collect();
+                if !missing_keys.is_empty() {
+                    mismatches.push(Mismatch {
+                        writer: writer.path.clone(),
+                        reader: rel_path.clone(),
+                        missing_keys: missing_keys.clone(),
+                        extra_keys: extra_keys.clone(),
+                    });
+                }
+                readers.push(ReaderEntry {
+                    path: rel_path,
+                    writer: writer.path.clone(),
+                    expected_keys: consumed_keys,
+                    missing_keys,
+                    extra_keys,
+                });
+            }
+        }
+        (readers, mismatches)
+    }
+
+    fn fmt_r(r: &[ReaderEntry]) -> Vec<String> {
+        r.iter().map(|x| format!("{x:?}")).collect()
+    }
+    fn fmt_m(m: &[Mismatch]) -> Vec<String> {
+        m.iter().map(|x| format!("{x:?}")).collect()
+    }
+
+    #[test]
+    fn scan_readers_single_pass_matches_reference() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        for d in ["scripts", "src", "crates/x/src"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        let w = |p: &str, c: &str| std::fs::write(root.join(p), c).unwrap();
+        w("scripts/w1.py", "x");
+        w(
+            "scripts/r1.py",
+            "d.get(\"state\"); d.get(\"last_status\"); d[\"updated_at\"]",
+        );
+        w("scripts/r2.sh", "echo none");
+        w(
+            "src/r3.rs",
+            "extract_json_string(raw, \"state\"); j.get(\"bogus\")",
+        );
+        w(
+            "crates/x/src/r4.rs",
+            "let a = m[\"alpha\"]; m.get(\"state\")",
+        );
+        w("scripts/w2.sh", "y");
+
+        let kw = |p: &str, k: WriterKind, keys: &[&str]| WriterEntry {
+            path: p.into(),
+            kind: k,
+            keys: keys.iter().map(|s| s.to_string()).collect(),
+        };
+        let writers = vec![
+            kw(
+                "scripts/w1.py",
+                WriterKind::JsonFile,
+                &["state", "updated_at"],
+            ),
+            kw(
+                "scripts/w2.sh",
+                WriterKind::AmbientEvent,
+                &["alpha", "beta"],
+            ),
+            kw("src/r3.rs", WriterKind::Struct, &["alpha", "state"]),
+            kw("scripts/missing.py", WriterKind::JsonFile, &["zzz"]),
+        ];
+
+        let (r_new, m_new) = scan_readers(root, &writers, None);
+        let (r_ref, m_ref) = scan_readers_reference(root, &writers);
+        assert!(
+            !r_ref.is_empty() && !m_ref.is_empty(),
+            "fixture must exercise findings"
+        );
+        assert_eq!(fmt_r(&r_new), fmt_r(&r_ref));
+        assert_eq!(fmt_m(&m_new), fmt_m(&m_ref));
+
+        let (r0, m0) = scan_readers(root, &[], None);
+        assert!(r0.is_empty() && m0.is_empty());
     }
 }
