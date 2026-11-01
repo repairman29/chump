@@ -560,8 +560,9 @@ process_worktree() {
     case "$wt_path" in
         */\.claude/worktrees/*) ;;
         /tmp/chump-*) ;;
-        /tmp/*)
+        /tmp/*|/private/tmp/*)
             [[ "$wt_path" == "$REPO_ROOT" ]] && return 0
+            # RESILIENT-128: macOS /private/tmp/* is the same dir as /tmp/*.
             # INFRA-2339: accept any /tmp/* when it comes from a broad-scan or tmp_chump source.
             case "$wt_source" in
                 tmp_chump|git-list|rescue-pattern|tmp-age) ;;
@@ -1282,7 +1283,7 @@ while IFS= read -r line; do
         _src="claude_worktrees"
         case "$current_path" in
             /tmp/chump-*) _src="tmp_chump" ;;
-            /tmp/*)       _src="git-list" ;;
+            /tmp/*|/private/tmp/*) _src="git-list" ;;
         esac
         process_worktree "$current_path" "$current_branch" "$_src" "$current_prunable"
         current_path=""; current_branch=""; current_prunable=0
@@ -1299,7 +1300,7 @@ done <<< "$WTLIST"
 _final_src="claude_worktrees"
 case "$current_path" in
     /tmp/chump-*) _final_src="tmp_chump" ;;
-    /tmp/*)       _final_src="git-list" ;;
+    /tmp/*|/private/tmp/*) _final_src="git-list" ;;
 esac
 process_worktree "$current_path" "$current_branch" "$_final_src" "$current_prunable"
 
