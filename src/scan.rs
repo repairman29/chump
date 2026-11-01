@@ -550,6 +550,7 @@ mod infra8043_tests {
     /// P0/P1 row (MISSION-045); it files at P2 instead.
     #[test]
     fn file_gap_never_writes_unanchored_p0_p1() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
         let dir = tempfile::tempdir().unwrap();
         let store = gap_store::GapStore::open(dir.path()).unwrap();

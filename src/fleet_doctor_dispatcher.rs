@@ -320,6 +320,7 @@ mod tests {
     /// 3. Running the test a second time does not create a duplicate gap
     #[test]
     fn synthetic_fail_triggers_gap_filing_with_dedup() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         let dir = tempdir().unwrap();
         let repo_root = dir.path();
 

@@ -229,6 +229,7 @@ mod tests {
 
     #[test]
     fn infra566_empty_snapshot() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         let tmp = tempdir();
         let snap = snapshot(&tmp);
         assert_eq!(snap.shipped_1h, 0);
