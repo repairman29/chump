@@ -87,6 +87,14 @@ impl FileTestMapConfig {
                 "src/commands/gap_reserve*.rs",
                 &["scripts/ci/test-gap-reserve-concurrency.sh"],
             ),
+            (
+                "scripts/dispatch/worker.sh",
+                &["scripts/ci/test-worker-disk-gate-before-pick.sh"],
+            ),
+            (
+                "scripts/lib/disk-check.sh",
+                &["scripts/ci/test-worker-disk-gate-before-pick.sh"],
+            ),
             ("src/acp.rs", &["scripts/ci/test-acp-real-clients.sh"]),
             (
                 "src/acp_server.rs",

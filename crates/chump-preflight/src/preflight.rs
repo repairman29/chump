@@ -5434,5 +5434,12 @@ mod tests {
         );
         let docs = vec!["docs/ROADMAP.md".to_string()];
         assert!(select_shell_tests_for_paths(&docs).is_empty());
+        for gate_file in ["scripts/dispatch/worker.sh", "scripts/lib/disk-check.sh"] {
+            assert_eq!(
+                select_shell_tests_for_paths(&[gate_file.to_string()]),
+                vec!["scripts/ci/test-worker-disk-gate-before-pick.sh".to_string()],
+                "{gate_file}"
+            );
+        }
     }
 }

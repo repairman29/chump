@@ -1283,6 +1283,20 @@ print(sum(1 for g in gaps if "corrective" in (g.get("title") or "").lower()))
         done || true
     fi
 
+    # INFRA-975 / RESILIENT-2220: disk-pressure gate. Runs BEFORE the picker,
+    # because the picker claims (leases) the gap it returns; pausing after the
+    # pick leaked one 4h lease per 5-minute retry while disk_critical.
+    # shellcheck source=../lib/disk-check.sh
+    if [ -r "$REPO_ROOT/scripts/lib/disk-check.sh" ]; then
+        # shellcheck disable=SC1091
+        source "$REPO_ROOT/scripts/lib/disk-check.sh"
+        if ! chump_disk_check_pause_worker; then
+            log "worker paused on disk_critical — sleeping 5min then re-checking"
+            sleep "${CHUMP_DISK_PAUSE_SLEEP_S:-300}"
+            continue
+        fi
+    fi
+
     # ── Pick a gap ────────────────────────────────────────────────────────
     if [[ -n "${CHUMP_GAP_API_URL:-}" ]]; then
         # RESILIENT-1013: batphone mode — no local gap store required. Pull +
@@ -1592,22 +1606,6 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     if [[ -n "${_saved_domain:-}" ]]; then
         FLEET_DOMAIN_FILTER="$_saved_domain"
         _saved_domain=""
-    fi
-
-    # INFRA-975: disk-pressure gate. After picker has identified a gap but
-    # BEFORE we commit any resources (worktree, cargo, lease), pause the
-    # worker if the filesystem is critically full. Without this gate, a
-    # runaway parallel fleet can fill /private/tmp to <1Gi (we observed
-    # this 2026-05-13) and every claim/build/test fails opaquely.
-    # shellcheck source=../lib/disk-check.sh
-    if [ -r "$REPO_ROOT/scripts/lib/disk-check.sh" ]; then
-        # shellcheck disable=SC1091
-        source "$REPO_ROOT/scripts/lib/disk-check.sh"
-        if ! chump_disk_check_pause_worker; then
-            log "worker paused on disk_critical — sleeping 5min then re-checking"
-            sleep 300
-            continue
-        fi
     fi
 
     # RESILIENT-179: publish the picked gap to the lifetime heartbeat daemon
