@@ -13,6 +13,7 @@
 #   1  one or more checks failed
 
 set -euo pipefail
+PY="$(command -v python3.12 || command -v python3)"
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 HARNESS="$REPO_ROOT/scripts/ab-harness"
@@ -49,25 +50,25 @@ echo "=== RESEARCH-027 together-routing smoke test ==="
 echo
 
 echo "--- together_free_models.py ---"
-check "module importable" python3.12 -c "import sys; sys.path.insert(0,'$HARNESS'); import together_free_models"
+check "module importable" "$PY" -c "import sys; sys.path.insert(0,'$HARNESS'); import together_free_models"
 check_output "recommend agent large" "together:" \
-    python3.12 "$HARNESS/together_free_models.py" --recommend agent
+    "$PY" "$HARNESS/together_free_models.py" --recommend agent
 check_output "recommend judge large" "together:" \
-    python3.12 "$HARNESS/together_free_models.py" --recommend judge
+    "$PY" "$HARNESS/together_free_models.py" --recommend judge
 check_output "--list shows free models" "free" \
-    python3.12 "$HARNESS/together_free_models.py" --list
+    "$PY" "$HARNESS/together_free_models.py" --list
 
 echo
 echo "--- run-cloud-v2.py --agent-provider flag presence ---"
 check_output "--help shows --agent-provider flag" "agent-provider" \
-    python3.12 "$HARNESS/run-cloud-v2.py" --help
+    "$PY" "$HARNESS/run-cloud-v2.py" --help
 check_output "--help shows --agent-model flag" "agent-model" \
-    python3.12 "$HARNESS/run-cloud-v2.py" --help
+    "$PY" "$HARNESS/run-cloud-v2.py" --help
 check_output "--help shows together choice" "together" \
-    python3.12 "$HARNESS/run-cloud-v2.py" --help
+    "$PY" "$HARNESS/run-cloud-v2.py" --help
 # Verify provider flag resolves correctly via python import check
 check_output "provider resolution logic: together→together:model" "agent_provider=together model=together:" \
-    python3.12 -c "
+    "$PY" -c "
 import argparse
 ap = argparse.ArgumentParser()
 ap.add_argument('--fixture'); ap.add_argument('--tag')
@@ -91,15 +92,15 @@ print(f'agent_provider={args.agent_provider} model={model}')
 echo
 echo "--- run-binary-ablation.py --agent-provider dry-run ---"
 check "--help accepts --agent-provider" \
-    python3.12 "$HARNESS/run-binary-ablation.py" --help
+    "$PY" "$HARNESS/run-binary-ablation.py" --help
 check_output "together provider dry-run output" "together\|OPENAI_API_BASE\|agent_provider" \
-    python3.12 "$HARNESS/run-binary-ablation.py" \
+    "$PY" "$HARNESS/run-binary-ablation.py" \
         --module belief_state --n-per-cell 1 \
         --agent-provider together \
         --agent-model "meta-llama/Llama-3.3-70B-Instruct-Turbo" \
         --dry-run 2>&1 || true
 check_output "anthropic provider dry-run (default)" "dry.run\|belief_state" \
-    python3.12 "$HARNESS/run-binary-ablation.py" \
+    "$PY" "$HARNESS/run-binary-ablation.py" \
         --module belief_state --n-per-cell 1 \
         --dry-run 2>&1 || true
 
