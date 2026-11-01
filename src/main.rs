@@ -349,6 +349,8 @@ mod embed_inprocess;
 
 mod metrics;
 mod metrics_registry;
+#[cfg(test)]
+mod test_env; // ZERO-WASTE-152: CHUMP_STATE_DB isolation for tests
 
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1668,6 +1668,7 @@ mod tests {
 
     #[test]
     fn test_l5_slo2_parked_outcome_does_not_breach() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         let tmp = tempdir();
         let gs = crate::gap_store::GapStore::open(&tmp).expect("open store");
         let old_created = current_unix() as i64 - 40 * 24 * 3600;

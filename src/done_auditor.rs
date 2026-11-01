@@ -241,6 +241,7 @@ mod tests {
     // sweep never reaches `pr_ac_coverage::run` (no network in unit tests).
     #[test]
     fn cursor_persists_and_second_run_processes_disjoint_ids() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         unsafe {
             std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
         }

@@ -138,6 +138,7 @@ mod tests {
 
     #[test]
     fn file_gap_with_dedup_creates_new_gap() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         let dir = tempdir().unwrap();
         let repo_root = dir.path();
 
@@ -162,6 +163,7 @@ mod tests {
 
     #[test]
     fn file_gap_with_dedup_returns_already_open_on_second_call() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         let dir = tempdir().unwrap();
         let repo_root = dir.path();
 
@@ -188,6 +190,7 @@ mod tests {
 
     #[test]
     fn file_gap_with_dedup_creates_separate_gaps_for_different_checks() {
+        let _db_isolation = crate::test_env::isolate_state_db();
         let dir = tempdir().unwrap();
         let repo_root = dir.path();
 
