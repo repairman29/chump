@@ -2240,6 +2240,11 @@ W19_DOC_AMB="$TMP/w19-doc-amb.jsonl"
     && ok "RESILIENT-1559: check_core_organs_not_neutered detects ExecStart=/bin/true drop-in and emits core_organ_neutered" \
     || bad "RESILIENT-1559: check_core_organs_not_neutered missed ExecStart=/bin/true drop-in"
 
+# RESILIENT-2219: the mutants organ's record shape is accepted by the parser above.
+bash "$REPO_ROOT/scripts/ci/test-mutants-organ.sh" >/dev/null 2>&1 \
+    && ok "RESILIENT-2219: mutants organ record accepted by mutant_record_satisfies; stale patch-id rejected" \
+    || bad "RESILIENT-2219: scripts/ci/test-mutants-organ.sh failed"
+
 echo
 echo "=== test-arm-policy: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]

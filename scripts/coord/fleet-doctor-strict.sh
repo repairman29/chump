@@ -2034,6 +2034,42 @@ check_cargo_nextest() {
     fi
 }
 
+# ── Check 24 (RESILIENT-2219): cargo-mutants installed + mutants organ alive ──
+# Without cargo-mutants the mutants organ can never produce the record the review
+# organ requires, so every ship-gate-file PR is held on review-needs-mutants
+# forever. RED when cargo-mutants is absent, or when a PR has carried
+# review-needs-mutants for >24h while no mutants_organ_tick heartbeat landed in
+# that window. Heartbeat/label state is read from ambient + the github cache.
+check_mutants_organ() {
+    if [[ -n "${PREFIX:-}" && "${PREFIX}" == *com.termux* ]]; then
+        register_check "mutants-organ" "skip" "Termux host does not run cargo-mutants" ""
+        return
+    fi
+    local cargo_home="${CARGO_HOME:-${HOME:-/root}/.cargo}"
+    if ! command -v cargo-mutants >/dev/null 2>&1 && [[ ! -x "$cargo_home/bin/cargo-mutants" ]]; then
+        register_check "mutants-organ" "fail" \
+            "cargo-mutants absent from PATH and $cargo_home/bin (RESILIENT-2219)" \
+            "run 'bash scripts/setup/chump-fleet-bootstrap.sh' or 'cargo install cargo-mutants --locked'"
+        return
+    fi
+    local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" cutoff stuck="" beat=""
+    cutoff="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-24H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+    if [[ -n "$cutoff" && -f "$amb" ]]; then
+        beat="$(grep '"kind":"mutants_organ_tick"' "$amb" 2>/dev/null | tail -1 | sed -E 's/.*"ts":"([^"]+)".*/\1/')"
+    fi
+    if [[ -n "$cutoff" ]] && command -v gh >/dev/null 2>&1; then
+        stuck="$(gh pr list --state open --label review-needs-mutants --json number,updatedAt \
+            --jq "[.[] | select(.updatedAt < \"$cutoff\")] | length" 2>/dev/null || true)"
+    fi
+    if [[ "${stuck:-0}" =~ ^[0-9]+$ ]] && (( ${stuck:-0} > 0 )) && [[ -z "$beat" || "$beat" < "$cutoff" ]]; then
+        register_check "mutants-organ" "fail" \
+            "${stuck} PR(s) carry review-needs-mutants >24h and no mutants_organ_tick heartbeat in 24h (RESILIENT-2219)" \
+            "systemctl --user enable --now chump-mutants-organ.timer ; journalctl --user -u chump-mutants-organ"
+    else
+        register_check "mutants-organ" "pass" "cargo-mutants installed; no review-needs-mutants PR starved of the mutants organ" ""
+    fi
+}
+
 # ── Check 23 (INFRA-8589): installed systemd units carry no foreign host literals ──
 # Scans installed units in ${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user on a
 # Linux host for non-comment lines containing /home/<other-user>, /Users/<name>,
@@ -2437,6 +2473,7 @@ check_load_aware_deadman
 check_single_store
 check_cargo_storage_fixed_disk
 check_cargo_nextest
+check_mutants_organ
 check_installed_unit_host_literals
 check_organ_home_placement
 check_core_organs_not_neutered

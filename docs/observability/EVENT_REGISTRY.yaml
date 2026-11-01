@@ -15107,3 +15107,36 @@ events:
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
 
+
+  - kind: mutants_organ_tick
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/mutants-organ-tick.sh (RESILIENT-2219)
+    emitter_paths: [scripts/dispatch/mutants-organ-tick.sh]
+    trigger: >
+      Emitted once per mutants-organ tick (even with no review-needs-mutants PR) as
+      the liveness heartbeat fleet-doctor's mutants-organ check reads.
+    consumers: [scripts/coord/fleet-doctor-strict.sh]
+    fields_required: [ts, kind, seen, posted, skipped]
+
+  - kind: mutants_record_posted
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/mutants-organ-tick.sh (RESILIENT-2219)
+    emitter_paths: [scripts/dispatch/mutants-organ-tick.sh]
+    trigger: >
+      Emitted when the mutants organ posts a cargo-mutants record comment
+      (patch-id + KILLED/SURVIVED lines) on a review-needs-mutants PR.
+    consumers: [scripts/dispatch/review-organ-tick.sh]
+    fields_required: [ts, kind, pr, patch_id]
+
+  - kind: mutants_organ_skipped
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/mutants-organ-tick.sh (RESILIENT-2219)
+    emitter_paths: [scripts/dispatch/mutants-organ-tick.sh]
+    trigger: >
+      Emitted when the mutants organ cannot produce a record: cargo-mutants missing,
+      the PR's gate files are not Rust, or cargo-mutants yielded no outcomes.
+    consumers: [scripts/coord/fleet-doctor-strict.sh]
+    fields_required: [ts, kind, reason]
