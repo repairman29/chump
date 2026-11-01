@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """
 gap-architect.py — LLM-driven sprint planning agent for Chump.
 
@@ -7,10 +7,10 @@ deduplicates against existing open gaps, assigns correct IDs, appends to
 docs/gaps.yaml, and ships a PR.
 
 Usage:
-  python3.12 scripts/coord/gap-architect.py                # full run: generate + file + ship
-  python3.12 scripts/coord/gap-architect.py --dry-run      # print gaps, don't write or ship
-  python3.12 scripts/coord/gap-architect.py --count 30     # request 30 gaps instead of 20
-  python3.12 scripts/coord/gap-architect.py --no-ship      # write to gaps.yaml but don't PR
+  python3 scripts/coord/gap-architect.py                # full run: generate + file + ship
+  python3 scripts/coord/gap-architect.py --dry-run      # print gaps, don't write or ship
+  python3 scripts/coord/gap-architect.py --count 30     # request 30 gaps instead of 20
+  python3 scripts/coord/gap-architect.py --no-ship      # write to gaps.yaml but don't PR
 """
 
 from __future__ import annotations

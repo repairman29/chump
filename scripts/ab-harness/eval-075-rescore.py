@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """EVAL-075: re-score EVAL-071 JSONL with refusal_with_instruction axis.
 
 Usage:

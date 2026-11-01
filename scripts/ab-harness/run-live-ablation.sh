@@ -152,7 +152,7 @@ echo ""
 SMOKE_OUT_DIR="${REPO_ROOT}/logs/ab/smoke-$(date +%s)"
 mkdir -p "${SMOKE_OUT_DIR}"
 
-python3.12 scripts/ab-harness/run-binary-ablation.py \
+python3 scripts/ab-harness/run-binary-ablation.py \
     --module "${MODULE}" \
     --n-per-cell 3 \
     --use-llm-judge \
@@ -168,7 +168,7 @@ if [[ -z "${SMOKE_JSONL}" ]]; then
 fi
 
 # Gate: any exit_code != 0 or output_chars <= 50 → abort full sweep
-python3.12 - <<PYEOF "${SMOKE_JSONL}"
+python3 - <<PYEOF "${SMOKE_JSONL}"
 import json, sys
 path = sys.argv[1]
 rows = [json.loads(l) for l in open(path) if l.strip()]
@@ -196,13 +196,13 @@ PYEOF
 
 echo ""
 echo "[run-live-ablation] === PHASE 2: FULL SWEEP (n=${N_PER_CELL}) ==="
-echo "[run-live-ablation] Estimated cost: ~\$$(python3.12 -c "print(f'{${N_PER_CELL} * 2 * 0.005:.2f}')") (binary) + ~\$$(python3.12 -c "print(f'{${N_PER_CELL} * 2 * 0.0008:.2f}')") (LLM judge) = ~\$$(python3.12 -c "print(f'{${N_PER_CELL} * 2 * 0.0058:.2f}')") via Together"
+echo "[run-live-ablation] Estimated cost: ~\$$(python3 -c "print(f'{${N_PER_CELL} * 2 * 0.005:.2f}')") (binary) + ~\$$(python3 -c "print(f'{${N_PER_CELL} * 2 * 0.0008:.2f}')") (LLM judge) = ~\$$(python3 -c "print(f'{${N_PER_CELL} * 2 * 0.0058:.2f}')") via Together"
 echo ""
 
 FULL_OUT_DIR="${REPO_ROOT}/logs/ab"
 mkdir -p "${FULL_OUT_DIR}"
 
-python3.12 scripts/ab-harness/run-binary-ablation.py \
+python3 scripts/ab-harness/run-binary-ablation.py \
     --module "${MODULE}" \
     --n-per-cell "${N_PER_CELL}" \
     --use-llm-judge \

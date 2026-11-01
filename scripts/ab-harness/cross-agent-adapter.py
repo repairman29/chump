@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """cross-agent-adapter.py — AgentRunner interface + per-agent adapters.
 
 Provides a uniform interface so Chump's run-cloud-v2.py scoring stack can
@@ -13,7 +13,7 @@ scores as did_attempt=False, hallucinated_tools=False, is_correct=False,
 which is the correct signal for "agent not available on this machine."
 
 Usage (standalone harness):
-    python3.12 scripts/ab-harness/cross-agent-adapter.py \\
+    python3 scripts/ab-harness/cross-agent-adapter.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --agents chump goose aider claude-code \\
         --model claude-haiku-4-5 \\

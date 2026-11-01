@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """EVAL-071 analysis — hallucinated-tool inflation across non-Anthropic models.
 
 Computes per-model:

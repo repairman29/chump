@@ -19,11 +19,11 @@ fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 ok "scripts/auto-docs/roadmap-update-agent.py exists and is executable"
 
 # Python compiles
-python3.12 -m py_compile "$AGENT" 2>&1 || fail "agent script has syntax errors"
+python3 -m py_compile "$AGENT" 2>&1 || fail "agent script has syntax errors"
 ok "agent script compiles"
 
 # Help works
-python3.12 "$AGENT" --help 2>&1 | grep -q "dry-run" || fail "--help broken"
+python3 "$AGENT" --help 2>&1 | grep -q "dry-run" || fail "--help broken"
 ok "--help works"
 
 # Prompt-only mode produces a prompt without calling LLM
@@ -55,7 +55,7 @@ cat > "$TMP/gaps.json" <<'EOF'
 ]
 EOF
 
-PROMPT=$(python3.12 "$AGENT" --prompt-only \
+PROMPT=$(python3 "$AGENT" --prompt-only \
     --fixture-roadmap "$TMP/roadmap.md" \
     --fixture-log "$TMP/log.txt" \
     --fixture-gaps "$TMP/gaps.json" 2>&1)
@@ -73,7 +73,7 @@ ok "default model is claude-haiku-4-5-20251001"
 
 # --high-fidelity overrides to sonnet
 grep -qE 'claude-sonnet-4-6.*high_fidelity|high_fidelity.*claude-sonnet-4-6' "$AGENT" \
-    || python3.12 -c "
+    || python3 -c "
 import re
 src = open('$AGENT').read()
 # Must have a line like: model = ... if args.high_fidelity ... claude-sonnet ...
@@ -95,7 +95,7 @@ for kind in roadmap_update_proposal_cost roadmap_update_proposal_opened \
             roadmap_update_proposal_failed roadmap_update_proposal_skipped; do
     grep -q "\"$kind\"\|'$kind'\|emit(\"$kind\"" "$AGENT" \
         || grep -q "emit($kind\|\"$kind\"" "$AGENT" \
-        || python3.12 -c "
+        || python3 -c "
 src = open('$AGENT').read()
 assert '$kind' in src, '$kind not emitted'
 " 2>&1 || fail "agent does not emit kind=$kind"
@@ -126,7 +126,7 @@ ok "plist has RunAtLoad=false"
 
 # Idempotency: --force flag exists
 grep -q '"--force"\|action="store_true".*force' "$AGENT" \
-    || python3.12 -c "
+    || python3 -c "
 src = open('$AGENT').read()
 assert '\"--force\"' in src or 'force' in src
 " 2>&1 || fail "agent missing --force flag"
