@@ -18,7 +18,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow      = "1.0"
-async-nats  = "0.50"
+async-nats  = "0.51"
 chrono      = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 chump-ambient-cli = { path = "../ambient-cli" }
 glob        = "0.3"
