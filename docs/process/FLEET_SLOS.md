@@ -13,11 +13,34 @@ Check current vs. target: `chump health --slo-check`
 
 These SLOs guard the baseline ability to run and ship at all.
 
-| SLO ID | Target | Measurement source | Escalation |
-|--------|--------|--------------------|------------|
-| L1-SLO-1 | `silent_agent` events = 0 / week | `ambient.jsonl` 7d scan | Drop fleet to 2 workers; investigate picker/lease race |
-| L1-SLO-2 | `orphan_claude` events = 0 / day | `ambient.jsonl` today scan | Kill orphans with `pkill -f 'claude -p'`; check launchd restarter |
-| L1-SLO-3 | auto-restart success rate > 95 % | ratio of `auto_restart_ok` / (`auto_restart_ok` + `auto_restart_fail`) in `ambient.jsonl` 24h | File gap to repair launchd plist; check for syspolicyd block |
+**Window classification (RESILIENT-1740).** Every SLO's `chump health --slo-check --json`
+entry carries a `window_kind` of `instant` or `rolling`:
+
+- **`instant`** — the breach reflects a *live, current* condition (an orphan
+  process that exists right now, a dead auth probe, a heartbeat gap in the
+  last 15 min). Safe to halt-class: pausing the fleet can only help, and the
+  condition clears on its own once the live signal goes away.
+- **`rolling`** — the breach is a cumulative count over a multi-day/week
+  window. A single past incident keeps it breached for the full window even
+  after the condition that caused it is long gone — halting on it is a
+  **deadlock**, not a safety stop (the pause itself cannot make the historical
+  count go to zero faster). `ci-health-gate.sh` (`.chump/fleet-paused`) never
+  halts on a `rolling` breach alone; it emits `kind=slo_chronic_breach`
+  instead, UNLESS the underlying signal also fired within a short live
+  window (e.g. `CHUMP_CI_HEALTH_SILENT_AGENT_LIVE_WINDOW_S`, default 30 min),
+  in which case the breach is promoted to halt-class because it's acute
+  right now, not just an echo.
+
+Only `L1-*` rows are ever halt-class at all (L2+ breaches are always
+file-a-gap/observable, see RESILIENT-146). Within L1, only `instant` rows —
+or a `rolling` row with a live signal inside the window above — may pause
+the fleet.
+
+| SLO ID | Target | Window kind | Measurement source | Escalation |
+|--------|--------|-------------|--------------------|------------|
+| L1-SLO-1 | `silent_agent` events = 0 / week | **rolling** (7d) — halt-class only with a live `silent_agent` in the last 30 min; otherwise `kind=slo_chronic_breach` | `ambient.jsonl` 7d scan | Drop fleet to 2 workers; investigate picker/lease race |
+| L1-SLO-2 | `orphan_claude` events = 0 / day | **instant** — reflects orphan processes that exist today, always halt-class | `ambient.jsonl` today scan | Kill orphans with `pkill -f 'claude -p'`; check launchd restarter |
+| L1-SLO-3 | auto-restart success rate > 95 % | **instant** — rate recovers as soon as new restarts succeed, always halt-class | ratio of `auto_restart_ok` / (`auto_restart_ok` + `auto_restart_fail`) in `ambient.jsonl` 24h | File gap to repair launchd plist; check for syspolicyd block |
 
 ---
 

@@ -106,11 +106,28 @@ echo "[ci-health-gate] pipeline-jam check: total_open=$total_open total_blocked=
 slo_json="$(chump health --slo-check --json 2>/dev/null || true)"
 slo_rc=0
 grep -q '"breached":true' <<<"$slo_json" && slo_rc=1   # here-string: no pipefail-race (INFRA-1658)
-l1_breached_ids="$(printf '%s' "$slo_json" | python3 -c '
+
+# RESILIENT-1740: L1 breaches are classified instant | rolling (window_kind
+# in the JSON). A "rolling" window (e.g. L1-SLO-1 silent_agent=0/week) can
+# stay breached for days after the incident that caused it cleared — halting
+# on it is a deadlock the pause itself can never clear. Only "instant" L1
+# breaches (live orphan processes today, dead auth, a silent agent seen in
+# the last CHUMP_CI_HEALTH_SILENT_AGENT_LIVE_WINDOW_S) are halt-class.
+l1_instant_breached_ids="$(printf '%s' "$slo_json" | python3 -c '
 import json,sys
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
-print(",".join(s.get("id","") for s in d.get("slos",[]) if s.get("breached") and str(s.get("id","")).startswith("L1-")))
+print(",".join(s.get("id","") for s in d.get("slos",[])
+               if s.get("breached") and str(s.get("id","")).startswith("L1-")
+               and s.get("window_kind","instant") == "instant"))
+' 2>/dev/null || true)"
+l1_rolling_breached_ids="$(printf '%s' "$slo_json" | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+print(",".join(s.get("id","") for s in d.get("slos",[])
+               if s.get("breached") and str(s.get("id","")).startswith("L1-")
+               and s.get("window_kind","instant") == "rolling"))
 ' 2>/dev/null || true)"
 all_breached_ids="$(printf '%s' "$slo_json" | python3 -c '
 import json,sys
@@ -118,19 +135,60 @@ try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
 print(",".join(s.get("id","") for s in d.get("slos",[]) if s.get("breached")))
 ' 2>/dev/null || true)"
-echo "[ci-health-gate] slo breaches: L1=[${l1_breached_ids}] all=[${all_breached_ids}] (halt on L1 only — RESILIENT-146)"
 
-# ── Determine breach (RESILIENT-146: L1 safety + acute jam only) ──────────────
+# Live override: even a "rolling" L1 breach halts if the underlying signal
+# fired within the live window — e.g. a silent_agent event happening RIGHT
+# NOW is an acute condition, not a 7-day-old echo of one.
+SILENT_AGENT_LIVE_WINDOW_S="${CHUMP_CI_HEALTH_SILENT_AGENT_LIVE_WINDOW_S:-1800}"
+silent_agent_live="$(python3 -c '
+import json, sys, datetime
+window_s, ambient_path = float(sys.argv[1]), sys.argv[2]
+latest = None
+try:
+    with open(ambient_path) as f:
+        for line in f:
+            if "\"kind\":\"silent_agent\"" not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            ts_str = d.get("ts", "")
+            try:
+                ts = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc).timestamp()
+            except Exception:
+                continue
+            if latest is None or ts > latest:
+                latest = ts
+except FileNotFoundError:
+    pass
+if latest is None:
+    print("0")
+else:
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    print("1" if (now - latest) <= window_s else "0")
+' "$SILENT_AGENT_LIVE_WINDOW_S" "$AMBIENT" 2>/dev/null || echo "0")"
+if [[ "$silent_agent_live" == "1" && -n "$l1_rolling_breached_ids" ]]; then
+    # Promote the rolling breach to instant since a live event is present.
+    l1_instant_breached_ids="${l1_instant_breached_ids:+$l1_instant_breached_ids,}${l1_rolling_breached_ids}"
+    l1_rolling_breached_ids=""
+fi
+
+echo "[ci-health-gate] slo breaches: L1-instant=[${l1_instant_breached_ids}] L1-rolling=[${l1_rolling_breached_ids}] all=[${all_breached_ids}] silent_agent_live=${silent_agent_live} (halt on instant L1 only — RESILIENT-1740)"
+
+# ── Determine breach (RESILIENT-1740: instant L1 safety + acute jam only) ────
 breach_reason=""
-if [[ -n "$l1_breached_ids" ]]; then
-    breach_reason="slo_breach"          # L1 safety breach → halt-class
+if [[ -n "$l1_instant_breached_ids" ]]; then
+    breach_reason="slo_breach"          # instant L1 safety breach → halt-class
 elif [[ $blocked_pct -ge $JAM_THRESHOLD ]]; then
     breach_reason="pipeline_jam"
 fi
-# Chronic L2-only breach (no L1, no jam): observable signal, NOT a halt.
+# Chronic breach (rolling L1 and/or L2+ only, no instant signal, no jam):
+# observable signal, NOT a halt (RESILIENT-146 for L2; RESILIENT-1740 for
+# rolling-window L1).
 if [[ -z "$breach_reason" && -n "$all_breached_ids" ]]; then
-    echo "[ci-health-gate] chronic L2 breach (${all_breached_ids}) — NOT pausing (file-a-gap class, RESILIENT-146)"
-    _emit "slo_chronic_breach" '"slos":"'"${all_breached_ids}"'","note":"L2 efficiency SLO breached; observable not halt-class (RESILIENT-146)"'
+    echo "[ci-health-gate] chronic breach (${all_breached_ids}) — NOT pausing (file-a-gap class, RESILIENT-146/RESILIENT-1740)"
+    _emit "slo_chronic_breach" '"slos":"'"${all_breached_ids}"'","note":"rolling-window/L2 SLO breached; observable not halt-class (RESILIENT-146/RESILIENT-1740)"'
 fi
 
 # ── Spike path: write fleet-paused ───────────────────────────────────────────
@@ -140,8 +198,8 @@ if [[ -n "$breach_reason" ]]; then
     ts="$(_ts)"
     # Record the ACTUAL breached L1 SLO ids (was hardcoded ["L1-SLO-1"]).
     slos_breached="[]"
-    if [[ -n "$l1_breached_ids" ]]; then
-        slos_breached="$(printf '%s' "$l1_breached_ids" | python3 -c 'import json,sys; print(json.dumps([x for x in sys.stdin.read().strip().split(",") if x]))' 2>/dev/null || echo "[]")"
+    if [[ -n "$l1_instant_breached_ids" ]]; then
+        slos_breached="$(printf '%s' "$l1_instant_breached_ids" | python3 -c 'import json,sys; print(json.dumps([x for x in sys.stdin.read().strip().split(",") if x]))' 2>/dev/null || echo "[]")"
     fi
     blocked_null="null"
     if [[ "$breach_reason" == "pipeline_jam" ]]; then
