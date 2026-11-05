@@ -813,6 +813,18 @@ if hook == "SessionStart":
                     brief_out = res.stdout.rstrip()
             except Exception:
                 pass
+    # CREDIBLE-1526: HELD-by-review list (the Rust `chump fleet brief` prints it
+    # too; only append here when the brief did not already carry it).
+    if "HELD by review" not in brief_out:
+        _held_script = os.path.join(repo_root, "scripts", "coord", "review-held-list.sh")
+        if os.path.exists(_held_script):
+            try:
+                _held = subprocess.run(["bash", _held_script], capture_output=True,
+                                       text=True, timeout=15).stdout.rstrip()
+                if _held:
+                    brief_out = (brief_out + "\n" + _held) if brief_out else _held
+            except Exception:
+                pass
     if brief_out:
         lines_out.append(brief_out)
         lines_out.append("")

@@ -1,0 +1,37 @@
+name: review-hold
+
+# CREDIBLE-1526 (PHASE-R R3): server-side review hold. The code-reviewer / review
+# organ labels a PR `review-held` on ESCALATE / CHANGES REQUIRED; this job reads
+# the label and fails, so with `review-hold` in main's required status checks
+# NO arm path (bot-merge, armer, chain, human script) can land a held PR.
+# Re-runs on every label change. Operator applies the branch-protection change:
+# see docs/process/CODEREVIEW_POLICY.md "Server-side review hold".
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-hold-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  review-hold:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Fail when the PR is review-held
+        if: github.event_name == 'pull_request'
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: bash scripts/ci/review-hold-check.sh "$PR_LABELS"
+      - name: Merge group (hold was enforced at PR level)
+        if: github.event_name == 'merge_group'
+        run: echo "review-hold: enforced on the PR check before enqueue"

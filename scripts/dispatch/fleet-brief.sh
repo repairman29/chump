@@ -395,6 +395,8 @@ PYEOF
     alerts_30m="${alerts_30m:-0}"
 fi
 echo "Alerts(30m): $alerts_30m"
+# CREDIBLE-1526: PRs held by independent review (cannot merge; need human approval).
+[ -x "$REPO_ROOT/scripts/coord/review-held-list.sh" ] && bash "$REPO_ROOT/scripts/coord/review-held-list.sh" 2>/dev/null
 # RESILIENT-1012: ribbon-acceptance gauge — last node_install_verified
 # pass/fail + organ delta per node, so ribbon done-ness lives on the board.
 if [ "$ribbon_nodes" -gt 0 ]; then
