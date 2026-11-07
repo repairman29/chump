@@ -630,6 +630,16 @@ pub fn admit(
     decision
 }
 
+/// ZERO-WASTE-153: whether this node is marked small (`CHUMP_SMALL_NODE=1` in
+/// the env or `node.env`). Small nodes serialize Rust lanes on one cargo
+/// target lock, so dispatch also gates on the cargo ceiling.
+pub fn is_small_node(node_env: &Path) -> bool {
+    if let Ok(v) = std::env::var("CHUMP_SMALL_NODE") {
+        return v.trim() == "1";
+    }
+    read_env_file_u32(node_env, "CHUMP_SMALL_NODE") == Some(1)
+}
+
 /// In-process gate used by [`crate::dispatch`] before spawning a `claude -p`
 /// child. Acquires a slot lease bound to this process's PID (`std::process::id()`),
 /// performing a bounded wait (`CHUMP_ADMISSION_WAIT_TIMEOUT_S`, default 300s;
@@ -648,6 +658,9 @@ pub fn gate_before_spawn(resource: Resource, repo_root: &Path) {
         .and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(5);
     let node_env = default_node_env();
+    if resource == Resource::Claude && is_small_node(&node_env) {
+        gate_before_spawn(Resource::Cargo, repo_root);
+    }
     let ceil = ceiling(resource, &node_env);
     let pid = std::process::id();
     let holder = format!("pid-{pid}");

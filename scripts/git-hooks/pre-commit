@@ -1525,7 +1525,35 @@ if [ -n "$staged_rust" ]; then
             # the debug profile catches >99% of type/borrow errors.
             check_log="/tmp/chump-pre-commit-check-$$.log"
             trap 'rm -f "$check_log"' EXIT
-            if ! cargo check --bin chump --tests >"$check_log" 2>&1; then
+            # ZERO-WASTE-153: on a node marked small (CHUMP_SMALL_NODE=1 in env or
+            # ~/.chump/node.env) a workspace-wide `--bin chump` check serializes on
+            # the shared target lock and takes 5-40 min. Check only the touched
+            # crates; if the root bin sources are touched, defer to CI.
+            check_args="--bin chump --tests"
+            small_node="${CHUMP_SMALL_NODE:-}"
+            if [ -z "$small_node" ]; then
+                small_node=$(sed -n 's/^\(export \)\{0,1\}CHUMP_SMALL_NODE=\([01]\).*/\2/p' \
+                    "${CHUMP_STATE_DIR:-$HOME/.chump}/node.env" 2> /dev/null | tail -1)
+            fi
+            if [ "$small_node" = "1" ]; then
+                crate_dirs=$(echo "$staged_rust" | sed -n 's#^\(crates/[^/]*\)/.*#\1#p' | sort -u)
+                if echo "$staged_rust" | grep -qvE '^crates/'; then
+                    echo "[pre-commit] small node: root-package sources staged; skipping cargo check (CI will gate)" >&2
+                    check_args=""
+                else
+                    check_args=""
+                    for d in $crate_dirs; do
+                        pkg=$(sed -n 's/^name *= *"\(.*\)"/\1/p' "$d/Cargo.toml" 2> /dev/null | head -1)
+                        [ -n "$pkg" ] && check_args="$check_args -p $pkg"
+                    done
+                    [ -n "$check_args" ] && check_args="$check_args --tests"
+                fi
+                if [ -n "$check_args" ] && command -v chump > /dev/null 2>&1; then
+                    chump admit cargo --wait-s "${CHUMP_ADMISSION_WAIT_TIMEOUT_S:-300}" > /dev/null 2>&1 || true
+                fi
+            fi
+            # shellcheck disable=SC2086
+            if [ -n "$check_args" ] && ! cargo check $check_args >"$check_log" 2>&1; then
                 echo "[pre-commit] CARGO CHECK FAILED — compile error in staged code." >&2
                 echo "[pre-commit] ---- last 30 lines of error output: ----" >&2
                 tail -30 "$check_log" >&2
