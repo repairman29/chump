@@ -2795,6 +2795,11 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-census-shrink-only.sh"],
             GateKind::Scripts,
         ));
+        steps.push(step(
+            "mutants-organ",
+            &["bash", "scripts/ci/test-mutants-organ.sh"],
+            GateKind::Scripts,
+        ));
         // RESILIENT-1622: structural preflight subset on the bot-merge push path.
         // Proves --structural + STRUCTURAL_GATES membership, bot-merge + pre-push
         // wiring, and that a synthetic unwired scripts/ci test fails the structural
