@@ -1032,9 +1032,11 @@ print(any(((l or {}).get("name") or "") == "review-held" for l in d.get("labels"
 maybe_arm() {
     local pr="$1" head="$2"
     local fork
-    fork="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} --json isCrossRepository --jq '.isCrossRepository' 2>/dev/null || echo true)"
+    fork="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} --json isCrossRepository --jq '.isCrossRepository' 2>/dev/null)" || fork=""
     if [[ "$fork" == "true" || "$fork" == "True" ]]; then
         log "PR #$pr: cross-repository (fork) — NEVER arm"; return 0
+    elif [[ "$fork" != "false" && "$fork" != "False" ]]; then
+        log "PR #$pr: fork lookup failed (got '${fork}'), not arming; retry next tick"; return 0
     fi
     # AC3: the arm decision reads the APPROVE STRING from the comment for THIS
     # head (fail closed), not any exit code — and ONLY from the organ's own
