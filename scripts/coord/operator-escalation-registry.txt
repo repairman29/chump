@@ -93,3 +93,5 @@ cj_deadman_dark	page
 cj_deadman_worker_wedged	page
 cj_deadman_unreadable	page
 node_converge_far_behind	page	# RESILIENT-1567: node >N commits behind origin/main for >M min — merged fixes not running; operator must diagnose.
+cj_worker_unit_stopped	page	# CREDIBLE-1705: hub worker unit not active >30m — raised once by offnode-deadman-watch.sh (off-node), re-armed on recovery
+fleet_zero_merges	page	# CREDIBLE-1705: zero fleet merges >12h with open gaps — raised once by offnode-deadman-watch.sh, re-armed on first merge

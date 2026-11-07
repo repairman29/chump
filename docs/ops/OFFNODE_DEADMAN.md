@@ -109,3 +109,12 @@ stop. This is `$0` on the free tier and independent of every box we own.
 account credentials or contact details. Give me the check's ping URL and I'll
 add a `curl -fsS "$HC_PING_URL"` line to `cj-deadman-push.sh` (guarded by
 `CHUMP_DEADMAN_HC_URL` in providers.env) so both watchers run side by side.
+
+## Worker-unit and ship-rate alerts (CREDIBLE-1705)
+
+The beat also carries `worker_unit_state`, `worker_unit_since_epoch`, `last_merge_epoch` and `open_gaps`. The off-node watcher pages **once** (marker file `offnode-deadman.alerted.<kind>`, re-armed on recovery) for:
+
+- `cj_worker_unit_stopped` — hub worker unit not active for >30m (`CHUMP_DEADMAN_WORKER_STALE_SECS`).
+- `fleet_zero_merges` — no merged PR for >12h while gaps are open (`CHUMP_DEADMAN_MERGE_STALE_SECS`).
+
+A hub that stops beating entirely still pages `cj_deadman_dark`. All three kinds are `page` in `scripts/coord/operator-escalation-registry.txt`. Test: `scripts/ci/test-offnode-deadman.sh`.

@@ -133,6 +133,15 @@ page() {  # kind, message
     return 1
 }
 
+# page_once: alert once per condition (marker file), re-armed when it clears —
+# a 5-day stopped worker must raise ONE alert, not one per tick (CREDIBLE-1705).
+mark() { echo "$STATE_DIR/offnode-deadman.alerted.$1"; }
+page_once() {  # kind, message
+    [[ -f "$(mark "$1")" ]] && { log "already alerted ($1) — suppressed"; return 0; }
+    page "$1" "$2" && : > "$(mark "$1")"
+}
+clear_alert() { rm -f "$(mark "$1")" 2>/dev/null || true; }
+
 # --- grade ---------------------------------------------------------------------
 NOW="$(now_epoch)"
 
@@ -178,6 +187,31 @@ fi
 if [[ "$dark" -eq 0 && ( "$farmer" -eq 0 || "$farmer_age" -gt "$STALE_SECS" ) ]]; then
     dark=1
     page "cj_deadman_worker_wedged" "CJ ($node) is beating but its WORKER heartbeat is stale ${farmer_age}s (> ${STALE_SECS}s) via $source — worker wedged, fleet producing nothing."
+fi
+
+# CREDIBLE-1705: hub worker unit stopped >WORKER_STALE (30m), and zero fleet
+# merges for >MERGE_STALE (12h) while gaps are open. Old payloads lack the fields → skip.
+WORKER_STALE="${CHUMP_DEADMAN_WORKER_STALE_SECS:-1800}"
+MERGE_STALE="${CHUMP_DEADMAN_MERGE_STALE_SECS:-43200}"
+wstate="$(json_str "$payload" worker_unit_state)"
+wsince="$(json_int "$payload" worker_unit_since_epoch)"
+if [[ -n "$wstate" && "$wstate" != "unknown" ]]; then
+    if [[ "$wstate" != "active" && "$wstate" != "activating" && "$wsince" -gt 0 && $(( NOW - wsince )) -gt "$WORKER_STALE" ]]; then
+        dark=1
+        page_once "cj_worker_unit_stopped" "CJ ($node) worker unit is '$wstate' for $(( (NOW - wsince) / 60 ))m (> $(( WORKER_STALE / 60 ))m) — fleet is not building."
+    else
+        clear_alert cj_worker_unit_stopped
+    fi
+fi
+lmerge="$(json_int "$payload" last_merge_epoch)"
+ogaps="$(json_int "$payload" open_gaps)"
+if [[ "$lmerge" -gt 0 ]]; then
+    if [[ $(( NOW - lmerge )) -gt "$MERGE_STALE" && "$ogaps" -gt 0 ]]; then
+        dark=1
+        page_once "fleet_zero_merges" "Zero fleet merges for $(( (NOW - lmerge) / 3600 ))h (> $(( MERGE_STALE / 3600 ))h) with $ogaps open gaps — fleet shipping nothing."
+    else
+        clear_alert fleet_zero_merges
+    fi
 fi
 
 if [[ "$dark" -eq 0 ]]; then

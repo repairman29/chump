@@ -123,6 +123,36 @@ else
     bad "mutant CHUMP_DEADMAN_TREAT_UNREACHABLE_AS_DEAD=1 was NOT caught"
 fi
 
+echo "== 10. CREDIBLE-1705: stopped worker unit >30m, repeated ticks → exactly ONE alert =="
+rm -rf "$STATE"; mkdir -p "$STATE"; : > "$SINK"
+p="{\"schema\":\"chump-deadman/1\",\"node\":\"closetjunky\",\"farmer_hb_epoch\":$((NOW-60)),\"pushed_epoch\":$((NOW-60)),\"worker_unit_state\":\"failed\",\"worker_unit_since_epoch\":$((NOW-5*86400)),\"last_merge_epoch\":$((NOW-60)),\"open_gaps\":10}"
+printf '%s' "$p" > "$WORK/payload.json"
+for _ in 1 2 3; do
+    CHUMP_DEADMAN_PAYLOAD_FILE="$WORK/payload.json" CHUMP_DEADMAN_PAGE_SINK="$SINK" CHUMP_DEADMAN_STATE_DIR="$STATE" \
+    CHUMP_DEADMAN_STALE_SECS="$STALE" CHUMP_DEADMAN_NOW_EPOCH="$NOW" CHUMP_DEADMAN_GIST_ID="fixture" bash "$WATCH" >/dev/null 2>&1 || true
+done
+n="$(count_pages)"
+if [[ "$n" == "1" ]] && grep -q cj_worker_unit_stopped "$SINK"; then ok "stopped worker alerted exactly once over 3 ticks"; else bad "stopped worker alert count=$n (want 1)"; fi
+
+echo "== 11. CREDIBLE-1705: worker stopped only 10m → NO alert =="
+rm -rf "$STATE"; mkdir -p "$STATE"
+p="{\"schema\":\"chump-deadman/1\",\"node\":\"closetjunky\",\"farmer_hb_epoch\":$((NOW-60)),\"pushed_epoch\":$((NOW-60)),\"worker_unit_state\":\"failed\",\"worker_unit_since_epoch\":$((NOW-600)),\"last_merge_epoch\":$((NOW-60)),\"open_gaps\":10}"
+n="$(run_watch "$p" "$NOW")"
+[[ "$n" == "0" ]] && ok "short stop did not alert" || bad "short stop alerted (pages=$n)"
+
+echo "== 12. CREDIBLE-1705: zero merges 13h + open gaps → one alert; no open gaps → none =="
+rm -rf "$STATE"; mkdir -p "$STATE"
+p="{\"schema\":\"chump-deadman/1\",\"node\":\"closetjunky\",\"farmer_hb_epoch\":$((NOW-60)),\"pushed_epoch\":$((NOW-60)),\"worker_unit_state\":\"active\",\"worker_unit_since_epoch\":$((NOW-9000)),\"last_merge_epoch\":$((NOW-46800)),\"open_gaps\":5}"
+run_watch "$p" "$NOW" >/dev/null
+n="$(run_watch "$p" "$NOW")"   # second tick: sink truncated, marker suppresses
+a="$(grep -c fleet_zero_merges "$SINK" 2>/dev/null)"
+rm -rf "$STATE"; mkdir -p "$STATE"
+n1="$(run_watch "$p" "$NOW")"
+p0="${p/\"open_gaps\":5/\"open_gaps\":0}"
+rm -rf "$STATE"; mkdir -p "$STATE"
+n0="$(run_watch "$p0" "$NOW")"
+if [[ "${a:-0}" == "0" && "$n1" == "1" && "$n0" == "0" ]]; then ok "zero-merge alert fires once, suppressed on repeat, silent with no open gaps"; else bad "zero-merge: repeat=$a first=$n1 nogaps=$n0"; fi
+
 echo
 echo "== RESULT: pass=$pass fail=$fail =="
 [[ "$fail" -eq 0 ]] || exit 1
