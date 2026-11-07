@@ -336,9 +336,22 @@ SYSTEMCTL_BIN="${CHUMP_INSTALL_ATC_SYSTEMCTL_BIN:-systemctl}"
 if [[ "$(id -u)" != "0" && "${CHUMP_INSTALL_ATC_ALLOW_NONROOT:-0}" != "1" ]]; then
   if [[ "$AUTO" == "1" ]]; then
     echo "WARN: --auto invoked without root; skipping system-unit deploy (this worker context cannot install system units)" >&2
-    # scanner-anchor: "kind":"organ_units_deploy_failed"  (INFRA-3593; fires
-    # when the auto-deploy caller lacks root and cannot write /etc/systemd/system)
-    emit organ_units_deploy_failed "\"reason\":\"not_root\""
+    # RESILIENT-1603: a not_root run is a config error, not a heartbeat — remove
+    # the stray user-scope root-only organ-deploy timer so it stops re-running
+    # every tick, and emit the failure once per condition.
+    if [[ "$SYSTEMCTL_BIN" == "systemctl" ]] && command -v systemctl >/dev/null 2>&1; then
+      systemctl --user disable --now chump-organ-deploy.timer >/dev/null 2>&1 || true
+      rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/chump-organ-deploy.timer" \
+            "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/chump-organ-deploy.service" 2>/dev/null || true
+      systemctl --user daemon-reload >/dev/null 2>&1 || true
+    fi
+    NOT_ROOT_MARKER="$(dirname "$AMBIENT_LOG")/.organ-deploy-not-root.emitted"
+    if [[ ! -e "$NOT_ROOT_MARKER" ]]; then
+      # scanner-anchor: "kind":"organ_units_deploy_failed"  (INFRA-3593; fires
+      # once when the auto-deploy caller lacks root and cannot write /etc/systemd/system)
+      emit organ_units_deploy_failed "\"reason\":\"not_root\""
+      : > "$NOT_ROOT_MARKER" 2>/dev/null || true
+    fi
     exit 0
   fi
   echo "ERROR: system units require root (sudo bash $0)" >&2

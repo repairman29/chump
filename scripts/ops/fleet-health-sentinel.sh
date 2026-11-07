@@ -259,13 +259,17 @@ emit() {
 # notify_operator no-ops silently when unconfigured (no DISCORD_TOKEN), so the
 # ambient halt event + sink are the durable receipts on a node without creds.
 page() {
-    local msg="$1" kind="${2:-fleet_health_alarm}"
+    local msg="$1" kind="${2:-fleet_health_alarm}" mode="${3:-notify}"
     log "PAGE ($kind): $msg"
     emit "$kind" severity=halt msg="$msg"
     if [[ -n "${CHUMP_SENTINEL_PAGE_SINK:-}" ]]; then
         printf '%s\tPAGE\t%s\t%s\t%s\n' "$(ts_iso)" "$kind" "$NODE_ID" "$msg" \
             >> "$CHUMP_SENTINEL_PAGE_SINK" 2>/dev/null || true
     fi
+    # mode=emit-only: the signal has a registered duty-officer consumer
+    # (docs/process/PLAYBOOK_REGISTRY.yaml) — emit it and let the consumer
+    # heal/escalate instead of a notify that autoposts-off suppresses.
+    [[ "$mode" == "emit-only" ]] && return 0
     # Real page path. Fail-soft: a broken notifier must never break the sentinel.
     local notifier="$SCRIPT_DIR/../coord/lib/notify-operator.sh"
     if [[ -f "$notifier" ]]; then
@@ -366,7 +370,7 @@ scan_and_heal_local() {
         if [[ "$still" == "failed" ]]; then
             SNAP_UNHEALED=$((SNAP_UNHEALED+1))
             page "chump unit $u is failed and did not recover after reset-failed+restart" \
-                 "fleet_health_unit_failed"
+                 "fleet_health_unit_failed" emit-only
         else
             SNAP_HEALED=$((SNAP_HEALED+1))
             emit "fleet_health_self_healed" unit="$u" action="reset-failed+restart"

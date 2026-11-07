@@ -21,6 +21,13 @@
 
 signals:
   # ── T1: executable auto-heal (code/daemon fires, no agent, no operator) ──
+  - signal: fleet_health_unit_failed
+    tier: 1
+    detect: "ambient kind=fleet_health_unit_failed (fleet-health-sentinel: a failed chump unit did not recover after reset-failed+restart)"
+    action: scripts/coord/fleet-unit-failed-heal.sh
+    verify: "systemctl list-units --failed 'chump-*' no longer lists the unit; a unit still failed on the second run gets a RESILIENT gap filed"
+    false_positive_class: none
+
   - signal: disk_critical
     tier: 1
     detect: "ambient kind=disk_critical (free_gb below threshold)"
