@@ -2821,6 +2821,12 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-no-title-regex-gap-closers.sh"],
             GateKind::Scripts,
         ));
+        // ZERO-WASTE-150: fixture-leak guards + no new docs/<ID>-NOTES.md.
+        steps.push(step(
+            "zero-waste-150-fixture-leak",
+            &["bash", "scripts/ci/test-zero-waste-150-fixture-leak.sh"],
+            GateKind::Scripts,
+        ));
         // CREDIBLE-1551 (Phase R R2, AC4): meta-test proving the gate above has a
         // strong-enough TIER-2 proximity window — drives it against verbatim-M2
         // and a regex-17-lines-above-ship fixture; FAILS if the window is set to

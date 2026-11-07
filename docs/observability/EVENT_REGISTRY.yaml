@@ -15107,3 +15107,10 @@ events:
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
 
+
+  - kind: gap_closed_not_a_bug
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs (ZERO-WASTE-150, GapStore::close_not_a_bug)
+    trigger: chump gap close <ID> --not-a-bug --reason '<why>' closes a gap whose premise is false or whose work already shipped, with no PR and no docs/<ID>-NOTES.md
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, gap_id, reason, session_id]

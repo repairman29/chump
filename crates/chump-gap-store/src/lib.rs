@@ -2271,6 +2271,18 @@ impl GapStore {
         let domain_upper = domain.to_uppercase();
         let now = unix_now();
 
+        // ZERO-WASTE-150: test fixtures that leak into the canonical store cost
+        // the fleet a pick + worktree + review per row. Refuse a fixture title
+        // unless the store is a sandbox (under the OS temp dir or marked via
+        // CHUMP_TEST_SANDBOX=1).
+        if is_fixture_title(title) && !self.is_sandbox_store() {
+            bail!(
+                "refusing to reserve fixture-titled gap {title:?} in a non-sandbox store \
+                 (ZERO-WASTE-150): tests must run against a TempDir store. \
+                 Sandbox marker: CHUMP_TEST_SANDBOX=1."
+            );
+        }
+
         // INFRA-2177: dropped the import_from_yaml() call that used to run here.
         //
         // History:
@@ -3886,6 +3898,82 @@ impl GapStore {
             let line = format!(
                 r#"{{"ts":"{ts}","kind":"gap_triage_closed","gap_id":"{gap_id}","reason":"{reason}","session_id":"{session_id}"}}"#,
             ) + "\n";
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        Ok(())
+    }
+
+    /// ZERO-WASTE-150: true when the store lives in a throwaway location (OS
+    /// temp dir) or the caller set the explicit sandbox marker.
+    pub fn is_sandbox_store(&self) -> bool {
+        if std::env::var("CHUMP_TEST_SANDBOX").as_deref() == Ok("1") {
+            return true;
+        }
+        let db = Self::db_path(&self.repo_root);
+        let tmp = std::env::temp_dir();
+        let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        canon(&db).starts_with(canon(&tmp))
+    }
+
+    /// ZERO-WASTE-150: a gap with neither description nor acceptance criteria
+    /// is unpickable (the leaked-fixture shape). Unknown gaps return false.
+    pub fn is_hollow(&self, gap_id: &str) -> bool {
+        self.conn
+            .query_row(
+                "SELECT TRIM(COALESCE(CAST(description AS TEXT),'')),
+                        TRIM(COALESCE(CAST(acceptance_criteria AS TEXT),''))
+                 FROM gaps WHERE id=?1",
+                params![gap_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            )
+            .map(|(d, ac)| d.is_empty() && matches!(ac.as_str(), "" | "[]" | "null"))
+            .unwrap_or(false)
+    }
+
+    /// ZERO-WASTE-150: PR-less close for a gap whose premise is false or whose
+    /// work already shipped. Sets `closed_not_a_bug`, records `reason` in notes
+    /// and emits `gap_closed_not_a_bug`.
+    pub fn close_not_a_bug(&self, gap_id: &str, session_id: &str, reason: &str) -> Result<()> {
+        if reason.trim().is_empty() {
+            bail!("chump gap close --not-a-bug: a non-empty --reason is required");
+        }
+        let now = unix_now();
+        let iso = unix_to_iso_date(now);
+        let note = format!(
+            "[{}] closed not-a-bug: {}",
+            unix_to_iso_full(now),
+            reason.trim()
+        );
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status='closed_not_a_bug', closed_at=?1, closed_date=?2,
+                    notes = CASE WHEN COALESCE(notes,'')='' THEN ?3 ELSE notes || char(10) || ?3 END
+             WHERE id=?4 AND status NOT IN
+               ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied','obsolete','duplicate')",
+            params![now, iso, note, gap_id],
+        )?;
+        if changed == 0 {
+            bail!("gap {gap_id} not found or already in a terminal status");
+        }
+        let _ = self
+            .conn
+            .execute("DELETE FROM leases WHERE gap_id=?1", params![gap_id]);
+        {
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(now);
+            let reason_json =
+                serde_json::to_string(reason.trim()).unwrap_or_else(|_| "\"\"".into());
+            // scanner-anchor: "kind":"gap_closed_not_a_bug" (registered in docs/observability/EVENT_REGISTRY.yaml, ZERO-WASTE-150)
+            let line = format!(
+                "{{\"ts\":\"{ts}\",\"kind\":\"gap_closed_not_a_bug\",\"gap_id\":\"{gap_id}\",\"reason\":{reason_json},\"session_id\":\"{session_id}\"}}\n",
+            );
             let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
             let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
             if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -5962,6 +6050,19 @@ pub enum PreflightResult {
     NotFound,
     Done,
     Claimed(String),
+}
+
+/// ZERO-WASTE-150: titles minted by leaked test fixtures.
+pub fn is_fixture_title(title: &str) -> bool {
+    let t = title.trim().to_lowercase();
+    t.starts_with("race-")
+        || matches!(
+            t.as_str(),
+            "test-list-json"
+                | "dispatch test"
+                | "decomposed parent"
+                | "resilient-1494 canonical store test"
+        )
 }
 
 fn unix_now() -> i64 {
@@ -9530,6 +9631,21 @@ mod proof_of_merge_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn zero_waste_150_close_not_a_bug_and_fixture_titles() {
+        assert!(is_fixture_title("race-a"));
+        assert!(is_fixture_title("RESILIENT-1494 canonical store test"));
+        assert!(!is_fixture_title("real work"));
+        let (s, _d) = test_store();
+        let id = s
+            .reserve("INFRA", "zw150 hollow probe", "P2", "xs")
+            .unwrap();
+        assert!(s.is_hollow(&id));
+        assert!(s.close_not_a_bug(&id, "sess", "  ").is_err());
+        s.close_not_a_bug(&id, "sess", "leaked fixture").unwrap();
+        assert!(s.close_not_a_bug(&id, "sess", "again").is_err());
+    }
+
     use super::*;
     use tempfile::TempDir;
 
