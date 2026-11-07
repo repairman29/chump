@@ -94,7 +94,7 @@ MAIN_SHA_SHORT="${MAIN_SHA:0:${#INSTALLED_SHA_SHORT}}"
 [[ -z "$INSTALLED_SHA_SHORT" ]] && INSTALLED_SHA_SHORT="unknown"
 INSTALLED_CHUMPD_SHA_SHORT=""
 if [[ -x "$TARGET_CHUMPD_BIN" ]]; then
-    INSTALLED_CHUMPD_SHA_SHORT="$("$TARGET_CHUMPD_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+)' | head -1 | tr -d '(' || true)"
+    INSTALLED_CHUMPD_SHA_SHORT="$(timeout 10 "$TARGET_CHUMPD_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+)' | head -1 | tr -d '(' || true)"
     [[ -z "$INSTALLED_CHUMPD_SHA_SHORT" ]] && INSTALLED_CHUMPD_SHA_SHORT="$INSTALLED_SHA_SHORT"
 elif [[ -n "${CHUMP_NODE_CHUMPD_BIN:-}" ]]; then
     INSTALLED_CHUMPD_SHA_SHORT="missing"
