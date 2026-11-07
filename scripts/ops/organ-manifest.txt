@@ -356,7 +356,10 @@ enabled     chump-gap-decompose.timer  role=brain requires=bin:chump,bin:sqlite3
 # GitHub's own armed auto-merge is the native serializer. Do NOT re-enable this
 # line — see docs/process/MERGE_QUEUE_SETUP.md for the strict=true fallback-only
 # doc and RESILIENT-372 (retired).
-# disabled    chump-merge-serializer.timer  role=brain requires=bin:gh
+# RESILIENT-1600: declared `retired` so node-converge / organ-reconcile actively
+# disable --now the still-installed unit (decommissioned != removed).
+retired     chump-merge-serializer.timer    role=brain home=cuphead  # retired: RESILIENT-1564 decommission (pr-shepherd is sole merge driver)
+retired     chump-merge-serializer.service  role=brain home=cuphead  # retired: RESILIENT-1564 decommission
 enabled     chump-board-cycle.timer  role=brain home=cuphead
 # RESILIENT-274: the duty-officer — reads firing health signals, routes
 # T1 auto-heal / T2 runbook / T3 page (the no-human incident responder).
