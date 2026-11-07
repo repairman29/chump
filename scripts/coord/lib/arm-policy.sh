@@ -38,6 +38,14 @@
 #   after someone disarmed it) it emits kind=pr_rearmed naming the armer and
 #   the disarm actor, so the next re-arm war is attributable in one grep.
 #
+#   RESILIENT-1763: on every HELD return (1), ARM_POLICY_LAST_HOLD_LABEL is
+#   set to the matched reason (e.g. "label:review-held", "label:no-auto-merge",
+#   "marker:body") so a caller that needs to tell a review-organ hold
+#   (review-held / review-needs-mutants — "the organ hasn't seen this head
+#   yet") apart from a deliberate human hold (no-auto-merge / hold /
+#   do-not-merge / CHUMP_HOLD / "Auto-merge: hold" marker) can do so without
+#   re-deriving the reason itself.
+#
 # READ PATH (cache-first, INFRA-1081)
 #   1. scripts/coord/lib/github_cache.sh cache_lookup_pr → labels + body. A hold
 #      found there blocks without any gh call.
@@ -267,6 +275,7 @@ arm_policy_allows() {
         if [[ -n "$payload" ]]; then
             reason="$(_arm_policy_hold_reason "$payload" 2>/dev/null || true)"
             if [[ -n "$reason" ]]; then
+                ARM_POLICY_LAST_HOLD_LABEL="$reason"
                 _arm_policy_emit_hold "$pr" "$armer" "$reason" "cache"
                 echo "[arm-policy] PR #${pr}: HELD (${reason}) — ${armer} will not arm it" >&2
                 return 1
@@ -311,6 +320,7 @@ arm_policy_allows() {
         return 0
     fi
     if [[ -n "$reason" ]]; then
+        ARM_POLICY_LAST_HOLD_LABEL="$reason"
         _arm_policy_emit_hold "$pr" "$armer" "$reason" "gh"
         echo "[arm-policy] PR #${pr}: HELD (${reason}) — ${armer} will not arm it" >&2
         return 1
