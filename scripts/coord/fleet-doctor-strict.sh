@@ -2034,6 +2034,28 @@ check_cargo_nextest() {
     fi
 }
 
+# ── Check (RESILIENT-1902): newest registry snapshot must be <= 36h old ──
+check_registry_snapshot_fresh() {
+    local dir="${CHUMP_SNAPSHOT_DIR:-$HOME/.chump/snapshots}"
+    local max_h="${CHUMP_SNAPSHOT_MAX_AGE_H:-36}"
+    local newest
+    newest="$(ls -1t "$dir"/state-*.db 2>/dev/null | head -1 || true)"
+    if [[ -z "$newest" ]]; then
+        register_check "registry-snapshot" "fail" "no registry snapshot in $dir (RESILIENT-1902)" \
+            "bash scripts/setup/install-registry-snapshot-systemd.sh && bash scripts/ops/registry-snapshot.sh snapshot"
+        return
+    fi
+    local mt age_h
+    mt="$(stat -c %Y "$newest" 2>/dev/null || stat -f %m "$newest")"
+    age_h=$(( ($(date +%s) - mt) / 3600 ))
+    if (( age_h > max_h )); then
+        register_check "registry-snapshot" "fail" "newest snapshot ${age_h}h old > ${max_h}h ($newest)" \
+            "bash scripts/ops/registry-snapshot.sh snapshot; check chump-registry-snapshot.timer"
+    else
+        register_check "registry-snapshot" "pass" "newest snapshot ${age_h}h old ($newest)" ""
+    fi
+}
+
 # ── Check 23 (INFRA-8589): installed systemd units carry no foreign host literals ──
 # Scans installed units in ${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user on a
 # Linux host for non-comment lines containing /home/<other-user>, /Users/<name>,
@@ -2441,6 +2463,7 @@ check_installed_unit_host_literals
 check_organ_home_placement
 check_core_organs_not_neutered
 check_cj_node_hardening
+check_registry_snapshot_fresh
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

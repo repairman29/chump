@@ -600,6 +600,9 @@ jobs:
       - name: Harness doc injection test (RESILIENT-1167)
         run: bash scripts/ci/test-agents-md-injection.sh
 
+      - name: Registry snapshot/restore test (RESILIENT-1902)
+        run: bash scripts/ci/test-registry-snapshot.sh
+
       - name: Bypass-line-required audit (INFRA-5429)
         # Every gate-manifest.yaml check that can exit FAIL must carry a
         # "How to bypass cleanly: <instructions>" line so an agent hitting
