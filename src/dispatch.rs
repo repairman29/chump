@@ -2046,7 +2046,7 @@ struct HangConfig {
     /// CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S), effort-scaled (default >= 1800s).
     /// Wall-clock (paused while 1m load > nproc); 0 disables.
     budget_secs: u64,
-    /// CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 3600. IDLE time (no observed
+    /// CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 900. IDLE time (no observed
     /// worktree activity), not wall-clock since spawn; 0 disables.
     hang_secs: u64,
     /// CHUMP_DISPATCH_ACTIVITY_POLL_SECS, default 20 (clamped to >= 1): how
@@ -2070,7 +2070,7 @@ impl HangConfig {
         let hang_secs: u64 = std::env::var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(3600);
+            .unwrap_or(900);
         let poll_secs: u64 = std::env::var("CHUMP_DISPATCH_ACTIVITY_POLL_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -2256,7 +2256,7 @@ fn worktree_head(root: &Path) -> Option<String> {
 ///
 /// `activity_root` is the directory the child works in (the dispatch
 /// worktree). The hang timeout (CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default
-/// 3600, 0 disables) is measured as IDLE time: the clock resets whenever the
+/// 900, 0 disables) is measured as IDLE time: the clock resets whenever the
 /// worktree fingerprint changes ([`ActivityProbe`]). With no readable
 /// activity root the detector logs `kind=dispatch_hang_detector_blind` and
 /// stays off rather than firing at start+timeout. If the idle timeout fires
@@ -2309,7 +2309,7 @@ fn wait_with_hang_detection_cfg(
     //      budget without self-honoring it. This is the parent-side hard
     //      enforcement that didn't exist before. On exceed: SIGTERM, then
     //      30s grace, then SIGKILL. Emits kind=subagent_killed_at_budget.
-    //   2. HANG TIMEOUT (CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 3600s):
+    //   2. HANG TIMEOUT (CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 900s):
     //      IDLE deadline (RESILIENT-1612) — fires only after that long with
     //      no worktree activity. SIGKILL. Emits kind=hang_detector.
     //
@@ -2455,6 +2455,13 @@ fn wait_with_hang_detection_cfg(
                     && last_activity.elapsed() > Duration::from_secs(cfg.hang_secs)
                     && !refresh(&mut last_fp, &mut last_activity)
                 {
+                    // INFRA-8187: a live cargo/rustc descendant means the
+                    // agent is compiling (no worktree writes), not hung —
+                    // defer and restart the idle clock, like worker.sh.
+                    if tool_watch::has_build_descendant(&tool_watch::ps_snapshot(), child_pid) {
+                        last_activity = std::time::Instant::now();
+                        continue;
+                    }
                     let idle_secs = last_activity.elapsed().as_secs();
                     let committed = head_at_start.is_some()
                         && activity_root.and_then(worktree_head) != head_at_start;
@@ -4741,6 +4748,22 @@ mod tests {
                 .any(|e| matches!(e, HangEvent::HangKill { .. })),
             "no hang kill expected, got {events:?}"
         );
+    }
+
+    /// INFRA-8187: a silent child with a live build descendant is deferred,
+    /// not killed, while one without is killed at the idle threshold.
+    #[test]
+    fn hang_detector_defers_while_build_child_live() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("seed.txt"), "0").unwrap();
+        let cfg = hang_test_cfg(2);
+        let script = "bash -c 'exec -a cargo sleep 6'; true";
+        let (res, events, elapsed) = run_hang(Some(tmp.path()), tmp.path(), script, &cfg);
+        assert!(res.expect("build child must defer the idle kill").success());
+        assert!(elapsed >= Duration::from_secs(5), "ran {elapsed:?}");
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, HangEvent::HangKill { .. })));
     }
 
     /// AC1 contrast: a silent child is killed once it has been idle past the

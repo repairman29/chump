@@ -145,6 +145,33 @@ fn subtree(procs: &[Proc], top: u32) -> Vec<u32> {
     out
 }
 
+/// True when a cargo/rustc build process lives anywhere under `root`. A
+/// build streams no worktree activity for minutes — compiling, not stuck
+/// (mirrors worker.sh `_has_build_descendant`, RESILIENT-157).
+pub fn has_build_descendant(procs: &[Proc], root: u32) -> bool {
+    const BUILD_BINS: &[&str] = &[
+        "cargo",
+        "rustc",
+        "clippy-driver",
+        "rustdoc",
+        "cc1plus",
+        "ld",
+    ];
+    subtree(procs, root)
+        .into_iter()
+        .filter(|&pid| pid != root)
+        .any(|pid| {
+            procs.iter().any(|p| {
+                p.pid == pid
+                    && p.args
+                        .split_whitespace()
+                        .next()
+                        .and_then(|a| a.rsplit('/').next())
+                        .is_some_and(|b| BUILD_BINS.contains(&b))
+            })
+        })
+}
+
 /// Tool-call shells (direct children of `root` carrying the Claude Code
 /// tool-call marker) older than `threshold_secs`. `cmd` is the longest-lived
 /// non-shell process under the call, or the shell itself, truncated.
