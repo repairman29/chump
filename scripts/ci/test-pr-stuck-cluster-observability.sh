@@ -199,6 +199,32 @@ test_registry_cross_references_infra_2470() {
     pass "Test 9: EVENT_REGISTRY.yaml cross-references INFRA-2470"
 }
 
+# INFRA-8182: an open cluster gap suppresses re-filing even when the PR set differs.
+test_open_cluster_gap_suppresses_refile() {
+    local test_dir stub ev reserve_log
+    test_dir="$(setup_test_env)"
+    trap "cleanup_test_env '$test_dir'" RETURN
+    stub="$test_dir/bin"; mkdir -p "$stub"
+    reserve_log="$test_dir/reserve.log"
+    cat > "$stub/chump" << STUB
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "gap list") echo '[{"id":"INFRA-9999","title":"RESILIENT: PR cluster stuck — 6 PRs blocked >2h; diagnose root cause + recover","status":"open"}]' ;;
+  "gap reserve") echo reserve >> "$reserve_log"; echo INFRA-9998 ;;
+esac
+STUB
+    chmod +x "$stub/chump"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    for n in 2001 2002 2003; do
+        echo "{\"ts\":\"$ts\",\"kind\":\"pr_stuck\",\"pr\":$n,\"gap\":\"INFRA-$n\"}" >> "$test_dir/.chump-locks/ambient.jsonl"
+    done
+    PATH="$stub:$PATH" LOCK_DIR="$test_dir/.chump-locks" bash "$REPO_ROOT/scripts/coord/pr-stuck-cluster-detector.sh" --apply >/dev/null 2>&1
+    [ ! -f "$reserve_log" ] || fail "Test 10: reserved a duplicate cluster gap despite open INFRA-9999"
+    ev="$(last_run_event "$test_dir/.chump-locks/ambient.jsonl")"
+    echo "$ev" | grep -q '"outcome":"open_cluster_gap_exists"' || fail "Test 10: expected open_cluster_gap_exists, got: $ev"
+    pass "Test 10: open cluster gap suppresses re-file"
+}
+
 echo "[test-pr-stuck-cluster-observability] Starting tests..."
 
 test_no_op_run_event
@@ -210,6 +236,7 @@ test_registry_cross_references_infra_3414
 test_registry_cross_references_infra_3419
 test_registry_cross_references_infra_2877
 test_registry_cross_references_infra_2470
+test_open_cluster_gap_suppresses_refile
 
 echo "[test-pr-stuck-cluster-observability] All tests passed!"
 exit 0
