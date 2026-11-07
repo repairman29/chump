@@ -10,6 +10,8 @@
 //!   Existing DB rows are NOT overwritten; only new gaps are inserted.
 
 pub mod backend;
+/// RESILIENT-1736: lease-identity parsing + dead-pid orphan detection.
+pub mod lease_identity;
 pub mod maintenance;
 /// INFRA-8222: `chump store reconcile` (Phase R R4).
 pub mod reconcile;
@@ -3049,7 +3051,24 @@ impl GapStore {
             |r| r.get(0),
         ).optional()?;
         if let Some(other) = live_claim {
-            bail!("gap {} is live-claimed by session {}", gap_id, other);
+            // RESILIENT-1736: a lease whose owning tick died on this host
+            // (restarted worker, same agent id, new pid) is not a real
+            // conflict — free it instead of bailing until the 16h TTL
+            // expires. same_identity() additionally lets a restarted tick
+            // resume its own lease even when the pid probe is inconclusive
+            // (e.g. permission-denied) by recognizing the stable
+            // fleet+agent+host prefix.
+            if lease_identity::is_orphaned(&other)
+                || lease_identity::same_identity(&other, session_id)
+            {
+                self.conn.execute(
+                    "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
+                    params![other, gap_id],
+                )?;
+                self.emit_lease_orphan_freed(gap_id, &other);
+            } else {
+                bail!("gap {} is live-claimed by session {}", gap_id, other);
+            }
         }
         // INFRA-1032: warn when this session already has a lease with a different worktree path
         if !worktree.is_empty() {
@@ -3140,9 +3159,40 @@ impl GapStore {
             )
             .optional()?;
         if let Some(s) = live_claim {
+            // RESILIENT-1736: don't let preflight report a gap as
+            // live-claimed when the claiming session's tick is dead on
+            // this host — free it now instead of leaving it foreign-held
+            // until expires_at (observed 16h starve, incident 2026-10-28).
+            if lease_identity::is_orphaned(&s) {
+                self.conn.execute(
+                    "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
+                    params![s, gap_id],
+                )?;
+                self.emit_lease_orphan_freed(gap_id, &s);
+                return Ok(PreflightResult::Available);
+            }
             return Ok(PreflightResult::Claimed(s));
         }
         Ok(PreflightResult::Available)
+    }
+
+    /// RESILIENT-1736: audit trail for a freed dead-pid lease — read by
+    /// fleet-brief / curators per docs/observability/EVENT_REGISTRY.yaml.
+    // scanner-anchor: "kind":"lease_orphan_freed"
+    fn emit_lease_orphan_freed(&self, gap_id: &str, orphan_session: &str) {
+        let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+        let ts = unix_to_iso_full(unix_now());
+        let line = format!(
+            "{{\"ts\":\"{ts}\",\"kind\":\"lease_orphan_freed\",\"gap_id\":\"{gap_id}\",\"session_id\":\"{orphan_session}\"}}\n"
+        );
+        use std::io::Write as _;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&amb)
+        {
+            let _ = f.write_all(line.as_bytes());
+        }
     }
 
     /// Batch-fetch all currently-active leases as a `gap_id → session_id` map.
@@ -13434,6 +13484,118 @@ meta:
             msg.contains("live-claimed"),
             "expected 'live-claimed' in error: {msg}"
         );
+    }
+
+    // ── RESILIENT-1736: dead-pid lease orphan freeing ──────────────────────
+
+    /// Seed a lease row directly (bypassing `claim()`'s conflict check) so
+    /// the fixture can carry an arbitrary, improbable pid — simulating a
+    /// worker tick that died on this host.
+    fn seed_raw_lease(store: &GapStore, gap_id: &str, session_id: &str, worktree: &str) {
+        store
+            .conn_for_test()
+            .execute(
+                "INSERT INTO leases(session_id,gap_id,worktree,expires_at)
+                 VALUES(?1,?2,?3,?4)",
+                params![session_id, gap_id, worktree, unix_now() + 3600],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn claim_adopts_own_lease_after_restart_with_new_pid() {
+        // AC1: a restarted worker (new tick pid, same agent id) resumes the
+        // gap it held instead of being told it's live-claimed by itself.
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "restart-resume", "P2", "s").unwrap();
+        let old_session = "fleet-ops-agent1@cuphead-111111-1793185000";
+        seed_raw_lease(&store, &id, old_session, "/tmp/wt-old");
+
+        let new_session = "fleet-ops-agent1@cuphead-222222-1793185999";
+        let result = store.claim(&id, new_session, "/tmp/wt-new", 3600);
+        assert!(
+            result.is_ok(),
+            "restarted tick (same agent id, new pid) must adopt its own lease: {:?}",
+            result.err()
+        );
+
+        let holder: String = store
+            .conn_for_test()
+            .query_row(
+                "SELECT session_id FROM leases WHERE gap_id=?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(holder, new_session, "old-tick lease row must be replaced");
+    }
+
+    #[test]
+    fn claim_frees_dead_pid_lease_from_unrelated_session() {
+        // AC2: a lease whose session pid is dead on this host is freed, not
+        // left blocking until expires_at — even when the claimant is a
+        // completely different agent slot, not a restart of the same one.
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "dead-pid-foreign", "P2", "s")
+            .unwrap();
+        // pid 999999999 cannot exist on this host.
+        let dead_session = "fleet-ops-agent2@cuphead-999999999-1793185000";
+        seed_raw_lease(&store, &id, dead_session, "/tmp/wt-dead");
+
+        let claimant = "fleet-ops-agent3@cuphead-333333-1793186000";
+        let result = store.claim(&id, claimant, "/tmp/wt-new", 3600);
+        assert!(
+            result.is_ok(),
+            "dead-pid lease from a foreign session must be freed: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn preflight_frees_dead_pid_lease_and_reports_available() {
+        // AC2 via the preflight path (used by `chump gap preflight`).
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "dead-pid-preflight", "P2", "s")
+            .unwrap();
+        let dead_session = "fleet-ops-agent1@cuphead-999999998-1793185000";
+        seed_raw_lease(&store, &id, dead_session, "/tmp/wt-dead");
+
+        let result = store.preflight(&id).unwrap();
+        assert!(
+            matches!(result, PreflightResult::Available),
+            "expected Available after freeing dead-pid lease, got {result:?}"
+        );
+
+        let remaining: i64 = store
+            .conn_for_test()
+            .query_row(
+                "SELECT COUNT(*) FROM leases WHERE gap_id=?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0, "orphaned lease row must be deleted");
+    }
+
+    #[test]
+    fn preflight_still_reports_claimed_for_live_foreign_pid() {
+        // Control: a lease held by a verifiably-alive pid on this host
+        // (our own test process) must NOT be freed.
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "live-pid-preflight", "P2", "s")
+            .unwrap();
+        let my_pid = std::process::id();
+        let live_session = format!("fleet-ops-agent9@cuphead-{my_pid}-1793185000");
+        seed_raw_lease(&store, &id, &live_session, "/tmp/wt-live");
+
+        let result = store.preflight(&id).unwrap();
+        match result {
+            PreflightResult::Claimed(s) => assert_eq!(s, live_session),
+            other => panic!("expected Claimed(live_session), got {other:?}"),
+        }
     }
 
     #[test]
