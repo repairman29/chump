@@ -156,6 +156,22 @@ pub fn enabled() -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn over_cap_demotes_p0_p1_only_via_explicit_decision() {
+        let mut s = Shares::default();
+        s.counts.insert("RESILIENT", 9);
+        s.total = 10;
+        assert_eq!(
+            decide("RESILIENT", "P0", &s, 0),
+            Decision::Demote { to: "P2" }
+        );
+        assert_eq!(
+            decide("RESILIENT", "P1", &s, 0),
+            Decision::Demote { to: "P2" }
+        );
+        assert_eq!(decide("RESILIENT", "P2", &s, 0), Decision::Keep);
+    }
+
     const NOW: i64 = 1_800_000_000;
 
     fn shares(rows: &[(&str, u64)], other: u64) -> Shares {

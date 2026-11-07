@@ -11614,7 +11614,7 @@ async fn main() -> Result<()> {
                         &priority,
                         &all_rows_for_reserve,
                     ) {
-                        if !args.iter().any(|a| a == "--quiet") {
+                        {
                             eprintln!(
                                 "[reserve] CREDIBLE-1543: clamping slice priority {priority} -> {parent_prio} to match parent {parent_id} (pass --p0-override <reason> to override)"
                             );
@@ -11671,7 +11671,11 @@ async fn main() -> Result<()> {
                             .iter()
                             .filter(|g| g.status == "open" && g.priority == "P0")
                             .count();
-                        let cap_override = flag("--cap-override");
+                        let cap_override = flag("--cap-override").or_else(|| {
+                            args.iter()
+                                .any(|a| a == "--force-pillar")
+                                .then(|| "--force-pillar".to_string())
+                        });
                         let decision = pillar_cap::decide(pillar, &priority, &shares, open_p0);
                         let (decision_label, new_priority) = match (&cap_override, &decision) {
                             (_, pillar_cap::Decision::Keep) => ("keep", None),
@@ -11684,9 +11688,9 @@ async fn main() -> Result<()> {
                         if decision_label != "keep" {
                             let from = priority.clone();
                             let to = new_priority.clone().unwrap_or_else(|| priority.clone());
-                            if !args.iter().any(|a| a == "--quiet") {
+                            {
                                 eprintln!(
-                                    "[reserve] CREDIBLE-072: {pillar} is {:.0}% of 7d merges — {decision_label} {from} → {to}",
+                                    "[reserve] CREDIBLE-1704: requested priority {from} changed to {to} by pillar cap (CREDIBLE-072): {pillar} is {:.0}% of 7d merges — {decision_label} (pass --cap-override <reason> or --force-pillar to keep {from})",
                                     shares.pct(pillar)
                                 );
                             }
