@@ -369,6 +369,20 @@ if [[ "$FLEET_SIZE" != "0" ]]; then
     fi
 fi
 
+# ZERO-WASTE-153: explicit Rust-lane capacity on small nodes (one shared cargo
+# target lock makes extra lanes add waiting, not throughput).
+if [[ "$FLEET_SIZE" != "0" && -f "$(dirname "${BASH_SOURCE[0]}")/../lib/node-class.sh" ]]; then
+    # shellcheck disable=SC1091
+    . "$(dirname "${BASH_SOURCE[0]}")/../lib/node-class.sh"
+    if [[ "$(chump_node_class)" == "small" ]]; then
+        _rl="$(chump_rust_lanes)"
+        if [[ "$_rl" =~ ^[0-9]+$ ]] && (( _rl >= 1 && FLEET_SIZE > _rl )); then
+            echo "[run-fleet] ZERO-WASTE-153: small node caps Rust lanes FLEET_SIZE $FLEET_SIZE->$_rl" >&2
+            FLEET_SIZE=$_rl
+        fi
+    fi
+fi
+
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"

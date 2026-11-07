@@ -1525,7 +1525,32 @@ if [ -n "$staged_rust" ]; then
             # the debug profile catches >99% of type/borrow errors.
             check_log="/tmp/chump-pre-commit-check-$$.log"
             trap 'rm -f "$check_log"' EXIT
-            if ! cargo check --bin chump --tests >"$check_log" 2>&1; then
+            # ZERO-WASTE-153: on a small node, check only the touched packages
+            # (not the whole bin) so lanes don't serialize on the target lock.
+            check_args=(--bin chump --tests)
+            _nc_lib="$(git rev-parse --show-toplevel 2>/dev/null)/scripts/lib/node-class.sh"
+            if [ -f "$_nc_lib" ]; then
+                # shellcheck disable=SC1090
+                . "$_nc_lib"
+                if [ "$(chump_node_class)" = "small" ]; then
+                    _pkgs=""; _root=0
+                    while IFS= read -r _f; do
+                        case "$_f" in
+                            crates/*/*)
+                                _d="$(echo "$_f" | cut -d/ -f1-2)"
+                                _n="$(sed -n 's/^name *= *"\(.*\)"/\1/p' "$_d/Cargo.toml" 2>/dev/null | head -1)"
+                                if [ -n "$_n" ]; then _pkgs="$_pkgs $_n"; else _root=1; fi ;;
+                            *) _root=1 ;;
+                        esac
+                    done <<< "$staged_rust"
+                    if [ "$_root" = "0" ] && [ -n "$_pkgs" ]; then
+                        check_args=(); for _p in $(echo "$_pkgs" | tr ' ' '\n' | sort -u); do check_args+=(-p "$_p"); done
+                        check_args+=(--tests)
+                        echo "[pre-commit] small node: cargo check ${check_args[*]} (ZERO-WASTE-153)" >&2
+                    fi
+                fi
+            fi
+            if ! cargo check "${check_args[@]}" >"$check_log" 2>&1; then
                 echo "[pre-commit] CARGO CHECK FAILED — compile error in staged code." >&2
                 echo "[pre-commit] ---- last 30 lines of error output: ----" >&2
                 tail -30 "$check_log" >&2
