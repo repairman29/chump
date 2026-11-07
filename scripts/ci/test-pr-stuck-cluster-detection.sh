@@ -177,6 +177,29 @@ EOF
     fi
 }
 
+# Test 5b (INFRA-8182): a different PR set within cooldown must not re-file.
+test_cluster_membership_drift_dedup() {
+    local test_dir="$(setup_test_env)"
+    trap "cleanup_test_env '$test_dir'" RETURN
+
+    now_epoch="$(date +%s)"
+    ts_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    cat > "$test_dir/.chump-locks/ambient.jsonl" << EOF
+{"ts":"$ts_iso","kind":"pr_stuck","pr":2001,"gap":"INFRA-200"}
+{"ts":"$ts_iso","kind":"pr_stuck","pr":2002,"gap":"INFRA-201"}
+{"ts":"$ts_iso","kind":"pr_stuck","pr":2003,"gap":"INFRA-202"}
+EOF
+    echo "$(( now_epoch - 3600 ))" > "$test_dir/.chump-locks/.cluster-sent/any-cluster.ts"
+
+    local output
+    output="$(LOCK_DIR="$test_dir/.chump-locks" bash "$REPO_ROOT/scripts/coord/pr-stuck-cluster-detector.sh" --apply 2>&1 || true)"
+    if echo "$output" | grep -q "membership changed"; then
+        pass "Test 5b: membership drift within cooldown deduped"
+    else
+        fail "Test 5b: expected global dedup skip, got: $output"
+    fi
+}
+
 # Test 6: Detector dry-run (no gap filed).
 test_detector_dry_run() {
     local test_dir="$(setup_test_env)"
@@ -273,6 +296,7 @@ test_below_threshold
 test_cluster_detected
 test_cluster_outside_window
 test_cluster_cooldown_dedup
+test_cluster_membership_drift_dedup
 test_detector_dry_run
 test_chronic_single_pr_escalates
 test_chronic_single_pr_too_young
