@@ -413,6 +413,31 @@ _converge_stale_binaries() {
     return 0
 }
 
+# RESILIENT-408 / INFRA-8051: after install, verify the binary a worker's PATH
+# actually resolves `chump` to (not just $TARGET_BIN) embeds the deployed SHA.
+# Ported from the (dead, macOS-only) scripts/ops/auto-deploy.sh. Override hook:
+_resolve_worker_bin() {
+    if [[ -n "${CHUMP_WORKER_BIN:-}" ]]; then printf '%s' "$CHUMP_WORKER_BIN"; return 0; fi
+    if [[ -x "$HOME/.cargo/bin/chump" ]]; then printf '%s' "$HOME/.cargo/bin/chump"; return 0; fi
+    local on_path; on_path="$(command -v chump 2>/dev/null || true)"
+    if [[ -n "$on_path" ]]; then printf '%s' "$on_path"; return 0; fi
+    printf '%s' "$TARGET_BIN"
+}
+
+_verify_worker_path_binary() {
+    local want="$1"
+    local wbin wsha
+    wbin="$(_resolve_worker_bin)"
+    wsha="$("$wbin" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || true)"
+    if [[ -n "$wsha" && -n "$want" && ( "$want" == "$wsha"* || "$wsha" == "$want"* ) ]]; then
+        log "worker-path verify OK: $wbin @ $wsha"
+        return 0
+    fi
+    log "FATAL: worker-path binary $wbin reports sha '${wsha:-unknown}' but deployed sha is $want (installed to $TARGET_BIN)"
+    emit binary_auto_deploy_failed "\"reason\":\"worker_binary_sha_mismatch\",\"worker_bin\":\"$wbin\",\"worker_sha\":\"${wsha:-unknown}\",\"main_sha\":\"$want\",\"target_bin\":\"$TARGET_BIN\""
+    return 1
+}
+
 # --- INFRA-3677: prebuilt-artifact pull --------------------------------------
 # The build-speed payoff: instead of a ~30-min local `cargo build --release`,
 # fetch the binary the free GH-hosted CI already built for this exact commit
@@ -879,6 +904,7 @@ ARTIFACT_SHA_SHORT="$(git rev-parse --short=12 "$ARTIFACT_SHA" 2>/dev/null || ec
 
 if _try_artifact_pull "$ARTIFACT_SHA" "$ARTIFACT_SHA_SHORT"; then
     _reconcile_role_organs
+    _verify_worker_path_binary "$ARTIFACT_SHA_SHORT" || exit 1
     ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
     exit 0
 fi
@@ -891,11 +917,13 @@ fi
 # pointer (FULL_SHA / MAIN_SHA) first, then the nearest built ancestor.
 if _try_release_pull "$FULL_SHA" "$MAIN_SHA"; then
     _reconcile_role_organs
+    _verify_worker_path_binary "$MAIN_SHA" || exit 1
     ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
     exit 0
 fi
 if [[ "$ARTIFACT_SHA" != "$FULL_SHA" ]] && _try_release_pull "$ARTIFACT_SHA" "$ARTIFACT_SHA_SHORT"; then
     _reconcile_role_organs
+    _verify_worker_path_binary "$ARTIFACT_SHA_SHORT" || exit 1
     ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
     exit 0
 fi
@@ -992,6 +1020,7 @@ NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' 
 log "OK: $TARGET_BIN now at sha $NEW_SHA (green-main = $MAIN_SHA)"
 emit node_binary_refreshed "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA\""
 _reconcile_role_organs
+_verify_worker_path_binary "$MAIN_SHA" || exit 1
 
 # Prune old logs (keep last 24)
 ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
