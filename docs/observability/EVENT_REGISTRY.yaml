@@ -3163,6 +3163,12 @@ events:
     trigger: one pillar > 60% of recent ships for 8h
     consumers: [fleet-brief, operator-recall]
 
+  - kind: chump_bin_skew
+    effect_metric: self
+    emitter: scripts/dispatch/_pick_and_claim_gap.py (CREDIBLE-1703)
+    trigger: picker skips a chump binary that rejects --role or is not an ancestor of checkout HEAD
+    consumers: [fleet-brief]
+
   - kind: rebalance_active
     effect_metric: self
     emitter: picker

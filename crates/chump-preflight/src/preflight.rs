@@ -3328,6 +3328,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "pick-and-claim-stale-bin",
+            &["bash", "scripts/ci/test-pick-and-claim-stale-bin.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "pick-gap-cooldown",
             &["bash", "scripts/ci/test-pick-gap-cooldown.sh"],
             GateKind::Scripts,
