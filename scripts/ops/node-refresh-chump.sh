@@ -371,6 +371,29 @@ _install_chumpd_binary() {
     return 0
 }
 
+# RESILIENT-1602: repoint a stale PATH copy at the canonical binary. A root-owned
+# copy is retried via non-interactive sudo; if that also fails, emit a routed
+# node_binary_converge_blocked signal (not just a WARN nobody reads).
+_repoint_stale_bin() {
+    local c="$1" canon="$2"
+    if ln -sfn "$canon" "$c.new" 2>/dev/null && mv -f "$c.new" "$c" 2>/dev/null; then
+        log "converge: $c -> $canon"
+        emit node_binary_converged "\"path\":\"$c\",\"canonical\":\"$canon\""
+        return 0
+    fi
+    rm -f "$c.new" 2>/dev/null || true
+    if command -v sudo >/dev/null 2>&1 && sudo -n ln -sfn "$canon" "$c.new" 2>/dev/null \
+        && sudo -n mv -f "$c.new" "$c" 2>/dev/null; then
+        log "converge: $c -> $canon (via sudo)"
+        emit node_binary_converged "\"path\":\"$c\",\"canonical\":\"$canon\",\"via\":\"sudo\""
+        return 0
+    fi
+    sudo -n rm -f "$c.new" 2>/dev/null || true
+    log "WARN: converge: cannot repoint stale $c (not writable)"
+    emit node_binary_converge_blocked "\"path\":\"$c\",\"canonical\":\"$canon\",\"fix\":\"sudo ln -sfn $canon $c\""
+    return 1
+}
+
 _converge_stale_chumpd_binaries() {
     [[ "${CHUMP_NODE_CONVERGE_BINS:-1}" == "0" ]] && return 0
     [[ -e "$TARGET_CHUMPD_BIN" ]] || return 0
@@ -379,13 +402,7 @@ _converge_stale_chumpd_binaries() {
     for c in "$HOME/.cargo/bin/chumpd" "$HOME/.local/bin/chumpd" "/usr/local/bin/chumpd"; do
         [[ -e "$c" || -L "$c" ]] || continue
         [[ "$(readlink -f "$c" 2>/dev/null)" == "$canon" ]] && continue
-        if ln -sfn "$canon" "$c.new" 2>/dev/null && mv -f "$c.new" "$c" 2>/dev/null; then
-            log "converge: $c -> $canon"
-            emit node_binary_converged "\"path\":\"$c\",\"canonical\":\"$canon\""
-        else
-            rm -f "$c.new" 2>/dev/null || true
-            log "WARN: converge: cannot repoint stale $c (not writable)"
-        fi
+        _repoint_stale_bin "$c" "$canon"
     done
     return 0
 }
@@ -402,13 +419,7 @@ _converge_stale_binaries() {
     for c in "$HOME/.cargo/bin/chump" "$HOME/.local/bin/chump" "/usr/local/bin/chump"; do
         [[ -e "$c" || -L "$c" ]] || continue
         [[ "$(readlink -f "$c" 2>/dev/null)" == "$canon" ]] && continue
-        if ln -sfn "$canon" "$c.new" 2>/dev/null && mv -f "$c.new" "$c" 2>/dev/null; then
-            log "converge: $c -> $canon"
-            emit node_binary_converged "\"path\":\"$c\",\"canonical\":\"$canon\""
-        else
-            rm -f "$c.new" 2>/dev/null || true
-            log "WARN: converge: cannot repoint stale $c (not writable)"
-        fi
+        _repoint_stale_bin "$c" "$canon"
     done
     return 0
 }
