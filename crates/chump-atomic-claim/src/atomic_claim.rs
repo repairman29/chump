@@ -1462,6 +1462,11 @@ pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
             );
             emit_force_recover_event(&args.repo_root, &args.gap_id, &branch, &actions_str);
         }
+    } else if worktree_path.exists()
+        && !args.resume
+        && !gap_has_live_lease(&args.repo_root.join(".chump-locks"), &args.gap_id)
+    {
+        recover_orphan_claim_worktree(&args.repo_root, &args.gap_id, &worktree_path, &branch)?;
     } else if worktree_path.exists() {
         bail!(
             "worktree path already exists: {}\n  Remove it first with: git worktree remove --force {}\n  Or re-run with --force-recover to auto-clean.",
@@ -2640,6 +2645,109 @@ fn emit_gap_claimed_event(repo_root: &Path, gap_id: &str, session_id: &str) -> R
 
     let line = format!(
         "{{\"ts\":\"{ts}\",\"kind\":\"gap_claimed\",\"gap_id\":\"{gap_id}\",\"session_id\":\"{session_id}\"}}\n"
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+    Ok(())
+}
+
+/// RESILIENT-182: true if any non-expired lease file in `lock_dir` names `gap_id`.
+fn gap_has_live_lease(lock_dir: &Path, gap_id: &str) -> bool {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let Ok(entries) = std::fs::read_dir(lock_dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+        if val.get("gap_id").and_then(|v| v.as_str()) != Some(gap_id) {
+            continue;
+        }
+        match val.get("expires_at").and_then(|v| v.as_str()) {
+            Some(exp) => match parse_iso8601(exp) {
+                Ok(e) if e <= now => continue,
+                _ => return true,
+            },
+            None => return true,
+        }
+    }
+    false
+}
+
+/// RESILIENT-182: recycle a claim worktree left behind by a dead run (no live
+/// lease). Branches with commits ahead of origin/main are renamed, not deleted.
+fn recover_orphan_claim_worktree(
+    repo_root: &Path,
+    gap_id: &str,
+    worktree_path: &Path,
+    branch: &str,
+) -> Result<()> {
+    let wt = worktree_path.to_string_lossy().to_string();
+    let mut actions: Vec<String> = Vec::new();
+    if run_git(repo_root, &["worktree", "remove", "--force", &wt]).is_err() {
+        std::fs::remove_dir_all(worktree_path).with_context(|| {
+            format!(
+                "orphan recovery: could not remove {}",
+                worktree_path.display()
+            )
+        })?;
+        let _ = run_git(repo_root, &["worktree", "prune"]);
+        actions.push(format!("rm_rf:{wt}"));
+    } else {
+        actions.push(format!("worktree_remove_force:{wt}"));
+    }
+    if run_git(repo_root, &["rev-parse", "--verify", branch]).is_ok() {
+        let ahead = run_git(
+            repo_root,
+            &["rev-list", "--count", &format!("origin/main..{branch}")],
+        )
+        .ok()
+        .and_then(|o| o.trim().parse::<u64>().ok())
+        .unwrap_or(1);
+        if ahead > 0 {
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let new_name = format!("{branch}-orphan-{ts}");
+            run_git(repo_root, &["branch", "-m", branch, &new_name])?;
+            actions.push(format!("branch_rename:{new_name}"));
+        } else {
+            let _ = run_git(repo_root, &["branch", "-D", branch]);
+            actions.push(format!("branch_delete:{branch}"));
+        }
+    }
+    let actions_str = actions.join(",");
+    eprintln!("[claim] recovered orphan claim worktree for {gap_id}: {actions_str}");
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    );
+    let line = format!(
+        "{{\"ts\":\"{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z\",\"kind\":\"orphan_claim_worktree_recovered\",\"gap_id\":\"{}\",\"branch\":\"{}\",\"actions\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(branch),
+        json_escape(&actions_str),
     );
     let _ = std::fs::OpenOptions::new()
         .create(true)
