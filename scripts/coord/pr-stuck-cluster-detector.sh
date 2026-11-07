@@ -286,6 +286,19 @@ if [ -f "$cluster_stamp" ]; then
     fi
 fi
 
+# Global dedup: the PR set drifts as PRs merge/join, so the per-set hash above
+# never matches and each drift filed a fresh gap (INFRA-8116, INFRA-8182).
+# Any cluster filed within the cooldown suppresses new ones.
+any_stamp="$CLUSTER_SENT_DIR/any-cluster.ts"
+if [ -f "$any_stamp" ]; then
+    any_stamp_ts="$(cat "$any_stamp" 2>/dev/null || echo 0)"
+    if [ "$any_stamp_ts" -gt 0 ] && [ $(( now_epoch - any_stamp_ts )) -lt "$RESEND_COOLDOWN_S" ]; then
+        echo "[pr-stuck-cluster-detector] a cluster gap was filed within cooldown (membership changed); skip"
+        _PSCD_OUTCOME="no_op"
+        exit 0
+    fi
+fi
+
 # Build description with affected PRs, ages, gaps.
 description="$(cat << DESC_EOF
 Cluster detected: $stuck_pr_count PRs stuck >2h simultaneously.
@@ -363,6 +376,7 @@ except Exception:
 
             # Record the cluster filing time.
             printf '%s' "$now_epoch" > "$cluster_stamp"
+            printf '%s' "$now_epoch" > "$any_stamp"
             _PSCD_OUTCOME="cluster_filed"
         else
             echo "[pr-stuck-cluster-detector] ERROR: gap reserve succeeded but no ID extracted"
