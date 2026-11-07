@@ -2701,6 +2701,17 @@ if [[ "$_BM_MODE" == "A" ]]; then
     fi
 fi
 
+# META-206: docs-only diffs (all .md) gain nothing from integrator batching —
+# route per-PR (Mode B). Empty/uncomputable diff keeps Mode A.
+_bm_substep "mode-a-docs-only-force-b"
+if [[ "$_BM_MODE" == "A" ]]; then
+    _bm_changed="$(git diff --name-only origin/main...HEAD 2>/dev/null || true)"
+    if [[ -n "$_bm_changed" ]] && ! printf '%s\n' "$_bm_changed" | grep -qvE '\.md$'; then  # pipefail-sweep-allowed
+        _BM_MODE="B"
+        _BM_MODE_REASON="docs-only diff (.md only) — no integrator batching benefit (META-206)"
+    fi
+fi
+
 info "INFRA-2133: routing mode=${_BM_MODE} reason=${_BM_MODE_REASON:-default}"
 
 if [[ "$_BM_MODE" == "A" ]]; then
