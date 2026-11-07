@@ -1,0 +1,3 @@
+# INFRA-8188: new launchd plists permitted without a systemd/cron equivalent.
+# Format: <com.chump.name | name>  # reason: <why>
+# Existing plists are grandfathered automatically (only ADDED files are checked).
