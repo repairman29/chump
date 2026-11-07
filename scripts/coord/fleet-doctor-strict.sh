@@ -2402,6 +2402,41 @@ check_cj_node_hardening() {
     fi
 }
 
+# ── Check (RESILIENT-1605): configured MCP servers must actually spawn ─────────
+# A server declared+enabled in chump-mcp.json whose command is missing/not
+# executable means every worker runs blind (e.g. almanac-mcp absent on a work
+# node). Also flags the retired helsinki literal IP in the config.
+check_mcp_servers_spawnable() {
+    local cfg="${CHUMP_MCP_CONFIG:-${CHUMP_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/chump-mcp.json}"
+    if [[ ! -f "$cfg" ]]; then
+        register_check "mcp-spawnable" "skip" "no chump-mcp.json at $cfg" ""
+        return
+    fi
+    local bad
+    bad="$(python3 - "$cfg" <<'PY' 2>&1
+import json, os, shutil, sys
+cfg = json.load(open(sys.argv[1]))
+bad = []
+for name, s in cfg.get("mcpServers", {}).items():
+    if not s.get("enabled", True):
+        continue
+    cmd = os.path.expandvars(os.path.expanduser(s.get("command", "")))
+    ok = (os.access(cmd, os.X_OK) and os.path.isfile(cmd)) if os.sep in cmd else bool(shutil.which(cmd))
+    if not ok:
+        bad.append(f"{name}: command '{cmd}' not found/executable")
+    for k, v in (s.get("env") or {}).items():
+        if "100.101.188.30" in str(v):
+            bad.append(f"{name}: env {k} points at retired helsinki 100.101.188.30")
+print("; ".join(bad))
+PY
+)"
+    if [[ -n "$bad" ]]; then
+        register_check "mcp-spawnable" "fail" "configured MCP server(s) cannot spawn — workers blind: $bad" "run scripts/setup/install-almanac.sh (almanac) or disable the server in chump-mcp.json"
+        return
+    fi
+    register_check "mcp-spawnable" "pass" "all enabled MCP servers in $cfg resolve" ""
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -2428,6 +2463,7 @@ check_auth_probe
 check_self_healer_heartbeat
 check_tracked_config_drift
 check_checkout_parked_off_main
+check_mcp_servers_spawnable
 check_canonical_checkout_dirty
 check_fetch_refspec_single_branch
 check_second_scope
