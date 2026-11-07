@@ -68,7 +68,7 @@ _PSCD_GAP_RESERVE_CALLS=0
 
 _pscd_failure_class() {
     case "$1" in
-        no_op|dry_run|cluster_filed|chronic_filed|chronic_dry_run) echo "none" ;;
+        no_op|dry_run|cluster_filed|chronic_filed|chronic_dry_run|open_cluster_gap_exists) echo "none" ;;
         help) echo "none" ;;
         gap_id_extract_failed|error) echo "transient" ;;
         gap_reserve_failed|bad_args) echo "permanent" ;;
@@ -320,6 +320,23 @@ DESC_EOF
 )"
 
 if [ "$APPLY" -eq 1 ]; then
+    # INFRA-8182: cluster_id hashes the PR set, so membership churn (6 -> 4 PRs)
+    # minted a fresh id and re-filed a duplicate gap while the first was still
+    # open. One open cluster gap is enough; skip until it is closed.
+    open_cluster_gap="$(chump gap list --status open --json 2>/dev/null \
+        | python3 -c 'import sys,json
+try:
+    for g in json.load(sys.stdin):
+        if str(g.get("title","")).startswith("RESILIENT: PR cluster stuck"):
+            print(g.get("id","")); break
+except Exception:
+    pass' 2>/dev/null)"
+    if [ -n "$open_cluster_gap" ]; then
+        echo "[pr-stuck-cluster-detector] open cluster gap $open_cluster_gap already tracks stuck PRs; skip"
+        _PSCD_OUTCOME="open_cluster_gap_exists"
+        exit 0
+    fi
+
     # File the gap.
     title="RESILIENT: PR cluster stuck — $stuck_pr_count PRs blocked >2h; diagnose root cause + recover"
 
