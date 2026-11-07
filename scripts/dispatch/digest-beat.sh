@@ -221,6 +221,7 @@ debt_index="organs ${organs_up}/${organs_total} firing · ${signal_kinds} signal
 
 read -r -d '' DIGEST <<EOF || true
 📟 CHUMP DIGEST · $(date -u -d "@$now_epoch" +"%b %-d %H:%MZ" 2>/dev/null || date -u +"%b %-d %H:%MZ") · last ${window_h}h
+produced by: $(hostname -s 2>/dev/null || echo unknown)${CHUMP_DIGEST_FALLBACK_REASON:+ (FALLBACK: ${CHUMP_DIGEST_FALLBACK_REASON})}
 
 SHIPPED
   ${merge_count} merge(s), ${gaps_closed} gap(s) closed
