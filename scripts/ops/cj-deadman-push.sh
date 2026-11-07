@@ -96,8 +96,41 @@ if [[ -z "$link_carrier" ]]; then
 fi
 last_journal_epoch="${CHUMP_DEADMAN_LAST_JOURNAL_EPOCH:-$now_epoch}"
 
-payload="$(printf '{"schema":"chump-deadman/1","node":"%s","farmer_hb_epoch":%s,"pushed_epoch":%s,"origin_main_epoch":%s,"last_journal_epoch":%s,"wpa_disconnect_reason":"%s","link_carrier":"%s","pushed_iso":"%s"}' \
-    "$NODE_ID" "$farmer_epoch" "$now_epoch" "$main_epoch" "$last_journal_epoch" "$wpa_reason" "$link_carrier" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+# --- CREDIBLE-1705: worker unit state + fleet ship-rate evidence --------------
+# A worker unit that sat failed for 5 days went unpaged because the beat only
+# proved the pusher/farmer were alive. Report the unit's ActiveState + since-epoch,
+# the last merged-PR epoch, and open-gap count so the off-node watcher can grade them.
+worker_unit="${CHUMP_DEADMAN_WORKER_UNIT:-chump-cj-worker}"
+worker_state="${CHUMP_DEADMAN_WORKER_STATE:-}"
+worker_since="${CHUMP_DEADMAN_WORKER_SINCE_EPOCH:-}"
+if [[ -z "$worker_state" ]] && command -v systemctl >/dev/null 2>&1; then
+    for _scope in --user --system; do
+        _st="$(systemctl $_scope show "$worker_unit" -p ActiveState --value 2>/dev/null)"
+        [[ -z "$_st" || "$_st" == "inactive" && "$(systemctl $_scope show "$worker_unit" -p LoadState --value 2>/dev/null)" == "not-found" ]] && continue
+        worker_state="$_st"
+        if [[ "$_st" == "active" ]]; then _prop=ActiveEnterTimestamp; else _prop=InactiveEnterTimestamp; fi
+        _ts="$(systemctl $_scope show "$worker_unit" -p "$_prop" --value 2>/dev/null)"
+        [[ -n "$_ts" ]] && worker_since="$(date -d "$_ts" +%s 2>/dev/null || true)"
+        break
+    done
+fi
+[[ -z "$worker_state" ]] && worker_state="unknown"
+[[ -z "$worker_since" ]] && worker_since=0
+
+last_merge_epoch="${CHUMP_DEADMAN_LAST_MERGE_EPOCH:-}"
+if [[ -z "$last_merge_epoch" ]] && command -v gh >/dev/null 2>&1; then
+    _m="$(timeout 20 gh pr list --state merged --limit 1 --json mergedAt --jq '.[0].mergedAt' 2>/dev/null || true)"
+    [[ -n "$_m" ]] && last_merge_epoch="$(date -d "$_m" +%s 2>/dev/null || true)"
+fi
+[[ -z "$last_merge_epoch" ]] && last_merge_epoch=0
+open_gaps="${CHUMP_DEADMAN_OPEN_GAPS:-}"
+if [[ -z "$open_gaps" ]] && command -v chump >/dev/null 2>&1; then
+    open_gaps="$(timeout 20 chump gap list --status open 2>/dev/null | grep -cE '^[[:space:]]*[A-Z]+-[0-9]+' || true)"
+fi
+[[ "$open_gaps" =~ ^[0-9]+$ ]] || open_gaps=0
+
+payload="$(printf '{"schema":"chump-deadman/1","node":"%s","farmer_hb_epoch":%s,"pushed_epoch":%s,"origin_main_epoch":%s,"last_journal_epoch":%s,"wpa_disconnect_reason":"%s","link_carrier":"%s","worker_unit_state":"%s","worker_unit_since_epoch":%s,"last_merge_epoch":%s,"open_gaps":%s,"pushed_iso":"%s"}' \
+    "$NODE_ID" "$farmer_epoch" "$now_epoch" "$main_epoch" "$last_journal_epoch" "$wpa_reason" "$link_carrier" "$worker_state" "$worker_since" "$last_merge_epoch" "$open_gaps" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
 
 if [[ "${CHUMP_DEADMAN_DRY_RUN:-0}" == "1" ]]; then
     printf '%s\n' "$payload"
