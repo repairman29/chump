@@ -1324,6 +1324,9 @@ jobs:
       - name: cargo-target-reaper Class D — idle open-PR worktree + stale active-dispatch marker reap (RESILIENT-1635)
         run: bash scripts/ci/test-cargo-target-reaper-class-d-open-idle.sh
 
+      - name: cargo-target-reaper honesty — EXIT emit survives, scanned-path count (RESILIENT-130)
+        run: bash scripts/ci/test-cargo-target-reaper-honesty.sh
+
       - name: shared-target-cache-reaper — incremental-only reap, floor/budget CLI, lane locks (RESILIENT-1680 / RESILIENT-1681)
         run: bash scripts/ci/test-shared-target-cache-reaper.sh
 
