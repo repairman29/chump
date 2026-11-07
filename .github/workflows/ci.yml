@@ -637,6 +637,10 @@ jobs:
       - name: Doctrine seam-finder fixture test
         run: bash scripts/ci/test-doctrine-seam-finder.sh
 
+      # INFRA-8174: vercel-resolve resolves known names, rejects guesses.
+      - name: vercel-resolve fixture test
+        run: bash scripts/ci/test-vercel-resolve.sh
+
       # META-1041: doctrine missing-thread + frayed-edge detectors fixture test.
       - name: Doctrine weave detectors fixture test
         run: bash scripts/ci/test-doctrine-weave-detectors.sh
