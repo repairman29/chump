@@ -67,7 +67,11 @@ ALMANAC_BUILD_CMD="${ALMANAC_BUILD_CMD:-cargo build --release --manifest-path \"
 ALMANAC_INSTALL_DIR="${ALMANAC_INSTALL_DIR:-/usr/local/bin}"
 CHUMP_ENV_FILE="${CHUMP_ENV_FILE:-$HOME/.chump/env}"
 CHUMP_MCP_CONFIG="${CHUMP_MCP_CONFIG:-$REPO_ROOT/chump-mcp.json}"
-ALMANAC_EMBED_URL="${ALMANAC_EMBED_URL:-http://localhost:11434}"
+# RESILIENT-1605: default to the CJ MagicDNS name (never a literal IP); node.env wins if it sets one.
+if [ -z "${ALMANAC_EMBED_URL:-}" ] && [ -r "$HOME/.chump/node.env" ]; then
+  ALMANAC_EMBED_URL="$(sed -n 's/^ALMANAC_EMBED_URL=//p' "$HOME/.chump/node.env" | tail -1)"
+fi
+ALMANAC_EMBED_URL="${ALMANAC_EMBED_URL:-http://closetjunky:11434}"
 
 MODE="install"; DRY=0
 for a in "$@"; do
