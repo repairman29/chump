@@ -529,6 +529,15 @@ async fn main() {
     // Dispatched before any supervisor setup so it never binds the socket or
     // takes pool ownership; worker.sh execs this.
     let argv: Vec<String> = std::env::args().collect();
+    // RESILIENT-2226: answer --version/-V before ANY daemon setup (takeover() pkills workers).
+    if matches!(argv.get(1).map(String::as_str), Some("--version" | "-V")) {
+        println!(
+            "chumpd {} ({})",
+            env!("CARGO_PKG_VERSION"),
+            env!("CHUMPD_BUILD_SHA")
+        );
+        std::process::exit(0);
+    }
     if argv.get(1).map(String::as_str) == Some("worker") {
         std::process::exit(worker_loop::run(&argv[2..]));
     }

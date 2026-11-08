@@ -217,6 +217,7 @@ if [[ -n "$WATCHDOG_SRC" ]]; then
         echo "Environment=CHUMP_REPO_ROOT=${CANON_REPO}"
         [[ -n "${CHUMP_NODE_BIN:-}" ]]  && echo "Environment=CHUMP_NODE_BIN=${CHUMP_NODE_BIN}"
         echo "ExecStart=/usr/bin/env bash ${WATCHDOG_SRC}"
+        echo "TimeoutStartSec=120"
         echo "Nice=10"
     } > "$UNIT_DIR/chump-node-deploy-lag-watchdog.service"
     {
