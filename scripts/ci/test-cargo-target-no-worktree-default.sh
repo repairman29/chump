@@ -172,6 +172,14 @@ else
   bad "RESILIENT-1642: src/dispatch.rs must export CARGO_TARGET_DIR via resolve_shared_cargo_target_dir()"
 fi
 
+# RESILIENT-1642 AC2: bot-merge keeps its shared-resolver export.
+if grep -q 'source "\$_BM_RESOLVER"' scripts/coord/bot-merge.sh \
+   && grep -q '^    chump_export_cargo_target_dir$' scripts/coord/bot-merge.sh; then
+  ok "RESILIENT-1642: bot-merge.sh exports CARGO_TARGET_DIR via the shared resolver"
+else
+  bad "RESILIENT-1642: bot-merge.sh must source the resolver and call chump_export_cargo_target_dir"
+fi
+
 check_no_worktree_private_targets() {
   local wt_root="$1"
   local found=0
