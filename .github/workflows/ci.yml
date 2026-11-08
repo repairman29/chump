@@ -1829,6 +1829,11 @@ jobs:
         # fails the structural census gate locally (#5582 class). Hermetic, no build.
         run: bash scripts/ci/test-resilient-1622-structural-subset.sh
 
+      - name: pre-push Guard 0a behavior against stub chump (RESILIENT-1625)
+        # Runs the real Guard 0a block against stub chump binaries (new/stale
+        # help) over bot-merge on/off x preflight pass/fail. Hermetic, no build.
+        run: bash scripts/ci/test-resilient-1625-guard0a-stub-chump.sh
+
       - name: no title/subject-regex gap closers (CREDIBLE-1550 AC4)
         # A gap close must trust the typed gap_prs FK, never a PR title/commit
         # subject regex (a title falsely closed CREDIBLE-1492 from a docs PR and

@@ -599,7 +599,7 @@ fi
 if command -v chump &>/dev/null \
    && chump preflight --help &>/dev/null; then
     preflight_has_targets=0
-    while IFS=' ' read -r local_sha local_ref remote_sha _remote_ref; do
+    while IFS=' ' read -r _local_ref local_sha _remote_ref remote_sha; do
         [[ -z "$local_sha" ]] && continue
         if [[ "$local_sha" =~ ^0+$ ]]; then continue; fi
         if [[ "$remote_sha" =~ ^0+$ ]]; then
@@ -608,9 +608,11 @@ if command -v chump &>/dev/null \
         else
             range_base="$remote_sha"
         fi
-        # Match what preflight cares about: Rust + scripts + Cargo manifests.
+        # Match what preflight cares about: Rust + scripts + Cargo manifests + CI
+        # workflows (.github/ — ci.yml edits drive the parity/path-filter gates).
+        # Field order is git's: <local ref> <local sha> <remote ref> <remote sha>.
         if git diff --name-only "$range_base..$local_sha" 2>/dev/null \
-            | grep -qE '\.(rs|sh)$|^Cargo\.(toml|lock)$|^crates/|^src/|^scripts/'; then
+            | grep -qE '\.(rs|sh)$|^Cargo\.(toml|lock)$|^crates/|^src/|^scripts/|^\.github/'; then
             preflight_has_targets=1
             break
         fi
@@ -645,7 +647,7 @@ if command -v chump &>/dev/null \
         if [[ "$_pf_help" == *--structural* ]]; then
             _pf_structural_arg="--structural"
             echo "[pre-push] INFRA-3521 (RESILIENT-1622): bot-merge push — running structural preflight subset (no cargo build) instead of skipping." >&2
-            printf '{"ts":"%s","kind":"prepush_preflight_skipped_botmerge","reason":"INFRA-3521 narrowed (RESILIENT-1622): full preflight skipped, structural subset runs"}\n' \
+            printf '{"ts":"%s","kind":"prepush_structural_subset_ran","reason":"INFRA-3521 narrowed (RESILIENT-1622): full preflight skipped, structural subset runs"}\n' \
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_3521" 2>/dev/null || true
         else
             preflight_has_targets=0

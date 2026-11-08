@@ -1,0 +1,9 @@
+  - kind: prepush_structural_subset_ran
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push
+    trigger: >-
+      Guard 0a: a bot-merge-initiated push ran the structural preflight subset
+      (chump preflight --structural) instead of the full preflight. Distinct from
+      prepush_preflight_skipped_botmerge, which now means preflight was truly skipped.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, reason]

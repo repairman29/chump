@@ -2808,6 +2808,14 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "resilient-1625-guard0a-stub-chump",
+            &[
+                "bash",
+                "scripts/ci/test-resilient-1625-guard0a-stub-chump.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "css-token-discipline-smoke",
             &["bash", "scripts/ci/test-css-token-discipline.sh"],
             GateKind::Scripts,
@@ -3707,15 +3715,7 @@ pub fn run(argv: &[String]) -> i32 {
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", s.name);
                 // Truncate to first ~2KB to avoid swamping the terminal.
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                let trunc = truncate_gate_output(cap);
                 eprintln!("{}", trunc);
                 eprintln!("---- end ----");
             }
@@ -3880,6 +3880,24 @@ pub fn run(argv: &[String]) -> i32 {
     }
 }
 
+/// Truncate gate output to ~2KB on a char boundary (a byte slice can panic on
+/// multibyte text).
+fn truncate_gate_output(cap: &str) -> String {
+    const MAX: usize = 2048;
+    if cap.len() <= MAX {
+        return cap.to_string();
+    }
+    let mut end = MAX;
+    while !cap.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}\n... [{} more bytes truncated]",
+        &cap[..end],
+        cap.len() - end
+    )
+}
+
 /// RESILIENT-1622: run ONLY the structural (no-build) subset — the gates in
 /// `STRUCTURAL_GATES`. No cargo compile, no scope auto-detect; the whole subset
 /// runs in <30s warm so it fits inside bot-merge's push-phase budget and the
@@ -3892,16 +3910,32 @@ fn run_structural(
     main_red_gates: &[String],
     trunk_fix_gap_id: &str,
 ) -> i32 {
+    run_structural_gates(
+        STRUCTURAL_GATES,
+        keep_going,
+        json,
+        main_red_gates,
+        trunk_fix_gap_id,
+    )
+}
+
+fn run_structural_gates(
+    gates: &[(&'static str, &'static str)],
+    keep_going: bool,
+    json: bool,
+    main_red_gates: &[String],
+    trunk_fix_gap_id: &str,
+) -> i32 {
     eprintln!(
         "[preflight] --structural: {} no-build gate(s) (census, ci-parity, env-var, \
          event-registry, path-filter, no-new-bypass, raw-gh)",
-        STRUCTURAL_GATES.len()
+        gates.len()
     );
     let started = Instant::now();
     let mut failed_gates: Vec<&'static str> = vec![];
     let mut json_results: Vec<String> = vec![];
 
-    for &(name, script) in STRUCTURAL_GATES {
+    for &(name, script) in gates {
         // INFRA-2422: auto-skip gates already failing on origin/main so a
         // trunk-RED structural gate never blocks the fleet's own ship path.
         if main_red_gates.iter().any(|g| g == name) {
@@ -3926,7 +3960,19 @@ fn run_structural(
 
         let s = step(name, &["bash", script], GateKind::Scripts);
         eprint!("[preflight] {} ... ", name);
-        let out = run_step(&s);
+        // A missing structural gate script must fail the subset, not skip: a
+        // silently-absent gate is an unenforced gate.
+        let out = if std::path::Path::new(script).exists() {
+            run_step(&s)
+        } else {
+            Outcome {
+                status: Status::Fail,
+                elapsed_ms: 0,
+                captured: Some(format!(
+                    "[preflight] structural gate script missing: {script}"
+                )),
+            }
+        };
         let symbol = match out.status {
             Status::Pass => "✓",
             Status::Fail => "✗",
@@ -3943,15 +3989,7 @@ fn run_structural(
             failed_gates.push(name);
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", name);
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
+                let trunc = truncate_gate_output(cap);
                 eprintln!("{}", trunc);
                 eprintln!("---- end ----");
             }
@@ -4616,6 +4654,46 @@ mod tests {
         assert_eq!(a.scope, ScopeArg::Auto);
         assert!(a.bad_scope.is_none());
         assert!(!a.full);
+    }
+
+    #[test]
+    fn parse_args_structural_flag() {
+        assert!(parse_args(&["--structural".to_string()]).structural);
+        assert!(!parse_args(&[]).structural);
+    }
+
+    #[test]
+    fn truncate_gate_output_is_char_boundary_safe() {
+        // 3-byte chars so byte 2048 falls mid-char (2048 % 3 == 2).
+        let s = "€".repeat(1000);
+        let t = truncate_gate_output(&s);
+        assert!(t.contains("more bytes truncated"));
+        assert_eq!(truncate_gate_output("short"), "short");
+    }
+
+    #[test]
+    fn run_structural_failing_gate_returns_1() {
+        let dir = std::env::temp_dir().join(format!("rs1625-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ok = dir.join("ok.sh");
+        let bad = dir.join("bad.sh");
+        std::fs::write(&ok, "exit 0\n").unwrap();
+        std::fs::write(&bad, "echo boom; exit 1\n").unwrap();
+        let ok: &'static str = Box::leak(ok.to_string_lossy().into_owned().into_boxed_str());
+        let bad: &'static str = Box::leak(bad.to_string_lossy().into_owned().into_boxed_str());
+        assert_eq!(
+            run_structural_gates(&[("ok", ok)], false, false, &[], ""),
+            0
+        );
+        assert_eq!(
+            run_structural_gates(&[("ok", ok), ("bad", bad)], false, false, &[], ""),
+            1
+        );
+        assert_eq!(
+            run_structural_gates(&[("gone", "/nonexistent/gate.sh")], false, false, &[], ""),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
