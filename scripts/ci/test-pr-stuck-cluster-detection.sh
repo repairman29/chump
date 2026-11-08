@@ -200,6 +200,33 @@ EOF
     fi
 }
 
+# Test 5c (INFRA-8182): an already-open cluster gap suppresses a new filing.
+test_open_cluster_gap_skips_refile() {
+    local test_dir="$(setup_test_env)"
+    trap "cleanup_test_env '$test_dir'" RETURN
+
+    ts_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '%s\n' \
+        "{\"ts\":\"$ts_iso\",\"kind\":\"pr_stuck\",\"pr\":3001,\"gap\":\"INFRA-300\"}" \
+        "{\"ts\":\"$ts_iso\",\"kind\":\"pr_stuck\",\"pr\":3002,\"gap\":\"INFRA-301\"}" \
+        "{\"ts\":\"$ts_iso\",\"kind\":\"pr_stuck\",\"pr\":3003,\"gap\":\"INFRA-302\"}" \
+        > "$test_dir/.chump-locks/ambient.jsonl"
+    mkdir -p "$test_dir/bin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'if [ "$1 $2" = "gap list" ]; then' \
+        '  echo "[{\"id\":\"INFRA-9999\",\"title\":\"RESILIENT: PR cluster stuck - 4 PRs blocked >2h\"}]"; exit 0' \
+        'fi' 'exit 1' > "$test_dir/bin/chump"
+    chmod +x "$test_dir/bin/chump"
+
+    local output
+    output="$(PATH="$test_dir/bin:$PATH" LOCK_DIR="$test_dir/.chump-locks" bash "$REPO_ROOT/scripts/coord/pr-stuck-cluster-detector.sh" --apply 2>&1 || true)"
+    if echo "$output" | grep -q "open cluster gap INFRA-9999 already tracks"; then
+        pass "Test 5c: open cluster gap suppresses re-file"
+    else
+        fail "Test 5c: expected open-gap skip, got: $output"
+    fi
+}
+
 # Test 6: Detector dry-run (no gap filed).
 test_detector_dry_run() {
     local test_dir="$(setup_test_env)"
@@ -297,6 +324,7 @@ test_cluster_detected
 test_cluster_outside_window
 test_cluster_cooldown_dedup
 test_cluster_membership_drift_dedup
+test_open_cluster_gap_skips_refile
 test_detector_dry_run
 test_chronic_single_pr_escalates
 test_chronic_single_pr_too_young
