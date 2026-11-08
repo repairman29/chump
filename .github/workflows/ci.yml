@@ -830,6 +830,13 @@ jobs:
       - name: Plist no-tmp-paths gate (INFRA-2419)
         run: bash scripts/ci/test-plist-no-tmp-paths.sh
 
+      # INFRA-8188: reject NEW launchd-only organs (fleet is Linux/systemd).
+      - name: No launchd-only organs gate (INFRA-8188)
+        run: |
+          git fetch origin main --depth=200 --quiet || true
+          bash scripts/ci/test-no-launchd-only-organs.sh
+          bash scripts/ci/check-no-launchd-only-organs.sh
+
       # EFFECTIVE-483: type-checks + unit-tests the PUBLISHER_PLATFORMS typed
       # config (web/v2/lib/publisher/platforms.ts) codifying PUBLISHER.md's
       # per-platform action boundaries (draft/approve_queue/drive/fill_and_stop).
