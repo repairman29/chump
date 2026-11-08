@@ -694,6 +694,7 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 
 ## On-demand docs (read only when you hit the failure surface)
 
+- Vercel deploy doctrine — preview-first, git-driven deploys, env/secret handling, rollback: skill [`.claude/skills/use-vercel/SKILL.md`](./.claude/skills/use-vercel/SKILL.md) (INFRA-8172). Distribute to other surfaces with `scripts/setup/sync-use-vercel-skill.sh`; never `.agents/skills` (never loaded).
 - **Orientation — read once to understand what this repo *actually is*** (cross-cutting capability synthesis, the credibility discipline of claimed-vs-verified, the negative space bucketed scans miss, and the keystone that unlocks productization): [`docs/CODEBASE_REALITY_MAP.md`](./docs/CODEBASE_REALITY_MAP.md) (DOC-068)
 - PWA design-system style guide — token reference (dark/light/high-contrast), full `chump-*` component inventory, composition rules (header/footer/view-chrome/overlay), mobile breakpoints, a11y minimums: [`docs/design/PWA_STYLE_GUIDE.md`](./docs/design/PWA_STYLE_GUIDE.md) (INFRA-1593). Read before touching `web/v2/**`.
 - Ship-assist playbook — wedge taxonomy (7 classes), tooling inventory, decision flow for picking the right rescue tool, top-3 highest-leverage missing gaps, reliability lessons: [`docs/process/SHIP_ASSIST_PLAYBOOK.md`](./docs/process/SHIP_ASSIST_PLAYBOOK.md) (INFRA-2256)
