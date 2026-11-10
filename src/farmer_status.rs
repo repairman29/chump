@@ -171,10 +171,8 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
 
     let home = chump_state_home().unwrap_or_default();
     let cache_path = PathBuf::from(&home).join(".chump/auth-status-cache");
-    let mut cache_probe_ok = false;
     if let Ok(text) = std::fs::read_to_string(&cache_path) {
         if let Some(verdict) = auth_status_cache_verdict(&text, now_s(), reasons) {
-            cache_probe_ok = verdict;
             return verdict;
         }
     }
@@ -196,7 +194,11 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
     let creds_path = PathBuf::from(claude_credentials_home().unwrap_or_default())
         .join(".claude/.credentials.json");
     if let Ok(body) = std::fs::read_to_string(&creds_path) {
-        match claude_creds_verdict(&body, now_ms(), cache_probe_ok) {
+        match claude_creds_verdict(
+            &body,
+            now_ms(),
+            false, /* rc=0 cache already returned above */
+        ) {
             Some(true) => return true,
             Some(false) => {
                 reasons.push(
