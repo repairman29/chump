@@ -1,0 +1,10 @@
+  - kind: prepush_structural_subset_ran
+    effect_metric: resilient
+    emitter: scripts/git-hooks/pre-push (RESILIENT-1625)
+    trigger: >-
+      Emitted by pre-push Guard 0a when a bot-merge-initiated push runs the
+      structural preflight subset (`chump preflight --structural`) instead of
+      the full preflight. Distinct from prepush_preflight_skipped_botmerge,
+      which now fires only when the full preflight is skipped outright.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, reason]

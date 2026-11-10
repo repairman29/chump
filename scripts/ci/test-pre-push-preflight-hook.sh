@@ -118,7 +118,7 @@ fi
 guard_0a_block=$(awk '/^# Guard 0a:/,/^# Guard 0: cargo fmt/' "$HOOK")
 if grep -q 'RESILIENT-1622' <<<"$guard_0a_block" \
     && grep -q 'chump preflight \$_pf_structural_arg' <<<"$guard_0a_block" \
-    && grep -q 'prepush_preflight_skipped_botmerge' <<<"$guard_0a_block"; then
+    && grep -q 'prepush_structural_subset_ran' <<<"$guard_0a_block"; then
     ok "RESILIENT-1622: bot-merge push runs the structural subset (narrowed) + emits an audit event"
 else
     fail "RESILIENT-1622: bot-merge branch should run 'chump preflight --structural' (INFRA-3521 narrowed), not skip entirely"
