@@ -7681,7 +7681,7 @@ events:
       write /etc/systemd/system — the calling worker context structurally
       cannot install system units; surfaced for the board instead of
       silently no-op'ing.
-    consumers: [fleet-brief, ops-audit]
+    consumers: [fleet-brief, ops-audit, organ-watchdog]
     fields_required: [ts, kind, reason]
 
   - kind: organ_reconcile_applied
@@ -14147,7 +14147,7 @@ events:
       unhealable by the sentinel, so it pages the board (severity=halt) rather
       than whisper. The exact class that left 33 units failed-and-unnoticed on
       2026-09-07.
-    consumers: [ambient, notify-operator (page), Roll Call]
+    consumers: [ambient, fleet-unit-failed-heal (duty-officer T1), Roll Call]
     fields_required: [ts, kind, node, severity, msg]
 
   - kind: fleet_health_healer_down

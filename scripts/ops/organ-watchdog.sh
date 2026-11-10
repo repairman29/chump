@@ -331,7 +331,7 @@ fi
 # ── 0.5. reconcile + reinstall changed chump-* organ units (INFRA-3598) ────
 # node-refresh-chump.sh already calls install-helsinki-atc.sh --auto every
 # cycle, but it runs unprivileged (systemd --user), so that call always
-# no-ops on reason=not_root — a merged unit-file change never reaches
+# no-ops on kind=organ_units_deploy_failed reason=not_root (emitted once, RESILIENT-1603) — a merged unit-file change never reaches
 # /etc/systemd/system. This watchdog runs as root (chump-organ-watchdog.service),
 # so its call is the one that actually succeeds. install-helsinki-atc.sh
 # --auto diffs tracked units against what's live and emits its own
