@@ -172,6 +172,8 @@ gid="$(branch_gap_id claude/infra-9999)"
 if ! grep -qxF "$gid" <<<"$ids"; then ok "unshipped gap-ID branch not treated as shipped"; else fail "unshipped branch wrongly shipped"; fi
 # safety wiring: no-PR unshipped branches are flagged, never deleted
 if grep -q 'SKIPPED_FLAGGED' "$REAPER"; then ok "reaper flags no-PR unshipped branches"; else fail "reaper missing flag path"; fi
+# INFRA-8071: no-PR branches older than threshold are reaped (age-gated, opt-out)
+if grep -q 'CHUMP_BRANCH_REAPER_ORPHAN_AGE_DAYS' "$REAPER" && grep -q 'ORPHAN_AGE_THRESHOLD_SECS' "$REAPER"; then ok "reaper age-gated no-PR reap wired"; else fail "reaper missing no-PR reap"; fi
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
