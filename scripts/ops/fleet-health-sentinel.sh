@@ -129,7 +129,7 @@ WATCHED_HEALERS="${CHUMP_SENTINEL_WATCHED_HEALERS:-organ-watchdog.timer organ-re
 # RESILIENT-1564 (RATIFIED 2026-10-07): chump-merge-serializer.timer is
 # decommissioned permanently — removed from the watch/heal roster below so the
 # sentinel never re-arms a unit that is intentionally stopped+masked.
-SYSTEM_ORGANS="${CHUMP_SENTINEL_SYSTEM_ORGANS:-chump-organ-reconcile.timer chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer}"
+SYSTEM_ORGANS="${CHUMP_SENTINEL_SYSTEM_ORGANS:-chump-organ-reconcile.timer chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer chump-pr-shepherd.timer}"
 # Force-push/rebaser organs. A node is meant to run AT MOST ONE. Two or more
 # active at once is the force-push race that quietly clobbered ~2000 PRs — the
 # operator neuters all-but-one with drop-ins on purpose, so if ≥2 come back
