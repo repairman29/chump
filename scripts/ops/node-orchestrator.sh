@@ -347,6 +347,28 @@ place() {
   rm -f "$lock"
 }
 
+# place_tmpdir() — RESILIENT-322 AC2: when /tmp (often tmpfs) is full, route TMPDIR to the
+# largest data volume. Non-destructive: only creates a dir + writes $STATE_DIR/tmpdir.env
+# (workers source it); nothing is moved, so it is safe to be ON by default.
+place_tmpdir() {
+  [ "${CHUMP_ORCH_TMPDIR_PLACE:-1}" = 1 ] || return 0
+  local envf="$STATE_DIR/tmpdir.env" pct
+  pct=$(df -P "${CHUMP_ORCH_TMP_PROBE:-/tmp}" 2>/dev/null | awk 'NR==2{gsub("%","",$5); print $5}')
+  [ -n "$pct" ] || return 0
+  if [ "$pct" -lt "$DISK_PLACE_PCT" ]; then
+    [ -f "$envf" ] && [ "$pct" -lt $((DISK_PLACE_PCT - 20)) ] && { rm -f "$envf"; log "TMPDIR: /tmp ${pct}% recovered — cleared $envf"; }
+    return 0
+  fi
+  if [ -z "${BEST_VOL_MNT:-}" ] || [ "$BEST_VOL_MNT" = none ] || [ "$((${BEST_VOL_FREE_KB:-0}/1024/1024))" -lt 5 ]; then
+    log "TMPDIR: /tmp ${pct}% but no data volume with >=5G free — ALERT operator"; return 0
+  fi
+  local dst="$BEST_VOL_MNT/chump-tmp"
+  mkdir -p "$dst" 2>/dev/null && chmod 1777 "$dst" 2>/dev/null || { log "TMPDIR: cannot create $dst"; return 0; }
+  mkdir -p "$STATE_DIR"
+  printf 'export TMPDIR=%q\n' "$dst" > "$envf.tmp" && mv "$envf.tmp" "$envf"
+  log "TMPDIR: /tmp ${pct}% -> routed TMPDIR=$dst via $envf"
+}
+
 # Sourceable for tests (RESILIENT-328): only run the daemon loop when executed directly.
 if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
   log "node-orchestrator up (interval ${INTERVAL}s, autoplace=$AUTOPLACE)"
@@ -363,6 +385,7 @@ if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
     enforce_cargo_jobs
     scale
     place
+    place_tmpdir
     sleep "$INTERVAL"
   done
 fi
