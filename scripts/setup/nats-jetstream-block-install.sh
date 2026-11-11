@@ -48,6 +48,11 @@ _priv cp "$CONF" "$BACKUP"
 log "backed up $CONF -> $BACKUP"
 
 _priv mkdir -p "$STORE_DIR"
+# Store dir must be owned by the nats run-user (override: NATS_RUN_USER).
+NATS_USER_="${NATS_RUN_USER:-nats}"
+if id "$NATS_USER_" >/dev/null 2>&1; then
+  _priv chown -R "$NATS_USER_":"$(id -gn "$NATS_USER_")" "$STORE_DIR" || log "WARN: chown of $STORE_DIR failed"
+fi
 
 _priv bash -c "cat >> '$CONF'" <<BLOCK
 
