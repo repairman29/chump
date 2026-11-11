@@ -75,3 +75,4 @@ scripts/coord/merge-sla-scorecard.sh   # migration gap: INFRA-3591 (board SLA sc
 # no git-refs API, so raw gh is the only path. Same class as required-check-monitor.sh
 # (branch-protection API) and chump-post-integration-prune.sh (gh api -X DELETE mutations).
 scripts/dispatch/architect-lease.sh    # RESILIENT-1634: git-refs REST API for custom lease ref namespace; not covered by cache wrapper
+scripts/coord/junk-pr-closer.sh            # INFRA-8072 (REST close, sibling of close-superseded-prs.sh)

@@ -1,0 +1,16 @@
+# chump-junk-pr-closer.service — INFRA-8072 junk-PR closer organ (peer to chump-branch-reaper).
+# Placeholders (__HOME__, __REPO_ROOT__) are substituted at install time.
+
+[Unit]
+Description=Chump junk-PR closer — close open PRs of retired/no-outcome gap classes (INFRA-8072)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_ROOT__
+Environment=HOME=__HOME__
+Environment=CHUMP_REPO_ROOT=__REPO_ROOT__
+Environment=PATH=__HOME__/.local/bin:__HOME__/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash -c 'source __REPO_ROOT__/scripts/dispatch/lib/load-provider-auth.env __HOME__/.chump/providers.env 2>/dev/null; exec bash __REPO_ROOT__/scripts/coord/junk-pr-closer.sh --act'
+TimeoutStartSec=600

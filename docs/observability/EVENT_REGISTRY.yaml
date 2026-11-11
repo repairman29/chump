@@ -2288,6 +2288,20 @@ events:
     consumers: [audit-log, waste-tally]
     fields_required: [ts, kind, gap_id, pr, title, merged_via]
 
+  - kind: junk_pr_closer_scan
+    effect_metric: self
+    emitter: scripts/coord/junk-pr-closer.sh (INFRA-8072)
+    trigger: junk-pr-closer completed its dry-run classification pass (every run, before any close)
+    consumers: [audit-log]
+    fields_required: [ts, kind, candidates, open_prs, act]
+
+  - kind: junk_pr_closed
+    effect_metric: self
+    emitter: scripts/coord/junk-pr-closer.sh (INFRA-8072)
+    trigger: junk-pr-closer closed an open PR of a retired/no-outcome gap class or superseded gap
+    consumers: [audit-log, waste-tally]
+    fields_required: [ts, kind, pr, class]
+
   - kind: ci_retrigger_pushed
     effect_metric: self
     emitter: scripts/coord/chump-ci-retrigger.sh (INFRA-1407)
