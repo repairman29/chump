@@ -1399,6 +1399,12 @@ events:
     trigger: auth failed beyond circuit-breaker threshold
     consumers: [operator-recall, fleet-brief]
 
+  - kind: cloud_agent_status
+    effect_metric: self
+    emitter: scripts/coord/emit-cloud-status.sh (RESILIENT-1466)
+    trigger: cloud agent reports a phase change (start|working|blocked|shipped|done|error)
+    consumers: [audit-log]
+
   - kind: fleet_oauth_token_refreshed
     effect_metric: self
     emitter: scripts/dispatch/worker.sh
