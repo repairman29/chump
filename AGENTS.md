@@ -789,6 +789,9 @@ Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
 
 The no-idle rule requires ship-class progress, NOT performative busyness (**NOT-list**):
 - **Do NOT** file placeholder gaps with `TODO`/`TBD` in `acceptance_criteria` or `description` `< 200` chars (`scripts/git-hooks/pre-commit-gap-quality.sh`).
+- **Do NOT** count a vague gap as a valid tick outcome: filing one whose AC contains `TODO`/`TBD` or whose description is `< 200` chars does not satisfy no-idle.
+- **Do NOT** dispatch a Sonnet without a concrete AC the operator could verify; a half-baked dispatch is not a valid tick outcome.
+- **Meta-synthesis:** writing it when the fleet has 0 urgent items IS valid; writing it while P0 gaps sit unclaimed is NOT.
 - **Do NOT** emit heartbeat/status events to `ambient.jsonl` faster than 1 per 10 minutes without accompanying code/doc progress.
 - **Do NOT** re-run `cargo check` / `gh pr list` / `git status` in a loop when no file changed.
 - **Legitimate idle:** when no open unblocked gaps match your role, emit `kind=session_idle_standby` once and wait for a wakeup/cron tick.
