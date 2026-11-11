@@ -19,6 +19,8 @@ both alone.
 
 ## Why this needs an operator, not a session
 
+Policy: see [`NO_SUDO_NODE_MAINTENANCE.md`](../NO_SUDO_NODE_MAINTENANCE.md) (INFRA-8058) — this is an explicitly operator-gated one-liner; the durable fix is reconcile-applied desired state.
+
 `dnsmasq.service` is a system unit (not `--user`), so disabling/masking it
 needs root — and CJ has no passwordless sudo (same constraint noted above for
 `chump-organ-deploy`). Separately, no Claude Code session has been able to
