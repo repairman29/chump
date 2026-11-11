@@ -1933,4 +1933,10 @@ if [ -x "$PRIVATE_TOPOLOGY_HOOK" ] && ! "$PRIVATE_TOPOLOGY_HOOK"; then
     exit 1
 fi
 
+# 22. Gap quality gate (RESILIENT-037) -- vague AC / short description; bypass: Vague-AC-Bypass trailer.
+GAP_QUALITY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-gap-quality.sh"
+if [ -x "$GAP_QUALITY_HOOK" ] && ! "$GAP_QUALITY_HOOK"; then
+    exit 1
+fi
+
 exit 0
