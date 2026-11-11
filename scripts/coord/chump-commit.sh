@@ -881,6 +881,13 @@ fi
 # closed and the lock released after git exits. With exec the FD is also
 # inherited and released on git exit — both work — but the non-exec form is
 # cleaner when callers capture the exit code via $?.
+# INFRA-8059: stamp node + session attribution trailers (cloud vs local traceable).
+# shellcheck source=../lib/node-id.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/node-id.sh"
+GIT_ARGS+=(--trailer "Agent-Node: $(chump_node_id)")
+if [[ -n "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}" ]]; then
+    GIT_ARGS+=(--trailer "Fleet-Session: ${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}")
+fi
 _commit_started=1  # RESILIENT-065: past here the EXIT trap stays silent; a real git-commit failure surfaces its own exit code
 # RESILIENT-117: `200>&-` keeps FD 200 (the index mutex) out of git's process tree. Hooks
 # spawn cargo/rustc/sccache, and a long-lived daemon inheriting the flock FD kept the

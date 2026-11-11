@@ -119,6 +119,16 @@ if [[ -z "$SESSION_ID" ]]; then
     fi
 fi
 
+# ── INFRA-8059: node attribution (host field) ─────────────────────────────────
+# shellcheck source=../lib/node-id.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/node-id.sh"
+_HOST_FIELD=""
+_has_host=false
+for _a in "$@"; do [[ "${_a%%=*}" == "host" ]] && _has_host=true; done
+if [[ "$_has_host" != "true" ]]; then
+    _HOST_FIELD=",\"host\":\"$(chump_node_id)\""
+fi
+
 # ── Worktree label ────────────────────────────────────────────────────────────
 WORKTREE="$(basename "$REPO_ROOT")"
 
@@ -140,7 +150,7 @@ done
 # "event" (legacy alias, kept for backward-compat with existing consumers that
 # grep for .event). Consumers should migrate to "kind"; "event" will be
 # removed in a future cleanup once all consumers are updated.
-JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"kind\":\"${EVENT_KIND}\",\"event\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
+JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"kind\":\"${EVENT_KIND}\",\"event\":\"${EVENT_KIND}\"${_HOST_FIELD}${EXTRA_JSON}}"
 
 # ── INFRA-1889: kind-schema gate ───────────────────────────────────────────────
 # Reject a free-text "kind" (e.g. a full English sentence dropped in by
