@@ -20,6 +20,7 @@
 #   CHUMP_CARGO_TARGET_CAP_MB  hard cap in MB (default 20000 = 20 GB)
 #   CHUMP_CARGO_SWEEP_TIME_DAYS  age-based prune horizon in days (default 14; RESILIENT-239)
 set -uo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/shared-target-guard.sh"
 
 REPO_ROOT="${CHUMP_REPO:-${CHUMP_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo $HOME/Projects/chump)}}"
 CAP_MB="${CHUMP_CARGO_TARGET_CAP_MB:-20000}"
@@ -78,6 +79,13 @@ for entry in "${ENTRIES[@]}"; do
   [[ "$seen" == *":$tdir:"* ]] && continue
   seen="$seen$tdir:"
 
+  # RESILIENT-1647: never sweep a target a live cargo/rustc is building in.
+  if st_live_build "$tdir"; then
+    echo "[cargo-sweep-gc] dir=$tdir skipped: live build on this target"
+    emit "\"kind\":\"cargo_sweep_gc_skipped\",\"target_dir\":\"$tdir\",\"reason\":\"live_build\""
+    continue
+  fi
+  before_kb="$(du -sk "$tdir" 2>/dev/null | awk '{print $1+0}')"
   out="$(cd "$REPO_ROOT" && CARGO_TARGET_DIR="$tdir" cargo-sweep sweep --maxsize "$dcap" $DRY . 2>&1)"
   rc=$?
   # ZERO-WASTE-054 HONEST SIGNAL: an errored GC must never report "nothing to clean".
@@ -100,6 +108,10 @@ for entry in "${ENTRIES[@]}"; do
   time_cleaned="${time_cleaned:-nothing to clean}"
   echo "[cargo-sweep-gc] dir=$tdir time-prune days=${TIME_DAYS} -> ${time_cleaned} (rc=$time_rc)"
   emit "\"kind\":\"cargo_sweep_gc_time_pruned\",\"target_dir\":\"$tdir\",\"time_days\":$TIME_DAYS,\"dry_run\":$DRYJ,\"result\":\"$(printf '%s' "$time_cleaned" | tr '"' "'")\",\"rc\":$time_rc"
+  if [[ -z "$DRY" ]]; then
+    after_kb="$(du -sk "$tdir" 2>/dev/null | awk '{print $1+0}')"
+    freed_kb=$(( ${before_kb:-0} - ${after_kb:-0} )); (( freed_kb > 0 )) && st_emit_evicted cargo-sweep-gc "$tdir" $(( freed_kb * 1024 )) "$AMB"
+  fi
 done
 
 # RESILIENT-1590: reap chump-*.wedged-inode-* binary copies (69MB each, accumulate from

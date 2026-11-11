@@ -14739,6 +14739,18 @@ events:
     fields_required: [ts, kind, target, incremental_dirs, freed_gb_approx, target_gb_before]
     expected_volume: "0-N per node per disk-pressure-reaper tick when the cache is hot"
     status: stable
+  - kind: shared_target_evicted
+    effect_metric: disk_free_gb
+    emitter: scripts/lib/shared-target-guard.sh (RESILIENT-1647)
+    trigger: >-
+      An organ (shared-target-cache-reaper, cargo-sweep-gc, disk-critical-reactor
+      or disk-pressure-reaper) deleted paths inside a cargo target dir. One line
+      per eviction names the actor, the paths and the bytes, so a build that
+      loses a fingerprint dir mid-run has a receipt naming the deleter.
+    consumers: [disk-audit, ops-audit]
+    fields_required: [ts, kind, actor, paths, bytes]
+    expected_volume: "0-N per node per reaper tick that actually deletes"
+    status: stable
   - kind: shared_target_incremental_reap_dryrun
     effect_metric: disk_free_gb
     emitter: scripts/coord/shared-target-cache-reaper.sh (RESILIENT-1680)

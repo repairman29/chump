@@ -44,6 +44,8 @@
 # CLI argument.
 
 set -uo pipefail
+# shellcheck source=../lib/shared-target-guard.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/shared-target-guard.sh"
 
 # ── Safety inputs: constants (defaults) or CLI args the unit passes, NEVER env.
 # A CHUMP_* env default on any of these would re-open the exact bypass the
@@ -116,6 +118,7 @@ free_gb() {
 # command here — production never reads an env var to choose the binary; tests
 # shadow pgrep on PATH under the sandbox.
 build_in_progress() {
+  st_live_build "$TARGET" && return 0
   pgrep -x cargo         >/dev/null 2>&1 && return 0
   pgrep -x rustc         >/dev/null 2>&1 && return 0
   pgrep -x cargo-nextest >/dev/null 2>&1 && return 0
@@ -210,7 +213,12 @@ for d in "${INCR[@]}"; do
   # Defensive: only ever delete a dir literally named "incremental" under the
   # target, never the target root itself.
   [[ "$(basename "$d")" == incremental && "$d" != "$TARGET" ]] || continue
-  rm -rf -- "$d" 2>/dev/null && reaped=$((reaped + 1))
+  d_kb="$(du -sk "$d" 2>/dev/null | awk '{print $1+0}')"
+  if rm -rf -- "$d" 2>/dev/null; then
+    reaped=$((reaped + 1))
+    # scanner-anchor: "kind":"shared_target_evicted"
+    st_emit_evicted shared-target-cache-reaper "$d" $(( ${d_kb:-0} * 1024 )) "$AMBIENT"
+  fi
 done
 after_gb="$(target_gb)"; after_gb="${after_gb:-$cur_gb}"
 freed=$(( cur_gb - after_gb )); (( freed < 0 )) && freed=0

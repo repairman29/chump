@@ -24,6 +24,7 @@
 #   CHUMP_DISK_REACTOR_PAGE_THRESHOLD_PCT   page operator if post-reap free% below (default 5)
 
 set -uo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/shared-target-guard.sh"
 
 REPO_ROOT="${CHUMP_REPO:-${CHUMP_HOME:-/Users/jeffadkins/Projects/Chump}}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
@@ -177,6 +178,15 @@ quiesce_and_reclaim() {
     return 1
   fi
   # 6. Prune, then restore the daemons.
+  # RESILIENT-1647: a live cargo/rustc bound to this target aborts the reclaim.
+  if st_live_build "$SHARED_TARGET"; then
+    emit "\"kind\":\"disk_reactor_quiesce_aborted\",\"reason\":\"live_build_on_shared_target\""
+    restore_quiesce_daemons
+    echo "$prior_level" > "$AUTON_FILE" 2>/dev/null || true
+    emit "\"kind\":\"disk_reactor_autonomy_resume\",\"restored_level\":$prior_level,\"reason\":\"aborted\""
+    return 1
+  fi
+  st_emit_evicted disk-critical-reactor "$SHARED_TARGET" $(( cur_gb * 1073741824 )) "$AMBIENT"
   rm -rf "$SHARED_TARGET" 2>/dev/null || true
   local after_gb; after_gb="$(free_gb)"; after_gb="${after_gb:-0}"
   emit "\"kind\":\"disk_reactor_quiesce_reclaimed\",\"target\":\"$SHARED_TARGET\",\"reclaimed_gb_approx\":$cur_gb,\"free_gb_after\":$after_gb"

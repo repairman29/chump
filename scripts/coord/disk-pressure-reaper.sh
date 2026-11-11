@@ -21,6 +21,7 @@
 #   disk-pressure-reaper.sh --execute --tier 3 # force Tier 3 regardless of disk
 
 set -uo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/shared-target-guard.sh"
 REPO_ROOT="${CHUMP_REPO:-${CHUMP_HOME:-/Users/jeffadkins/Projects/Chump}}"
 TARGET_REAPER="$REPO_ROOT/scripts/coord/target-dir-reaper.sh"
 
@@ -260,13 +261,14 @@ if [[ "$tier" -ge 3 ]]; then
   # Only touch main repo target — worktree targets are handled above. INFRA-2303.
   INCREMENTAL_DIR="$REPO_ROOT/target/debug/incremental"
   if [[ -d "$INCREMENTAL_DIR" ]]; then
-    if pgrep -x rustc >/dev/null 2>&1; then
+    if pgrep -x rustc >/dev/null 2>&1 || st_live_build "$REPO_ROOT/target"; then
       info "tier 3: active rustc process detected — skipping incremental reap"
     else
       incr_kb=$(du -sk "$INCREMENTAL_DIR" 2>/dev/null | awk '{print $1}')
       if [[ "$DRY_RUN" -eq 1 ]]; then
         warn "[DRY-RUN] would rm -rf $INCREMENTAL_DIR (~${incr_kb}KB) — no active rustc"
       else
+        st_emit_evicted disk-pressure-reaper "$INCREMENTAL_DIR" $(( incr_kb * 1024 )) "${AMBIENT:-${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}}"
         rm -rf "${INCREMENTAL_DIR:?}"/* 2>/dev/null || true
         incr_freed_bytes=$(( incr_kb * 1024 ))
         ok "tier 3: reaped target/debug/incremental (~${incr_kb}KB freed)"
