@@ -361,13 +361,95 @@ _notify_deliver() {
         return 0
     fi
 
+    _notify_transport_chain "$content"
+}
+
+# RESILIENT-270: the default transport is a RUNTIME config choice, not a cargo
+# feature. Outbound needs only bash+curl, so it exists in every build.
+#   CHUMP_NOTIFY_TRANSPORTS  ordered, comma-separated rungs; default "discord,telegram"
+# A rung returns 0 delivered, 2 unconfigured (skipped, not a failure), else failed.
+# A failed rung is RECORDED (operator_transport_failed) and the next is tried, so
+# "Discord was down at 3am" is visible in ambient even when a fallback delivered.
+# Only delivery by NO rung while at least one was configured returns 1.
+# scanner-anchor: "kind":"operator_transport_failed"
+# scanner-anchor: "kind":"operator_transport_fellthrough"
+# scanner-anchor: "kind":"operator_transport_exhausted"
+_notify_transport_chain() {
+    local content="$1" transports rung rc first_failed="" any_configured=0 delivered=""
+    transports="${CHUMP_NOTIFY_TRANSPORTS:-discord,telegram}"
+    local -a _rungs
+    IFS=',' read -r -a _rungs <<< "$transports"
+    for rung in "${_rungs[@]}"; do
+        rung="${rung//[[:space:]]/}"
+        case "$rung" in
+            discord|telegram) ;;
+            *) _notify_emit "operator_transport_failed" ",\"transport\":\"${rung}\",\"reason\":\"unknown-transport\""; continue ;;
+        esac
+        "_notify_send_${rung}" "$content"; rc=$?
+        if (( rc == 2 )); then continue; fi
+        any_configured=1
+        if (( rc == 0 )); then delivered="$rung"; break; fi
+        [[ -n "$first_failed" ]] || first_failed="$rung"
+        _notify_emit "operator_transport_failed" ",\"transport\":\"${rung}\",\"signal\":\"${CHUMP_NOTIFY_KIND:-none}\""
+        echo "[notify-operator] transport ${rung} FAILED — falling through to next rung" >&2
+    done
+    if [[ -n "$delivered" ]]; then
+        if [[ -n "$first_failed" ]]; then
+            _notify_emit "operator_transport_fellthrough" ",\"failed\":\"${first_failed}\",\"delivered_via\":\"${delivered}\""
+        fi
+        return 0
+    fi
+    (( any_configured == 0 )) && return 0
+    _notify_emit "operator_transport_exhausted" ",\"signal\":\"${CHUMP_NOTIFY_KIND:-none}\""
+    return 1
+}
+
+# Telegram rung. Needs TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (the latter is the
+# one env var that makes the already-built src/telegram.rs path addressable).
+# Telegram caps messages at 4096 chars; chunk at 4000 on line boundaries.
+_notify_send_telegram() {
+    local content="$1" token chat base code part sent=0 failed=0
+    token="$(_notify_env TELEGRAM_BOT_TOKEN)"
+    chat="$(_notify_env TELEGRAM_CHAT_ID)"
+    if [[ -z "$token" || -z "$chat" ]]; then
+        echo "[notify-operator] SKIP: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID unset" >&2
+        return 2
+    fi
+    base="${TELEGRAM_API_BASE:-https://api.telegram.org}"
+    while IFS= read -r -d '' part; do
+        code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+            -X POST "${base}/bot${token}/sendMessage" \
+            --data-urlencode "chat_id=${chat}" \
+            --data-urlencode "text=${part}" 2>/dev/null)" || true
+        if [[ "$code" == "200" ]]; then sent=$((sent + 1)); else
+            failed=$((failed + 1)); echo "[notify-operator] FAIL: telegram part returned HTTP ${code:-000}" >&2
+        fi
+    done < <(printf '%s' "$content" | python3 -c '
+import sys
+t = sys.stdin.read(); L = 4000
+while t:
+    if len(t) <= L: cut = len(t)
+    else:
+        cut = t.rfind("\n", 0, L)
+        if cut <= 0: cut = L
+    sys.stdout.write(t[:cut] + "\0"); t = t[cut:].lstrip("\n")
+')
+    if (( failed == 0 && sent > 0 )); then
+        echo "[notify-operator] delivered via telegram (${sent} part(s))" >&2
+        return 0
+    fi
+    return 1
+}
+
+_notify_send_discord() {
+    local content="$1"
     local token uid
     token="$(_notify_env DISCORD_TOKEN)"
     uid="$(_notify_env CHUMP_READY_DM_USER_ID)"
     if [[ -z "$token" || -z "$uid" ]]; then
         # Unconfigured is not an error — same shape as send_dm_if_configured.
         echo "[notify-operator] SKIP: DISCORD_TOKEN or CHUMP_READY_DM_USER_ID unset" >&2
-        return 0
+        return 2
     fi
 
     local api="https://discord.com/api/v10"

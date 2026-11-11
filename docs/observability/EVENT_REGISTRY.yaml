@@ -15107,3 +15107,25 @@ events:
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
 
+
+  - kind: operator_transport_failed
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-270)
+    trigger: one rung of the operator transport chain (discord|telegram) failed
+      to deliver; the chain falls through to the next rung. Makes a silent
+      primary-transport outage visible. See docs/process/OPERATOR_TRANSPORTS.md.
+    consumers: [none]
+
+  - kind: operator_transport_fellthrough
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-270)
+    trigger: the primary transport failed but a later rung delivered, so the
+      operator was reached via a fallback.
+    consumers: [none]
+
+  - kind: operator_transport_exhausted
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-270)
+    trigger: at least one transport was configured and every configured rung
+      failed; the message was not delivered by any channel.
+    consumers: [none]
