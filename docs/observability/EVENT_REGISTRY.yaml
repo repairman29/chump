@@ -15107,3 +15107,14 @@ events:
     consumers: [scripts/ops/vital-signs.sh, scripts/coord/fleet-doctor-strict.sh]
     fields_required: [ts, kind, pr, merge_state_status, stalled_hours, action]
 
+
+  - kind: jetstream_cloud_decay
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/jetstream-cloud-decay-audit.sh (RESILIENT-2227)
+    emitter_paths: [scripts/ops/jetstream-cloud-decay-audit.sh]
+    trigger: >
+      Emitted (level=ALERT) when the decay audit finds JetStream off/unreachable,
+      the CLOUD stream (chump.cloud.>) missing, or chump-fleet-recorder dark.
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, level, failed]
