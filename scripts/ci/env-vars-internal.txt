@@ -3770,3 +3770,6 @@ CHUMP_DEADMAN_WORKER_STALE_SECS
 CHUMP_DEADMAN_WORKER_STATE
 # detected in: (standard input)
 CHUMP_DEADMAN_WORKER_UNIT
+
+# RESILIENT-270: ordered, comma-separated operator transport rungs for notify-operator.sh (default "discord,telegram").
+CHUMP_NOTIFY_TRANSPORTS

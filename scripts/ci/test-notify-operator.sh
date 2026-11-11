@@ -212,7 +212,7 @@ out="$(bash -c "
     CHUMP_NOTIFY_KIND='discord_advisor_reply' notify_operator 'reply three'
 " 2>&1)"
 
-immediate_attempts="$(grep -c '^\[notify-operator\] SKIP:' <<<"$out" || true)"
+immediate_attempts="$(grep -c '^\[notify-operator\] SKIP: DISCORD_TOKEN' <<<"$out" || true)"
 if [[ "$immediate_attempts" == "2" ]]; then
     ok "2 direct messages under the ceiling attempt immediate delivery"
 else
