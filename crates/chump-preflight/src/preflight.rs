@@ -3761,7 +3761,7 @@ pub fn run(argv: &[String]) -> i32 {
             let should_continue = baseline.is_some() || args.keep_going;
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", s.name);
-                eprintln!("{}", truncate_gate_output(&s.name, cap));
+                eprintln!("{}", truncate_gate_output(s.name, cap));
                 eprintln!("---- end ----");
             }
             if !should_continue {
