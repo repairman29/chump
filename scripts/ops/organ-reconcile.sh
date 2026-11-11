@@ -615,6 +615,7 @@ fi
 
 CHANGED=()
 NEED_RELOAD=0
+_ID_RESTART=()
 
 # 1) Auto-pagers → neuter (repo-declared drop-in) + stop; drop the legacy snowflake.
 for unit in "${PAGING_OFF[@]}"; do
@@ -653,6 +654,50 @@ for unit in "${PAGING_OFF[@]}"; do
     CHANGED+=("stopped:$unit")
   fi
 done
+
+# 1b) INFRA-8049: identity-drift pass. The enable/start loop below never
+#     rewrites a unit FILE, so a unit placed by an abandoned /root bring-up
+#     (User=root, HOME=/root, WorkingDirectory=/root/.chumpnode/repo) gets
+#     enabled and runs as root against a checkout no deploy updates — silently
+#     (systemctl --failed stays 0). On a non-root-owned node, any installed
+#     chump-*.service naming a /root path is re-placed from its tracked
+#     template through organ_unit_host_rewrite; one with no tracked source (or a
+#     failed rewrite) is surfaced as unrepaired instead of passing unseen.
+if declare -F organ_unit_host_rewrite >/dev/null 2>&1; then
+  _id_user="$(organ_unit_run_user "$REPO_ROOT")"
+  _id_home="$(organ_unit_run_home "$_id_user")"
+  if [[ "$_id_user" != "root" && "$_id_home" != "/root" ]]; then
+    for _id_file in "$SYSTEMD_DIR"/chump-*.service; do
+      [[ -f "$_id_file" ]] || continue
+      _id_unit="$(basename "$_id_file")"
+      case "$_id_unit" in chump-organ-deploy*) continue ;; esac
+      grep -vE '^[[:space:]]*#' "$_id_file" | grep -qE '/root/|/root$' || continue
+      _id_src="$REPO_ROOT/scripts/dispatch/$_id_unit"
+      _id_tmp="$(mktemp)"
+      if [[ -f "$_id_src" ]] && organ_unit_host_rewrite "$_id_src" "$_id_tmp" "$_id_user" "$_id_home" 0 "$REPO_ROOT" system 2>/dev/null; then
+        install -m 0644 "$_id_tmp" "$_id_file"
+        rm -f "$_id_tmp"
+        CHANGED+=("replaced-identity-drift:$_id_unit")
+        _ID_RESTART+=("$_id_unit")
+        # scanner-anchor: "kind":"organ_unit_identity_drift_repaired" (INFRA-8049)
+        emit organ_unit_identity_drift_repaired "\"unit\":\"$_id_unit\",\"run_user\":\"$_id_user\""
+      else
+        rm -f "$_id_tmp"
+        echo "WARN: $_id_unit names a /root path on a $_id_user node and cannot be re-placed (no tracked template)" >&2
+        # scanner-anchor: "kind":"organ_unit_identity_drift_unrepaired" (INFRA-8049)
+        emit organ_unit_identity_drift_unrepaired "\"unit\":\"$_id_unit\",\"run_user\":\"$_id_user\""
+      fi
+    done
+    if [[ "${#_ID_RESTART[@]}" -gt 0 ]]; then
+      "$SYSTEMCTL_BIN" daemon-reload
+      for _id_unit in "${_ID_RESTART[@]}"; do
+        if "$SYSTEMCTL_BIN" is-active --quiet "$_id_unit" 2>/dev/null; then
+          "$SYSTEMCTL_BIN" restart "$_id_unit" 2>/dev/null || true
+        fi
+      done
+    fi
+  fi
+fi
 
 # 2) Enabled organs → per-node-applicable reconcile (RESILIENT-347).
 #    a. Not applicable to this node (unmet `requires=`)? Skip — silently, no
