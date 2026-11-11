@@ -146,6 +146,23 @@ pub fn run_host(args: &[String], probe: &Probe) -> i32 {
     0
 }
 
+/// RESILIENT-1903: refuse a unit whose ExecStart script under the repo root is absent.
+pub fn check_exec_targets(rendered: &str, repo_root: &std::path::Path) -> Result<(), String> {
+    let root = repo_root.to_string_lossy();
+    for line in rendered.lines() {
+        let Some(cmd) = line.trim().strip_prefix("ExecStart=") else {
+            continue;
+        };
+        for tok in cmd.split_whitespace() {
+            let tok = tok.trim_matches(|c| matches!(c, '-' | '@' | '+' | '!' | '\'' | '"'));
+            if tok.starts_with(root.as_ref()) && !std::path::Path::new(tok).exists() {
+                return Err(format!("ExecStart target missing: {tok}"));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `chump node render-unit`. Probe is injected so tests can fake the host.
 pub fn run_render(args: &[String], probe: &Probe) -> i32 {
     let mut template: Option<PathBuf> = None;
@@ -289,6 +306,10 @@ pub fn run_render(args: &[String], probe: &Probe) -> i32 {
             return 1;
         }
     };
+    if let Err(e) = check_exec_targets(&rendered, &ctx.repo_root) {
+        eprintln!("chump node render-unit: {}: {e}", template.display());
+        return 1;
+    }
     match out {
         Some(o) => {
             if let Err(e) = std::fs::write(&o, rendered) {

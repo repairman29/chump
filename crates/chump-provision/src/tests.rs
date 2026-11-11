@@ -1001,3 +1001,15 @@ fn infra8589_rerender_installed_units_replaces_foreign_host_literals_and_is_idem
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn exec_target_check_names_missing_script() {
+    let dir = std::env::temp_dir().join("chump-r1903");
+    std::fs::create_dir_all(&dir).unwrap();
+    let r = dir.to_string_lossy().to_string();
+    let unit = format!("[Service]\nExecStart=/bin/bash {r}/nope.sh %i\n");
+    let e = crate::cli::check_exec_targets(&unit, &dir).unwrap_err();
+    assert!(e.contains("ExecStart target missing") && e.contains("nope.sh"));
+    std::fs::write(dir.join("nope.sh"), "").unwrap();
+    assert!(crate::cli::check_exec_targets(&unit, &dir).is_ok());
+}

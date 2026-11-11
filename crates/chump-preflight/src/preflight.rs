@@ -2577,6 +2577,14 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "service-exec-targets",
+            &[
+                "bash",
+                "scripts/ci/test-resilient-1903-service-exec-targets.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "docs-delta-guard",
             &["bash", "scripts/ci/test-docs-delta-guard.sh"],
             GateKind::Scripts,
