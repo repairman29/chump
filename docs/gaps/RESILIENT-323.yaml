@@ -1,13 +1,21 @@
 - id: RESILIENT-323
   domain: RESILIENT
   title: "Storage-MINIMIZE DNA: beyond reactive reaping — bounded caps + active sccache + compression + adaptive learn-what-to-keep"
-  status: open
-  priority: P1
+  status: done
+  priority: P2
   effort: m
   acceptance_criteria:
     - "REDUCE the need, not just reap residue: cargo-sweep-gc organ caps the shared target (ZERO-WASTE-053, wired 2026-08-19); local sccache active (currently CI-only) so rebuilds reuse cache; docs/archive + old logs compressed (.gz); a workspace-hack/hakari pass evaluated for build-dedup"
     - "ADAPTIVE layer (the real gap): an optimizer observes access patterns + growth rates and tunes caps/TTLs/what-to-keep per node instead of fixed thresholds; emits a footprint budget per node (cores/disk-aware) the orchestrator enforces"
     - "verified: a node runs for DAYS with cargo/target/logs on a bounded plateau (not monotonic growth); disk never approaches the reaper-emergency threshold on its own"
   notes: |
-    [2026-08-19T20:36:17Z] Jeff 2026-08-19: they need to LEARN to reap/cut storage + optimize — is it in our DNA? Honest audit: REACTIVE reaping = deep DNA (22 reapers). FOOTPRINT-CAPPING = designed (ZERO-WASTE-053 cargo-sweep-gc, shared-target) but was on the shelf (not installed, cargo-sweep not even present) — now wired. LEARNING/adaptive optimization = NOT in the DNA. This gap adds the minimize+learn layer to the ZERO-WASTE domain.
+    Decomposed into 7 slices: RESILIENT-467, RESILIENT-468, RESILIENT-469, RESILIENT-470, RESILIENT-471, RESILIENT-472, RESILIENT-473
+    
+    [2026-10-06T02:01:11Z] 2026-10-06T02:01:11+00:00 fleet-dispatch: leased to bus agent cloud-default until 2026-10-06T03:31:11+00:00
+    [2026-10-06T02:01:15Z] 2026-10-06T02:01:15+00:00 fleet-dispatch: cloud-default released it (open): not verifiable here: acceptance needs days of live-node observation plus an adaptive optimizer; too large for a small PR
+    [2026-10-06T09:41:09Z] 2026-10-06T09:41:09+00:00 fleet-dispatch: leased to bus agent cloud-default until 2026-10-06T11:11:09+00:00
+    [2026-10-06T09:41:17Z] 2026-10-06T09:41:17+00:00 fleet-dispatch: cloud-default released it (open): Umbrella-sized: bundles local sccache, log compression, hakari evaluation, an adaptive footprint optimizer and a multi-day plateau verification. Not completable as one small PR; needs decomposition into scoped sub-gaps (e.g. log/archive compression sweep, per-node footprint budget emitter).
+  opened_date: '2026-08-19'
+  closed_pr: 5855
+  closed_date: '2026-11-11'
 
