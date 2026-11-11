@@ -105,6 +105,10 @@ AUTOPILOT_LAYERS=(
     # CHUMP_WIZARD_DAEMON_ENABLED=1 is set. The installer default is ENABLED=0.
     # Validate Sprint 1-3 floor primitives before flipping the enable bit.
     "com.chump.wizard-daemon|scripts/setup/install-wizard-daemon-launchd.sh"
+    # RESILIENT-022: previously-silent daemons (labels match each installer's plist)
+    "dev.chump.stale-branch-reaper|scripts/setup/install-stale-branch-reaper-launchd.sh"
+    "dev.chump.pr-watch-shepherd|scripts/setup/install-pr-watch-shepherd-launchd.sh"
+    "dev.chump.distill-pr-skills|scripts/setup/install-distill-pr-skills-launchd.sh"
 )
 
 emit() {
