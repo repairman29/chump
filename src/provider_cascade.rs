@@ -158,6 +158,48 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, to
     }
 }
 
+/// RESILIENT-276: per-call wall-clock bound on a cascade slot. A hung slot
+/// must fail over, not stall the turn. `CHUMP_PROVIDER_TIMEOUT_S` (default 90,
+/// 0 = disabled).
+pub(crate) fn provider_timeout() -> Option<Duration> {
+    let s: u64 = std::env::var("CHUMP_PROVIDER_TIMEOUT_S")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(90);
+    if s == 0 {
+        None
+    } else {
+        Some(Duration::from_secs(s))
+    }
+}
+
+/// RESILIENT-276: ambient `provider_timeout` event naming the timed-out slot.
+// scanner-anchor: "kind":"provider_timeout"
+fn emit_provider_timeout_event(slot_name: &str, model: &str, timeout_s: u64) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"provider_timeout\",\
+         \"slot\":\"{}\",\"model\":\"{}\",\"timeout_s\":{timeout_s}}}",
+        json_escape(slot_name),
+        json_escape(model),
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Escape a string for embedding in a hand-built JSON line (matches the
 /// escaping already used by `emit_cascade_exhausted_event`'s `reason_esc`).
 fn json_escape(s: &str) -> String {
@@ -1791,14 +1833,46 @@ impl Provider for ProviderCascade {
             let t0 = std::time::Instant::now();
             let slot_res = {
                 let _cascade_inner = llm_backend_metrics::CascadeInnerGuard::new();
-                slot.provider
-                    .complete(
-                        messages.clone(),
-                        tools.clone(),
-                        max_tokens,
-                        system_prompt.clone(),
-                    )
-                    .await
+                let fut = slot.provider.complete(
+                    messages.clone(),
+                    tools.clone(),
+                    max_tokens,
+                    system_prompt.clone(),
+                );
+                match provider_timeout() {
+                    Some(d) => match tokio::time::timeout(d, fut).await {
+                        Ok(r) => r,
+                        Err(_) => {
+                            tracing::warn!(
+                                target: "chump::provider_cascade",
+                                slot = %slot.name,
+                                timeout_s = d.as_secs(),
+                                "provider call timed out — failing over"
+                            );
+                            emit_provider_timeout_event(
+                                &slot.name,
+                                slot.provider.model(),
+                                d.as_secs(),
+                            );
+                            local_openai::record_circuit_failure(&slot.base_url);
+                            provider_quality::record_slot_failure(&slot.name);
+                            if let Some(b) = self.bandit() {
+                                b.update(&slot.name, 0.0);
+                            }
+                            record_failover(&slot.name, "timeout");
+                            if i + 1 < self.slots.len() {
+                                idx = i + 1;
+                                continue;
+                            }
+                            return Err(anyhow::anyhow!(
+                                "provider slot {} timed out after {}s",
+                                slot.name,
+                                d.as_secs()
+                            ));
+                        }
+                    },
+                    None => fut.await,
+                }
             };
             match slot_res {
                 Ok(mut r) => {
@@ -2488,6 +2562,16 @@ pub fn global_provider() -> Box<dyn Provider + Send + Sync> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resilient276_provider_timeout_env() {
+        std::env::set_var("CHUMP_PROVIDER_TIMEOUT_S", "7");
+        assert_eq!(provider_timeout(), Some(Duration::from_secs(7)));
+        std::env::set_var("CHUMP_PROVIDER_TIMEOUT_S", "0");
+        assert_eq!(provider_timeout(), None);
+        std::env::remove_var("CHUMP_PROVIDER_TIMEOUT_S");
+        assert_eq!(provider_timeout(), Some(Duration::from_secs(90)));
+    }
 
     #[test]
     fn effective347_restrict_eligible_honors_preferred_class() {

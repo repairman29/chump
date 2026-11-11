@@ -3014,6 +3014,13 @@ events:
     fields_required: [slot, tier, cascade_mode]
     consumers: [audit-log, fleet-brief]
 
+  - kind: provider_timeout
+    effect_metric: self
+    emitter: src/provider_cascade.rs (RESILIENT-276)
+    trigger: a cascade slot's LLM call exceeded CHUMP_PROVIDER_TIMEOUT_S and the cascade failed over
+    fields_required: [slot, model, timeout_s]
+    consumers: [audit-log]
+
   - kind: provider_slot_resolved
     effect_metric: self
     emitter: src/provider_cascade.rs::emit_provider_slot_ambient_event, called from src/agent_loop/orchestrator.rs (CREDIBLE-266)
