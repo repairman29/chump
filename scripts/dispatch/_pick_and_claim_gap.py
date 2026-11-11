@@ -1085,6 +1085,35 @@ def _load_planner_priority(
     return out, "ok"
 
 
+def _effective_priorities(gaps: list) -> dict:
+    """INFRA-3612: effective priority = best band over own priority and that of
+    every open gap this one transitively unblocks (a P3 blocking a P0 is P0)."""
+    own: dict = {}
+    deps_of: dict = {}
+    for g in gaps:
+        if not isinstance(g, dict) or not g.get("id"):
+            continue
+        gid = g["id"]
+        own[gid] = (g.get("priority") or "").upper()
+        if not _is_pickable_open(g):
+            continue
+        try:
+            deps_of[gid] = [d for d in parse_dep_list(g.get("depends_on")) if isinstance(d, str)]
+        except MalformedDepList:
+            continue
+    eff = dict(own)
+    changed = True
+    while changed:
+        changed = False
+        for gid, deps in deps_of.items():
+            r = PRIO_RANK.get(eff.get(gid, ""), 9)
+            for d in deps:
+                if d in eff and PRIO_RANK.get(eff[d], 9) > r:
+                    eff[d] = eff[gid]
+                    changed = True
+    return eff
+
+
 def _parse_skills_required(raw) -> list[str]:
     if not raw:
         return []
@@ -1357,6 +1386,7 @@ def main() -> int:
     ).strip().lower() in ("1", "true")
     skipped_external_gaps = 0
 
+    effective_prio = _effective_priorities(gaps)
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
@@ -1419,7 +1449,7 @@ def main() -> int:
             if not any(sub in title_l for sub in require_title_substrs):
                 reasons["title_substr_required"] += 1
                 continue
-        p = (g.get("priority") or "").upper()
+        p = effective_prio.get(gid, (g.get("priority") or "").upper())
         if prio_filter and p not in prio_filter:
             reasons["priority_filter"] += 1
             continue
