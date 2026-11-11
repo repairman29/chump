@@ -85,6 +85,10 @@ STALE_DAYS_THRESHOLD="${STALE_DAYS_THRESHOLD:-14}"
 BRANCH_PATTERNS="${BRANCH_PATTERNS:-chump/* wip/* claude/* worktree-* chore/* fix/* ftue-verification/* test/*}"
 # INFRA-697: age threshold for merged/closed PR branches (days since close).
 CHUMP_BRANCH_REAPER_AGE_DAYS="${CHUMP_BRANCH_REAPER_AGE_DAYS:-7}"
+# INFRA-8071: reap branches that never had a PR once the tip is this many days
+# old (0 = flag-only, never delete them).
+CHUMP_BRANCH_REAPER_ORPHAN_AGE_DAYS="${CHUMP_BRANCH_REAPER_ORPHAN_AGE_DAYS:-7}"
+ORPHAN_AGE_THRESHOLD_SECS=$(( CHUMP_BRANCH_REAPER_ORPHAN_AGE_DAYS * 86400 ))
 
 # INFRA-1081: source github cache lib
 # shellcheck source=scripts/coord/lib/github_cache.sh
@@ -181,6 +185,18 @@ while IFS=$'\t' read -r REFNAME COMMITTERDATE; do
                 close_epoch=$(( COMMITTERDATE ))
             else
                 info "Fresh: $BRANCH (gap-id $gid shipped but tip < ${CHUMP_BRANCH_REAPER_AGE_DAYS}d old)"
+                SKIPPED_FRESH=$((SKIPPED_FRESH + 1))
+                continue
+            fi
+        elif [[ "$CHUMP_BRANCH_REAPER_ORPHAN_AGE_DAYS" -gt 0 ]]; then
+            # INFRA-8071: no PR of any state + tip older than threshold =
+            # abandoned push (PR-state mapping via gh, not git --merged).
+            tip_age=$(( NOW_EPOCH - ${COMMITTERDATE:-0} ))
+            if [[ "${COMMITTERDATE:-0}" -gt 0 && "$tip_age" -ge "$ORPHAN_AGE_THRESHOLD_SECS" ]]; then
+                shipped_reason="no PR ever, tip $(( tip_age / 86400 ))d old"
+                close_epoch=$(( COMMITTERDATE ))
+            else
+                info "Fresh: $BRANCH (no PR, tip < ${CHUMP_BRANCH_REAPER_ORPHAN_AGE_DAYS}d old)"
                 SKIPPED_FRESH=$((SKIPPED_FRESH + 1))
                 continue
             fi
