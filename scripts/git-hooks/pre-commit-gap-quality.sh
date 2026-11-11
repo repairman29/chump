@@ -15,7 +15,7 @@ AMBIENT_FILE="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 STAGED_GAPS=()
 while IFS= read -r f; do
     [[ -n "$f" ]] && STAGED_GAPS+=("$f")
-done < <(git diff --cached --name-only --diff-filter=AM -- 'docs/gaps/*.yaml' 2>/dev/null || true)
+done < <(git diff --cached --name-only --diff-filter=A -- 'docs/gaps/*.yaml' 2>/dev/null || true)
 
 if [[ ${#STAGED_GAPS[@]} -eq 0 ]]; then
     exit 0
