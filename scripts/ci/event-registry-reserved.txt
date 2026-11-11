@@ -946,3 +946,5 @@ gap_reclaimed_with_open_pr  # reason: CREDIBLE-1613 — emitted by src/dispatch_
 node_auth_dead  # reason: RESILIENT-1690 — emitted by src/farmer_status.rs via escaped Rust format! string (scanner-anchor present); reserved here in case the installed chump verify rule's unescaped-quote needle scans before rebuild.
 organ_revived  # reason: RESILIENT-1692 — emitted by scripts/ops/organ-reconcile.sh via local emit() helper (scanner-anchor present); reserved here in case the installed chump verify rule scans before rebuild.
 agent_bypass_refused  # reason: CREDIBLE-1566 — emitted by scripts/git-hooks/{pre-push,commit-msg,lib/off-rails-guard.sh} (outside PROD_PATHS); scanner-anchor in src/dispatch.rs and reserved here so register-without-emit passes.
+cloud_agent_status  # reason: RESILIENT-1466 — payload kind published to NATS chump.cloud.status by scripts/coord/emit-cloud-status.sh (python-built JSON, not a shell ambient emit).
+cloud_status_decay  # reason: RESILIENT-1466 — emitted by scripts/coord/cloud-status-audit.sh (JetStream off / CLOUD stream missing / fleet-recorder dark).
