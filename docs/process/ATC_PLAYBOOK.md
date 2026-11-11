@@ -23,6 +23,11 @@ routes every fix to the fleet as a **productized upstream change — never a ban
    - **external product findings** (olive / smuggler / games / product sites) → **holler**
      (`shared/playtest/holler.mjs --project <slug>`) → the bridge (`holler-to-chump.mjs`)
      resolves `project→repo`, tags the gap `external_repo:owner/repo`, drains to chump.
+   - **Intake path of record (INFRA-8046):** findings from any agent location file via
+     `chump gap file` (INFRA-8061: POST `CHUMP_GAP_URL`, durable local spool, idempotent
+     reserve/set) — NOT via the holler→drain→`POST /api/gap` indirection, whose
+     `chump-holler-drain` unit was never installed on CJ. Drain staleness still pages via
+     board-vitals `holler_drain_stale` (only when a drain ledger exists).
    - A band-aid (deprioritize, partition, restart) is allowed ONLY as an interim AND ONLY
      if the upstream fix is voiced/holler'd **in the same beat**.
 4. **Revive + unstick** (the traffic-cop core) — restart dead daemons; rebase/rerun BLOCKED
