@@ -745,6 +745,8 @@ jobs:
       # systemctl, no network/root; the GNU-sed rewrite runs for real on ubuntu.
       - name: Organ role-roster + host-rewrite gate (RESILIENT-1055/1102)
         run: bash scripts/ci/test-resilient-1055-role-roster.sh
+      - name: Embed-role scope gate (INFRA-8057)
+        run: bash scripts/ci/test-infra-8057-embed-role-scope.sh
 
       # INFRA-3632: node-install pins the canonical-store env (CHUMP_STATE_DB)
       # into node.env, wires it into every generated organ unit's
