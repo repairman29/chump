@@ -1,0 +1,16 @@
+# chump-junk-pr-closer.timer — INFRA-8072 hourly cadence for chump-junk-pr-closer.service.
+
+[Unit]
+Description=Run Chump junk-PR closer hourly (INFRA-8072)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+OnUnitInactiveSec=1h
+RandomizedDelaySec=5min
+AccuracySec=1min
+Persistent=true
+Unit=chump-junk-pr-closer.service
+
+[Install]
+WantedBy=timers.target
