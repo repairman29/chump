@@ -1282,6 +1282,11 @@ events:
       (filed as INFRA); unclassified is treated as a real test failure and
       filed as CREDIBLE for investigation.
 
+  - kind: ci_health_gate_blind
+    effect_metric: self
+    emitter: scripts/coord/ci-health-gate.sh (INFRA-8050)
+    trigger: ci-health-gate.sh found an empty PR cache and `gh pr list` failed (auth/transport); gate reports blind instead of healthy and leaves any existing pause untouched
+    consumers: [fleet-brief, ops-audit]
   - kind: pipeline_health_throttle
     effect_metric: self
     emitter: scripts/coord/ci-health-gate.sh (INFRA-1607)
