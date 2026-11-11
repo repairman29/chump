@@ -387,6 +387,61 @@ struct Outcome {
     captured: Option<String>,
 }
 
+const GATE_OUTPUT_HEAD_BYTES: usize = 2048;
+const GATE_OUTPUT_TAIL_LINES: usize = 5;
+
+/// Write a gate's full output to `<log_dir>/<gate>.log`; returns the path.
+pub fn write_gate_log(
+    log_dir: &std::path::Path,
+    gate: &str,
+    full: &str,
+) -> Option<std::path::PathBuf> {
+    std::fs::create_dir_all(log_dir).ok()?;
+    let safe: String = gate
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let path = log_dir.join(format!("{safe}.log"));
+    std::fs::write(&path, full).ok()?;
+    Some(path)
+}
+
+/// Truncate failing-gate output to the head plus the last few lines (where
+/// cargo prints its conclusion), and persist the full text to a log file.
+pub fn truncate_gate_output_in(log_dir: &std::path::Path, gate: &str, cap: &str) -> String {
+    if cap.len() <= GATE_OUTPUT_HEAD_BYTES {
+        return cap.to_string();
+    }
+    let mut cut = GATE_OUTPUT_HEAD_BYTES;
+    while !cap.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let lines: Vec<&str> = cap.lines().collect();
+    let tail = lines[lines.len().saturating_sub(GATE_OUTPUT_TAIL_LINES)..].join("\n");
+    let mut out = format!(
+        "{}\n... [{} more bytes truncated; last {} lines below]\n{}",
+        &cap[..cut],
+        cap.len() - cut,
+        GATE_OUTPUT_TAIL_LINES,
+        tail
+    );
+    match write_gate_log(log_dir, gate, cap) {
+        Some(p) => out.push_str(&format!("\n[preflight] full output: {}", p.display())),
+        None => out.push_str("\n[preflight] could not write full output log"),
+    }
+    out
+}
+
+fn truncate_gate_output(gate: &str, cap: &str) -> String {
+    truncate_gate_output_in(std::path::Path::new("target/preflight-logs"), gate, cap)
+}
+
 fn run_step(s: &Step) -> Outcome {
     let started = Instant::now();
 
@@ -3706,17 +3761,7 @@ pub fn run(argv: &[String]) -> i32 {
             let should_continue = baseline.is_some() || args.keep_going;
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", s.name);
-                // Truncate to first ~2KB to avoid swamping the terminal.
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
-                eprintln!("{}", trunc);
+                eprintln!("{}", truncate_gate_output(&s.name, cap));
                 eprintln!("---- end ----");
             }
             if !should_continue {
@@ -3943,16 +3988,7 @@ fn run_structural(
             failed_gates.push(name);
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", name);
-                let trunc = if cap.len() > 2048 {
-                    format!(
-                        "{}\n... [{} more bytes truncated]",
-                        &cap[..2048],
-                        cap.len() - 2048
-                    )
-                } else {
-                    cap.clone()
-                };
-                eprintln!("{}", trunc);
+                eprintln!("{}", truncate_gate_output(name, cap));
                 eprintln!("---- end ----");
             }
             if !keep_going {
