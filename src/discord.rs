@@ -839,8 +839,14 @@ fn drain_one_queued_message(
         };
         chump_log::set_request_id(Some(chump_log::gen_request_id()));
         let _typing = channel_id.start_typing(&http);
-        let to_send =
-            run_one_discord_turn(channel_id, &content, &user_name, false, http.clone()).await;
+        let to_send = capped_discord_turn(run_one_discord_turn(
+            channel_id,
+            &content,
+            &user_name,
+            false,
+            http.clone(),
+        ))
+        .await;
         drop(_typing);
         chump_log::log_reply_with_request_id(channel_id.get(), to_send.len(), Some(&to_send), None);
         chump_log::set_request_id(None);
@@ -1173,13 +1179,13 @@ impl EventHandler for Handler {
             );
             // #endregion
             let _typing = channel_id.start_typing(&http);
-            let to_send = run_one_discord_turn(
+            let to_send = capped_discord_turn(run_one_discord_turn(
                 channel_id,
                 &content,
                 &user_name,
                 is_peer_message,
                 http.clone(),
-            )
+            ))
             .await;
             // #region agent log
             dbg_log(
@@ -1386,5 +1392,21 @@ mod tests {
         for c in chunks {
             assert!(c.len() <= 2000);
         }
+    }
+}
+
+/// RESILIENT-276: hard-cap a Discord turn (`CHUMP_DISCORD_TURN_CAP_S`, default 180s)
+/// so the typing indicator can never run forever; on expiry reply with why.
+async fn capped_discord_turn<F: std::future::Future<Output = String>>(fut: F) -> String {
+    let cap_s = std::env::var("CHUMP_DISCORD_TURN_CAP_S")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|v| *v >= 1)
+        .unwrap_or(180);
+    match tokio::time::timeout(std::time::Duration::from_secs(cap_s), fut).await {
+        Ok(s) => s,
+        Err(_) => format!(
+            "I stopped this turn after {cap_s}s with no answer — the model provider appears hung or very slow. Please retry in a moment."
+        ),
     }
 }

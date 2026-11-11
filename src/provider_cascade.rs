@@ -158,6 +158,47 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, to
     }
 }
 
+/// RESILIENT-276: per-call bound on a cascade slot's provider call.
+/// `CHUMP_PROVIDER_TIMEOUT_S` (default 60s, min 1s) — expiry is a slot failure
+/// so the cascade advances instead of stalling the whole turn.
+fn provider_call_timeout() -> Duration {
+    let secs = std::env::var("CHUMP_PROVIDER_TIMEOUT_S")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|v| *v >= 1)
+        .unwrap_or(60);
+    Duration::from_secs(secs)
+}
+
+/// RESILIENT-276: failure signature for a timed-out slot (names slot + model).
+// scanner-anchor: "kind":"provider_call_timeout"
+fn emit_provider_call_timeout_event(slot_name: &str, model: &str, timeout_s: u64) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    let session = std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"provider_call_timeout\",\
+         \"slot\":\"{}\",\"model\":\"{}\",\"timeout_s\":{timeout_s}}}",
+        json_escape(slot_name),
+        json_escape(model)
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Escape a string for embedding in a hand-built JSON line (matches the
 /// escaping already used by `emit_cascade_exhausted_event`'s `reason_esc`).
 fn json_escape(s: &str) -> String {
@@ -1789,16 +1830,31 @@ impl Provider for ProviderCascade {
                 std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
             }
             let t0 = std::time::Instant::now();
+            let slot_timeout = provider_call_timeout();
             let slot_res = {
                 let _cascade_inner = llm_backend_metrics::CascadeInnerGuard::new();
-                slot.provider
-                    .complete(
-                        messages.clone(),
-                        tools.clone(),
-                        max_tokens,
-                        system_prompt.clone(),
-                    )
-                    .await
+                let fut = slot.provider.complete(
+                    messages.clone(),
+                    tools.clone(),
+                    max_tokens,
+                    system_prompt.clone(),
+                );
+                match tokio::time::timeout(slot_timeout, fut).await {
+                    Ok(r) => r,
+                    Err(_) => {
+                        provider_quality::record_slot_failure(&slot.name);
+                        emit_provider_call_timeout_event(
+                            &slot.name,
+                            slot.provider.model(),
+                            slot_timeout.as_secs(),
+                        );
+                        Err(anyhow::anyhow!(
+                            "provider call timed out after {}s (slot {})",
+                            slot_timeout.as_secs(),
+                            slot.name
+                        ))
+                    }
+                }
             };
             match slot_res {
                 Ok(mut r) => {
@@ -2106,6 +2162,8 @@ fn classify_failover_reason(e_str: &str) -> &'static str {
         || lower.contains("does not support tool")
     {
         "tool-call-refused"
+    } else if lower.contains("provider call timed out") {
+        "timeout"
     } else if lower.contains("empty") {
         "empty_response"
     } else {
@@ -2487,6 +2545,19 @@ pub fn global_provider() -> Box<dyn Provider + Send + Sync> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn provider_timeout_default_and_classification() {
+        std::env::remove_var("CHUMP_PROVIDER_TIMEOUT_S");
+        assert_eq!(super::provider_call_timeout().as_secs(), 60);
+        assert_eq!(
+            super::classify_failover_reason("provider call timed out after 60s (slot x)"),
+            "timeout"
+        );
+        assert!(super::local_openai::is_transient_error(&anyhow::anyhow!(
+            "provider call timed out after 60s (slot x)"
+        )));
+    }
+
     use super::*;
 
     #[test]
