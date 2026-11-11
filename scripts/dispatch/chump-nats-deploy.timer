@@ -1,0 +1,12 @@
+# INFRA-8065 — pairs with chump-nats-deploy.service. Every 10 min.
+[Unit]
+Description=Run the Chump nats/ deploy every 10 minutes (INFRA-8065)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+OnUnitInactiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

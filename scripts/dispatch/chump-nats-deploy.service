@@ -1,0 +1,13 @@
+# INFRA-8065 — deploy nats/ (chump-proprietary main) onto the hub and restart
+# fleet-dispatch.service when its code changes; self-verifies installed==main.
+# Runs as root (system scope) so it can restart the unit / edit its unit file.
+[Unit]
+Description=Chump nats/ deploy — install chump-proprietary nats/ main onto the hub, restart fleet-dispatch on change (INFRA-8065)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=__HOME__
+Environment=CHUMP_REPO_ROOT=__REPO_ROOT__
+ExecStart=/bin/bash -lc 'exec __REPO_ROOT__/scripts/ops/nats-deploy.sh'
