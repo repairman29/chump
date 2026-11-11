@@ -738,3 +738,4 @@ retired     chump-auto-arm-sweeper.timer    role=brain home=cuphead  # retired: 
 retired     chump-auto-arm-sweeper.service  role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
 retired     chump-auto-merge-armer.timer    role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
 retired     chump-auto-merge-armer.service  role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
+enabled     chump-nats-deploy.timer         role=brain requires=bin:git,bin:systemctl platforms=systemd run-scope=system home=cuphead  # INFRA-8065: 10-min deploy of chump-proprietary nats/ main onto the hub (scripts/ops/nats-deploy.sh), restarts fleet-dispatch on change, verifies installed==main, emits nats_deploy_drift on mismatch.
