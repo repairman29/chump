@@ -197,3 +197,30 @@ fn infra3616_priority_dominates_mission_across_tiers() {
         "a substrate P0 must beat a mission P1 — mission is a tiebreak, not a tier-jump (got {picked})"
     );
 }
+
+/// INFRA-3612: a P3 gap that an open P0 depends_on inherits P0 and is picked
+/// before unrelated P1/P2 gaps; the blocked P0 itself is not pickable.
+#[test]
+fn infra3612_blocker_inherits_dependent_priority() {
+    if !python3_available() {
+        eprintln!("skipping: python3 not available");
+        return;
+    }
+    let p0 = gap("ZZZ-900", "INFRA", "P0", "m", "", 5)
+        .replace(r#""depends_on":"""#, r#""depends_on":"[\"ZZZ-901\"]""#);
+    let gaps = format!(
+        "[{},{},{},{}]",
+        gap("AAA-100", "CREDIBLE", "P1", "xs", "", 1),
+        gap("AAA-101", "CREDIBLE", "P2", "xs", "", 2),
+        p0,
+        gap("ZZZ-901", "INFRA", "P3", "xs", "", 9_999),
+    );
+    let picked = pick(&gaps, "RUN-INSTALL", "P0,P1,P2,P3");
+    assert_eq!(
+        picked, "ZZZ-901",
+        "P3 blocking a P0 must be picked first (got {picked})"
+    );
+    // A P0-only filter must still surface the blocker via its effective priority.
+    let picked = pick(&gaps, "RUN-INSTALL", "P0");
+    assert_eq!(picked, "ZZZ-901");
+}
