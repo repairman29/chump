@@ -1792,6 +1792,16 @@ if [ -x "$RUST_FIRST_HOOK" ]; then
     fi
 fi
 
+# 15a2. Gap quality gate (RESILIENT-037)
+# Rejects NEWLY ADDED docs/gaps/*.yaml with TODO/TBD in AC or description < 200 chars.
+# Bypass: Vague-AC-Bypass: <reason> commit trailer.
+GAP_QUALITY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-gap-quality.sh"
+if [ -x "$GAP_QUALITY_HOOK" ]; then
+    if ! "$GAP_QUALITY_HOOK"; then
+        exit 1
+    fi
+fi
+
 # 15b. Auto-document new CHUMP_* env vars (RESILIENT-207, 2026-07-29)
 # ------------------------------------------------------------------
 # Kills the chronic env-var-coverage CI failure (DOC-026, 5+/week fleet-wide) by
