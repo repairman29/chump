@@ -214,7 +214,38 @@ fn almanac_directive(enabled: bool) -> Option<&'static str> {
     )
 }
 
+/// Threshold (ms) above which a section or whole assembly is logged as slow.
+/// Override with `CHUMP_CONTEXT_SLOW_MS`; `0` disables the warning.
+fn context_slow_threshold_ms() -> u128 {
+    std::env::var("CHUMP_CONTEXT_SLOW_MS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(1500)
+}
+
+fn warn_if_slow(label: &str, elapsed: std::time::Duration, threshold_ms: u128) {
+    if threshold_ms > 0 && elapsed.as_millis() >= threshold_ms {
+        tracing::warn!(
+            section = label,
+            elapsed_ms = elapsed.as_millis() as u64,
+            "slow per-turn context assembly section (RESILIENT-204)"
+        );
+    }
+}
+
+/// Run `f`, warning when it exceeds the slow threshold. Returns `f`'s result.
+fn timed_section<T>(label: &str, f: impl FnOnce() -> T) -> T {
+    let start = std::time::Instant::now();
+    let out = f();
+    warn_if_slow(label, start.elapsed(), context_slow_threshold_ms());
+    out
+}
+
 pub fn assemble_context() -> String {
+    timed_section("assemble_context(total)", assemble_context_inner)
+}
+
+fn assemble_context_inner() -> String {
     const INITIAL_CAP: usize = 4096;
     let mut out = String::with_capacity(INITIAL_CAP);
     out.push_str("\n[CHUMP CONTEXT — auto-loaded, do not repeat these tool calls]\n\n");
@@ -651,11 +682,12 @@ pub fn assemble_context() -> String {
         && (is_cursor_improve || is_doc_hygiene || (is_cli && !light_interactive))
     {
         let root = repo_path::repo_root();
-        if let Ok(out_git) = Command::new("git")
-            .args(["diff", "--name-only", "HEAD~1..HEAD"])
-            .current_dir(&root)
-            .output()
-        {
+        if let Ok(out_git) = timed_section("git_diff_last_commit", || {
+            Command::new("git")
+                .args(["diff", "--name-only", "HEAD~1..HEAD"])
+                .current_dir(&root)
+                .output()
+        }) {
             if out_git.status.success() {
                 let names = String::from_utf8_lossy(&out_git.stdout);
                 let names = names.trim();
@@ -871,7 +903,7 @@ pub fn assemble_context() -> String {
 
     // Skills (Phase 1.1 of Hermes roadmap): progressive disclosure — list metadata only.
     // Agent loads full SKILL.md via skill_manage action=view when needed.
-    let skills_block = crate::skills::skills_system_prompt_block();
+    let skills_block = timed_section("skills_block", crate::skills::skills_system_prompt_block);
     if !skills_block.is_empty() {
         let _ = writeln!(out, "\n{}", skills_block);
     }
@@ -1003,6 +1035,17 @@ mod cos_weekly_tests {
     use super::*;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn timed_section_returns_value_and_threshold_parses() {
+        assert_eq!(timed_section("t", || 7), 7);
+        std::env::set_var("CHUMP_CONTEXT_SLOW_MS", "0");
+        assert_eq!(context_slow_threshold_ms(), 0);
+        std::env::set_var("CHUMP_CONTEXT_SLOW_MS", "250");
+        assert_eq!(context_slow_threshold_ms(), 250);
+        std::env::remove_var("CHUMP_CONTEXT_SLOW_MS");
+        assert_eq!(context_slow_threshold_ms(), 1500);
+    }
 
     #[test]
     fn pick_latest_prefers_newer_mtime() {
