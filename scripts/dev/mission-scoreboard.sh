@@ -10,22 +10,47 @@
 #   (default)     single-repo view focused on BEAST (the proof)
 #   --per-repo    per-repo block for every row in `chump repos list` + aggregate
 #   --aggregate   aggregate-only rollup (no per-repo blocks)
+#   --storage-observe DIR [--window 5m]  emit one JSON line {active_files,stale_files,size_growth_bytes}
 #
 # Follow-up: port to `chump kpi mission` (Rust) once metrics stabilize.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || true
 
 MODE="default"
+OBSERVE_DIR=""; OBSERVE_WINDOW="1h"
+
+# RESILIENT-471: storage access-pattern + growth observer (feeds the adaptive optimizer).
+observe_storage_pattern() {
+    local dir="$1" window="$2" n unit secs state key total prev=0 active stale
+    n="${window%[smhd]}"; unit="${window#"$n"}"; [[ "$n" =~ ^[0-9]+$ ]] || { echo "[mission-scoreboard] bad --window: $window" >&2; return 2; }
+    case "${unit:-s}" in s) secs=$n ;; m) secs=$((n*60)) ;; h) secs=$((n*3600)) ;; d) secs=$((n*86400)) ;; *) echo "[mission-scoreboard] bad --window: $window" >&2; return 2 ;; esac
+    [[ -d "$dir" ]] || { echo "[mission-scoreboard] not a directory: $dir" >&2; return 2; }
+    key="$(printf '%s' "$(cd "$dir" && pwd -P)" | cksum | cut -d' ' -f1)"
+    state="${CHUMP_STORAGE_OBSERVE_STATE_DIR:-${TMPDIR:-/tmp}}/chump-storage-observe-$key.state"
+    active=$(find "$dir" -type f -amin -"$(( (secs + 59) / 60 ))" 2>/dev/null | wc -l | tr -d ' ')
+    stale=$(( $(find "$dir" -type f 2>/dev/null | wc -l | tr -d ' ') - active ))
+    total=$(find "$dir" -type f -printf '%s\n' 2>/dev/null | awk '{s+=$1} END{print s+0}')
+    [[ -f "$state" ]] && prev=$(cat "$state" 2>/dev/null || echo 0)
+    [[ "$prev" =~ ^[0-9]+$ ]] || prev=$total
+    [[ -f "$state" ]] || prev=$total
+    printf '%s\n' "$total" > "$state" 2>/dev/null || true
+    printf '{"active_files":%s,"stale_files":%s,"size_growth_bytes":%s}\n' "$active" "$stale" "$((total - prev))"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --per-repo)  MODE="per-repo"; shift ;;
         --aggregate) MODE="aggregate"; shift ;;
+        --storage-observe) OBSERVE_DIR="${2:-}"; [[ -n "$OBSERVE_DIR" ]] || { echo "[mission-scoreboard] --storage-observe needs DIR" >&2; exit 2; }; shift 2 ;;
+        --window)    OBSERVE_WINDOW="${2:-}"; shift 2 ;;
         -h|--help)
-            sed -n '2,15p' "$0"
+            sed -n '2,16p' "$0"
             exit 0 ;;
         *) echo "[mission-scoreboard] unknown flag: $1" >&2; exit 2 ;;
     esac
 done
+
+if [[ -n "$OBSERVE_DIR" ]]; then observe_storage_pattern "$OBSERVE_DIR" "$OBSERVE_WINDOW"; exit $?; fi
 
 BEAST="repairman29/BEAST-MODE"
 ACTIVE_MISSION="$(cat "$HOME/.chump/ACTIVE_MISSION" 2>/dev/null || echo MISSION-010)"
