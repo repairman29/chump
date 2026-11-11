@@ -3771,7 +3771,5 @@ CHUMP_DEADMAN_WORKER_STATE
 # detected in: (standard input)
 CHUMP_DEADMAN_WORKER_UNIT
 
-# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
-# Replace the AUTO marker with a real description on the next commit.
-# detected in: (standard input)
+# RESILIENT-270: ordered, comma-separated operator transport rungs for notify-operator.sh (default "discord,telegram").
 CHUMP_NOTIFY_TRANSPORTS
