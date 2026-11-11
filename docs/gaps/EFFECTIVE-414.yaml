@@ -1,7 +1,8 @@
 - id: EFFECTIVE-414
   domain: EFFECTIVE
   title: "build bin-bloat-guard CI gate: flag new large src/*.rs files landing in the bin (enforce crate-first, WHEN_TO_CRATE.md)"
-  status: open
+  status: done
+  closed_pr: 4674
   priority: P2
   effort: m
   acceptance_criteria:
