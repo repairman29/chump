@@ -561,6 +561,12 @@ do_local_pass() {
             CHUMP_AMBIENT_LOG="$AMBIENT_LOG" bash "$REPO_ROOT/scripts/coord/farmer-heartbeat-watchdog.sh" --max-age-min 30 >/dev/null 2>&1 || true
         fi
     fi
+    if [[ $DRY -eq 0 && "${CHUMP_SENTINEL_CLOUD_STATUS_WATCH:-0}" == "1" && -x "$REPO_ROOT/scripts/coord/cloud-status-audit.sh" ]]; then
+        local cs_out
+        if ! cs_out="$(CHUMP_AMBIENT_LOG="$AMBIENT_LOG" bash "$REPO_ROOT/scripts/coord/cloud-status-audit.sh" 2>&1)"; then
+            page "cloud-status write-back decayed: ${cs_out##*DECAY: }" "cloud_status_decay"
+        fi
+    fi
     write_heartbeat
     local tick_state="active"
     _sentinel_node_paused && tick_state="paused_expected"
