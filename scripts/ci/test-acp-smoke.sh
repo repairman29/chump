@@ -44,6 +44,11 @@ if [[ -z "$CHUMP_BIN" ]]; then
     CHUMP_BIN="$ROOT/target/release/chump"
   elif [[ -x "$ROOT/target/debug/chump" ]]; then
     CHUMP_BIN="$ROOT/target/debug/chump"
+  elif _CFG_TD="$(sed -n 's/^[[:space:]]*target-dir[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$ROOT/.cargo/config.toml" "$ROOT/../../.cargo/config.toml" 2>/dev/null | head -1)"; \
+       [[ -n "$_CFG_TD" ]] && [[ -x "${_CFG_TD/#\~/$HOME}/release/chump" ]]; then
+    CHUMP_BIN="${_CFG_TD/#\~/$HOME}/release/chump"
+  elif [[ -n "$_CFG_TD" ]] && [[ -x "${_CFG_TD/#\~/$HOME}/debug/chump" ]]; then
+    CHUMP_BIN="${_CFG_TD/#\~/$HOME}/debug/chump"
   else
     echo "ERROR: no chump binary found; tried CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-<unset>} and $ROOT/target/{release,debug}/chump — run 'cargo build' first" >&2
     exit 1
