@@ -946,3 +946,6 @@ gap_reclaimed_with_open_pr  # reason: CREDIBLE-1613 — emitted by src/dispatch_
 node_auth_dead  # reason: RESILIENT-1690 — emitted by src/farmer_status.rs via escaped Rust format! string (scanner-anchor present); reserved here in case the installed chump verify rule's unescaped-quote needle scans before rebuild.
 organ_revived  # reason: RESILIENT-1692 — emitted by scripts/ops/organ-reconcile.sh via local emit() helper (scanner-anchor present); reserved here in case the installed chump verify rule scans before rebuild.
 agent_bypass_refused  # reason: CREDIBLE-1566 — emitted by scripts/git-hooks/{pre-push,commit-msg,lib/off-rails-guard.sh} (outside PROD_PATHS); scanner-anchor in src/dispatch.rs and reserved here so register-without-emit passes.
+registry_heal_healed  # reason: RESILIENT-1480 — emitted by scripts/ops/registry-conflict-heal.sh via emit() helper (shell, outside PROD_PATHS); reserved so register-without-emit passes.
+registry_heal_flagged  # reason: RESILIENT-1480 — emitted by scripts/ops/registry-conflict-heal.sh via emit() helper (shell, outside PROD_PATHS); reserved so register-without-emit passes.
+registry_dirty_pileup  # reason: RESILIENT-1480 — emitted by scripts/ops/registry-conflict-heal.sh via emit() helper (shell, outside PROD_PATHS); reserved so register-without-emit passes.

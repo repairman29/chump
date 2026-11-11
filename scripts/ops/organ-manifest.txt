@@ -738,3 +738,4 @@ retired     chump-auto-arm-sweeper.timer    role=brain home=cuphead  # retired: 
 retired     chump-auto-arm-sweeper.service  role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
 retired     chump-auto-merge-armer.timer    role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
 retired     chump-auto-merge-armer.service  role=brain home=cuphead  # retired: done by the GitHub merge queue (PHASE-R R3)
+enabled     chump-registry-conflict-heal.timer  role=brain requires=bin:chump,bin:gh platforms=systemd,launchd home=cuphead  # RESILIENT-1480: 15-min union-rebase organ healing CONFLICTING PRs whose only conflicts are append-only registry files (scripts/ops/registry-conflict-heal.sh); flags non-registry conflicts, pages on pile-up.
