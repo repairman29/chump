@@ -214,6 +214,48 @@ pub fn emit_provider_slot_ambient_event(request_id: &str, provider_slot: &str, m
     }
 }
 
+/// RESILIENT-276: default per-slot provider call timeout (seconds).
+pub const DEFAULT_PROVIDER_TIMEOUT_S: u64 = 60;
+
+/// RESILIENT-276: per-slot provider call timeout from `CHUMP_PROVIDER_TIMEOUT_S`
+/// (default 60s; unparseable or 0 falls back to the default).
+pub fn provider_call_timeout() -> Duration {
+    let s = std::env::var("CHUMP_PROVIDER_TIMEOUT_S")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_PROVIDER_TIMEOUT_S);
+    Duration::from_secs(s)
+}
+
+/// RESILIENT-276: a slot's provider call exceeded the timeout. Names the slot
+/// so repeated timeouts are a learnable failure signature (no synthetic probes).
+// scanner-anchor: "kind":"provider_slot_timeout"
+pub fn emit_provider_slot_timeout_event(slot: &str, model: &str, timeout_s: u64) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"provider_slot_timeout\",\
+         \"slot\":\"{}\",\"model\":\"{}\",\"timeout_s\":{timeout_s}}}",
+        json_escape(slot),
+        json_escape(model),
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Default OpenAI-compatible base for local Ollama when `OPENAI_API_BASE` is unset (matches OOTB wizard).
 pub const DEFAULT_OLLAMA_API_BASE: &str = "http://127.0.0.1:11434/v1";
 
@@ -1789,16 +1831,43 @@ impl Provider for ProviderCascade {
                 std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
             }
             let t0 = std::time::Instant::now();
+            let call_timeout = provider_call_timeout();
             let slot_res = {
                 let _cascade_inner = llm_backend_metrics::CascadeInnerGuard::new();
-                slot.provider
-                    .complete(
+                tokio::time::timeout(
+                    call_timeout,
+                    slot.provider.complete(
                         messages.clone(),
                         tools.clone(),
                         max_tokens,
                         system_prompt.clone(),
-                    )
-                    .await
+                    ),
+                )
+                .await
+            };
+            let slot_res = match slot_res {
+                Ok(r) => r,
+                Err(_) => {
+                    // RESILIENT-276: hung slot — treat as a slot failure and advance.
+                    tracing::warn!(
+                        slot_id = %slot.name,
+                        timeout_s = call_timeout.as_secs(),
+                        "provider_cascade: slot call timed out, failing over"
+                    );
+                    local_openai::record_circuit_failure(&slot.base_url);
+                    provider_quality::record_slot_failure(&slot.name);
+                    if let Some(b) = self.bandit() {
+                        b.update(&slot.name, 0.0);
+                    }
+                    emit_provider_slot_timeout_event(
+                        &slot.name,
+                        slot.provider.model(),
+                        call_timeout.as_secs(),
+                    );
+                    record_failover(&slot.name, "timeout");
+                    idx = i + 1;
+                    continue;
+                }
             };
             match slot_res {
                 Ok(mut r) => {
@@ -4218,5 +4287,34 @@ mod tests {
             Some(v) => std::env::set_var("GEMINI_API_KEY", v),
             None => std::env::remove_var("GEMINI_API_KEY"),
         }
+    }
+}
+
+#[cfg(test)]
+mod resilient_276_tests {
+    use super::*;
+
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn provider_timeout_env_and_default() {
+        std::env::remove_var("CHUMP_PROVIDER_TIMEOUT_S");
+        assert_eq!(provider_call_timeout(), Duration::from_secs(60));
+        std::env::set_var("CHUMP_PROVIDER_TIMEOUT_S", "7");
+        assert_eq!(provider_call_timeout(), Duration::from_secs(7));
+        std::env::set_var("CHUMP_PROVIDER_TIMEOUT_S", "0");
+        assert_eq!(provider_call_timeout(), Duration::from_secs(60));
+        std::env::remove_var("CHUMP_PROVIDER_TIMEOUT_S");
+    }
+
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn timeout_event_names_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &log);
+        emit_provider_slot_timeout_event("slot-x", "m1", 5);
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        let s = std::fs::read_to_string(&log).unwrap();
+        assert!(s.contains("provider_slot_timeout") && s.contains("slot-x"));
     }
 }
