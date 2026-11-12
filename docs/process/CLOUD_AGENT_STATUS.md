@@ -12,7 +12,7 @@ Cloud agents (claude.ai/code sessions) report status in chumpOS fashion over NAT
 2. `bash scripts/setup/nats-cloud-stream-install.sh` — creates the `CLOUD` stream.
 3. **nats CLI** is a documented dependency on publishing/subscribing nodes: download natscli from <https://github.com/nats-io/natscli/releases> to `~/.local/bin/nats`.
 4. `chump-fleet-recorder` (JetStream consumer; NATS→store bridge) is a tracked organ in `scripts/ops/organ-manifest.yaml` and `bootstrap-manifest.yaml`; it needs JetStream on (step 1) to stay active.
-5. Decay watch: `scripts/coord/cloud-status-audit.sh` exits 1 and emits `kind=cloud_status_decay` if JetStream is off, the CLOUD stream is missing, or the recorder is dark. Run it from the fleet-health sentinel / a timer.
+5. Decay watch: `scripts/coord/cloud-status-audit.sh` exits 1 and emits `kind=cloud_status_decay` if JetStream is off, the CLOUD stream is missing, or the recorder is dark. The fleet-health sentinel runs it (and pages) when `CHUMP_SENTINEL_CLOUD_STATUS_WATCH=1` is set on NATS nodes.
 
 ## Off-tailnet reachability decision
 
