@@ -1,0 +1,6 @@
+  - kind: provider_slot_timeout
+    effect_metric: self
+    emitter: src/provider_cascade.rs::emit_provider_slot_timeout_event (RESILIENT-276)
+    trigger: a cascade slot's provider call exceeded CHUMP_PROVIDER_TIMEOUT_S and the cascade failed over — names the hung slot so repeated timeouts are a learnable failure signature
+    fields_required: [slot, model, timeout_s]
+    consumers: [audit-log, fleet-brief]
