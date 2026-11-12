@@ -574,7 +574,42 @@ fn local_model_preflight_failed_message() -> String {
 /// When CHUMP_TOOLS_ASK is set, uses ChumpAgent with event channel and sends approval messages with Allow/Deny buttons.
 /// When CHUMP_LOG_TIMING=1, logs one line per turn: turn_ms, ovens_ms, memory_ms, build_agent_ms, agent_run_ms, strip_ms.
 /// When from_peer is true, the message is from the a2a peer (other bot); we prepend context so the agent replies to them, not the human user.
+/// RESILIENT-276: hard cap on a Discord turn (CHUMP_DISCORD_TURN_TIMEOUT_S, default 240s)
+/// so the typing indicator can never spin forever; replies with why it stopped.
+fn discord_turn_timeout() -> std::time::Duration {
+    let s = std::env::var("CHUMP_DISCORD_TURN_TIMEOUT_S")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(240);
+    std::time::Duration::from_secs(s)
+}
+
 async fn run_one_discord_turn(
+    channel_id: ChannelId,
+    content: &str,
+    user_name: &str,
+    from_peer: bool,
+    http: std::sync::Arc<serenity::http::Http>,
+) -> String {
+    let cap = discord_turn_timeout();
+    match tokio::time::timeout(
+        cap,
+        run_one_discord_turn_inner(channel_id, content, user_name, from_peer, http),
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(_) => format!(
+            "I stopped working on this after {}s without an answer — the model provider appears \
+             stalled (the turn was cut off, not still thinking). Please retry; the provider \
+             cascade will fail over to another slot.",
+            cap.as_secs()
+        ),
+    }
+}
+
+async fn run_one_discord_turn_inner(
     channel_id: ChannelId,
     content: &str,
     user_name: &str,
