@@ -473,12 +473,37 @@ pub fn can_resume_skip_implement(repo_dir: &Path, base: &str, branch: &str) -> b
 /// INFRA-8114: Clean up orphan worktree, local branch, and lease file when a
 /// dispatch/ship fails on an unshipped branch so no orphan is left to re-pick
 /// or false-close.
+///
+/// RESILIENT-2224: never destroys work. Uncommitted changes are saved as a
+/// stranded patch first (worktree is kept if that fails), and a branch with
+/// commits above origin/main is kept.
 pub fn cleanup_failed_dispatch_workspace(
     repo_root: &Path,
     worktree: &Path,
     branch: &str,
     session_id: &str,
+    gap_id: &str,
 ) {
+    let mut keep_worktree = false;
+    if worktree != repo_root && worktree.exists() {
+        match stranded::save_dirty_patch(worktree, gap_id, &stranded::dispatch_logs_dir()) {
+            Ok(Some(s)) => eprintln!(
+                "[dispatch] {gap_id}: saved {} uncommitted path(s) to {} before cleanup (RESILIENT-2224)",
+                s.files,
+                s.patch_path.display()
+            ),
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!("[dispatch] {gap_id}: could not save uncommitted work ({e}); keeping worktree (RESILIENT-2224)");
+                keep_worktree = true;
+            }
+        }
+    }
+    let keep_branch =
+        !branch.is_empty() && branch_has_commits_ahead(repo_root, "origin/main", branch);
+    if keep_branch {
+        eprintln!("[dispatch] {gap_id}: branch {branch} has commits above origin/main; keeping it (RESILIENT-2224)");
+    }
     if !session_id.is_empty() {
         let wt_lease = worktree
             .join(".chump-locks")
@@ -489,7 +514,7 @@ pub fn cleanup_failed_dispatch_workspace(
             .join(format!("{session_id}.json"));
         let _ = std::fs::remove_file(root_lease);
     }
-    if worktree != repo_root && worktree.exists() {
+    if worktree != repo_root && worktree.exists() && !keep_worktree {
         let _ = Command::new("git")
             .arg("-C")
             .arg(repo_root)
@@ -500,7 +525,7 @@ pub fn cleanup_failed_dispatch_workspace(
             .status();
         let _ = std::fs::remove_dir_all(worktree);
     }
-    if !branch.is_empty() && branch != "main" && branch != "HEAD" {
+    if !branch.is_empty() && branch != "main" && branch != "HEAD" && !keep_branch {
         let _ = Command::new("git")
             .arg("-C")
             .arg(repo_root)
@@ -875,6 +900,7 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
             workspace.working_dir(),
             &branch,
             &workspace.session_id,
+            opts.gap_id,
         );
         ShipResult::Aborted {
             error: format!("work step failed: {e:#}"),
@@ -886,6 +912,7 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
             workspace.working_dir(),
             &branch,
             &workspace.session_id,
+            opts.gap_id,
         );
         ShipResult::Aborted {
             error: format!(
@@ -907,6 +934,7 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
             workspace.working_dir(),
             &branch,
             &workspace.session_id,
+            opts.gap_id,
         );
         ShipResult::Aborted {
             error: format!(
@@ -941,6 +969,7 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
                 workspace.working_dir(),
                 &branch,
                 &workspace.session_id,
+                opts.gap_id,
             );
         }
         ship_result
@@ -3383,6 +3412,63 @@ fn emit_lease_release_failed(gap_id: &str, error: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn rs2224_cleanup_keeps_commits_and_saves_uncommitted_work() {
+        use std::process::Command;
+        let git = |dir: &std::path::Path, args: &[&str]| {
+            let ok = Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@example.invalid")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@example.invalid")
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        let td = tempfile::tempdir().unwrap();
+        let repo = td.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        std::fs::write(repo.join("a.rs"), "fn a() {}\n").unwrap();
+        git(&repo, &["add", "a.rs"]);
+        git(&repo, &["commit", "-qm", "init"]);
+        git(&repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        let wt = td.path().join("wt");
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "chump/x",
+                wt.to_str().unwrap(),
+            ],
+        );
+        std::fs::write(wt.join("b.rs"), "fn b() {}\n").unwrap();
+        git(&wt, &["add", "b.rs"]);
+        git(&wt, &["commit", "-qm", "RESILIENT-2224: work"]);
+        std::fs::write(wt.join("uncommitted.txt"), "keep me\n").unwrap();
+        let logs = td.path().join("logs");
+        std::env::set_var("CHUMP_DISPATCH_LOGS_DIR", &logs);
+
+        super::cleanup_failed_dispatch_workspace(&repo, &wt, "chump/x", "", "RESILIENT-2224");
+
+        std::env::remove_var("CHUMP_DISPATCH_LOGS_DIR");
+        assert!(!wt.exists(), "worktree should be removed after salvage");
+        assert!(super::branch_has_commits_ahead(
+            &repo,
+            "origin/main",
+            "chump/x"
+        ));
+        let patch = std::fs::read_to_string(logs.join("RESILIENT-2224.stranded.patch")).unwrap();
+        assert!(patch.contains("keep me"), "{patch}");
+    }
+
     use super::*;
     use std::path::PathBuf;
 
