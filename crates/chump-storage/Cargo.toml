@@ -10,7 +10,7 @@ license = "AGPL-3.0-only"
 anyhow = "1.0"
 async-trait = "0.1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-async-nats = { version = "0.50", optional = true }
+async-nats = { version = "0.52", optional = true }
 
 [features]
 default = []
