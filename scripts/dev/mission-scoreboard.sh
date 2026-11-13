@@ -272,6 +272,9 @@ echo
 
 # ── ③ Deploy-lag (Goal 1 / MISSION-012 proxy) ───────────────────────────────
 bin="$(command -v chump 2>/dev/null || echo /opt/homebrew/bin/chump)"
+# RESILIENT-1602: organs run the managed ~/.cargo/bin/chump; a stale root-owned
+# copy ahead on PATH must not make the deploy-lag verdict lie.
+[[ -x "$HOME/.cargo/bin/chump" ]] && bin="$HOME/.cargo/bin/chump"
 # ~/.local/bin/chump is a symlink; un-resolved stat reads its creation date, not the build.
 bin="$(readlink -f "$bin" 2>/dev/null || echo "$bin")"
 # GNU stat's `-f` means "report on the filesystem" (prints unrelated fields,
