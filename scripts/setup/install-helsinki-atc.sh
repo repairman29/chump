@@ -132,6 +132,9 @@ SYSTEM_UNITS=(
   # node's own organ-watchdog/organ-reconcile dead) is still caught by a peer.
   chump-apex-watchdog.service
   chump-apex-watchdog.timer
+  # RESILIENT-1901: off-node hub deadman (runs on slim).
+  chump-peer-deadman.service
+  chump-peer-deadman.timer
   chump-board-ceo-briefing.service
   chump-board-ceo-briefing.timer
   # RESILIENT-376: the Discord digest organ — twice-daily phone-readable
@@ -306,7 +309,7 @@ SYSTEM_UNITS=(
   chump-conductor.service
   chump-conductor.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-gap-close-decomposed.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-peer-deadman.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-gap-close-decomposed.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
