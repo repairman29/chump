@@ -395,8 +395,23 @@ case "$subcmd" in
   auth) exit 0 ;;
   pr)
     pr_cmd="${1:-}"; shift || true
+    pr_rest="$*"
     case "$pr_cmd" in
-      view)   if [[ $_hasjq -eq 1 ]]; then printf '42\n'; else printf '{"number":42,"state":"OPEN","autoMergeRequest":null}\n'; fi ;;
+      # CREDIBLE-1651: arm_policy_require_review_approve reads headRefOid (to
+      # resolve the current head) and labels,comments (the organ-verdict
+      # read). Both resolve to an already-APPROVEd head so these CREDIBLE-1576
+      # arm-site drives keep testing the gate-file refusal, not the
+      # (separately-tested) review-hold gate.
+      view)
+        if [[ "$pr_rest" == *headRefOid* ]]; then
+            printf 'cafefeed1234567890abcdef\n'
+        elif [[ "$pr_rest" == *"labels,comments"* ]]; then
+            printf '{"labels":[],"comments":[{"author":{"login":"repairman29"},"createdAt":"2026-10-28T00:00:00Z","body":"head: cafefeed1234567890abcdef\\nVERDICT: APPROVE\\nblockers: none"}]}\n'
+        elif [[ $_hasjq -eq 1 ]]; then
+            printf '42\n'
+        else
+            printf '{"number":42,"state":"OPEN","autoMergeRequest":null}\n'
+        fi ;;
       list)   printf '42\n' ;;
       # A real arm drops a state marker so the follow-up verify_arm REST read
       # (and the armer's "already armed?" pre-check) reflect the arm just as

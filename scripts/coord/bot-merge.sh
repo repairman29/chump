@@ -1138,7 +1138,10 @@ bot_merge_enqueue_or_arm() {
     local force_mq="${4:-0}"
     local repo_slug="${GITHUB_REPOSITORY:-}"
     local amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
-    if ! arm_policy_allows "$pr_num" "$caller_label" "$repo_slug"; then
+    # CREDIBLE-1651: require_review_approve so a fleet-lane PR the organ has
+    # not yet reviewed (no verdict on the current head, no hold label either)
+    # fails closed instead of arming in the window before the organ's next tick.
+    if ! arm_policy_require_review_approve "$pr_num" "" "$caller_label" "$repo_slug"; then
         return 1
     fi
     local use_mq=0
@@ -2381,7 +2384,7 @@ if [[ "${CHUMP_BOT_MERGE_RECOVERY_MODE:-0}" == "1" ]]; then
         # already created above, so it survives; only the arm is refused.
         bot_merge_gate_arm_refused "$AUTO_MERGE" || exit 2
         stage_start "recovery: arm auto-merge"
-        if arm_policy_allows "$_recover_pr_num" "bot-merge.sh(recovery)"; then
+        if arm_policy_require_review_approve "$_recover_pr_num" "" "bot-merge.sh(recovery)"; then
             bot_merge_enqueue_or_arm "$_recover_pr_num" "bot-merge.sh(recovery)" 2>/dev/null || true
         fi
         stage_done
