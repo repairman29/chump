@@ -11,6 +11,15 @@ Why `refs/stash/*` and not a branch:
   `on: push` workflows and does not appear in `git branch -r` / PR pickers.
 - **Recoverable** — checkout to a real branch when someone resumes the work.
 
+## Registry snapshots (`refs/stash/registry/<date>`)
+
+`scripts/ops/registry-snapshot.sh snapshot` (daily 06:00Z via
+`chump-registry-snapshot.timer`, RESILIENT-1902) pushes a gzip of the canonical
+`state.db` to `refs/stash/registry/<YYYY-MM-DD>` on origin (newest 14 kept).
+Restore into an empty hub with
+`chump registry restore refs/stash/registry/<date>` (or a file path); it refuses
+to overwrite a populated registry unless `CHUMP_REGISTRY_RESTORE_FORCE=1`.
+
 ## Machine-appended stash manifest
 
 `scripts/coord/orphan-branch-sweeper.sh` (ZERO-WASTE-136) automatically stashes

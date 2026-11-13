@@ -1333,6 +1333,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // briefing for them while leaving claude-p untouched. Pure shell,
         // ~1s, no network.
         "scripts/ci/test-agents-md-injection.sh",
+        // RESILIENT-1902: registry snapshot/restore + stale-snapshot doctor check.
+        // Hermetic temp repo + bare origin, restore only into temp copies.
+        "scripts/ci/test-registry-snapshot.sh",
         // EFFECTIVE-320: born-wired — install-opencode-harness.sh wires
         // opencode.json's mcp.almanac idempotently without clobbering config.
         // Fully stubbed, ~1s, no network.
