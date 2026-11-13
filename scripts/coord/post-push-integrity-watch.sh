@@ -58,6 +58,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="${CHUMP_REPO:-$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || pwd)}"
 AMBIENT="$REPO_ROOT/.chump-locks/ambient.jsonl"
+# shellcheck source=../lib/safe-reopen-gap.sh
+source "$SCRIPT_DIR/../lib/safe-reopen-gap.sh" 2>/dev/null || true   # INFRA-3604: pr_conflicting_lowprio_refused
 LOCK_DIR="$REPO_ROOT/.chump-locks"
 mkdir -p "$LOCK_DIR"
 
@@ -288,6 +290,12 @@ for c in comments:
             log "SKIP reopen PR #$pr_num — gap $_gap_id is $_gap_status (intentional/terminal close: done, shipped, or operator-blocked — not a stale-push auto-close). INFRA-8111: a blocked gap's duplicate PRs must not be resurrected."
             continue
         fi
+    fi
+
+    # INFRA-3604: shared reopen policy — a conflicting low-priority PR stays closed.
+    if [[ -n "$_gap_id" ]] && declare -F pr_conflicting_lowprio_refused >/dev/null 2>&1 && ! pr_conflicting_lowprio_refused "$pr_num" "$REPO_SLUG" "$_gap_id" 2>/dev/null; then
+        log "SKIP reopen PR #$pr_num — conflicting + low-priority gap $_gap_id (INFRA-3604; gap stays open for a clean re-pick)."
+        continue
     fi
 
     # This is an incident: a chump/* PR was closed (not merged) within our window.
