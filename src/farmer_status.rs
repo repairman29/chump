@@ -194,12 +194,17 @@ fn check_oauth_fresh(repo_root: &Path, reasons: &mut Vec<String>) -> bool {
     let creds_path = PathBuf::from(claude_credentials_home().unwrap_or_default())
         .join(".claude/.credentials.json");
     if let Ok(body) = std::fs::read_to_string(&creds_path) {
-        match claude_creds_verdict(&body, now_ms()) {
+        match claude_creds_verdict(
+            &body,
+            now_ms(),
+            false, /* rc=0 cache already returned above */
+        ) {
             Some(true) => return true,
             Some(false) => {
                 reasons.push(
-                    "~/.claude/.credentials.json token expired with no refresh token \
-                     (claude -p cannot authenticate)"
+                    "~/.claude/.credentials.json token is expired without a refresh token, \
+                     or is expired-but-refreshable / has no expiresAt and no fresh auth-status \
+                     probe rc=0 vouches for it (presence is not validity, RESILIENT-1646)"
                         .to_string(),
                 );
                 return false;
@@ -543,7 +548,12 @@ fn oauth_token_verdict(age_s: u64, free_tier: bool, reasons: &mut Vec<String>) -
 /// expired-but-refreshable); `Some(false)` when the access token is expired
 /// with no refresh token; `None` when there is no token at all / unparseable
 /// (caller falls through to the fail-open branch).
-fn claude_creds_verdict(content: &str, now_ms: i64) -> Option<bool> {
+///
+/// RESILIENT-1646: an expired token with a refresh token, and a token with no
+/// `expiresAt`, are only *presumed* usable — presence, not validity
+/// (RESILIENT-086). They count as fresh only when `cache_probe_ok` (an
+/// auth-status cache probe inside the TTL returned rc=0); otherwise `Some(false)`.
+fn claude_creds_verdict(content: &str, now_ms: i64, cache_probe_ok: bool) -> Option<bool> {
     let v: serde_json::Value = serde_json::from_str(content).ok()?;
     // Claude Code nests under `claudeAiOauth`; tolerate a flat shape too.
     let oauth = v.get("claudeAiOauth").unwrap_or(&v);
@@ -571,9 +581,9 @@ fn claude_creds_verdict(content: &str, now_ms: i64) -> Option<bool> {
                 .and_then(|x| x.as_str())
                 .map(|s| !s.is_empty())
                 .unwrap_or(false);
-            Some(refreshable)
+            Some(refreshable && cache_probe_ok)
         }
-        None => Some(true), // token present, no expiry field — treat as usable
+        None => Some(cache_probe_ok), // no expiry field — unproven without a probe
     }
 }
 
@@ -1247,34 +1257,39 @@ mod tests {
         // AC3: valid ~/.claude credentials read as fresh. expiresAt in the
         // future (epoch MILLIS) → usable.
         let body = r#"{"claudeAiOauth":{"accessToken":"sk-x","refreshToken":"rt","expiresAt":9999999999999}}"#;
-        assert_eq!(claude_creds_verdict(body, 1_000), Some(true));
+        assert_eq!(claude_creds_verdict(body, 1_000, false), Some(true));
     }
 
     #[test]
-    fn creds_expired_but_refreshable_is_valid() {
+    fn creds_expired_but_refreshable_needs_probe() {
         // An expired access token is still usable when a refresh token exists —
         // Claude Code mints a fresh token on the next call.
         let body = r#"{"claudeAiOauth":{"accessToken":"sk-x","refreshToken":"rt","expiresAt":1}}"#;
-        assert_eq!(claude_creds_verdict(body, 1_000_000), Some(true));
+        assert_eq!(claude_creds_verdict(body, 1_000_000, true), Some(true));
+        assert_eq!(claude_creds_verdict(body, 1_000_000, false), Some(false));
     }
 
     #[test]
     fn creds_expired_no_refresh_is_invalid() {
         let body = r#"{"claudeAiOauth":{"accessToken":"sk-x","expiresAt":1}}"#;
-        assert_eq!(claude_creds_verdict(body, 1_000_000), Some(false));
+        assert_eq!(claude_creds_verdict(body, 1_000_000, false), Some(false));
     }
 
     #[test]
     fn creds_no_token_is_none() {
         // No usable token → None (caller falls through to fail-open, not RED).
-        assert_eq!(claude_creds_verdict(r#"{"claudeAiOauth":{}}"#, 1), None);
-        assert_eq!(claude_creds_verdict("not json", 1), None);
+        assert_eq!(
+            claude_creds_verdict(r#"{"claudeAiOauth":{}}"#, 1, true),
+            None
+        );
+        assert_eq!(claude_creds_verdict("not json", 1, true), None);
     }
 
     #[test]
-    fn creds_present_without_expiry_is_valid() {
+    fn creds_present_without_expiry_needs_probe() {
         let body = r#"{"claudeAiOauth":{"accessToken":"sk-x"}}"#;
-        assert_eq!(claude_creds_verdict(body, 1), Some(true));
+        assert_eq!(claude_creds_verdict(body, 1, false), Some(false));
+        assert_eq!(claude_creds_verdict(body, 1, true), Some(true));
     }
 
     // ── RESILIENT-1652 (task 2): Linux oauth-token.json judged by CONTENT ─────
@@ -1648,7 +1663,7 @@ mod tests {
         // tier, no cache — an expired non-refreshable .credentials.json makes
         // claude_creds_verdict Some(false), which check_oauth_fresh turns to RED.
         let body = r#"{"claudeAiOauth":{"accessToken":"sk-x","expiresAt":1}}"#;
-        assert_eq!(claude_creds_verdict(body, 1_000_000), Some(false));
+        assert_eq!(claude_creds_verdict(body, 1_000_000, false), Some(false));
     }
 
     #[test]
