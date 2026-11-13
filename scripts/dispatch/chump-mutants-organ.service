@@ -1,0 +1,19 @@
+# chump-mutants-organ.service — RESILIENT-2219
+#
+# Oneshot paired with chump-mutants-organ.timer. One bounded tick of
+# scripts/dispatch/mutants-organ-tick.sh: runs cargo-mutants on PRs labeled
+# review-needs-mutants and posts the record the review organ accepts.
+# User-scope; homed on the hub (cuphead) via organ-manifest.txt.
+[Unit]
+Description=Chump mutants organ — cargo-mutants record for review-needs-mutants PRs (RESILIENT-2219)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_ROOT__
+Environment=HOME=__HOME__
+Environment=PATH=__BIN_DIR__:__HOME__/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-__NODE_ENV__
+ExecStart=/bin/bash __REPO_ROOT__/scripts/dispatch/mutants-organ-tick.sh
+TimeoutStartSec=2400
+Nice=10

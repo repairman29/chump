@@ -1301,6 +1301,46 @@ run_gf 210
     && ok "CREDIBLE-1603 REFUSAL: stale head A + wrong patch-id ignored → held, not merged (mutant: ignore the patch-id)" \
     || bad "CREDIBLE-1603 REFUSAL: a wrong-patch-id record was accepted (merges: $(cat "$ORGLOG.merges"); edits: $(cat "$ORGLOG.edits"))"
 
+# ── RESILIENT-2219: pin the current_head_verdict supersede branch. Here the hold is
+# the NEWEST head-bearing trusted comment (the record is older), so without the
+# `MUTANT_RECORD_OK` branch the idempotency gate keeps the PR held. seed_gf_order
+# <hold-kind mech|model> <rec-patch-id>: hold at 03:00, record (valid) at 02:00.
+seed_gf_order() {
+    HK="$1" RP="$2" RH="$GFHEAD" HV="$GFVER" python3 - "$ORGCMT" <<'PY'
+import json, os, sys
+hk=os.environ["HK"]; rp=os.environ["RP"]; rh=os.environ["RH"]; hv=os.environ["HV"]
+stamp = "gate-list-version: %s\n" % hv if hk=="mech" else "blockers: real model finding\n"
+hold={"body":("VERDICT: CHANGES REQUIRED\nhead: %s\n%sVERDICT: CHANGES REQUIRED" % (rh, stamp)),
+      "author":{"login":"organbot"},"createdAt":"2026-10-21T03:00:00Z"}
+rec={"body":"\n".join(["mutant-capable review record (RESILIENT-2219)","head: %s"%rh,"patch-id: %s"%rp,
+      "M1 KILLED","M2 SURVIVED"]),"author":{"login":"organbot"},"createdAt":"2026-10-21T02:00:00Z"}
+json.dump({"labels":[{"name":"review-held"},{"name":"review-needs-mutants"}],"comments":[rec,hold]},open(sys.argv[1],"w"))
+PY
+}
+echo "[d/RESILIENT-2219] a newest mechanical hold is superseded only by a valid record"
+# POSITIVE (PR 210): newest = mechanical hold, valid record present → re-reviewed and
+# armed. MUTANT (killed here): delete the MUTANT_RECORD_OK exit-1 branch → the hold
+# stays the current verdict → 210 never merges.
+seed_gf_order mech "$GFPID"
+ORG_PR_LABELS='[{"name":"review-held"},{"name":"review-needs-mutants"}]' run_gf 210
+grep -q '^MERGE pr merge 210 --squash --match-head-commit deadbeef' "$ORGLOG.merges" \
+    && ok "RESILIENT-2219: newest mechanical hold + valid record → re-reviewed and armed (mutant: drop supersede branch)" \
+    || bad "RESILIENT-2219: newest mechanical hold not superseded by a valid record (merges: $(cat "$ORGLOG.merges"))"
+# NEGATIVE record (PR 211): stale patch-id → no valid record → hold stays, no merge.
+seed_gf_order mech ffffffffffffffffffffffffffffffffffffffff
+ORG_PR_LABELS='[{"name":"review-held"},{"name":"review-needs-mutants"}]' run_gf 211
+[[ ! -s "$ORGLOG.merges" ]] \
+    && ok "RESILIENT-2219: newest mechanical hold + invalid record → stays held, not merged" \
+    || bad "RESILIENT-2219: invalid record superseded the hold (merges: $(cat "$ORGLOG.merges"))"
+# NEGATIVE model hold (PR 212): newest is a REAL model CHANGES (no gate-list-version)
+# with a valid record → must NOT be re-reviewed. MUTANT (killed here): flip `gm` to
+# `not gm` / drop it → the model verdict is superseded → 212 merges.
+seed_gf_order model "$GFPID"
+ORG_PR_LABELS='[{"name":"review-held"},{"name":"review-needs-mutants"}]' run_gf 212
+{ [[ ! -s "$ORGLOG.merges" ]] && [[ ! -e "$ORGLOG.cmt.212" ]]; } \
+    && ok "RESILIENT-2219: a real model CHANGES is never superseded by a record (mutant: supersede non-mechanical holds)" \
+    || bad "RESILIENT-2219: model CHANGES was re-reviewed/merged (merges: $(cat "$ORGLOG.merges"))"
+
 echo '{"labels":[],"comments":[]}' >"$ORGCMT"  # restore clean state for later blocks
 
 # ── CREDIBLE-1588: the organ creates its hold labels every tick (idempotently)
@@ -2239,6 +2279,11 @@ W19_DOC_AMB="$TMP/w19-doc-amb.jsonl"
 ) && grep -q '"kind":"core_organ_neutered"' "$W19_DOC_AMB" \
     && ok "RESILIENT-1559: check_core_organs_not_neutered detects ExecStart=/bin/true drop-in and emits core_organ_neutered" \
     || bad "RESILIENT-1559: check_core_organs_not_neutered missed ExecStart=/bin/true drop-in"
+
+# RESILIENT-2219: the mutants organ's record shape is accepted by the parser above.
+bash "$REPO_ROOT/scripts/ci/test-mutants-organ.sh" >/dev/null 2>&1 \
+    && ok "RESILIENT-2219: mutants organ record accepted by mutant_record_satisfies; stale patch-id rejected" \
+    || bad "RESILIENT-2219: scripts/ci/test-mutants-organ.sh failed"
 
 echo
 echo "=== test-arm-policy: $PASS passed, $FAIL failed ==="

@@ -328,6 +328,8 @@ enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh home
 # Walks the gap store and closes parent umbrellas whose decomposed children have all shipped.
 enabled     chump-gap-close-decomposed.timer  role=janitor requires=bin:chump home=cuphead
 enabled     chump-gap-decompose.timer  role=brain requires=bin:chump,bin:sqlite3,bin:python3 run-scope=user home=cuphead  # RESILIENT-1707: periodic decompose organ running chump gap decompose --apply on open P0/P1 effort=l or umbrella gaps once per gap and emitting kind=gap_decomposed.
+# chump-mutants-organ.timer: cargo-mutants record for review-needs-mutants PRs so the review organ can clear gate-file holds (RESILIENT-2219).
+enabled     chump-mutants-organ.timer  role=brain requires=bin:gh,bin:git,bin:cargo-mutants run-scope=user home=cuphead
 
 # RESILIENT-366: chump-armed-rebaser.timer and chump-board-cycle.timer are both
 # in install-helsinki-atc.sh's SYSTEM_TIMERS roster but, until this line, were
