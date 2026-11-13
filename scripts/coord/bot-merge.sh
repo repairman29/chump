@@ -5739,9 +5739,18 @@ EOF
         esac
     fi
     if [[ "${CHUMP_KEEP_TARGET:-0}" != "1" && "$_skip_target_purge" = "0" && -d "./target" ]]; then
-        info "Purging ./target in frozen worktree (set CHUMP_KEEP_TARGET=1 to keep)…"
-        run rm -rf ./target
-        green "Removed ./target — disk reclaimed."
+        # RESILIENT-1647: never purge a target dir a live build is using; log the eviction.
+        # shellcheck source=../lib/shared-target-guard.sh
+        source "${REPO_ROOT}/scripts/lib/shared-target-guard.sh" 2>/dev/null || true
+        if declare -F shared_target_live_build >/dev/null && shared_target_live_build "./target"; then
+            info "Skipping ./target purge — a live build is using it (RESILIENT-1647)."
+        else
+            _purge_bytes="$(declare -F shared_target_size_bytes >/dev/null && shared_target_size_bytes ./target || echo 0)"
+            info "Purging ./target in frozen worktree (set CHUMP_KEEP_TARGET=1 to keep)…"
+            run rm -rf ./target
+            declare -F shared_target_emit_evicted >/dev/null && shared_target_emit_evicted bot-merge "$(pwd)/target" "$_purge_bytes" "$(pwd)/target"
+            green "Removed ./target — disk reclaimed."
+        fi
     elif [[ "$_skip_target_purge" = "1" ]]; then
         info "Skipping ./target purge — CARGO_TARGET_DIR is outside this worktree (INFRA-210)."
     fi

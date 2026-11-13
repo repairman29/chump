@@ -123,6 +123,9 @@ build_in_progress() {
   return 1
 }
 
+# shellcheck source=../lib/shared-target-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/shared-target-guard.sh"
+
 cur_gb="$(target_gb)"; cur_gb="${cur_gb:-0}"
 avail_gb="$(free_gb)"; avail_gb="${avail_gb:-999}"
 
@@ -148,6 +151,11 @@ echo "[shared-target-cache-reaper] ${TARGET}: ${reason} — considering an incre
 # 1. No live build.
 if build_in_progress; then
   skip "a cargo/rustc/cargo-nextest/rustdoc build is in progress" "build_in_progress"
+fi
+
+# 1b. RESILIENT-1647: no live cargo/rustc whose CARGO_TARGET_DIR is this target.
+if shared_target_live_build "$TARGET"; then
+  skip "a live build has CARGO_TARGET_DIR=${TARGET}" "live_build_on_target"
 fi
 
 # 2. chump admit cargo must admit.
@@ -210,7 +218,12 @@ for d in "${INCR[@]}"; do
   # Defensive: only ever delete a dir literally named "incremental" under the
   # target, never the target root itself.
   [[ "$(basename "$d")" == incremental && "$d" != "$TARGET" ]] || continue
-  rm -rf -- "$d" 2>/dev/null && reaped=$((reaped + 1))
+  # scanner-anchor: "kind":"shared_target_evicted"
+  _b="$(shared_target_size_bytes "$d")"
+  if rm -rf -- "$d" 2>/dev/null; then
+    reaped=$((reaped + 1))
+    CHUMP_AMBIENT_LOG="$AMBIENT" shared_target_emit_evicted shared-target-cache-reaper "$TARGET" "$_b" "$d"
+  fi
 done
 after_gb="$(target_gb)"; after_gb="${after_gb:-$cur_gb}"
 freed=$(( cur_gb - after_gb )); (( freed < 0 )) && freed=0

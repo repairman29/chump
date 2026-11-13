@@ -61,6 +61,18 @@ if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
         >> "$AMB" 2>/dev/null || true
 fi
 
+# RESILIENT-1647: never start a refresh build on top of a live build in the
+# same target dir (a lockfile change under a live build corrupts fingerprints);
+# the next cron tick retries.
+# shellcheck source=../lib/shared-target-guard.sh
+source "$SCRIPT_DIR/../lib/shared-target-guard.sh"
+if [[ "$MODE" != "check" ]] && shared_target_live_build "$CARGO_TARGET_DIR"; then
+    echo "refresh-chump-binary: live build on CARGO_TARGET_DIR=$CARGO_TARGET_DIR — skipping this tick"
+    printf '{"ts":"%s","kind":"chump_binary_refresh_skipped","reason":"live_build_on_target","target_dir":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CARGO_TARGET_DIR" >> "$AMB" 2>/dev/null || true
+    exit 0
+fi
+
 # Pull latest so the staleness check sees committed-but-unfetched commits too.
 git fetch origin main --quiet 2>/dev/null || true
 
