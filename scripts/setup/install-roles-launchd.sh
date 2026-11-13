@@ -22,6 +22,8 @@ LAUNCH_AGENTS="${HOME}/Library/LaunchAgents"
 mkdir -p "$ROOT/logs"
 mkdir -p "$LAUNCH_AGENTS"
 
+INSTALLED=0
+
 get_label() {
   case "$1" in
     farmer-brown.plist.example) echo "dev.chump.farmer-brown" ;;
@@ -43,10 +45,10 @@ install_one() {
   local example="$1"
   local label
   label="$(get_label "$example")"
-  local src="$ROOT/scripts/$example"
+  local src="$ROOT/scripts/plists/$example"
   local dest="$LAUNCH_AGENTS/${label}.plist"
   if [[ ! -f "$src" ]]; then
-    echo "Skip (missing): $example"
+    echo "Skip (missing): $src"
     return 0
   fi
   # INFRA-8194 (R5 slice 2): the .example plists are placeholder templates
@@ -57,6 +59,7 @@ install_one() {
   launchctl unload "$dest" 2>/dev/null || true
   launchctl load "$dest"
   echo "  Loaded: $label"
+  INSTALLED=$((INSTALLED + 1))
 }
 
 echo "Chump repo: $ROOT"
@@ -66,6 +69,11 @@ echo ""
 for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example doc-keeper.plist.example sentinel.plist.example oven-tender.plist.example restart-vllm-if-down.plist.example hourly-update-to-discord.plist.example shed-load.plist.example cos-weekly-snapshot.plist.example com.chump.autonomy-cron.plist.example; do
   install_one "$ex"
 done
+
+if [[ "$INSTALLED" -eq 0 ]]; then
+  echo "ERROR: install-roles-launchd.sh installed 0 role plists (none found under $ROOT/scripts/plists/)" >&2
+  exit 1
+fi
 
 echo ""
 echo "All roles are installed and loaded. They will run at:"
