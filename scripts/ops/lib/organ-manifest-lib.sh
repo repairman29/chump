@@ -459,7 +459,7 @@ organ_role_filter_for() {
     muscle)  echo "muscle";;
     # RESILIENT-320: capacity roles. Tags are broad; organ_role_units_for
     # narrows to the exact unit roster.
-    factory|data|embed) echo "brain,data,janitor,trust,muscle";;
+    factory|data|embed|gpu-embed) echo "brain,data,janitor,trust,muscle";;
     all|"")  echo "";;
     *)       echo "";;
   esac
@@ -479,7 +479,9 @@ organ_role_units_for() {
   case "${1:-}" in
     factory) echo "chump-cj-worker.service chump-pr-lander.timer chump-integrator.timer chump-rot-reaper.timer chump-stale-worktree-reaper.timer chump-cargo-target-reaper.timer chump-worktree-reaper.service chump-main-health-watchdog.service $_common";;
     data)    echo "$_common chump-main-health-watchdog.service chump-postgrest.service";;
-    embed)   echo "$_common";;
+    # INFRA-8057: embed/gpu-embed nodes run ONLY embed/almanac/node-infra organs —
+    # never the shipping stack (worker, farmer, rebasers, integrator, pr-*, nba, ...).
+    embed|gpu-embed) echo "$_common chump-cargo-sweep-gc.service chump-almanac-liveness.timer chump-node-converge.timer chump-main-health-watchdog.service";;
     *)       echo "";;
   esac
 }
