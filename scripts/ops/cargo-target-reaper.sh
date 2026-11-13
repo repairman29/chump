@@ -162,7 +162,7 @@ while [[ $# -gt 0 ]]; do
             sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# //'
             exit 0
             ;;
-        *) echo "Unknown flag: $1" >&2; exit 1 ;;
+        *) _reaper_error_msg="unknown flag: $1"; echo "Unknown flag: $1" >&2; exit 1 ;;
     esac
     shift
 done
@@ -1250,7 +1250,7 @@ echo "[cargo-target-reaper] Scanning ${_TMP_GLOB}/target/ (orphaned worktrees)â€
 
 # META-117/B: materialize _registered_wts to a tempfile once before loop
 _META117_REG_WTS_BUF="$(mktemp)"
-trap 'rm -f "$_META117_REG_WTS_BUF"' EXIT
+trap '_rc=$?; rm -f "$_META117_REG_WTS_BUF"; (exit $_rc); _emit_cargo_target_reaper_run' EXIT
 printf '%s' "$_registered_wts" > "$_META117_REG_WTS_BUF"
 
 for _wt_candidate in ${_TMP_GLOB}/; do
@@ -1258,6 +1258,7 @@ for _wt_candidate in ${_TMP_GLOB}/; do
     _wt_candidate="${_wt_candidate%/}"
     _target_candidate="${_wt_candidate}/target"
     [[ -d "$_target_candidate" ]] || continue
+    _target_paths_scanned=$(( _target_paths_scanned + 1 ))
 
     # Skip if this worktree is still registered with git.
     if grep -qxF "$_wt_candidate" "$_META117_REG_WTS_BUF" 2>/dev/null; then
