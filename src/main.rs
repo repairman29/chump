@@ -227,6 +227,7 @@ mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
+mod assess; // PRODUCT-141: chump assess <repo> — check-then-generate roadmap + generalized % to goal
 mod provider_bandit;
 mod provider_cascade;
 mod provider_probe;
@@ -2783,6 +2784,12 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("swe") {
         let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
         std::process::exit(commands::swe::run(&sub_args));
+    }
+
+    // `chump assess <repo> [--file P] [--json] [--generate --vision S --domain D]` (PRODUCT-141)
+    if args.get(1).map(String::as_str) == Some("assess") {
+        let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
+        std::process::exit(assess::run(&sub_args).await);
     }
 
     // `chump roadmap-from-vision --vision <STR> --domain D [--outcome ID] [--max-gaps N] [--apply]`
