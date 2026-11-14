@@ -1,6 +1,6 @@
 ---
 doc_tag: log
-last_audited: 2026-11-13
+last_audited: 2026-11-14
 ---
 
 # scripts/ci test census
@@ -13,25 +13,26 @@ Rule: a new scripts/ci test is wired or it is deleted. The shrink-only gate
 (`scripts/ci/test-census-shrink-only.sh`) fails any PR that adds an unwired
 test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 
-- Run date: 2026-11-13 (generated 2026-11-13T13:01:43Z)
+- Run date: 2026-11-14 (generated 2026-11-14T11:55:12Z)
 - Mode: full on linux; tests run this time: 1670
 - Per-test timeout: 120s; jobs: 6
 
 | total | wired | unwired | red | pass | fail | timeout | skip | not run |
 |---|---|---|---|---|---|---|---|---|
-| 1670 | 472 | 1198 | 387 | 1283 | 330 | 42 | 15 | 0 |
+| 1670 | 472 | 1198 | 360 | 1310 | 332 | 13 | 15 | 0 |
 
 | | green | red |
 |---|---|---|
-| wired | 399 | 73 |
-| unwired | 884 | 314 |
+| wired | 406 | 66 |
+| unwired | 904 | 294 |
 
-## wired-red (73)
+## wired-red (66)
 
 - `test-a2a-rpc-observability.sh` (fail, exit 1, run:linux)
 - `test-acp-real-clients.sh` (fail, exit 1, run:linux)
-- `test-advisory-merge.sh` (fail, exit 1, run:linux)
+- `test-advisory-merge.sh` (timeout, exit 124, run:linux)
 - `test-almanac-liveness-reindex.sh` (fail, exit 1, run:linux)
+- `test-api-gap-queue-shape.sh` (timeout, exit 124, run:linux)
 - `test-architect-tick.sh` (fail, exit 1, run:linux)
 - `test-arm-policy.sh` (fail, exit 1, run:linux)
 - `test-bot-merge-arm-ship-order.sh` (timeout, exit 124, run:linux)
@@ -41,46 +42,38 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-chump-bootstrap-rust.sh` (fail, exit 1, run:linux)
 - `test-chump-demo-smoke.sh` (skip, exit 0, run:linux)
 - `test-chump-init-clean-machine.sh` (fail, exit 1, run:linux)
-- `test-chump-repos.sh` (timeout, exit 124, run:linux)
-- `test-claim-fuzzy-match.sh` (timeout, exit 124, run:linux)
+- `test-chump-repos.sh` (fail, exit 1, run:linux)
 - `test-cli-arg-validation.sh` (fail, exit 1, run:linux)
 - `test-cli-exit-codes.sh` (fail, exit 1, run:linux)
 - `test-cli-help-regression.sh` (fail, exit 1, run:linux)
 - `test-cli-output-format.sh` (fail, exit 1, run:linux)
-- `test-cli-product-surface.sh` (timeout, exit 124, run:linux)
 - `test-corrective-keyword-exception.sh` (fail, exit 1, run:linux)
 - `test-cost-per-model.sh` (fail, exit 1, run:linux)
 - `test-cost-watch.sh` (fail, exit 1, run:linux)
 - `test-coupling-cost.sh` (fail, exit 1, run:linux)
 - `test-credible-1551-ship-fk-gate.sh` (fail, exit 1, run:linux)
 - `test-cursor-cli-integration.sh` (fail, exit 1, run:linux)
-- `test-dispatch-armed-exit-zero.sh` (timeout, exit 124, run:linux)
 - `test-docs-delta-guard.sh` (fail, exit 1, run:linux)
 - `test-external-repo-plist-installer.sh` (skip, exit 0, run:linux)
 - `test-external-verify-merge.sh` (timeout, exit 124, run:linux)
 - `test-farmer.sh` (skip, exit 0, run:linux)
-- `test-fleet-fanout.sh` (timeout, exit 124, run:linux)
 - `test-fleet-kill-switch.sh` (fail, exit 1, run:linux)
-- `test-fleet-spec.sh` (timeout, exit 124, run:linux)
 - `test-gap-add-note.sh` (fail, exit 1, run:linux)
 - `test-gap-audit-ac-open.sh` (fail, exit 1, run:linux)
 - `test-gap-close-decomposed-integration.sh` (fail, exit 1, run:linux)
 - `test-gap-closure-consistency-fixture.sh` (fail, exit 1, run:linux)
 - `test-gap-consolidate.sh` (fail, exit 1, run:linux)
-- `test-gap-id-cross-session.sh` (timeout, exit 124, run:linux)
 - `test-gap-list-since.sh` (fail, exit 1, run:linux)
 - `test-gap-preflight-ac-gate.sh` (fail, exit 1, run:linux)
 - `test-gap-reserve-padding.sh` (fail, exit 1, run:linux)
 - `test-gap-show-ac-render.sh` (fail, exit 1, run:linux)
 - `test-gap-store-single-source.sh` (fail, exit 1, run:linux)
-- `test-gap-verb-unknown-flag.sh` (timeout, exit 124, run:linux)
 - `test-github-api-telemetry.sh` (fail, exit 1, run:linux)
 - `test-infra-115-lease-ttl-file.sh` (fail, exit 1, run:linux)
-- `test-infra-254-pwa-root-redirect.sh` (timeout, exit 124, run:linux)
+- `test-infra-254-pwa-root-redirect.sh` (fail, exit 1, run:linux)
 - `test-mock-services-integration.sh` (fail, exit 125, run:linux)
 - `test-mock-services.sh` (fail, exit 125, run:linux)
 - `test-no-anthropic-smoke.sh` (fail, exit 1, run:linux)
-- `test-no-inline-ambient-printf.sh` (fail, exit 1, run:linux)
 - `test-pick-and-claim-atomic.sh` (fail, exit 1, run:linux)
 - `test-pick-and-claim-dep-resolution.sh` (fail, exit 1, run:linux)
 - `test-pick-gap-skips-merged.sh` (fail, exit 1, run:linux)
@@ -102,7 +95,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-telemetry-cost.sh` (fail, exit 1, run:linux)
 - `test-uuid-gap-id-compat.sh` (fail, exit 1, run:linux)
 
-## unwired-red (314)
+## unwired-red (294)
 
 - `test-a2a-consensus-e2e.sh` (skip, exit 0, run:linux)
 - `test-a2a-mailbox.sh` (fail, exit 1, run:linux)
@@ -122,8 +115,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-api-release-expired.sh` (fail, exit 1, run:linux)
 - `test-api-repo-init.sh` (timeout, exit 124, run:linux)
 - `test-api-roadmap.sh` (fail, exit 1, run:linux)
-- `test-ast-crawler-bash.sh` (timeout, exit 124, run:linux)
-- `test-ast-crawler.sh` (timeout, exit 124, run:linux)
 - `test-atomic-claim-collision.sh` (fail, exit 1, run:linux)
 - `test-audit-job-decomposition.sh` (fail, exit 1, run:linux)
 - `test-audit-matrix-shape.sh` (fail, exit 1, run:linux)
@@ -157,13 +148,9 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-cargo-target-reaper-scope.sh` (skip, exit 0, run:linux)
 - `test-cargo-test-tiered.sh` (fail, exit 1, run:linux)
 - `test-cargo-tests-from-worktree.sh` (fail, exit 1, run:linux)
-- `test-cascade-all-exhausted-event.sh` (timeout, exit 124, run:linux)
 - `test-cascade-exhausted-retry.sh` (fail, exit 1, run:linux)
 - `test-cascade-graceful-skip.sh` (timeout, exit 124, run:linux)
-- `test-chump-config.sh` (timeout, exit 124, run:linux)
-- `test-chump-consensus-aggregator-daemon.sh` (timeout, exit 124, run:linux)
 - `test-chump-cron-install.sh` (fail, exit 1, run:linux)
-- `test-chump-curator-subscriber.sh` (timeout, exit 124, run:linux)
 - `test-chump-doctor-probe-resources.sh` (fail, exit 1, run:linux)
 - `test-chump-fleet-daemon.sh` (fail, exit 1, run:linux)
 - `test-chump-fleet-restart.sh` (fail, exit 1, run:linux)
@@ -172,15 +159,13 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-chump-health.sh` (fail, exit 1, run:linux)
 - `test-chump-mcp-list.sh` (fail, exit 1, run:linux)
 - `test-chump-playbook-freshness.sh` (skip, exit 0, run:linux)
-- `test-chump-revert.sh` (timeout, exit 124, run:linux)
+- `test-chump-revert.sh` (fail, exit 1, run:linux)
 - `test-chump-scan.sh` (fail, exit 1, run:linux)
-- `test-chump-ship-manual.sh` (timeout, exit 124, run:linux)
 - `test-chump-test-sandbox.sh` (fail, exit 1, run:linux)
 - `test-chump-worker-rust.sh` (fail, exit 1, run:linux)
 - `test-chumpd.sh` (timeout, exit 124, run:linux)
 - `test-ci-fixture-coupling.sh` (fail, exit 1, run:linux)
 - `test-ci-health-gate.sh` (fail, exit 1, run:linux)
-- `test-ci-health-weekly.sh` (timeout, exit 124, run:linux)
 - `test-ci-self-hosted-migration.sh` (fail, exit 1, run:linux)
 - `test-circuit-breaker.sh` (fail, exit 1, run:linux)
 - `test-claim-diff-collision.sh` (fail, exit 1, run:linux)
@@ -189,7 +174,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-claim-main-health-gate.sh` (fail, exit 1, run:linux)
 - `test-claim-nugget-prefetch.sh` (fail, exit 1, run:linux)
 - `test-claim-open-pr-abort.sh` (fail, exit 1, run:linux)
-- `test-claim-pre-pr-check.sh` (timeout, exit 124, run:linux)
 - `test-claim-redirect-on-red.sh` (fail, exit 1, run:linux)
 - `test-classify-incident.sh` (fail, exit 1, run:linux)
 - `test-claude-gotchas-expanded.sh` (fail, exit 1, run:linux)
@@ -220,15 +204,9 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-doc-cache-architecture-agents.sh` (fail, exit 1, run:linux)
 - `test-doc-doctrine-sync.sh` (fail, exit 1, run:linux)
 - `test-docs-delta-linked-worktree.sh` (fail, exit 1, run:linux)
-- `test-docs-delta-worktree.sh` (fail, exit 127, run:linux)
 - `test-duplicate-pr-detector.sh` (fail, exit 1, run:linux)
-- `test-durable-execution.sh` (timeout, exit 124, run:linux)
-- `test-effective-441-unverified-ship-escalation.sh` (fail, exit 1, run:linux)
 - `test-error-message-doc-links.sh` (fail, exit 1, run:linux)
-- `test-execute-gap-external-routing.sh` (timeout, exit 124, run:linux)
 - `test-external-repo-ship-emit.sh` (fail, exit 1, run:linux)
-- `test-failure-mode-catalog.sh` (timeout, exit 124, run:linux)
-- `test-fanout-reference-flag.sh` (timeout, exit 124, run:linux)
 - `test-farmer-check-auth.sh` (fail, exit 1, run:linux)
 - `test-feedback-curator.sh` (fail, exit 1, run:linux)
 - `test-feedback-event.sh` (fail, exit 1, run:linux)
@@ -241,24 +219,19 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-fleet-inline-briefing.sh` (fail, exit 1, run:linux)
 - `test-fleet-pid-invariant.sh` (fail, exit 1, run:linux)
 - `test-fleet-pool-keeper.sh` (fail, exit 1, run:linux)
-- `test-fleet-pulse.sh` (timeout, exit 124, run:linux)
-- `test-fleet-recorder.sh` (timeout, exit 124, run:linux)
+- `test-fleet-recorder.sh` (fail, exit 143, run:linux)
 - `test-fleet-session-id-isolation.sh` (fail, exit 1, run:linux)
 - `test-fleet-staggering.sh` (fail, exit 1, run:linux)
-- `test-floor-temp.sh` (timeout, exit 124, run:linux)
 - `test-force-push-intent.sh` (fail, exit 1, run:linux)
 - `test-force-stale-base-guard.sh` (fail, exit 1, run:linux)
 - `test-ftue-ollama-gate.sh` (fail, exit 1, run:linux)
 - `test-gap-affinity-matching.sh` (fail, exit 1, run:linux)
 - `test-gap-audit-priorities-closed-at.sh` (fail, exit 1, run:linux)
 - `test-gap-backfill-external-repo.sh` (fail, exit 1, run:linux)
-- `test-gap-budget-tracker.sh` (timeout, exit 124, run:linux)
 - `test-gap-dep-clean.sh` (fail, exit 1, run:linux)
-- `test-gap-id-collision.sh` (timeout, exit 124, run:linux)
 - `test-gap-opened-date-coverage.sh` (fail, exit 1, run:linux)
 - `test-gap-outcome-migration.sh` (fail, exit 1, run:linux)
 - `test-gap-reserve-almanac-dedupe.sh` (fail, exit 1, run:linux)
-- `test-gap-reserve-no-reuse.sh` (timeout, exit 124, run:linux)
 - `test-gap-reserve-resilience.sh` (fail, exit 1, run:linux)
 - `test-gap-reserve-similarity.sh` (fail, exit 1, run:linux)
 - `test-gap-reserve-spurious-warning.sh` (fail, exit 1, run:linux)
@@ -312,7 +285,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-nextest-sharding.sh` (fail, exit 1, run:linux)
 - `test-no-direct-auto-merge-arm-fixture.sh` (fail, exit 1, run:linux)
 - `test-no-direct-auto-merge-arm.sh` (fail, exit 1, run:linux)
-- `test-no-new-coord-shell.sh` (fail, exit 1, run:linux)
 - `test-no-outcomeless-p1-filers.sh` (fail, exit 1, run:linux)
 - `test-node-housekeeping-manifest-fold.sh` (fail, exit 1, run:linux)
 - `test-node-orchestrator-max-throttle.sh` (fail, exit 1, run:linux)
@@ -340,10 +312,10 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-pr-scope-honesty.sh` (fail, exit 1, run:linux)
 - `test-pr-shepherd-launchd-emission.sh` (fail, exit 2, run:linux)
 - `test-pre-commit-claim-contract.sh` (fail, exit 1, run:linux)
+- `test-pre-push-fmt-gate.sh` (fail, exit 1, run:linux)
 - `test-precommit-gate-auto-skip.sh` (fail, exit 1, run:linux)
 - `test-preflight-content-guard-mirrors.sh` (fail, exit 1, run:linux)
-- `test-preflight-main-red-aware.sh` (timeout, exit 124, run:linux)
-- `test-preflight-registry-gate.sh` (timeout, exit 124, run:linux)
+- `test-preflight-main-red-aware.sh` (fail, exit 1, run:linux)
 - `test-premature-closure-auto-fix.sh` (fail, exit 1, run:linux)
 - `test-prereg-enforce.sh` (fail, exit 1, run:linux)
 - `test-progress-output.sh` (fail, exit 101, run:linux)
@@ -352,6 +324,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-pwa-doctor-banner.sh` (fail, exit 2, run:linux)
 - `test-pwa-events-view.sh` (fail, exit 2, run:linux)
 - `test-pwa-gap-list.sh` (fail, exit 1, run:linux)
+- `test-pwa-lease-cleanup.sh` (fail, exit 1, run:linux)
 - `test-pwa-repo-switcher.sh` (fail, exit 2, run:linux)
 - `test-pwa-roadmap.sh` (fail, exit 1, run:linux)
 - `test-pwa-secrets-flow.sh` (fail, exit 2, run:linux)
@@ -419,7 +392,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-yaml-lint-guard.sh` (fail, exit 1, run:linux)
 - `test-zero-waste-020.sh` (fail, exit 1, run:linux)
 
-## wired-green (399)
+## wired-green (406)
 
 - `test-acp-smoke.sh`
 - `test-admin-merge-consensus-gate.sh`
@@ -433,7 +406,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-ambient-schema.sh`
 - `test-api-chat-cost-kill.sh`
 - `test-api-cost-leaderboard.sh`
-- `test-api-gap-queue-shape.sh`
 - `test-arm-policy-native.sh`
 - `test-attribution-portable.sh`
 - `test-audit-lanes-green.sh`
@@ -502,6 +474,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-ci-heavy-jobs-cross-platform.sh`
 - `test-ci-verified-shape.sh`
 - `test-ci-yml-merge-driver.sh`
+- `test-claim-fuzzy-match.sh`
 - `test-claim-import-similarity-nonfatal.sh`
 - `test-claim-mode.sh`
 - `test-claude-reaper.sh`
@@ -509,6 +482,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-cli-fleet-coord.sh`
 - `test-cli-help.sh`
 - `test-cli-integration.sh`
+- `test-cli-product-surface.sh`
 - `test-cli-version-debug.sh`
 - `test-cockpit-wake-fleet.sh`
 - `test-code-reviewer-authskip.sh`
@@ -535,6 +509,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-deliberator-tick-emits.sh`
 - `test-discord-gateway.sh`
 - `test-dispatch-agent-search-guard.sh`
+- `test-dispatch-armed-exit-zero.sh`
 - `test-dispatch-child-lifetime.sh`
 - `test-dispatch-open-pr-repair.sh`
 - `test-dispatch-ship-session-id.sh`
@@ -564,10 +539,12 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-fleet-brief-ship-count-unavailable.sh`
 - `test-fleet-brief.sh`
 - `test-fleet-doctor-canonical-dirty.sh`
+- `test-fleet-fanout.sh`
 - `test-fleet-health-sentinel.sh`
 - `test-fleet-metrics-snapshot.sh`
 - `test-fleet-pause-autolift.sh`
 - `test-fleet-race-loss.sh`
+- `test-fleet-spec.sh`
 - `test-fleet-starve-auto-action.sh`
 - `test-fleet-state-mutex.sh`
 - `test-fleet-status-rate-limit.sh`
@@ -577,6 +554,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-gap-decompose-reslice-guard.sh`
 - `test-gap-divergence-guard.sh`
 - `test-gap-doctor-safe-sweep.sh`
+- `test-gap-id-cross-session.sh`
 - `test-gap-id-lease-uniqueness.sh`
 - `test-gap-impact-rating.sh`
 - `test-gap-lifecycle-manager.sh`
@@ -592,6 +570,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-gap-ship-single-source.sh`
 - `test-gap-status-flip.sh`
 - `test-gap-templates.sh`
+- `test-gap-verb-unknown-flag.sh`
 - `test-gap-workflow-status.sh`
 - `test-gap-yaml-export-only.sh`
 - `test-gate-promotion-no-regression.sh`
@@ -660,6 +639,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-model-registry.sh`
 - `test-no-claude-leak.sh`
 - `test-no-coe-pr-reporting.sh`
+- `test-no-inline-ambient-printf.sh`
 - `test-no-launchd-only-organs.sh`
 - `test-no-manual-ship-bypass.sh`
 - `test-no-new-bypass-env-vars.sh`
@@ -821,7 +801,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-worktree-show-toplevel.sh`
 - `test-yaml-orphan-prune-state-aware.sh`
 
-## unwired-green (884)
+## unwired-green (904)
 
 - `test-a2a-always-on.sh`
 - `test-a2a-capability-registry.sh`
@@ -859,6 +839,8 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-arm-auto-merge.sh`
 - `test-armed-pr-rebaser-orphan-adopt.sh`
 - `test-armed-pr-rebaser-preserve-manual-fix.sh`
+- `test-ast-crawler-bash.sh`
+- `test-ast-crawler.sh`
 - `test-atomic-binary-swap.sh`
 - `test-audit-allowlist-staleness.sh`
 - `test-audit-gap-state-drift.sh`
@@ -954,6 +936,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-cargo-target-reaper-variant-quoting.sh`
 - `test-cargo-test-rerun-skip.sh`
 - `test-cartographer-smoke.sh`
+- `test-cascade-all-exhausted-event.sh`
 - `test-cascade-bandit-extended.sh`
 - `test-cascade-cancellation.sh`
 - `test-cascade-max-slots.sh`
@@ -977,9 +960,12 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-chump-commit-auto-trailers.sh`
 - `test-chump-commit-completes.sh`
 - `test-chump-commit-mutex-fd-not-inherited.sh`
+- `test-chump-config.sh`
+- `test-chump-consensus-aggregator-daemon.sh`
 - `test-chump-consensus-ask.sh`
 - `test-chump-consensus-tally.sh`
 - `test-chump-consensus.sh`
+- `test-chump-curator-subscriber.sh`
 - `test-chump-dashboard-tui.sh`
 - `test-chump-doctor-exit-code.sh`
 - `test-chump-doctor-probe-cascade-ratelimit.sh`
@@ -995,12 +981,14 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-chump-shim-wedge.sh`
 - `test-chump-ship-execute-retry.sh`
 - `test-chump-ship-execute.sh`
+- `test-chump-ship-manual.sh`
 - `test-chump-ship-plan.sh`
 - `test-chump-staleness-gate.sh`
 - `test-chump-upgrade-detection.sh`
 - `test-chump-vote.sh`
 - `test-chumpd-worker-sandbox.sh`
 - `test-ci-fleet-health-sweep.sh`
+- `test-ci-health-weekly.sh`
 - `test-ci-lesson-propagation.sh`
 - `test-ci-pass-rate-namespaced.sh`
 - `test-ci-qa-score.sh`
@@ -1008,6 +996,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-claim-branch-mismatch.sh`
 - `test-claim-intent-gate.sh`
 - `test-claim-lint.sh`
+- `test-claim-pre-pr-check.sh`
 - `test-claude-tmp-cleanup.sh`
 - `test-cli-surface-baseline.sh`
 - `test-close-superseded-prs.sh`
@@ -1084,13 +1073,16 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-dispatch-subcommand-shadow.sh`
 - `test-doc-155-changelog-roadmap-freshness.sh`
 - `test-doc-cache-architecture.sh`
+- `test-docs-delta-worktree.sh`
 - `test-drift-flag-extract.sh`
 - `test-drift-flag-triage.sh`
 - `test-dup-close-guard.sh`
+- `test-durable-execution.sh`
 - `test-duty-officer-judgment-tick.sh`
 - `test-duty-officer-loop.sh`
 - `test-effect-verifier.sh`
 - `test-effective-009-help-entrypoint.sh`
+- `test-effective-441-unverified-ship-escalation.sh`
 - `test-emit-subagent-spawn.sh`
 - `test-escalation-tier.sh`
 - `test-eval-098-harness-shape.sh`
@@ -1098,10 +1090,13 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-evangelist-smoke.sh`
 - `test-event-registry-effect-metric-hook.sh`
 - `test-execute-gap-always-emits.sh`
+- `test-execute-gap-external-routing.sh`
 - `test-execute-gap-heartbeat.sh`
 - `test-external-clone-reaper.sh`
 - `test-external-collab-loop.sh`
+- `test-failure-mode-catalog.sh`
 - `test-false-done-sweep.sh`
+- `test-fanout-reference-flag.sh`
 - `test-farmer-drain-guard.sh`
 - `test-feature-smoke-detects-silent-failure.sh`
 - `test-feedback-report.sh`
@@ -1129,6 +1124,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-fleet-message-component.sh`
 - `test-fleet-passes-api-keys.sh`
 - `test-fleet-prune-worktrees.sh`
+- `test-fleet-pulse.sh`
 - `test-fleet-queue-depth-event.sh`
 - `test-fleet-scrubber.sh`
 - `test-fleet-server.sh`
@@ -1141,6 +1137,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-fleet-whoworkson.sh`
 - `test-fleet-worker-watchdog.sh`
 - `test-fleet029-cache-overlap.sh`
+- `test-floor-temp.sh`
 - `test-frequency-scheduling.sh`
 - `test-fresh-clone-gap-list.sh`
 - `test-fresh-eyes-loop.sh`
@@ -1148,6 +1145,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-friction-metric.sh`
 - `test-gap-already-satisfied.sh`
 - `test-gap-audit-priorities.sh`
+- `test-gap-budget-tracker.sh`
 - `test-gap-closure-reconcile.sh`
 - `test-gap-cooldown.sh`
 - `test-gap-decompose-description.sh`
@@ -1158,6 +1156,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-gap-drift-source-dedup.sh`
 - `test-gap-failure-detection.sh`
 - `test-gap-gardener-no-ac-placeholder.sh`
+- `test-gap-id-collision.sh`
 - `test-gap-import-spec.sh`
 - `test-gap-lib.sh`
 - `test-gap-list-warning-detector.sh`
@@ -1168,6 +1167,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-gap-reopen-guard.sh`
 - `test-gap-reserve-auto-stages.sh`
 - `test-gap-reserve-cross-worktree-write.sh`
+- `test-gap-reserve-no-reuse.sh`
 - `test-gap-reserve-race-isolation.sh`
 - `test-gap-reserve-timeout-tripwire.sh`
 - `test-gap-scoring.sh`
@@ -1317,6 +1317,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-no-escalation-doctrine.sh`
 - `test-no-inline-ambient-printf-fixture.sh`
 - `test-no-new-coord-shell-fixture.sh`
+- `test-no-new-coord-shell.sh`
 - `test-no-new-shell-tests-for-rust-fixture.sh`
 - `test-no-new-shell-tests-for-rust.sh`
 - `test-no-ship-loop-detector.sh`
@@ -1431,7 +1432,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-pre-push-bot-merge-bypass.sh`
 - `test-pre-push-cargo-test-timeout.sh`
 - `test-pre-push-fixture-drop.sh`
-- `test-pre-push-fmt-gate.sh`
 - `test-pre-push-hard-timeout.sh`
 - `test-pre-push-head-stability.sh`
 - `test-pre-push-hook-no-sigpipe.sh`
@@ -1450,6 +1450,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-preflight-envvars-gate.sh`
 - `test-preflight-gapsint-gate.sh`
 - `test-preflight-mdlinks-gate.sh`
+- `test-preflight-registry-gate.sh`
 - `test-preflight-rust-scope.sh`
 - `test-preflight-scope.sh`
 - `test-preflight-subcmdhelp-gate.sh`
@@ -1490,7 +1491,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-pwa-impact.sh`
 - `test-pwa-index-merge-driver.sh`
 - `test-pwa-inject-hint.sh`
-- `test-pwa-lease-cleanup.sh`
 - `test-pwa-network-audit.sh`
 - `test-pwa-operator-attention.sh`
 - `test-pwa-orchestrator-sessions-view.sh`
