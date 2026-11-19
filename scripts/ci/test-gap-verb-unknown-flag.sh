@@ -161,14 +161,14 @@ check_source_guard() {
     local main_rs="$1"
     grep -q "validate_gap_mutation_args(subcmd" "$main_rs"
 }
-if check_source_guard "$REPO_ROOT/src/main.rs"; then
+if check_source_guard "$REPO_ROOT/src/cli_dispatch/mod.rs"; then
     ok "src/main.rs calls validate_gap_mutation_args before opening state.db"
 else
     fail "src/main.rs missing validate_gap_mutation_args call"
 fi
 
 MUTANT_MAIN="$TMP/main.rs.mutant"
-grep -v "validate_gap_mutation_args(subcmd" "$REPO_ROOT/src/main.rs" > "$MUTANT_MAIN"
+grep -v "validate_gap_mutation_args(subcmd" "$REPO_ROOT/src/cli_dispatch/mod.rs" > "$MUTANT_MAIN"
 if check_source_guard "$MUTANT_MAIN"; then
     fail "AC3 mutant M2 SURVIVED: removing validate_gap_mutation_args call was not caught"
 else

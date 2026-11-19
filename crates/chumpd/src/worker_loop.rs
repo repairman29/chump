@@ -34,9 +34,9 @@ fn now_epoch() -> u64 {
         .unwrap_or(0)
 }
 
-/// chrono-free ISO-ish stamp; every ambient consumer parses `ts` loosely.
+/// Standard RFC3339 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`) for `ambient.jsonl`.
 fn iso_now() -> String {
-    format!("epoch:{}", now_epoch())
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 /// Resolved loop-control configuration. Built from flags first, then env, then
@@ -772,5 +772,21 @@ mod tests {
             "tick subprocess must receive BASH timeout env vars: {dumped}"
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn iso_now_formats_rfc3339_utc() {
+        let ts = iso_now();
+        assert!(
+            !ts.starts_with("epoch:"),
+            "must not emit epoch: stamp: {ts}"
+        );
+        assert_eq!(ts.len(), 20, "expected YYYY-MM-DDTHH:MM:SSZ: {ts}");
+        assert!(ts.ends_with('Z'), "must end with UTC Z: {ts}");
+        assert_eq!(&ts[4..5], "-");
+        assert_eq!(&ts[7..8], "-");
+        assert_eq!(&ts[10..11], "T");
+        assert_eq!(&ts[13..14], ":");
+        assert_eq!(&ts[16..17], ":");
     }
 }

@@ -97,9 +97,7 @@ fn now_epoch() -> u64 {
 }
 
 fn iso_now() -> String {
-    // chrono-free ISO8601: date -u equivalent via libc time would drag deps in;
-    // epoch seconds are unambiguous and every consumer parses ts loosely.
-    format!("epoch:{}", now_epoch())
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 #[derive(Clone)]

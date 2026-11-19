@@ -17,6 +17,36 @@ pub const LINUX_SYSTEMD_UNIT_NAME: &str = "chumpd.service";
 /// Canonical Windows Scheduled Task name for `chumpd`.
 pub const WINDOWS_SCHEDULED_TASK_NAME: &str = "ChumpDaemon";
 
+/// Resolve the active target git repository for `chump hook`, `chump service`, and `chump up`:
+/// 1. Explicit `--repo <path>` argument if provided
+/// 2. `CHUMP_REPO` environment variable if set and non-empty
+/// 3. `git rev-parse --show-toplevel` from `std::env::current_dir()` when inside a git repo
+/// 4. `crate::repo_path::repo_root()` fallback
+pub fn resolve_active_git_repo(explicit_repo: Option<&Path>) -> PathBuf {
+    if let Some(p) = explicit_repo {
+        return p.to_path_buf();
+    }
+    if let Ok(v) = std::env::var("CHUMP_REPO") {
+        let t = v.trim();
+        if !t.is_empty() {
+            return PathBuf::from(t);
+        }
+    }
+    if let Ok(out) = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let t = s.trim();
+            if !t.is_empty() {
+                return PathBuf::from(t);
+            }
+        }
+    }
+    crate::repo_path::repo_root()
+}
+
 /// Resolve the sibling `chumpd` executable next to `chump` (`std::env::current_exe()`),
 /// falling back to `CHUMPD_BIN` or `"chumpd"` on `PATH`.
 pub fn resolve_chumpd_exe() -> PathBuf {
@@ -172,6 +202,7 @@ pub fn run_service_cli(args: &[String]) -> i32 {
         .find(|a| !a.starts_with('-'))
         .map(String::as_str)
         .unwrap_or("--help");
+    tracing::debug!(subcommand = %sub, dry_run, "chump service dispatch");
 
     if args.iter().any(|a| a == "--help" || a == "-h") || sub == "help" || sub == "--help" {
         println!("Usage: chump service <install|uninstall|status> [--dry-run]");
@@ -186,7 +217,7 @@ pub fn run_service_cli(args: &[String]) -> i32 {
     let user_home = chump_pal::user_home();
     let chump_home = chump_pal::chump_home();
     let log_dir = chump_home.join("logs");
-    let repo_root = crate::repo_path::repo_root();
+    let repo_root = resolve_active_git_repo(None);
     let chumpd_bin = resolve_chumpd_exe();
 
     match sub {
@@ -469,7 +500,7 @@ pub fn run_up_cli(args: &[String]) -> i32 {
 
     let chump_home = chump_pal::chump_home();
     let cfg_path = chump_config::default_config_path();
-    let repo_root = crate::repo_path::repo_root();
+    let repo_root = resolve_active_git_repo(None);
     let chumpd_bin = resolve_chumpd_exe();
 
     if dry_run {

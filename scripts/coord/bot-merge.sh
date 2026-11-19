@@ -18,6 +18,14 @@ warn() { printf '[bot-merge] WARN: %s\n' "$*" >&2; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+_BM_RESOLVER="${REPO_ROOT}/scripts/ci/lib/resolve-cargo-target-dir.sh"
+if [[ -f "$_BM_RESOLVER" ]]; then
+    # shellcheck source=../ci/lib/resolve-cargo-target-dir.sh
+    # shellcheck disable=SC1091
+    source "$_BM_RESOLVER"
+    chump_export_cargo_target_dir
+fi
+
 if [[ "${CHUMP_SHIP_LEGACY:-0}" == "1" ]]; then
     exec bash "$REPO_ROOT/scripts/archived/bot-merge-legacy.sh" "$@"
 fi

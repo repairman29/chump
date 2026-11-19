@@ -17,6 +17,18 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT_T="$REPO_ROOT"
+# RESILIENT-1669:BEGIN-TEST-TARGET
+if [[ -f "$REPO_ROOT_T/scripts/ci/lib/resolve-cargo-target-dir.sh" ]]; then
+    # shellcheck source=../ci/lib/resolve-cargo-target-dir.sh
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT_T/scripts/ci/lib/resolve-cargo-target-dir.sh"
+    _WT_TEST_TARGET="$(chump_cargo_target_dir)/cargo-test-target"
+else
+    _WT_TEST_TARGET="${CARGO_TARGET_DIR:-${HOME:-/tmp}/.cargo/chump-shared-target}/cargo-test-target"
+fi
+# RESILIENT-1669:END-TEST-TARGET
+export CHUMP_PREPUSH_TEST_TARGET="$_WT_TEST_TARGET"
 
 if [[ "${CHUMP_HOOK_LEGACY:-0}" == "1" && -f "$REPO_ROOT/scripts/archived/git-hooks/pre-push-legacy" ]]; then
     exec bash "$REPO_ROOT/scripts/archived/git-hooks/pre-push-legacy" "$@"
