@@ -26,8 +26,8 @@ echo "=== FLEET-048: gap impact rating ==="
 echo
 
 # 1. gap rate arm in main.rs or gap.rs
-if (grep -q '"rate"' "$REPO_ROOT/src/main.rs" 2>/dev/null && \
-    grep -q 'gap_impact_rated' "$REPO_ROOT/src/main.rs" 2>/dev/null) || \
+if (grep -q '"rate"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch" -r 2>/dev/null && \
+    grep -q 'gap_impact_rated' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch" -r 2>/dev/null) || \
    (grep -q '"rate"' "$REPO_ROOT/src/commands/gap.rs" 2>/dev/null && \
     grep -q 'gap_impact_rated' "$REPO_ROOT/src/commands/gap.rs" 2>/dev/null); then
     ok "gap rate subcommand defined in main.rs or gap.rs"
@@ -72,7 +72,7 @@ else
 fi
 
 # 7. rating range 1-5 validated
-if grep -q '1..=5' "$REPO_ROOT/src/main.rs" 2>/dev/null || \
+if grep -q '1..=5' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch" -r 2>/dev/null || \
    grep -q '(1..=5)' "$KPI_RS" 2>/dev/null; then
     ok "rating 1-5 range validated"
 else
@@ -80,14 +80,14 @@ else
 fi
 
 # 8. --impact flag wired in kpi report
-if grep -q 'want_impact\|--impact' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'want_impact\|--impact' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch" -r 2>/dev/null; then
     ok "main.rs: --impact flag wired in kpi report"
 else
     fail "main.rs: --impact flag missing"
 fi
 
 # 9. build_impact_section called from main.rs
-if grep -q 'build_impact_section' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'build_impact_section' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch" -r 2>/dev/null; then
     ok "main.rs: build_impact_section() called"
 else
     fail "main.rs: build_impact_section() not called"
@@ -101,7 +101,7 @@ else
 fi
 
 # 11. gap rate help text in help output
-if grep -q 'gap rate\|gap.*rate.*1-5' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'gap rate\|gap.*rate.*1-5' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch" -r 2>/dev/null; then
     ok "main.rs: gap rate documented in help"
 else
     fail "main.rs: gap rate missing from help"

@@ -17,6 +17,14 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# ZERO-WASTE-134: ONE cargo target resolver, never a path inside the worktree.
+if [[ -f "$REPO_ROOT/scripts/ci/lib/resolve-cargo-target-dir.sh" ]]; then
+    # shellcheck source=../ci/lib/resolve-cargo-target-dir.sh
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/scripts/ci/lib/resolve-cargo-target-dir.sh"
+    chump_export_cargo_target_dir
+fi
+
 # INFRA-7880: report-only publish guard runs before lean/strict exit (never blocks commits).
 if [[ -f "$REPO_ROOT/scripts/publish-guard/report_only.py" ]] && command -v python3 >/dev/null 2>&1; then
     python3 "$REPO_ROOT/scripts/publish-guard/report_only.py" staged || true

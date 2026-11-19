@@ -77,17 +77,18 @@ fn emit_cascade_exhausted_event(slots: &[ProviderSlot], reason: &str) {
 
     // Trim reason to keep the JSON line short; full diagnosis is in cycle log.
     let reason_trim: String = reason.chars().take(200).collect();
-    let reason_esc = reason_trim
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', " ");
 
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"worktree\":\"{worktree}\",\
-         \"event\":\"cascade_all_exhausted\",\"slot_count\":{slot_count},\
-         \"per_slot\":\"{per_slot}\",\"reason\":\"{reason_esc}\"}}",
-        slot_count = slots.len()
-    );
+    // scanner-anchor: "event":"cascade_all_exhausted"
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "worktree": worktree,
+        "event": "cascade_all_exhausted",
+        "slot_count": slots.len(),
+        "per_slot": per_slot,
+        "reason": reason_trim,
+    })
+    .to_string();
 
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -110,9 +111,13 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
         .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
     let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"event\":\"{kind}\",\"backoff_s\":{backoff_s}}}"
-    );
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "event": kind,
+        "backoff_s": backoff_s,
+    })
+    .to_string();
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -132,6 +137,7 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
 /// Anthropic-only path — so `tokens` here is what `chump kpi report`'s
 /// free-tier-savings section sums to estimate dollars saved vs an
 /// Anthropic-only baseline.
+// scanner-anchor: "kind":"cascade_routed"
 fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, tokens: u64) {
     let repo_root = crate::repo_path::runtime_base();
     let lock_dir = repo_root.join(".chump-locks");
@@ -143,11 +149,16 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, to
         .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
         .unwrap_or_else(|_| "unknown".to_string());
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"cascade_routed\",\
-         \"slot\":\"{slot_name}\",\"tier\":\"{tier}\",\"cascade_mode\":\"{cascade_mode}\",\
-         \"tokens\":{tokens}}}"
-    );
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "kind": "cascade_routed",
+        "slot": slot_name,
+        "tier": tier,
+        "cascade_mode": cascade_mode,
+        "tokens": tokens,
+    })
+    .to_string();
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -156,14 +167,6 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, to
     {
         let _ = writeln!(f, "{line}");
     }
-}
-
-/// Escape a string for embedding in a hand-built JSON line (matches the
-/// escaping already used by `emit_cascade_exhausted_event`'s `reason_esc`).
-fn json_escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', " ")
 }
 
 /// CREDIBLE-266: emit a `provider_slot_resolved` ambient event once per agent
@@ -184,25 +187,26 @@ pub fn emit_provider_slot_ambient_event(request_id: &str, provider_slot: &str, m
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     let failovers = get_last_failovers();
-    let failovers_json: Vec<String> = failovers
+    let failovers_json: Vec<serde_json::Value> = failovers
         .iter()
         .map(|f| {
-            format!(
-                "{{\"slot\":\"{}\",\"reason\":\"{}\"}}",
-                json_escape(&f.slot),
-                json_escape(&f.reason)
-            )
+            serde_json::json!({
+                "slot": f.slot,
+                "reason": f.reason,
+            })
         })
         .collect();
 
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"provider_slot_resolved\",\
-         \"request_id\":\"{}\",\"slot\":\"{}\",\"model\":\"{}\",\"failovers\":[{}]}}",
-        json_escape(request_id),
-        json_escape(provider_slot),
-        json_escape(model),
-        failovers_json.join(",")
-    );
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "kind": "provider_slot_resolved",
+        "request_id": request_id,
+        "slot": provider_slot,
+        "model": model,
+        "failovers": failovers_json,
+    })
+    .to_string();
 
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -4330,5 +4334,43 @@ enabled = true
         assert!(matches!(slot.tier, ProviderTier::Local));
         assert_eq!(slot.rpm_limit, 0);
         assert_eq!(slot.rpd_limit, 0);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn ambient_emitters_serialize_control_chars_as_valid_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-cascade-ambient-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ambient_file = dir.join("ambient.jsonl");
+        let prev = std::env::var("CHUMP_AMBIENT_LOG").ok();
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_file);
+
+        emit_cascade_exhausted_event(&[], "bad \"quote\" \\slash\r\n\t\u{0007}reason");
+        emit_cascade_backoff_event("cascade_backoff_sleep\t\"x\"", 42);
+
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_AMBIENT_LOG", v),
+            None => std::env::remove_var("CHUMP_AMBIENT_LOG"),
+        }
+
+        let raw = std::fs::read_to_string(&ambient_file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = raw.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let v0: serde_json::Value = serde_json::from_str(lines[0]).expect("valid json line 0");
+        assert_eq!(v0["event"], "cascade_all_exhausted");
+        assert_eq!(v0["slot_count"], 0);
+        assert!(v0["reason"].as_str().unwrap().contains('\u{0007}'));
+
+        let v1: serde_json::Value = serde_json::from_str(lines[1]).expect("valid json line 1");
+        assert_eq!(v1["backoff_s"], 42);
     }
 }

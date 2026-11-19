@@ -35,13 +35,13 @@ echo "=== INFRA-635 gap rebalance test ==="
 echo
 
 # 1. Subcommand wired
-if grep -q '"rebalance"' "$REPO_ROOT/src/main.rs"; then
+if grep -rq '"rebalance"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "rebalance arm in main.rs"
 else
     fail "rebalance arm missing from main.rs"
 fi
 
-if grep -q 'rebalance' "$REPO_ROOT/src/main.rs"; then
+if grep -rq 'rebalance' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "rebalance in help text"
 else
     fail "rebalance not in help text"

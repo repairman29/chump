@@ -94,13 +94,23 @@ cargo build --bin chump           # CLI binary only (fastest iteration)
 cargo check --bin chump --tests   # type-check without codegen (use this in tight loops)
 ```
 
-### Linux-first setup (INFRA-3342)
+### Universal v1.0 Rust control plane & setup (macOS, Windows, Linux)
 
-If you are on Linux, standard installation via `brew` might be unavailable or incomplete. Follow the **Linux substrate** path for the most reliable experience:
+Chump v1.0 runs natively on **macOS, Windows, and Linux** with zero bash/tmux/Unix-socket control-plane dependencies:
+
+- **`crates/chump-pal`** — Platform Abstraction Layer (`host`, `process`, `signal`, `paths`, `shell`, `ipc`, `win32`) providing cross-platform host probing, Win32 Job Object / Unix PGID process-tree lifecycle, loopback TCP `IpcEndpoint` (`127.0.0.1:<port>` + `.chump/chumpd.addr`), `CHUMP_HOME`/`HOME`/`USERPROFILE` path resolution, and single-instance lockfiles.
+- **`crates/chump-config` & `chump config`** — Unified TOML configuration (`~/.chump/config.toml` + `CHUMP_*` env overrides) supporting subscription OAuth, up to 40 cascading `[[providers]]` API-key slots, BYO coding harnesses, and zero-key local endpoints (`Ollama`, `LM Studio`, `llama.cpp`, `vLLM`). Commands: `chump config <init|show|validate|path>`.
+- **`chump ship` (`crates/chump-ship`)** — Native Rust ship pipeline (`ManualShipPath` + `BotMergePath` + `CREDIBLE-1576` gate-file auto-merge refusal via `--gate-arm-check`), replacing the retired 5.8K-LOC `bot-merge.sh` body (`scripts/coord/bot-merge.sh` remains as a thin compatibility shim).
+- **`chump hook` (`crates/chump-git-hooks`)** — Native Rust `pre-commit` and `pre-push` firewall (`chump hook <install|status|pre-commit|pre-push>`), enforcing lease-collision, secret-pattern, submodule-sanity, book-sync, `cargo fmt`, protected-branch, and bot-merge guards across all three OSes (`scripts/git-hooks/*` remain as thin compatibility shims).
+- **`chump up` & `chump service`** — Foreground/daemon supervisor launcher (`chump up [--foreground|--status]`) and native OS user-service manager (`chump service <install|uninstall|status> [--dry-run]`) targeting macOS `LaunchAgents`, Linux `systemd --user`, and Windows `schtasks` (`ChumpDaemon`).
+
+### Linux-first host dependencies (INFRA-3342)
+
+If you are on Linux and building optional desktop/WebKit targets or provisioning a bare host:
 
 1. **System dependencies:** Run `bash scripts/setup/provision-chumpd-host.sh --install-deps` to install required GTK/Webkit libs, Rust, and `gh`.
-2. **Supervisor daemon:** Run `bash scripts/setup/install-chumpd.sh` to build and register the `chumpd` supervisor with `systemd --user`.
-3. **Verify:** `systemctl --user status chumpd` should show "active (running)".
+2. **Supervisor daemon:** Run `chump service install` (or `bash scripts/setup/install-chumpd.sh`) to register the `chumpd` supervisor with `systemd --user`.
+3. **Verify:** `chump service status` (or `systemctl --user status chumpd`) should show active/running.
 
 `chump demo [--seed N] [--duration 60m] [--dry-run] ...` (INFRA-2391) — the
 META-072 Track-3 autonomous-throughput demo loop (crates/chump-demo), wired
@@ -294,7 +304,7 @@ INFRA-1672 (smart scoping for speed).
 
 ## Code style
 
-- **Edition:** Rust 2024 across the workspace.
+- **Edition:** Rust 2021 across the workspace.
 - **No `unwrap()` / `expect()` in production paths.** Tests and one-shot
   scripts may unwrap freely. Library and binary code returns `Result` and uses
   `?` or explicit `match`. Use `expect("invariant: ...")` only when documenting

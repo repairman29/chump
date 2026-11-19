@@ -76,7 +76,7 @@ is_in_scope_rs() {
     # Otherwise check whether main.rs / dispatch.rs / agent_loop/* refers
     # to it. `mod foo;` or `use crate::foo` or `crate::foo::` patterns.
     if grep -rqE "(^|[^A-Za-z0-9_])(mod[[:space:]]+${stem}[[:space:]]*;|crate::${stem}(::|[[:space:]]))" \
-        src/main.rs src/dispatch.rs src/agent_loop/ 2>/dev/null; then
+        src/main.rs src/cli_dispatch/ src/dispatch.rs src/agent_loop/ 2>/dev/null; then
         return 0
     fi
 
