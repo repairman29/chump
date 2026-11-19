@@ -39,10 +39,23 @@
 
 use std::fs;
 use std::io::{self, BufRead, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+
+fn metadata_inode(meta: &fs::Metadata) -> u64 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        meta.ino()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        // Non-zero sentinel so (position == 0 && inode == 0) still means "no saved cursor".
+        1
+    }
+}
 
 use anyhow::{Context, Result};
 use async_nats::jetstream::{self, consumer};
@@ -456,7 +469,7 @@ async fn ambient_tail_loop(db: Arc<Mutex<Connection>>, ambient_path: PathBuf) ->
     if position == 0 && known_inode == 0 {
         if let Ok(meta) = fs::metadata(&ambient_path) {
             position = meta.len();
-            known_inode = meta.ino();
+            known_inode = metadata_inode(&meta);
             let conn = db.lock().await;
             let _ = save_cursor(&conn, &source_key, position, known_inode);
         }
@@ -475,7 +488,7 @@ async fn ambient_tail_loop(db: Arc<Mutex<Connection>>, ambient_path: PathBuf) ->
 
         // Check for file rotation (inode change).
         let current_inode = match fs::metadata(&ambient_path) {
-            Ok(m) => m.ino(),
+            Ok(m) => metadata_inode(&m),
             Err(_) => {
                 // File gone — wait for it to reappear.
                 continue;
@@ -885,8 +898,13 @@ mod tests {
         {
             let c = db.lock().await;
             let meta = fs::metadata(&tmp_path).unwrap();
-            use std::os::unix::fs::MetadataExt;
-            save_cursor(&c, &format!("file:{}", tmp_path.display()), 0, meta.ino()).unwrap();
+            save_cursor(
+                &c,
+                &format!("file:{}", tmp_path.display()),
+                0,
+                metadata_inode(&meta),
+            )
+            .unwrap();
         }
 
         // Write the line before we tail so the tail finds it.

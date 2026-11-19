@@ -9001,8 +9001,11 @@ fn emit_pwa_log_full(
     stdout_tail: Option<&str>,
     exit_code: Option<i32>,
 ) {
-    let log_path =
-        std::env::var("CHUMP_PWA_LOG").unwrap_or_else(|_| "/tmp/chump-pwa.log".to_string());
+    let log_path = std::env::var("CHUMP_PWA_LOG").unwrap_or_else(|_| {
+        chump_pal::temp_file_path("chump-pwa.log")
+            .to_string_lossy()
+            .into_owned()
+    });
     let mut entry = serde_json::json!({
         "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "request_id": request_id,
@@ -9029,8 +9032,11 @@ fn emit_pwa_log_full(
 /// INFRA-1013: read PWA log entries for a given request_id.
 /// Returns at most 200 entries to bound memory.
 fn read_pwa_log_for_request(request_id: &str) -> Vec<serde_json::Value> {
-    let log_path =
-        std::env::var("CHUMP_PWA_LOG").unwrap_or_else(|_| "/tmp/chump-pwa.log".to_string());
+    let log_path = std::env::var("CHUMP_PWA_LOG").unwrap_or_else(|_| {
+        chump_pal::temp_file_path("chump-pwa.log")
+            .to_string_lossy()
+            .into_owned()
+    });
     let content = match std::fs::read_to_string(&log_path) {
         Ok(c) => c,
         Err(_) => return vec![],
@@ -11668,40 +11674,23 @@ mod api_battle_tests {
     #[test]
     #[serial]
     fn repo_root_honors_env_change_after_chumpd_daemon_answer() {
-        use std::io::{Read, Write};
-        use std::os::unix::net::UnixListener;
-
         let daemon_root = tempfile::tempdir().unwrap();
         let chump_dir = daemon_root.path().join(".chump");
         std::fs::create_dir_all(&chump_dir).unwrap();
         let db_path = chump_dir.join("state.db");
         std::fs::write(&db_path, b"").unwrap();
-        let sock_path = chump_dir.join("chumpd.sock");
+        let ipc_path = chump_pal::ipc::ipc_file_path_in(&chump_dir, "chumpd");
 
-        let listener = UnixListener::bind(&sock_path).unwrap();
-        // INFRA-8042: bound the fake daemon's wait. A blocking accept() hung
-        // forever (and, via #[serial], every other serial test behind it)
-        // whenever repo_root() never dialled the socket.
-        listener.set_nonblocking(true).unwrap();
+        let ipc_server = std::sync::Arc::new(
+            chump_pal::ipc::IpcServer::bind_at(&ipc_path).expect("bind fake chumpd ipc"),
+        );
         let db_path_reply = db_path.display().to_string();
+        let srv = ipc_server.clone();
         let server = std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                match listener.accept() {
-                    Ok((mut stream, _)) => {
-                        let _ = stream.set_nonblocking(false);
-                        let mut buf = [0u8; 1024];
-                        let _ = stream.read(&mut buf);
-                        let resp = serde_json::json!({ "db_path": db_path_reply });
-                        let _ = stream.write_all(resp.to_string().as_bytes());
-                        return;
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-                    }
-                    Err(_) => return,
-                }
-            }
+            let _ = srv.serve_one_sync(
+                std::time::Duration::from_secs(5),
+                |_req| serde_json::json!({ "db_path": db_path_reply }),
+            );
         });
 
         let prev_repo = std::env::var("CHUMP_REPO").ok();

@@ -23,11 +23,10 @@ fn dbg_log(message: &str, data: &serde_json::Value) {
         Err(_) => return,
     };
     let path = if path.starts_with("~/") {
-        format!(
-            "{}/{}",
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()),
-            path.get(2..).unwrap_or("")
-        )
+        chump_pal::user_home()
+            .join(path.get(2..).unwrap_or(""))
+            .to_string_lossy()
+            .into_owned()
     } else {
         path
     };

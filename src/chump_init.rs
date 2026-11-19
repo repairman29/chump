@@ -243,8 +243,7 @@ fn chump_home_dir() -> PathBuf {
     if let Ok(h) = std::env::var("CHUMP_HOME") {
         return PathBuf::from(h);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".chump")
+    chump_pal::user_home().join(".chump")
 }
 
 fn resolve_api_config(no_interactive: bool) -> Result<(String, String)> {

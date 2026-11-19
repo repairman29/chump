@@ -330,7 +330,7 @@ mod wasm_text_tool;
 // `main()` → `waste_tally::set_cost_fn`).
 pub use chump_waste_tally::waste_tally;
 mod web_brain;
-#[cfg(feature = "web-push")]
+#[cfg(all(feature = "web-push", not(windows)))]
 mod web_push_send;
 mod web_server;
 mod web_sessions_db;

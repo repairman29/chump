@@ -118,8 +118,7 @@ pub fn default_inventory_path() -> PathBuf {
     if let Ok(p) = std::env::var("CHUMP_DISK_INVENTORY_PATH") {
         return PathBuf::from(p);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home)
+    chump_pal::user_home()
         .join(".chump")
         .join("disk-inventory.json")
 }

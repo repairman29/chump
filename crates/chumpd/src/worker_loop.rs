@@ -27,10 +27,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// the supervisor's `SHUTDOWN_SIGNAL` so the two code paths never alias.
 static WORKER_SHUTDOWN: AtomicI32 = AtomicI32::new(0);
 
-extern "C" fn on_worker_term(sig: i32) {
-    WORKER_SHUTDOWN.store(sig, Ordering::SeqCst);
-}
-
 fn now_epoch() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -107,13 +103,14 @@ impl WorkerConfig {
     /// Parse `chumpd worker [flags]`. `args` is argv *after* the `worker`
     /// subcommand token.
     pub fn from_args(args: &[String]) -> Self {
-        let home = PathBuf::from(env_or("HOME", "/tmp"));
+        let home = chump_pal::user_home();
         let repo = std::env::var("REPO_ROOT")
             .or_else(|_| std::env::var("CHUMP_REPO"))
             .map(PathBuf::from)
             .unwrap_or_else(|_| home.join("Projects/Chump"));
         let agent_id = env_or("AGENT_ID", "0");
-        let hb_dir = env_or("CHUMP_HEARTBEAT_DIR", "/tmp");
+        let hb_dir = std::env::var("CHUMP_HEARTBEAT_DIR")
+            .unwrap_or_else(|_| chump_pal::temp_dir().to_string_lossy().into_owned());
 
         // Env defaults (overridden by flags below).
         let mut cfg = WorkerConfig {
@@ -362,12 +359,7 @@ fn run_tick_with_budget(cfg: &WorkerConfig) -> i32 {
 }
 
 fn install_signal_handlers() {
-    // SAFETY: the handler only stores into an atomic — signal-safe.
-    unsafe {
-        let handler = on_worker_term as extern "C" fn(i32) as *const () as usize;
-        libc::signal(libc::SIGTERM, handler);
-        libc::signal(libc::SIGINT, handler);
-    }
+    chump_pal::install_shutdown_signal(&WORKER_SHUTDOWN);
 }
 
 /// `chumpd worker` entry. Returns the process exit code (128+signum on signal,
