@@ -31,17 +31,22 @@ pub enum AuthMode {
 
 impl AuthMode {
     fn from_env() -> Self {
-        match std::env::var("CHUMP_AUTH_MODE")
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .trim()
-            .to_string()
-            .as_str()
-        {
-            "api-key" | "api_key" | "apikey" => AuthMode::ApiKey,
-            "oauth" => AuthMode::OAuth,
-            _ => AuthMode::Auto,
+        let env_raw = std::env::var("CHUMP_AUTH_MODE").unwrap_or_default();
+        let trimmed = env_raw.trim().to_ascii_lowercase();
+        match trimmed.as_str() {
+            "api-key" | "api_key" | "apikey" => return AuthMode::ApiKey,
+            "oauth" => return AuthMode::OAuth,
+            "auto" => return AuthMode::Auto,
+            _ => {}
         }
+        if let Ok(cfg) = chump_config::ChumpConfig::load_from_path(&chump_config_path()) {
+            return match cfg.auth.mode {
+                chump_config::AuthModeConfig::ApiKey => AuthMode::ApiKey,
+                chump_config::AuthModeConfig::Oauth => AuthMode::OAuth,
+                chump_config::AuthModeConfig::Auto => AuthMode::Auto,
+            };
+        }
+        AuthMode::Auto
     }
 }
 
@@ -398,6 +403,11 @@ pub fn detect_credentials() -> AuthCredentials {
             .ok()
             .filter(|s| !s.trim().is_empty())
             .map(PathBuf::from)
+            .or_else(|| {
+                chump_config::ChumpConfig::load_from_path(&chump_config_path())
+                    .ok()
+                    .and_then(|c| c.auth.oauth_token_file)
+            })
             .unwrap_or_else(default_oauth_token_file);
         if let Some(tok) = read_oauth_token_file(&tok_path) {
             creds.oauth_token = tok;
@@ -725,25 +735,37 @@ fn extract_json_string(json: &str, key: &str) -> Option<String> {
     Some(after[..end].to_string())
 }
 
-/// Parse the subset of ~/.chump/config.toml relevant to auth.
+/// Parse `[auth]` and backwards-compatible `[api]` sections from `config.toml`
+/// via [`chump_config::ChumpConfig`], with line-scanner fallback for partial fixtures.
 fn read_config_toml(path: &Path) -> Option<AuthCredentials> {
+    if let Ok(parsed) = chump_config::ChumpConfig::load_from_path(path) {
+        let creds = AuthCredentials {
+            api_key: parsed.auth.anthropic_api_key.unwrap_or_default(),
+            oauth_token: parsed.auth.claude_code_oauth_token.unwrap_or_default(),
+        };
+        if creds.has_api_key() || creds.has_oauth() {
+            return Some(creds);
+        }
+    }
     let content = std::fs::read_to_string(path).ok()?;
     let mut creds = AuthCredentials::default();
-    let mut in_api = false;
+    let mut in_auth_or_api = false;
 
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('[') {
-            in_api = trimmed == "[api]";
+            in_auth_or_api = trimmed == "[api]" || trimmed == "[auth]";
             continue;
         }
-        if !in_api || trimmed.starts_with('#') {
+        if !in_auth_or_api || trimmed.starts_with('#') {
             continue;
         }
         if let Some((k, v)) = parse_toml_kv(trimmed) {
             match k {
-                "anthropic_api_key" => creds.api_key = v.to_string(),
-                "claude_code_oauth_token" => creds.oauth_token = v.to_string(),
+                "anthropic_api_key" if creds.api_key.is_empty() => creds.api_key = v.to_string(),
+                "claude_code_oauth_token" if creds.oauth_token.is_empty() => {
+                    creds.oauth_token = v.to_string()
+                }
                 _ => {}
             }
         }
@@ -765,7 +787,7 @@ fn parse_toml_kv(line: &str) -> Option<(&str, &str)> {
 }
 
 pub(crate) fn chump_config_path() -> PathBuf {
-    chump_pal::chump_home().join("config.toml")
+    chump_config::default_config_path()
 }
 
 /// The well-known oauth-token.json path the refresher daemon keeps current

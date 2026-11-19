@@ -841,6 +841,70 @@ impl ProviderCascade {
             });
         }
 
+        // Milestone 4 (`crates/chump-config`): additively load `[[providers]]` slots
+        // from `config.toml` when no env slot already occupies the same slot name.
+        if let Ok(file_cfg) =
+            chump_config::ChumpConfig::load_from_path(&chump_config::default_config_path())
+        {
+            for (idx, cfg_slot) in file_cfg.providers.iter().enumerate() {
+                if !cfg_slot.enabled || slots.len() >= MAX_SLOTS as usize {
+                    continue;
+                }
+                let base = cfg_slot.base_url.trim().trim_end_matches('/').to_string();
+                let name = cfg_slot.name.trim().to_string();
+                if base.is_empty() || name.is_empty() || slots.iter().any(|s| s.name == name) {
+                    continue;
+                }
+                let key = cfg_slot.resolve_api_key();
+                let model = upgrade_retired_provider_model(&base, cfg_slot.model.trim());
+                let priority = cfg_slot
+                    .priority
+                    .unwrap_or_else(|| ((idx as u32) + 1) * 10 + 100);
+                let tier = match cfg_slot.tier {
+                    chump_config::ProviderTierConfig::Local => ProviderTier::Local,
+                    _ => ProviderTier::Cloud,
+                };
+                let privacy = cfg_slot
+                    .privacy
+                    .as_deref()
+                    .map(parse_privacy_tier)
+                    .unwrap_or(PrivacyTier::Safe);
+                let rpm = cfg_slot
+                    .rpm_limit
+                    .unwrap_or(if tier == ProviderTier::Local { 0 } else { 30 });
+                let rpd = cfg_slot
+                    .rpd_limit
+                    .unwrap_or(if tier == ProviderTier::Local {
+                        0
+                    } else {
+                        DEFAULT_RPD_WHEN_UNSET
+                    });
+                let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
+                slots.push(ProviderSlot {
+                    name,
+                    base_url: base,
+                    provider,
+                    priority,
+                    tier,
+                    privacy,
+                    context_k: cfg_slot.context_k,
+                    model_class: cfg_slot
+                        .model_class
+                        .as_ref()
+                        .map(|s| s.trim().to_ascii_lowercase())
+                        .filter(|s| !s.is_empty()),
+                    rpm_limit: rpm,
+                    calls_this_minute: AtomicU32::new(0),
+                    minute_start: Mutex::new(Instant::now()),
+                    rpd_limit: rpd,
+                    calls_today: AtomicU32::new(0),
+                    day_start: Mutex::new(Instant::now()),
+                    cooldown_until: Mutex::new(None),
+                    xml_tool_tags: cfg_slot.xml_tool_tags,
+                });
+            }
+        }
+
         // EFFECTIVE-1933: When CHUMP_AUTO_BYOK_SLOTS=1, auto-register Google AI
         // (GEMINI_API_KEY / GOOGLE_API_KEY) and Mistral (MISTRAL_API_KEY) frontier
         // coding slots if no explicit slot for that endpoint was declared.
@@ -4218,5 +4282,53 @@ mod tests {
             Some(v) => std::env::set_var("GEMINI_API_KEY", v),
             None => std::env::remove_var("GEMINI_API_KEY"),
         }
+    }
+
+    #[test]
+    #[serial_test::serial(openai_env)]
+    fn config_toml_providers_load_additively_into_cascade() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-cascade-cfg-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_file = dir.join("config.toml");
+        std::fs::write(
+            &cfg_file,
+            r#"
+[[providers]]
+name = "toml-ollama-slot"
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5-coder:14b"
+tier = "local"
+rpm_limit = 0
+rpd_limit = 0
+enabled = true
+"#,
+        )
+        .unwrap();
+
+        let prev_cfg = std::env::var("CHUMP_CONFIG_FILE").ok();
+        std::env::set_var("CHUMP_CONFIG_FILE", &cfg_file);
+        let cascade = ProviderCascade::from_env();
+        match prev_cfg {
+            Some(v) => std::env::set_var("CHUMP_CONFIG_FILE", v),
+            None => std::env::remove_var("CHUMP_CONFIG_FILE"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let slot = cascade
+            .slots
+            .iter()
+            .find(|s| s.name == "toml-ollama-slot")
+            .expect("slot from config.toml must be loaded");
+        assert_eq!(slot.base_url, "http://127.0.0.1:11434/v1");
+        assert!(matches!(slot.tier, ProviderTier::Local));
+        assert_eq!(slot.rpm_limit, 0);
+        assert_eq!(slot.rpd_limit, 0);
     }
 }

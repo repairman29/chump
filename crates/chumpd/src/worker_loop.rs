@@ -67,18 +67,49 @@ fn env_or<K: AsRef<str>>(key: K, default: &str) -> String {
     std::env::var(key.as_ref()).unwrap_or_else(|_| default.to_string())
 }
 
+/// Sentinel `tick_cmd` value selecting the pure-Rust worker tick (`chump --worker-tick`)
+/// with zero bash/shell dependency across Windows, macOS, and Linux.
+pub const NATIVE_TICK_SENTINEL: &str = "@native-chump-worker-tick";
+
+/// Resolve the sibling `chump` CLI executable next to `chumpd` (`std::env::current_exe()`),
+/// falling back to `CHUMP_BIN` or `"chump"` on `PATH`.
+pub fn resolve_sibling_chump_exe() -> PathBuf {
+    if let Ok(explicit) = std::env::var("CHUMP_BIN") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            let bin_name = if cfg!(windows) { "chump.exe" } else { "chump" };
+            let sibling = dir.join(bin_name);
+            if sibling.is_file() {
+                return sibling;
+            }
+        }
+    }
+    PathBuf::from(if cfg!(windows) { "chump.exe" } else { "chump" })
+}
 /// Default subagent budget (`CHUMP_SUBAGENT_BUDGET_S` in `src/dispatch.rs`).
 pub const DEFAULT_SUBAGENT_BUDGET_SECS: u64 = 900;
 
 /// Read the active subagent wall-clock budget floor (`CHUMP_SUBAGENT_BUDGET_S`,
-/// defaulting to `DEFAULT_SUBAGENT_BUDGET_SECS`). A non-zero `chumpd worker`
-/// tick budget must never be lower than this floor because `budget_killed`
-/// kills the entire tick body including any live `claude -p` child (INFRA-8584).
+/// then `config.toml` `[worker].subagent_budget_secs`, defaulting to
+/// `DEFAULT_SUBAGENT_BUDGET_SECS`). A non-zero `chumpd worker` tick budget must
+/// never be lower than this floor because `budget_killed` kills the entire tick
+/// body including any live `claude -p` child (INFRA-8584).
 pub fn subagent_budget_floor_secs() -> u64 {
     std::env::var("CHUMP_SUBAGENT_BUDGET_S")
         .ok()
         .and_then(|s| s.trim().parse::<u64>().ok())
         .filter(|&v| v > 0)
+        .or_else(|| {
+            chump_config::ChumpConfig::load_effective()
+                .ok()
+                .map(|c| c.worker.subagent_budget_secs)
+                .filter(|&v| v > 0)
+        })
         .unwrap_or(DEFAULT_SUBAGENT_BUDGET_SECS)
 }
 
@@ -112,18 +143,24 @@ impl WorkerConfig {
         let hb_dir = std::env::var("CHUMP_HEARTBEAT_DIR")
             .unwrap_or_else(|_| chump_pal::temp_dir().to_string_lossy().into_owned());
 
-        // Env defaults (overridden by flags below).
-        let mut cfg = WorkerConfig {
-            tick_cmd: std::env::var("CHUMP_WORKER_TICK_CMD").unwrap_or_else(|_| {
+        let file_cfg = chump_config::ChumpConfig::load_effective().unwrap_or_default();
+        let default_tick_cmd =
+            if std::env::var("CHUMP_WORKER_LEGACY_SH").as_deref() == Ok("1") && !cfg!(windows) {
                 format!(
-                    "bash {} --tick",
+                    "sh {} --tick",
                     repo.join("scripts/dispatch/worker.sh").display()
                 )
-            }),
+            } else {
+                NATIVE_TICK_SENTINEL.to_string()
+            };
+
+        // Env + config.toml defaults (overridden by flags below).
+        let mut cfg = WorkerConfig {
+            tick_cmd: std::env::var("CHUMP_WORKER_TICK_CMD").unwrap_or(default_tick_cmd),
             cadence_secs: std::env::var("CHUMP_WORKER_TICK_CADENCE_S")
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(0),
+                .unwrap_or(file_cfg.worker.cadence_secs),
             budget_secs: std::env::var("CHUMP_WORKER_TICK_BUDGET_S")
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
@@ -160,6 +197,15 @@ impl WorkerConfig {
                     if let Some(v) = take() {
                         cfg.tick_cmd = v;
                     }
+                }
+                "--native" => {
+                    cfg.tick_cmd = NATIVE_TICK_SENTINEL.to_string();
+                }
+                "--legacy-worker-sh" => {
+                    cfg.tick_cmd = format!(
+                        "sh {} --tick",
+                        cfg.repo.join("scripts/dispatch/worker.sh").display()
+                    );
                 }
                 "--cadence-secs" => {
                     if let Some(v) = take() {
@@ -308,11 +354,17 @@ pub fn resolve_worker_child_env(state_dir: &Path) -> Vec<(String, String)> {
 /// Run one tick body under an optional wall-clock budget. Returns the child's
 /// exit code (or -1 if it was budget-killed / failed to spawn).
 fn run_tick_with_budget(cfg: &WorkerConfig) -> i32 {
-    let mut cmd = Command::new("bash");
-    cmd.arg("-c")
-        .arg(&cfg.tick_cmd)
-        .current_dir(&cfg.repo)
-        // The shim path: the shell body runs a single pass, not its own loop.
+    let mut cmd: Command =
+        if cfg.tick_cmd == NATIVE_TICK_SENTINEL || cfg.tick_cmd.trim() == "chump --worker-tick" {
+            let mut c = Command::new(resolve_sibling_chump_exe());
+            c.arg("--worker-tick");
+            c
+        } else {
+            chump_pal::shell_command(&cfg.tick_cmd)
+        };
+    chump_pal::configure_isolated_child(&mut cmd);
+    cmd.current_dir(&cfg.repo)
+        // The shim path: any custom shell body runs a single pass, not its own loop.
         .env("CHUMP_WORKER_SINGLE_TICK", "1");
     for (k, v) in resolve_worker_child_env(&cfg.state_dir) {
         cmd.env(k, v);
@@ -337,6 +389,7 @@ fn run_tick_with_budget(cfg: &WorkerConfig) -> i32 {
             Ok(Some(status)) => return status.code().unwrap_or(-1),
             Ok(None) => {
                 if now_epoch() >= deadline || WORKER_SHUTDOWN.load(Ordering::SeqCst) != 0 {
+                    let _ = chump_pal::terminate_process_group(child.id(), true);
                     let _ = child.kill();
                     let _ = child.wait();
                     // scanner-anchor: "kind":"chumpd_worker_tick_budget_killed"
@@ -459,11 +512,13 @@ mod tests {
 
     #[test]
     fn exit_code_convention_in_args_default() {
-        // Empty argv → defaults resolve without panicking and max_ticks stays 0.
+        // Empty argv → defaults resolve to pure-Rust native worker tick without panicking.
         let cfg = WorkerConfig::from_args(&[]);
         assert_eq!(cfg.max_ticks, 0);
-        assert_eq!(cfg.cadence_secs, 0);
-        assert!(cfg.tick_cmd.contains("worker.sh"));
+        assert_eq!(cfg.tick_cmd, NATIVE_TICK_SENTINEL);
+
+        let legacy_cfg = WorkerConfig::from_args(&["--legacy-worker-sh".to_string()]);
+        assert!(legacy_cfg.tick_cmd.contains("worker.sh"));
     }
 
     #[test]
