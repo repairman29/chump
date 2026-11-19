@@ -361,7 +361,7 @@ impl<'a> IterationController<'a> {
                 }
             }
 
-            crate::belief_state::decay_turn();
+            crate::cognition_gate::on_iteration_start();
 
             // EFFECTIVE-465: investigation-path force-edit nudge. The EFFECTIVE-448
             // nudge below only fires on `StopReason::EndTurn`; a model that keeps
@@ -602,11 +602,7 @@ impl<'a> IterationController<'a> {
 
                     let display_text = thinking_strip::strip_for_streaming_preview(&text);
                     let turn_duration_ms = ctx.turn_start.elapsed().as_millis() as u64;
-                    crate::precision_controller::record_turn_metrics(
-                        tool_calls_count,
-                        0,
-                        turn_duration_ms,
-                    );
+                    crate::cognition_gate::on_turn_complete(tool_calls_count, turn_duration_ms);
 
                     // FSM: EndTurn with no tools → Complete.
                     if self.state.transition_to(&AgentState::Complete) {

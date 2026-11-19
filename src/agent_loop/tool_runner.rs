@@ -86,21 +86,7 @@ impl<'a> ToolRunner<'a> {
             content: format_tool_results(&tool_results),
         });
 
-        let sub = crate::consciousness_traits::substrate();
-        if sub.belief.should_escalate() {
-            crate::blackboard::post(
-                crate::blackboard::Module::Custom("belief_state".to_string()),
-                "Epistemic uncertainty is critically high after synthetic tool calls. \
-                 Consider asking the user for guidance."
-                    .to_string(),
-                crate::blackboard::SalienceFactors {
-                    novelty: 0.7,
-                    uncertainty_reduction: 0.8,
-                    goal_relevance: 0.9,
-                    urgency: 0.8,
-                },
-            );
-        }
+        crate::cognition_gate::after_synthetic_batch();
         Ok(outcome)
     }
 
@@ -165,7 +151,7 @@ impl<'a> ToolRunner<'a> {
             }
 
             let per_tool_ms = total_exec_ms / tool_results.len().max(1) as u64;
-            crate::belief_state::update_tool_belief(&tc.name, ok, per_tool_ms);
+            crate::cognition_gate::record_tool_outcome(&tc.name, ok, per_tool_ms);
 
             ctx.send(AgentEvent::ToolCallResult {
                 call_id: tr.tool_call_id.clone(),
@@ -254,17 +240,7 @@ impl<'a> ToolRunner<'a> {
             content: results_content,
         });
 
-        let sub = crate::consciousness_traits::substrate();
-        sub.neuromod.update_from_turn();
-        crate::precision_controller::check_regime_change();
-
-        if sub.belief.should_escalate() {
-            crate::blackboard::post(
-                crate::blackboard::Module::Custom("belief_state".to_string()),
-                format!("Epistemic uncertainty is critically high (task uncertainty={:.2}). Consider asking the user to clarify the goal or confirm the approach before continuing.", sub.belief.task_uncertainty()),
-                crate::blackboard::SalienceFactors { novelty: 0.7, uncertainty_reduction: 0.8, goal_relevance: 0.9, urgency: 0.8 },
-            );
-        }
+        crate::cognition_gate::after_native_batch();
 
         // COG-009b: walk tool_results in reverse to find the last failed
         // tool name for the retry hint.
@@ -332,8 +308,7 @@ impl<'a> ToolRunner<'a> {
             role: "user".to_string(),
             content: format_tool_results(&tool_results),
         });
-        let sub = crate::consciousness_traits::substrate();
-        sub.neuromod.update_from_turn();
+        crate::cognition_gate::after_schema_failure_batch();
     }
 
     fn handle_speculative_resolution(
@@ -348,20 +323,7 @@ impl<'a> ToolRunner<'a> {
             crate::speculative_execution::Resolution::Committed
         } else {
             crate::speculative_execution::rollback(snapshot);
-            crate::blackboard::post(
-                crate::blackboard::Module::Custom("speculative_execution".to_string()),
-                format!(
-                    "Multi-tool plan rolled back ({} failures out of {} tools).",
-                    failures.len(),
-                    count
-                ),
-                crate::blackboard::SalienceFactors {
-                    novelty: 0.8,
-                    uncertainty_reduction: 0.7,
-                    goal_relevance: 0.9,
-                    urgency: 0.7,
-                },
-            );
+            crate::cognition_gate::on_speculative_rollback(count, failures);
             crate::speculative_execution::Resolution::RolledBack
         };
         crate::speculative_execution::record_last_speculative_batch(resolution, result);

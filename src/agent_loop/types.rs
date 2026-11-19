@@ -548,23 +548,7 @@ pub fn efe_order_tool_calls(calls: &[ToolCall]) -> Vec<ToolCall> {
         return ordered;
     }
 
-    let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
-    let scores = crate::belief_state::score_tools(&names);
-    if scores.is_empty() {
-        return calls.to_vec();
-    }
-    let mut ordered: Vec<ToolCall> = scores
-        .iter()
-        .filter_map(|s| calls.iter().find(|c| c.name == s.tool_name))
-        .cloned()
-        .collect();
-    if ordered.len() > 1 {
-        let selected = crate::precision_controller::epsilon_greedy_select(ordered.len());
-        if selected != 0 {
-            ordered.swap(0, selected);
-        }
-    }
-    ordered
+    crate::cognition_gate::order_tool_calls_efe(calls)
 }
 
 pub fn speculative_batch_enabled() -> bool {
