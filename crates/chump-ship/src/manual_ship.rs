@@ -264,14 +264,15 @@ impl ManualShipPath {
     /// no retry on lease rejection — caller falls back to bash if so.
     async fn push_branch(&self) -> Result<(), ShipError> {
         if self.dry_run {
-            tracing::info!(
-                branch = %self.intent.branch,
-                "[dry-run] skipping git push --force-with-lease"
+            println!(
+                "[dry-run] git push -u origin {} --force-with-lease",
+                self.intent.branch
             );
             return Ok(());
         }
         let out = self
             .git()
+            .env("CHUMP_BOT_MERGE_IN_PROGRESS", "1")
             .args([
                 "push",
                 "-u",
@@ -293,9 +294,9 @@ impl ManualShipPath {
     /// Open the PR via `gh pr create`. Returns the parsed PR number + URL.
     async fn create_pr(&self) -> Result<(u64, String), ShipError> {
         if self.dry_run {
-            tracing::info!(
-                gap = %self.intent.gap_id,
-                "[dry-run] skipping gh pr create"
+            println!(
+                "[dry-run] gh pr create --base {} --head {} --title {:?}",
+                self.intent.base, self.intent.branch, self.intent.commit_message
             );
             return Ok((
                 0,
@@ -368,12 +369,28 @@ impl ManualShipPath {
     }
 
     /// Arm GitHub auto-merge (`--auto --squash`). Returns false if the
-    /// arm subcommand failed in a non-fatal way (secondary rate limit
-    /// is the common case); operator can re-arm manually.
+    /// arm subcommand failed in a non-fatal way (secondary rate limit,
+    /// arm-policy hold, or CREDIBLE-1576 gate-file guard); operator can
+    /// review and arm manually.
     async fn arm_auto_merge(&self, pr_number: u64) -> Result<bool, ShipError> {
+        let (armed, _note) = self.arm_auto_merge_with_note(pr_number).await?;
+        Ok(armed)
+    }
+
+    async fn arm_auto_merge_with_note(
+        &self,
+        pr_number: u64,
+    ) -> Result<(bool, Option<String>), ShipError> {
         if self.dry_run {
+            if let Err(refusal) =
+                crate::gate_guard::check_gate_arm_refused(&self.repo_root, &self.intent.base, true)
+            {
+                let msg = refusal.to_string();
+                eprintln!("{msg}");
+                return Ok((false, Some(msg)));
+            }
             tracing::info!(pr = pr_number, "[dry-run] skipping auto-merge arm");
-            return Ok(true);
+            return Ok((true, None));
         }
         // INFRA-8221: the one arm policy. A held PR (no-auto-merge label or an
         // `Auto-merge: hold` line, possibly carried in from the intent's body)
@@ -385,8 +402,19 @@ impl ManualShipPath {
             crate::arm_policy::GateAction::Arm,
             Some(&self.repo_root),
         ) {
+            let msg = held.to_string();
             tracing::warn!(pr = pr_number, %held, "arm policy: PR held; not arming");
-            return Ok(false);
+            return Ok((false, Some(msg)));
+        }
+        // CREDIBLE-1576: refuse arming auto-merge when PR diff vs origin/<base>
+        // touches a protected gate file or cannot be computed (fail-closed).
+        if let Err(refusal) =
+            crate::gate_guard::check_gate_arm_refused(&self.repo_root, &self.intent.base, true)
+        {
+            let msg = refusal.to_string();
+            eprintln!("{msg}");
+            tracing::warn!(pr = pr_number, reason = %msg, "gate_guard refused auto-merge");
+            return Ok((false, Some(msg)));
         }
         let out = self
             .gh()
@@ -396,15 +424,19 @@ impl ManualShipPath {
         if !out.status.success() {
             // Phase 1 happy-path: log + return false (not-armed) rather
             // than fail the whole ship. The PR is up; operator can arm.
+            let stderr_tail = truncate_for_log(&String::from_utf8_lossy(&out.stderr), 240);
             tracing::warn!(
                 pr = pr_number,
                 rc = out.status.code().unwrap_or(-1),
-                stderr_tail = %truncate_for_log(&String::from_utf8_lossy(&out.stderr), 240),
+                stderr_tail = %stderr_tail,
                 "auto-merge arm failed; PR open but not armed"
             );
-            return Ok(false);
+            return Ok((
+                false,
+                Some(format!("gh pr merge --auto failed: {stderr_tail}")),
+            ));
         }
-        Ok(true)
+        Ok((true, None))
     }
 }
 
@@ -445,13 +477,29 @@ impl Ship for ManualShipPath {
         // 4. Resolve head SHA for the receipt.
         let head_sha = self.resolve_head_sha().await?;
 
-        // 5. CREDIBLE-1607: Arm auto-merge ONLY when explicitly requested.
-        //    Worker ship paths leave auto_merge=false; arming is owned by the
-        //    review organ after VERDICT: APPROVE.
-        let auto_merge_armed = if self.auto_merge {
-            self.arm_auto_merge(pr_number).await?
+        // 4b. Record typed gap_prs link when .chump/state.db exists locally.
+        if !self.dry_run && pr_number > 0 {
+            if let Err(err) = crate::bot_merge::record_gap_pr_if_store_exists(
+                &self.repo_root,
+                &self.intent.gap_id,
+                pr_number,
+                &head_sha,
+            ) {
+                tracing::warn!(
+                    gap = %self.intent.gap_id,
+                    pr = pr_number,
+                    %err,
+                    "failed to record gap_prs link in ManualShipPath"
+                );
+            }
+        }
+
+        // 5. CREDIBLE-1607 + CREDIBLE-1576: Arm auto-merge ONLY when explicitly
+        //    requested AND allowed by arm_policy + gate_guard.
+        let (auto_merge_armed, auto_merge_note) = if self.auto_merge {
+            self.arm_auto_merge_with_note(pr_number).await?
         } else {
-            false
+            (false, None)
         };
 
         Ok(ShipReceipt {
@@ -459,6 +507,7 @@ impl Ship for ManualShipPath {
             pr_url,
             head_sha,
             auto_merge_armed,
+            auto_merge_note,
             shipped_at: Utc::now(),
         })
     }

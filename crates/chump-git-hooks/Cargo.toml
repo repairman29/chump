@@ -2,21 +2,32 @@
 name = "chump-git-hooks"
 version = "0.1.0"
 edition = "2021"
-description = "Rust-native git hook framework for Chump: HookContext with env-immunity (INFRA-1950 root-cause class), pluggable Hook trait, and concrete ForceWithLeaseRaceGuard (INFRA-345 Guard 3 port). Phase 1 of INFRA-1997 / META-107 Rust-first migration."
+description = "Cross-platform Rust git hook firewall for Chump: env-scrubbed PreCommitContext + HookContext, LeaseCollisionGuard, SecretPatternGuard, SubmoduleSanityGuard, BookSyncGuard, RustFmtGuard, ForceWithLeaseRaceGuard, ProtectedBranchGuard, BotMergeRequiredGuard, and portable hook installer."
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-git-hooks"
 license = "AGPL-3.0-only"
-keywords = ["git", "hooks", "pre-push", "chump", "ci"]
+keywords = ["git", "hooks", "pre-commit", "pre-push", "chump"]
 categories = ["development-tools", "command-line-utilities"]
 readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+chump-agent-lease = { path = "../chump-agent-lease", version = "0.3.0" }
+chump-pal = { path = "../chump-pal", version = "0.1.0" }
 clap = { version = "4", features = ["derive"] }
+serde_json = "1.0"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [[bin]]
 name = "chump-pre-push"
 path = "src/bin/chump-pre-push.rs"
+
+[[bin]]
+name = "chump-pre-commit"
+path = "src/bin/chump-pre-commit.rs"

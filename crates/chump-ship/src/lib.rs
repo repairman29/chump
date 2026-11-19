@@ -42,9 +42,16 @@
 
 pub mod arm_policy;
 pub mod bot_merge;
+pub mod cli;
+pub mod gate_guard;
 pub mod landing;
 pub mod manual_ship;
 pub mod ship;
+
+pub use gate_guard::{
+    check_changed_files, check_gate_arm_refused, matches_gate_glob, GateArmRefusal,
+    BOT_MERGE_GATE_FILE_GLOBS,
+};
 
 pub use landing::{
     landed, landed_with, GithubLandingSource, LandingError, LandingProvider, LandingSource,

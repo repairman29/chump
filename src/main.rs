@@ -1052,7 +1052,9 @@ fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
         // Only the legacy `chump ship <GAP-ID>` form gets the `gap ship` alias.
         "ship" => {
             let sub2 = args.get(2).map(String::as_str);
-            if sub2 != Some("plan") && sub2 != Some("execute") {
+            let is_ship_executor = matches!(sub2, Some("plan" | "execute" | "run" | "bot-merge"))
+                || sub2.map(|s| s.starts_with('-')).unwrap_or(true);
+            if !is_ship_executor {
                 args[1] = "gap".to_string();
                 args.insert(2, "ship".to_string());
             }
@@ -2321,6 +2323,99 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         return ship_execute_cli(&args[3..]).await;
+    }
+
+    // `chump ship` executor (Milestone 3): `chump ship [run] --gap <ID> [--mode manual|bot-merge] [--gate-arm-check] ...`
+    if args.get(1).map(String::as_str) == Some("ship") {
+        let mut ship_argv: Vec<String> = vec!["chump-ship".to_string()];
+        let tail = match args.get(2).map(String::as_str) {
+            Some("run") => &args[3..],
+            Some("bot-merge") => {
+                ship_argv.push("--mode".to_string());
+                ship_argv.push("bot-merge".to_string());
+                &args[3..]
+            }
+            _ => &args[2..],
+        };
+        ship_argv.extend_from_slice(tail);
+        let code = chump_ship::cli::run_from_itr(ship_argv).await;
+        std::process::exit(code as i32);
+    }
+
+    // `chump hook <install|pre-commit|pre-push|status>` (Milestone 3) — cross-platform Rust git hook firewall.
+    if args.get(1).map(String::as_str) == Some("hook") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("--help");
+        match sub {
+            "install" => {
+                let root = repo_path::repo_root();
+                match chump_git_hooks::install_hooks(&root) {
+                    Ok(report) => {
+                        println!(
+                            "Installed portable git hooks in {}:\n  - {}\n  - {}",
+                            report.hooks_dir.display(),
+                            report.pre_commit_path.display(),
+                            report.pre_push_path.display()
+                        );
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump hook install failed: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "status" => {
+                let root = repo_path::repo_root();
+                let st = chump_git_hooks::hooks_status(&root);
+                println!("hooks_dir: {}", st.hooks_dir.display());
+                println!(
+                    "pre-commit: {}",
+                    if st.pre_commit_installed {
+                        "installed"
+                    } else {
+                        "not installed"
+                    }
+                );
+                println!(
+                    "pre-push:   {}",
+                    if st.pre_push_installed {
+                        "installed"
+                    } else {
+                        "not installed"
+                    }
+                );
+                return Ok(());
+            }
+            "pre-commit" => {
+                let code = chump_git_hooks::run_pre_commit_cli();
+                std::process::exit(code as i32);
+            }
+            "pre-push" => {
+                let remote = args.get(3).cloned();
+                let stdin_buf = match chump_git_hooks::read_stdin_to_string() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[chump hook pre-push] failed reading stdin: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                let code = chump_git_hooks::run_pre_push_cli(remote, &stdin_buf);
+                std::process::exit(code as i32);
+            }
+            _ => {
+                println!("Usage: chump hook <install|pre-commit|pre-push|status>");
+                println!();
+                println!("Subcommands:");
+                println!("  install     Write portable #!/bin/sh pre-commit & pre-push shims to git hooks dir");
+                println!("  pre-commit  Run the cross-platform Rust pre-commit guard chain");
+                println!("  pre-push    Run the cross-platform Rust pre-push guard chain");
+                println!("  status      Show whether Rust hook shims are installed");
+                if sub == "--help" || sub == "-h" || sub == "help" {
+                    return Ok(());
+                }
+                std::process::exit(2);
+            }
+        }
     }
 
     // `chump init` (UX-001) — first-run setup: detect model, write .env, start server, open browser.
