@@ -19,8 +19,10 @@
 //! socket (CLI reads via chumpd) is the next slice; see MISSION-051 AC.
 
 mod file_sandbox;
+pub mod lease_reaper;
 #[path = "../../../src/node_pause.rs"]
 pub mod node_pause;
+pub mod oauth_sync;
 mod worker_loop;
 
 use serde::{Deserialize, Serialize};
@@ -132,8 +134,14 @@ impl Config {
     }
 
     fn mode(&self) -> String {
-        fs::read_to_string(self.home.join(".chump/fleet-mode"))
-            .map(|s| s.trim().to_string())
+        if let Ok(s) = fs::read_to_string(self.home.join(".chump/fleet-mode")) {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+        chump_config::ChumpConfig::load_effective()
+            .map(|c| c.fleet.mode.as_str().to_string())
             .unwrap_or_else(|_| "off".into())
     }
 
@@ -141,8 +149,12 @@ impl Config {
         let from_file = fs::read_to_string(self.repo.join(".chump/fleet-desired-size"))
             .ok()
             .and_then(|s| s.trim().parse::<usize>().ok());
-        match (from_file, self.mode().as_str()) {
-            (Some(n), _) if n > 0 => n.min(8),
+        let cfg_desired = chump_config::ChumpConfig::load_effective()
+            .ok()
+            .map(|c| c.fleet.desired_workers)
+            .filter(|&n| n > 0);
+        match (from_file.or(cfg_desired), self.mode().as_str()) {
+            (Some(n), _) if n > 0 => n.min(64),
             (_, "grind") => 2,
             (_, "travel") => 2,
             _ => 0,
@@ -211,33 +223,53 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
     let log_err = log.try_clone()?;
 
     let worker = cfg.repo.join("scripts/dispatch/worker.sh");
-    let path_env = format!(
-        "/opt/homebrew/bin:{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/usr/bin:/bin",
-        cfg.home.display(),
-        cfg.home.display()
-    );
+    let use_legacy_sh = !cfg!(windows)
+        && std::env::var("CHUMP_WORKER_LEGACY_SH").as_deref() == Ok("1")
+        && worker.is_file();
+    let chumpd_exe = std::env::current_exe().unwrap_or_else(|_| {
+        PathBuf::from(if cfg!(windows) {
+            "chumpd.exe"
+        } else {
+            "chumpd"
+        })
+    });
 
-    // RESILIENT-178: workers run with the operator's full user file
-    // authority by default (macOS TCC prompt, 2026-07-19 — a stray
-    // find/grep reached an iCloud-synced path and the OS attributed the
-    // access-request dialog to the operator). chumpd is the chokepoint
-    // that spawns every worker, so it wraps the process in a sandbox-exec
-    // profile scoped to repo + worktrees + tmp + toolchains, with the
-    // known TCC-prompting surfaces explicitly denied. Structural fix, not
-    // advisory prompt discipline.
+    let path_env = {
+        let mut dirs: Vec<PathBuf> = vec![cfg.home.join(".cargo/bin"), cfg.home.join(".local/bin")];
+        if !cfg!(windows) {
+            dirs.insert(0, PathBuf::from("/opt/homebrew/bin"));
+        }
+        if let Some(existing) = std::env::var_os("PATH") {
+            dirs.extend(std::env::split_paths(&existing));
+        }
+        std::env::join_paths(dirs)
+            .map(|os| os.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+
     let worktree_base = std::env::var("CHUMP_WORKTREE_BASE").ok().map(PathBuf::from);
     let sandboxed = file_sandbox::worker_sandbox_enabled();
     let mut command = if sandboxed {
         let profile =
             file_sandbox::build_worker_profile(&cfg.repo, worktree_base.as_deref(), &cfg.home);
         let mut c = Command::new("/usr/bin/sandbox-exec");
-        c.arg("-p").arg(profile).arg("/bin/bash").arg(&worker);
+        c.arg("-p").arg(profile);
+        if use_legacy_sh {
+            c.arg("/bin/sh").arg(&worker);
+        } else {
+            c.arg(&chumpd_exe).arg("worker").arg("--native");
+        }
         c
-    } else {
-        let mut c = Command::new("/bin/bash");
+    } else if use_legacy_sh {
+        let mut c = Command::new("/bin/sh");
         c.arg(&worker);
         c
+    } else {
+        let mut c = Command::new(&chumpd_exe);
+        c.arg("worker").arg("--native");
+        c
     };
+    chump_pal::configure_isolated_child(&mut command);
 
     // MISSION-051 / RESILIENT-184: backend selection. CHUMPD_FLEET_BACKEND
     // lets an operator run the fleet on an open model (chump-local) instead
@@ -273,10 +305,11 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
     let build_jobs = cargo_build_jobs();
     eprintln!("chumpd: worker {agent_id} CARGO_BUILD_JOBS={build_jobs} (derived from RAM/cpus)");
 
+    let file_cfg = chump_config::ChumpConfig::load_effective().unwrap_or_default();
     let agent_harness = std::env::var("CHUMP_AGENT_HARNESS")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "claude".to_string());
+        .unwrap_or_else(|| file_cfg.effective_harness().to_string());
 
     for (k, v) in worker_loop::resolve_worker_child_env(&state_dir) {
         command.env(k, v);
@@ -321,15 +354,16 @@ fn takeover(_cfg: &Config) {
     if std::env::var("CHUMPD_TAKEOVER").as_deref() == Ok("0") {
         return;
     }
-    let _ = Command::new("/usr/bin/pkill")
-        .args(["-f", "dispatch/worker.sh"])
-        .status();
-    let _ = Command::new("/bin/bash")
-        .args([
-            "-lc",
-            "/opt/homebrew/bin/tmux kill-session -t chump-fleet 2>/dev/null; true",
-        ])
-        .status();
+    #[cfg(unix)]
+    {
+        let _ = Command::new("pkill")
+            .args(["-f", "dispatch/worker.sh"])
+            .status();
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", "chump-fleet"])
+            .stderr(Stdio::null())
+            .status();
+    }
 }
 
 struct Slot {
@@ -523,6 +557,21 @@ async fn main() {
         }
     };
 
+    // Spawn native cross-platform maintenance organs (Milestone 4):
+    // 1. Subscription OAuth token sync/refresher (every 5 min + immediate startup pass).
+    let oauth_interval = std::env::var("CHUMP_OAUTH_REFRESH_INTERVAL_S")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(oauth_sync::DEFAULT_OAUTH_REFRESH_INTERVAL_SECS);
+    oauth_sync::spawn_background_sync(oauth_sync::resolve_oauth_token_target(), oauth_interval);
+
+    // 2. Pure-Rust stale `.chump-locks/*.json` lease reaper (every 60s + immediate pass).
+    let reap_interval = std::env::var("CHUMP_LEASE_REAP_INTERVAL_S")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(lease_reaper::DEFAULT_LEASE_REAP_INTERVAL_SECS);
+    lease_reaper::spawn_background_reaper(cfg.repo.join(".chump-locks"), reap_interval);
+
     // scanner-anchor: "kind":"chumpd_started"
     emit(
         &cfg,
@@ -711,7 +760,7 @@ async fn main() {
 
         write_status(&cfg, &mode, desired, &slots);
         scan_worker_sandbox_denials(&cfg, TICK_SECS);
-        std::thread::sleep(Duration::from_secs(TICK_SECS));
+        tokio::time::sleep(Duration::from_secs(TICK_SECS)).await;
     }
 
     // Graceful shutdown: take the children with us (launchd/systemd own OUR

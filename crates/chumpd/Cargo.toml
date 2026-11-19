@@ -14,9 +14,14 @@ path = "src/main.rs"
 
 [dependencies]
 # INFRA-8190: the ONE gap-store path resolver.
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 chump-store-path = { path = "../chump-store-path", version = "0.1.0" }
+chump-config = { path = "../chump-config", version = "0.1.0" }
 chump-pal = { path = "../chump-pal", version = "0.1.0" }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full", "net"] }
 serde = { version = "1.0", features = ["derive"] }
 chump-disk-inventory = { path = "../chump-disk-inventory" }
+
+[dev-dependencies]
+tempfile = "3"

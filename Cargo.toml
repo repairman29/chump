@@ -55,6 +55,7 @@ members = [
     "crates/chump-storage",
     "crates/chump-comprehension-organ",
     "crates/chump-idea-drop",
+    "crates/chump-config",
     "crates/chump-pal",
     "crates/chump-provision",
     "workspace-hack",
@@ -185,6 +186,7 @@ chump-kpi-report = { path = "crates/chump-kpi-report", version = "0.1.0" } # EFF
 chump-cron = { path = "crates/chump-cron", version = "0.1.0" } # INFRA-2057: chump cron — cron expr to launchd/systemd generator
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
+chump-config = { path = "crates/chump-config", version = "0.1.0" }
 chump-git-hooks = { path = "crates/chump-git-hooks", version = "0.1.0" }
 chump-pal = { path = "crates/chump-pal", version = "0.1.0" }
 async-nats = "0.50"

@@ -48,14 +48,93 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let want_json = args.iter().any(|a| a == "--json");
+    let want_toml = args.iter().any(|a| a == "--toml");
+    let force = args.iter().any(|a| a == "--force");
 
-    // Default-or-explicit "show" — anything else is unknown.
     let sub = args.iter().find(|a| !a.starts_with("--"));
     match sub.map(String::as_str) {
-        None | Some("show") => {}
+        None | Some("show") => {
+            if want_toml {
+                match chump_config::ChumpConfig::load_effective() {
+                    Ok(cfg) => match cfg.redacted().to_toml_string() {
+                        Ok(s) => {
+                            print!("{s}");
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("chump config show --toml: {e}");
+                            return 1;
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("chump config show --toml: {e}");
+                        return 1;
+                    }
+                }
+            }
+        }
+        Some("path") => {
+            println!("{}", chump_config::default_config_path().display());
+            return 0;
+        }
+        Some("init") => {
+            let target = chump_config::default_config_path();
+            let existed = target.exists();
+            match chump_config::write_starter_config(&target, force) {
+                Ok(written) => {
+                    if existed && !force {
+                        println!(
+                            "Config already present and valid at {} (pass --force to overwrite)",
+                            written.display()
+                        );
+                    } else {
+                        println!("Initialized starter config at {}", written.display());
+                    }
+                    return 0;
+                }
+                Err(e) => {
+                    eprintln!("chump config init failed: {e}");
+                    return 1;
+                }
+            }
+        }
+        Some("validate") => {
+            let path = chump_config::default_config_path();
+            match chump_config::ChumpConfig::load_from_path(&path) {
+                Ok(mut cfg) => {
+                    cfg.apply_env_overrides();
+                    if let Err(err) = cfg.validate() {
+                        eprintln!("{err}");
+                        return 1;
+                    }
+                    if want_json {
+                        println!(
+                            "{{\"valid\":true,\"path\":\"{}\",\"providers\":{},\"auth_mode\":\"{}\",\"fleet_mode\":\"{}\"}}",
+                            json_escape(&path.display().to_string()),
+                            cfg.providers.len(),
+                            cfg.auth.mode.as_str(),
+                            cfg.fleet.mode.as_str()
+                        );
+                    } else {
+                        println!(
+                            "OK: {} is valid (auth_mode={}, fleet_mode={}, providers={})",
+                            path.display(),
+                            cfg.auth.mode.as_str(),
+                            cfg.fleet.mode.as_str(),
+                            cfg.providers.len()
+                        );
+                    }
+                    return 0;
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    return 1;
+                }
+            }
+        }
         Some(other) => {
             eprintln!("chump config: unknown subcommand '{other}'");
-            eprintln!("usage: chump config [show] [--json]");
+            eprintln!("usage: chump config <init|show|validate|path> [--json|--toml|--force]");
             return 2;
         }
     }
@@ -70,10 +149,13 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 fn print_help() {
-    println!("chump config — print runtime configuration snapshot (INFRA-2371)");
+    println!("chump config — manage and inspect Universal Chump configuration");
     println!();
     println!("USAGE");
-    println!("  chump config [show] [--json]");
+    println!("  chump config [show] [--json|--toml]");
+    println!("  chump config init [--force]");
+    println!("  chump config validate [--json]");
+    println!("  chump config path");
     println!();
     println!("Shows:");
     println!("  - provider cascade slots (name, base URL, privacy tier, RPD, calls today)");
@@ -121,10 +203,8 @@ struct SlotSnapshot {
 }
 
 fn collect_snapshot() -> Snapshot {
-    let home_set = std::env::var("HOME").is_ok();
-    let config_toml_path = std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join(".chump").join("config.toml"));
+    let home_set = std::env::var_os("HOME").is_some() || std::env::var_os("USERPROFILE").is_some();
+    let config_toml_path = Some(chump_config::default_config_path());
     let config_toml_present = config_toml_path
         .as_ref()
         .map(|p| p.exists())

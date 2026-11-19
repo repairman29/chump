@@ -19,6 +19,7 @@ pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
 mod scaffold_holes;
+mod service_cmd;
 // EFFECTIVE-023: ambient_emit/rotate/stream live in crates/ambient-cli/ now.
 // Re-exported at the crate root so existing `crate::ambient_emit::*` callers
 // (18+ across the binary) keep working without churn.
@@ -2416,6 +2417,17 @@ async fn main() -> Result<()> {
                 std::process::exit(2);
             }
         }
+    }
+
+    // `chump up` & `chump service <install|uninstall|status>` & `chump --worker-tick` (Milestone 4)
+    if args.get(1).map(String::as_str) == Some("up") {
+        std::process::exit(service_cmd::run_up_cli(&args[2..]));
+    }
+    if args.get(1).map(String::as_str) == Some("service") {
+        std::process::exit(service_cmd::run_service_cli(&args[2..]));
+    }
+    if args.get(1).map(String::as_str) == Some("--worker-tick") {
+        std::process::exit(service_cmd::run_worker_tick());
     }
 
     // `chump init` (UX-001) — first-run setup: detect model, write .env, start server, open browser.

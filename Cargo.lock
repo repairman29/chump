@@ -1412,6 +1412,7 @@ dependencies = [
  "chump-atomic-claim",
  "chump-bench",
  "chump-cancel-registry",
+ "chump-config",
  "chump-coord",
  "chump-cost-tracker",
  "chump-cron",
@@ -1583,6 +1584,18 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "chump-config"
+version = "0.1.0"
+dependencies = [
+ "chump-pal",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "toml 1.1.6+spec-1.1.0",
 ]
 
 [[package]]
@@ -2237,11 +2250,14 @@ dependencies = [
 name = "chumpd"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "chump-config",
  "chump-disk-inventory",
  "chump-pal",
  "chump-store-path",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
