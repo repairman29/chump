@@ -38,8 +38,7 @@ const DEFAULT_ABSENCE_THRESHOLD_HOURS: u64 = 4;
 
 /// Default filesystem path whose mtime we inspect.
 fn default_activity_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".claude")
+    chump_pal::user_home().join(".claude")
 }
 
 fn absence_threshold() -> Duration {
@@ -59,10 +58,7 @@ fn activity_path() -> PathBuf {
 fn digest_path() -> PathBuf {
     std::env::var("CHUMP_AUTONOMOUS_DIGEST_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join(".chump-autonomous-digest.jsonl")
-        })
+        .unwrap_or_else(|_| chump_pal::user_home().join(".chump-autonomous-digest.jsonl"))
 }
 
 fn daily_cost_cap_usd() -> f64 {

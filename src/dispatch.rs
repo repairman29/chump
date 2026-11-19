@@ -378,27 +378,23 @@ pub fn oauth_token_file_path() -> Option<PathBuf> {
             }
         }
     }
-    if let Ok(chump_home) = std::env::var("CHUMP_HOME") {
-        let trimmed = chump_home.trim();
-        if !trimmed.is_empty() {
-            let candidate = PathBuf::from(trimmed).join(".chump/oauth-token.json");
-            if candidate.exists() {
-                return Some(candidate);
-            }
-        }
+    let chump_tok = chump_pal::chump_home().join("oauth-token.json");
+    if chump_tok.exists() {
+        return Some(chump_tok);
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let trimmed = home.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join(".chump/oauth-token.json"));
-        }
+    let claude_creds = chump_pal::state_base_dir()
+        .join(".claude")
+        .join(".credentials.json");
+    if claude_creds.exists() {
+        return Some(claude_creds);
     }
-    None
+    Some(chump_tok)
 }
 
 /// INFRA-8114 / RESILIENT-1494: Read an OAuth token from `path`
-/// (`~/.chump/oauth-token.json`), supporting `"token"`, `"access_token"`,
-/// `"claudeAiOauthToken"`, `"oauth_token"`, or a raw token string.
+/// (`~/.chump/oauth-token.json` or `~/.claude/.credentials.json`), supporting
+/// `"token"`, `"access_token"`, `"accessToken"`, `"claudeAiOauthToken"`,
+/// `"oauth_token"`, nested `"claudeAiOauth"`, or a raw token string.
 pub fn read_oauth_token_from_file(path: &Path) -> Option<String> {
     let raw = std::fs::read_to_string(path).ok()?;
     let trimmed = raw.trim();
@@ -406,8 +402,15 @@ pub fn read_oauth_token_from_file(path: &Path) -> Option<String> {
         return None;
     }
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        for key in ["token", "access_token", "claudeAiOauthToken", "oauth_token"] {
-            if let Some(s) = val.get(key).and_then(|v| v.as_str()) {
+        let obj = val.get("claudeAiOauth").unwrap_or(&val);
+        for key in [
+            "token",
+            "access_token",
+            "accessToken",
+            "claudeAiOauthToken",
+            "oauth_token",
+        ] {
+            if let Some(s) = obj.get(key).and_then(|v| v.as_str()) {
                 let t = s.trim();
                 if !t.is_empty() {
                     return Some(t.to_string());
@@ -527,12 +530,7 @@ pub fn resolve_shared_cargo_target_dir() -> PathBuf {
             }
         }
     }
-    let base = std::env::var("HOME")
-        .ok()
-        .map(|h| h.trim().to_string())
-        .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let base = chump_pal::user_home();
     let shared = base.join(".cargo/chump-shared-target");
     let _ = std::fs::create_dir_all(&shared);
     shared
@@ -593,25 +591,9 @@ pub fn is_load_exceeding_nproc(load_1m: f64, nproc: usize) -> bool {
     nproc > 0 && load_1m > (nproc as f64)
 }
 
-/// Read `(load_1m, nproc)` from the OS.
+/// Read `(load_1m, nproc)` from the OS via `chump_pal`.
 pub fn current_load_1m_and_nproc() -> (f64, usize) {
-    let nproc = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
-    #[cfg(unix)]
-    let load_1m = {
-        let mut avg = [0.0f64; 1];
-        // SAFETY: getloadavg writes at most 1 element into `avg`.
-        let n = unsafe { libc::getloadavg(avg.as_mut_ptr(), 1) };
-        if n == 1 {
-            avg[0]
-        } else {
-            0.0
-        }
-    };
-    #[cfg(not(unix))]
-    let load_1m = 0.0;
-    (load_1m, nproc)
+    (chump_pal::load_average_1m(), chump_pal::available_cpus())
 }
 
 fn host_load_exceeds_nproc() -> bool {
@@ -1019,31 +1001,14 @@ fn classify_exit(result: &ShipResult) -> (i32, String, &'static str) {
     }
 }
 
-/// INFRA-8198: probe whether `pid` is still alive via a signal-0 `kill`
-/// (doesn't actually signal; just checks the process exists and we have
-/// permission to signal it). Used for the `child_alive_at_exit` report.
-#[cfg(unix)]
+/// INFRA-8198: probe whether `pid` is still alive via `chump_pal`.
 fn child_is_alive(pid: u32) -> bool {
-    // SAFETY: kill(pid, 0) with signal 0 sends no signal — it only probes
-    // whether `pid` exists and is signalable, which is safe for any pid.
-    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
-}
-
-#[cfg(not(unix))]
-fn child_is_alive(_pid: u32) -> bool {
-    false
+    chump_pal::is_pid_alive(pid)
 }
 
 /// RESILIENT-1624: kill the urgent-inbox poll loop that the SessionStart hook
 /// (`scripts/setup/session-start-urgent-inbox-poll.sh`) daemonized for this
-/// worktree. The hook writes the loop's pid to
-/// `<working_dir>/.chump-locks/urgent-inbox-poll-loop.pid`; because the hook
-/// runs inside the headless `claude -p` work child and nohup/disowns the loop
-/// out of the process group, INFRA-8198's `kill_process_group` never reaches
-/// it — so it would otherwise survive as an immortal poller pinning the
-/// worktree cwd against the Class-D reaper. Best-effort: a missing pidfile, a
-/// stale pid, or a non-unix host is a no-op.
-#[cfg(unix)]
+/// worktree.
 fn kill_urgent_inbox_poll_loop(working_dir: &Path) {
     let pidfile = working_dir
         .join(".chump-locks")
@@ -1059,42 +1024,18 @@ fn kill_urgent_inbox_poll_loop(working_dir: &Path) {
         return;
     };
     if pid > 1 && child_is_alive(pid as u32) {
-        // SAFETY: SIGTERM to a specific, still-live pid read from our own
-        // worktree's pidfile; no negative pid / process-group semantics here.
-        unsafe {
-            libc::kill(pid as libc::pid_t, libc::SIGTERM);
-        }
+        let _ = chump_pal::terminate_process(pid as u32, false);
     }
     let _ = std::fs::remove_file(&pidfile);
 }
 
-#[cfg(not(unix))]
-fn kill_urgent_inbox_poll_loop(_working_dir: &Path) {}
-
-/// INFRA-8198: signal a whole process group (negative pid). `pid` must be a
-/// pgid produced by [`configure_child_lifetime`]'s `process_group(0)` (which
-/// makes the child its own group leader, so its pgid equals its pid) — used
-/// by the budget/hang kill paths in [`wait_with_hang_detection`] so a
-/// child's own subprocesses (cargo, git, …) die with it instead of being
-/// orphaned onto PPID 1.
-fn kill_process_group(pid: u32, sig: libc::c_int) {
-    // SAFETY: `pid` is a process group this `chump dispatch` process itself
-    // created for its spawned child; signaling `-pid` can only reach that
-    // group.
-    unsafe {
-        libc::kill(-(pid as libc::pid_t), sig);
-    }
-}
-
-/// INFRA-8083: Terminate a child process and its entire process group (`-pgid`,
-/// where `pgid == child.id()` from `process_group(0)`). Sends `SIGTERM` first,
-/// polls briefly for exit, then sends `SIGKILL` to the group, calls
-/// `child.kill()`, and reaps `child.wait()`.
-#[cfg(unix)]
+/// INFRA-8083: Terminate a child process and its entire process group / tree.
+/// Sends graceful termination first, polls briefly for exit, then force-kills
+/// the group, calls `child.kill()`, and reaps `child.wait()`.
 pub fn kill_child_process_group(child: &mut Child) {
     let pid = child.id();
     if pid > 1 {
-        kill_process_group(pid, libc::SIGTERM);
+        let _ = chump_pal::terminate_process_group(pid, false);
         let start = std::time::Instant::now();
         while start.elapsed() < Duration::from_millis(200) {
             if let Ok(Some(_)) = child.try_wait() {
@@ -1102,14 +1043,8 @@ pub fn kill_child_process_group(child: &mut Child) {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        kill_process_group(pid, libc::SIGKILL);
+        let _ = chump_pal::terminate_process_group(pid, true);
     }
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
-#[cfg(not(unix))]
-pub fn kill_child_process_group(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -2397,7 +2332,7 @@ fn wait_with_hang_detection_cfg(
                     // made the child its own process-group leader, so this
                     // also reaches any subprocess it spawned (cargo, git,
                     // …) that would otherwise survive the direct-pid kill.
-                    kill_process_group(child_pid, libc::SIGTERM);
+                    let _ = chump_pal::terminate_process_group(child_pid, false);
                     budget_kill_in_flight = Some(std::time::Instant::now());
                 }
 
@@ -2405,7 +2340,7 @@ fn wait_with_hang_detection_cfg(
                 // before SIGKILL. INFRA-1972 AC: "at budget_secs + 30s: SIGKILL".
                 if let Some(term_at) = budget_kill_in_flight {
                     if term_at.elapsed().as_secs() > cfg.grace_secs {
-                        kill_process_group(child_pid, libc::SIGKILL);
+                        let _ = chump_pal::terminate_process_group(child_pid, true);
                         let _ = child.wait();
                         bail!(
                             "{} exceeded subagent budget ({} secs) for gap {}; SIGTERM at budget, \
@@ -2478,7 +2413,7 @@ fn wait_with_hang_detection_cfg(
                             "[dispatch] {gap_id}: {process_name} idle {idle_secs}s after \
                              committing; stopping it and proceeding to ship"
                         );
-                        kill_process_group(child_pid, libc::SIGTERM);
+                        let _ = chump_pal::terminate_process_group(child_pid, false);
                         let term_at = std::time::Instant::now();
                         while term_at.elapsed().as_secs() <= cfg.grace_secs {
                             if let Ok(Some(_)) = child.try_wait() {
@@ -2486,10 +2421,9 @@ fn wait_with_hang_detection_cfg(
                             }
                             std::thread::sleep(Duration::from_millis(200));
                         }
-                        kill_process_group(child_pid, libc::SIGKILL);
+                        let _ = chump_pal::terminate_process_group(child_pid, true);
                         let _ = child.wait();
-                        use std::os::unix::process::ExitStatusExt as _;
-                        return Ok(std::process::ExitStatus::from_raw(0));
+                        return Ok(chump_pal::success_exit_status());
                     }
                     kill_child_process_group(&mut child);
                     bail!(
@@ -2652,53 +2586,19 @@ fn emit_dispatch_exit(ev: DispatchExitEvent) {
 /// calls `std::process::exit` (which skips Rust's `Drop` entirely, so
 /// `ChildGroupGuard` alone cannot cover that case — this is the exact
 /// mechanism gap the INFRA-8198 bug report calls out).
-#[cfg(unix)]
 fn configure_child_lifetime(cmd: &mut Command) {
-    use std::os::unix::process::CommandExt;
-    cmd.process_group(0);
-    #[cfg(target_os = "linux")]
-    {
-        // SAFETY: `pre_exec` itself is `unsafe` only because the closure
-        // runs in the forked child between `fork()` and `exec()`, where very
-        // few operations are safe (no allocation, no locking). `prctl` is
-        // safe to call unconditionally in that window.
-        unsafe {
-            cmd.pre_exec(|| {
-                // SAFETY: PR_SET_PDEATHSIG with SIGTERM only arms a
-                // kernel-delivered signal for when our parent (this `chump
-                // dispatch` process) exits; it has no other side effect.
-                // Already inside the enclosing `unsafe` block above (unsafe
-                // is lexical, not runtime-scoped, so it covers this closure
-                // body too) — no nested `unsafe` needed here.
-                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
-                Ok(())
-            });
-        }
-    }
+    chump_pal::configure_isolated_child(cmd);
 }
 
-#[cfg(not(unix))]
-fn configure_child_lifetime(_cmd: &mut Command) {}
-
-/// RAII guard that kills a spawned work-child's entire process group (see
-/// [`configure_child_lifetime`]) unless [`ChildGroupGuard::release`] was
-/// called first. Catches exit paths that skip explicit cleanup — an early
-/// `?`-propagated error out of a `spawn_*` function, a panic, or any other
-/// return path that doesn't reach a hand-written kill call. `PR_SET_PDEATHSIG`
-/// (Linux-only) is the backstop for the case this guard's own `Drop` cannot
-/// cover: `std::process::exit` or a SIGKILL of the dispatch process itself.
-#[cfg(unix)]
+/// RAII guard that kills a spawned work-child's entire process group / tree
+/// unless [`ChildGroupGuard::release`] was called first.
 struct ChildGroupGuard {
-    /// Equal to `pid`: [`configure_child_lifetime`] makes the child the
-    /// leader of its own process group (`process_group(0)`), so its pgid
-    /// is its own pid.
     pgid: u32,
     pid: u32,
     gap: String,
     released: bool,
 }
 
-#[cfg(unix)]
 impl ChildGroupGuard {
     fn new(pid: u32, gap: &str) -> Self {
         Self {
@@ -2714,18 +2614,8 @@ impl ChildGroupGuard {
     fn release(&mut self) {
         self.released = true;
     }
-
-    fn signal_group(&self, sig: libc::c_int) {
-        // SAFETY: `pgid` is the process group chump dispatch itself created
-        // for this child via `process_group(0)`; signaling `-pgid` can only
-        // reach that group, never an unrelated one it doesn't own.
-        unsafe {
-            libc::kill(-(self.pgid as libc::pid_t), sig);
-        }
-    }
 }
 
-#[cfg(unix)]
 impl Drop for ChildGroupGuard {
     fn drop(&mut self) {
         if self.released {
@@ -2735,7 +2625,7 @@ impl Drop for ChildGroupGuard {
             "[dispatch] {} ChildGroupGuard: killing orphaned process group pgid={} (pid={})",
             self.gap, self.pgid, self.pid
         );
-        self.signal_group(libc::SIGTERM);
+        let _ = chump_pal::terminate_process_group(self.pgid, false);
         let start = std::time::Instant::now();
         while start.elapsed().as_secs() < 10 {
             if !child_is_alive(self.pid) {
@@ -2743,19 +2633,8 @@ impl Drop for ChildGroupGuard {
             }
             std::thread::sleep(Duration::from_millis(200));
         }
-        self.signal_group(libc::SIGKILL);
+        let _ = chump_pal::terminate_process_group(self.pgid, true);
     }
-}
-
-#[cfg(not(unix))]
-struct ChildGroupGuard;
-
-#[cfg(not(unix))]
-impl ChildGroupGuard {
-    fn new(_pid: u32, _gap: &str) -> Self {
-        Self
-    }
-    fn release(&mut self) {}
 }
 
 /// Emit a hang-detection alert to ambient.jsonl (INFRA-406). RESILIENT-1612

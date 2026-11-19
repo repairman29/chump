@@ -378,7 +378,9 @@ fn tempdir() -> Option<String> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    let path = format!("/tmp/chump-rebase-stuck-{ts}");
+    let path = chump_pal::temp_file_path(&format!("chump-rebase-stuck-{ts}"))
+        .to_string_lossy()
+        .into_owned();
     std::fs::create_dir_all(&path).ok()?;
     Some(path)
 }

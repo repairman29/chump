@@ -55,6 +55,7 @@ members = [
     "crates/chump-storage",
     "crates/chump-comprehension-organ",
     "crates/chump-idea-drop",
+    "crates/chump-pal",
     "crates/chump-provision",
     "workspace-hack",
 ]
@@ -184,6 +185,7 @@ chump-kpi-report = { path = "crates/chump-kpi-report", version = "0.1.0" } # EFF
 chump-cron = { path = "crates/chump-cron", version = "0.1.0" } # INFRA-2057: chump cron — cron expr to launchd/systemd generator
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
+chump-pal = { path = "crates/chump-pal", version = "0.1.0" }
 async-nats = "0.50"
 inventory = "0.3"
 axonerai = "0.1"
@@ -194,7 +196,6 @@ rand = "0.10"
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 anyhow = "1.0"
-libc = "0.2"
 thiserror = { version = "2.0", optional = true }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
@@ -229,7 +230,6 @@ serde_yaml = "0.9"
 mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
-web-push = { version = "0.11", default-features = false, features = ["hyper-client"], optional = true }
 mimalloc = { version = "0.1", default-features = false }
 wasmtime = "49"
 wasmtime-wasi = "49"
@@ -237,6 +237,15 @@ wasi-common = "46"
 sha2 = "0.11.0"
 hex = "0.4.3"
 workspace-hack = { version = "0.1", path = "workspace-hack" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Universal Chump v1.0 (M2): `web-push` -> `ece` -> `openssl-sys` requires C OpenSSL.
+# Gate `dep:web-push` to non-Windows targets so Windows builds pull ZERO C OpenSSL
+# even under default features, while macOS/Linux retain VAPID Web Push unchanged.
+[target.'cfg(not(windows))'.dependencies]
+web-push = { version = "0.11", default-features = false, features = ["hyper-client"], optional = true }
 
 [profile.dev]
 # EFFECTIVE-393 (build-speed): the dev/test/CI profile. Cold builds of the

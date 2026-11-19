@@ -4604,8 +4604,12 @@ fn read_oauth_token_file() -> Option<String> {
 /// Shared HOME-reading wrapper for [`read_oauth_token_file`] and
 /// [`token_expires_at`] so both read the same file exactly once per call.
 fn read_oauth_token_file_full() -> Option<OauthTokenFile> {
-    let home = std::env::var("HOME").ok()?;
-    let token_path = PathBuf::from(home).join(".chump/oauth-token.json");
+    let chump_tok = chump_pal::chump_home().join("oauth-token.json");
+    let token_path = if chump_tok.exists() {
+        chump_tok
+    } else {
+        chump_pal::user_home().join(".chump/oauth-token.json")
+    };
     let content = std::fs::read_to_string(&token_path).ok()?;
     parse_oauth_token_json(&content)
 }

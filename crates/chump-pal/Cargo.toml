@@ -1,0 +1,25 @@
+[package]
+name = "chump-pal"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-platform abstraction layer (macOS, Linux, Windows) for Chump host resources, process trees, signals, portable paths, and authenticated loopback IPC"
+repository = "https://github.com/repairman29/chump"
+license = "Apache-2.0"
+
+[dependencies]
+hex = "0.4.3"
+rand = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "signal", "sync", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+serial_test = "4"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

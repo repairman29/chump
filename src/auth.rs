@@ -220,12 +220,12 @@ const VALIDATION_CACHE_TTL_SECS: u64 = 300;
 
 fn validation_cache_path() -> PathBuf {
     if let Ok(p) = std::env::var("CHUMP_AUTH_VALIDATION_CACHE") {
-        return PathBuf::from(p);
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
     }
-    chump_config_path()
-        .parent()
-        .map(|d| d.join("auth-validation-cache.tsv"))
-        .unwrap_or_else(|| PathBuf::from("/tmp/chump-auth-validation-cache.tsv"))
+    chump_pal::chump_home().join("auth-validation-cache.tsv")
 }
 
 /// Cheap non-cryptographic fingerprint of a credential value — used only to
@@ -400,6 +400,16 @@ pub fn detect_credentials() -> AuthCredentials {
             .map(PathBuf::from)
             .unwrap_or_else(default_oauth_token_file);
         if let Some(tok) = read_oauth_token_file(&tok_path) {
+            creds.oauth_token = tok;
+        }
+    }
+
+    // 2b. Cross-platform Claude subscription store (`~/.claude/.credentials.json`
+    //     on Linux/macOS or `%USERPROFILE%\.claude\.credentials.json` on Windows)
+    //     when `oauth-token.json` is absent.
+    if creds.oauth_token.is_empty() {
+        let claude_creds_path = default_claude_credentials_file();
+        if let Some(tok) = read_claude_credentials_file(&claude_creds_path) {
             creds.oauth_token = tok;
         }
     }
@@ -755,19 +765,62 @@ fn parse_toml_kv(line: &str) -> Option<(&str, &str)> {
 }
 
 pub(crate) fn chump_config_path() -> PathBuf {
-    let home = std::env::var("CHUMP_HOME")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home).join(".chump").join("config.toml")
+    chump_pal::chump_home().join("config.toml")
 }
 
 /// The well-known oauth-token.json path the refresher daemon keeps current
 /// (RESILIENT-1506), used as the fallback when CHUMP_OAUTH_TOKEN_FILE is unset.
 fn default_oauth_token_file() -> PathBuf {
-    let home = std::env::var("CHUMP_HOME")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home).join(".chump").join("oauth-token.json")
+    chump_pal::chump_home().join("oauth-token.json")
+}
+
+/// Cross-platform Claude Code subscription credentials file
+/// (`~/.claude/.credentials.json` on Linux/macOS, `%USERPROFILE%\.claude\.credentials.json`
+/// on Windows, or `<CHUMP_HOME>/.claude/.credentials.json` when `CHUMP_HOME` is
+/// overridden for hermetic isolation).
+fn default_claude_credentials_file() -> PathBuf {
+    if let Ok(explicit) = std::env::var("CHUMP_CLAUDE_CREDENTIALS_FILE") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    chump_pal::state_base_dir()
+        .join(".claude")
+        .join(".credentials.json")
+}
+
+/// Parse `~/.claude/.credentials.json` (nested `claudeAiOauth` or flat shape).
+/// Skips tokens whose `expiresAt` (epoch millis) has already passed when no
+/// `refreshToken` is present.
+fn read_claude_credentials_file(path: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let oauth = val.get("claudeAiOauth").unwrap_or(&val);
+    let token = ["accessToken", "access_token", "token", "claudeAiOauthToken"]
+        .iter()
+        .find_map(|k| {
+            oauth
+                .get(*k)
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+        })?;
+    if let Some(exp) = oauth.get("expiresAt").and_then(|x| {
+        x.as_i64()
+            .or_else(|| x.as_str().and_then(|s| s.trim().parse::<i64>().ok()))
+    }) {
+        if exp <= now_ms() {
+            let has_refresh = oauth
+                .get("refreshToken")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.trim().is_empty());
+            if !has_refresh {
+                return None;
+            }
+        }
+    }
+    Some(token.to_string())
 }
 
 /// Read a single `key = "value"` from a named section of ~/.chump/config.toml.
@@ -852,14 +905,7 @@ pub(crate) fn write_config_kv(section: &str, key: &str, value: &str) -> std::io:
     }
 
     std::fs::write(&path, out)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&path)?.permissions();
-        perms.set_mode(0o600);
-        std::fs::set_permissions(&path, perms)?;
-    }
+    chump_pal::restrict_file_permissions(&path)?;
 
     Ok(())
 }
@@ -1616,5 +1662,105 @@ mod tests {
                 assert!(report.usable_count() >= 2); // groq + ollama
             },
         );
+    }
+
+    #[test]
+    fn reads_oauth_token_from_claude_credentials_json_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        std::fs::write(
+            claude_dir.join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-from-claude-creds","refreshToken":"rt-123","expiresAt":4102444800000}}"#,
+        )
+        .unwrap();
+
+        with_env(
+            &[("CHUMP_HOME", dir.path().to_str().unwrap())],
+            &[
+                "ANTHROPIC_API_KEY",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CHUMP_AUTH_MODE",
+                "CHUMP_OAUTH_TOKEN_FILE",
+                "CHUMP_CLAUDE_CREDENTIALS_FILE",
+            ],
+            || {
+                let creds = detect_credentials();
+                assert_eq!(creds.oauth_token, "sk-ant-oat01-from-claude-creds");
+                let auth = resolve(creds);
+                assert_eq!(auth.mode, ActiveMode::OAuth);
+            },
+        );
+    }
+
+    #[test]
+    fn userprofile_fallback_resolves_paths_and_claude_credentials_without_tmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        std::fs::write(
+            claude_dir.join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-win-profile"}}"#,
+        )
+        .unwrap();
+
+        // Simulate Windows environment: CHUMP_HOME and HOME unset, USERPROFILE set.
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let saved_ch = std::env::var("CHUMP_HOME").ok();
+        let saved_home = std::env::var("HOME").ok();
+        let saved_up = std::env::var("USERPROFILE").ok();
+        let saved_api = std::env::var("ANTHROPIC_API_KEY").ok();
+        let saved_oauth = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+        let saved_tok_file = std::env::var("CHUMP_OAUTH_TOKEN_FILE").ok();
+        let saved_val_cache = std::env::var("CHUMP_AUTH_VALIDATION_CACHE").ok();
+
+        std::env::remove_var("CHUMP_HOME");
+        std::env::remove_var("HOME");
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+        std::env::remove_var("CHUMP_OAUTH_TOKEN_FILE");
+        std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE");
+        std::env::set_var("USERPROFILE", dir.path());
+
+        assert_eq!(chump_config_path(), dir.path().join(".chump/config.toml"));
+        assert_eq!(
+            default_oauth_token_file(),
+            dir.path().join(".chump/oauth-token.json")
+        );
+        assert_eq!(
+            validation_cache_path(),
+            dir.path().join(".chump/auth-validation-cache.tsv")
+        );
+        let creds = detect_credentials();
+        assert_eq!(creds.oauth_token, "sk-ant-oat01-win-profile");
+
+        match saved_ch {
+            Some(v) => std::env::set_var("CHUMP_HOME", v),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match saved_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        match saved_up {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        match saved_api {
+            Some(v) => std::env::set_var("ANTHROPIC_API_KEY", v),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match saved_oauth {
+            Some(v) => std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
+        }
+        match saved_tok_file {
+            Some(v) => std::env::set_var("CHUMP_OAUTH_TOKEN_FILE", v),
+            None => std::env::remove_var("CHUMP_OAUTH_TOKEN_FILE"),
+        }
+        match saved_val_cache {
+            Some(v) => std::env::set_var("CHUMP_AUTH_VALIDATION_CACHE", v),
+            None => std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE"),
+        }
     }
 }

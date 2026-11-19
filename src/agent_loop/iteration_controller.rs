@@ -874,10 +874,6 @@ impl<'a> IterationController<'a> {
 // alongside other signal-sensitive machinery in the same process.
 static LOOP_SHUTDOWN_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 
-extern "C" fn loop_on_signal(sig: i32) {
-    LOOP_SHUTDOWN_SIGNAL.store(sig, std::sync::atomic::Ordering::SeqCst);
-}
-
 /// Repeatedly spawns `cmd` (argv[0] + args) every `interval_secs` seconds,
 /// printing one JSON line per iteration to stdout with `run`, `status`,
 /// `start_ts`, and `end_ts` fields. Stops after `max_iters` iterations
@@ -888,12 +884,7 @@ pub fn run_ephemeral_loop(cmd: &[String], interval_secs: u64, max_iters: Option<
         return 1;
     }
 
-    // SAFETY: handler only stores an atomic; async-signal-safe.
-    unsafe {
-        let handler = loop_on_signal as extern "C" fn(i32) as *const () as usize;
-        libc::signal(libc::SIGINT, handler);
-        libc::signal(libc::SIGTERM, handler);
-    }
+    chump_pal::install_shutdown_signal(&LOOP_SHUTDOWN_SIGNAL);
 
     let mut run: u64 = 0;
     loop {

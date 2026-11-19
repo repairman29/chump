@@ -31,8 +31,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixListener;
+use tokio::net::TcpListener;
 
 /// 0 = running; nonzero = the raw signal number that requested shutdown.
 /// Carrying the signal (not just a bool) lets `main` exit with the
@@ -41,25 +40,17 @@ use tokio::net::UnixListener;
 /// stop apart from a SIGINT stop apart from a clean internal exit.
 static SHUTDOWN_SIGNAL: AtomicI32 = AtomicI32::new(0);
 
-extern "C" fn on_term(sig: i32) {
-    SHUTDOWN_SIGNAL.store(sig, Ordering::SeqCst);
-}
-
 /// MISSION-073 AC3: map the signal that requested shutdown to a process
 /// exit code. `0` (no signal — reserved for future non-signal shutdown
 /// paths) exits clean; any real signal uses the standard `128 + signum`
 /// convention shells and systemd/launchd already expect.
 fn exit_code_for_signal(sig: i32) -> i32 {
-    if sig == 0 {
-        0
-    } else {
-        128 + sig
-    }
+    chump_pal::exit_code_for_signal(sig)
 }
 
 /// MISSION-073 AC2 / MISSION-069: fail-open disk-floor gate. Returns
 /// `false` only when free space on the repo filesystem is measurably
-/// below the critical threshold — an unreadable/unparseable `df` never
+/// below the critical threshold — an unreadable/unparseable disk probe never
 /// blocks worker spawning, since chumpd's job is supervising the fleet,
 /// not acting as a disk monitor of record (that's chump-disk-inventory).
 fn disk_floor_gate_open(free_gb: Option<f64>, threshold_gb: f64) -> bool {
@@ -70,49 +61,21 @@ fn disk_floor_gate_open(free_gb: Option<f64>, threshold_gb: f64) -> bool {
 }
 
 fn measure_free_gb(path: &Path) -> Option<f64> {
-    let path_str = path.to_str()?;
-    let out = Command::new("df").args(["-kP", path_str]).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let line = text.lines().nth(1)?;
-    let (_, _, avail_kb) = chump_disk_inventory::parse_df_line(line)?;
-    Some(chump_disk_inventory::kb_to_gb(avail_kb))
+    chump_pal::free_disk_gb(path)
 }
 
 /// Derive CARGO_BUILD_JOBS from physical RAM (~1.2GB per rustc job, half of RAM
 /// budgeted for builds), clamped to 1..=cpus. Falls back to 4 if RAM is unknown.
 fn derive_cargo_build_jobs(total_ram_gb: Option<f64>, cpus: usize) -> usize {
-    let cpus = cpus.max(1);
-    match total_ram_gb {
-        Some(gb) if gb > 0.0 => (((gb * 0.5) / 1.2) as usize).clamp(1, cpus),
-        _ => 4.min(cpus),
-    }
+    chump_pal::derive_cargo_build_jobs_from(total_ram_gb, cpus)
 }
 
 fn measure_total_ram_gb() -> Option<f64> {
-    if let Ok(text) = fs::read_to_string("/proc/meminfo") {
-        let kb: f64 = text
-            .lines()
-            .find(|l| l.starts_with("MemTotal:"))?
-            .split_whitespace()
-            .nth(1)?
-            .parse()
-            .ok()?;
-        return Some(kb / 1024.0 / 1024.0);
-    }
-    let out = Command::new("sysctl")
-        .args(["-n", "hw.memsize"])
-        .output()
-        .ok()?;
-    let bytes: f64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
-    Some(bytes / 1024.0 / 1024.0 / 1024.0)
+    chump_pal::total_ram_gb()
 }
 
 fn cargo_build_jobs() -> usize {
-    let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
-    derive_cargo_build_jobs(measure_total_ram_gb(), cpus)
+    derive_cargo_build_jobs(measure_total_ram_gb(), chump_pal::available_cpus())
 }
 
 const TICK_SECS: u64 = 15;
@@ -146,11 +109,11 @@ struct Config {
 
 impl Config {
     fn load() -> Self {
-        let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()));
+        let home = chump_pal::user_home();
         let repo = std::env::var("CHUMP_REPO")
             .map(PathBuf::from)
             .unwrap_or_else(|_| home.join("Projects/Chump"));
-        let log_dir = PathBuf::from(format!("/tmp/chumpd-fleet-{}", now_epoch()));
+        let log_dir = chump_pal::temp_file_path(&format!("chumpd-fleet-{}", now_epoch()));
         Config {
             repo,
             home,
@@ -203,7 +166,12 @@ fn emit(cfg: &Config, json: &str) {
 }
 
 fn heartbeat_dir() -> String {
-    std::env::var("CHUMP_HEARTBEAT_DIR").unwrap_or_else(|_| "/tmp".into())
+    std::env::var("CHUMP_HEARTBEAT_DIR")
+        .unwrap_or_else(|_| chump_pal::temp_dir().to_string_lossy().into_owned())
+}
+
+fn status_file_path() -> PathBuf {
+    chump_pal::temp_file_path("chumpd-status.json")
 }
 
 fn heartbeat_age(agent_id: usize) -> Option<u64> {
@@ -445,9 +413,10 @@ fn write_status(_cfg: &Config, mode: &str, desired: usize, slots: &HashMap<usize
         "desired": desired,
         "workers": workers,
     });
-    let tmp = "/tmp/chumpd-status.json.tmp";
-    if fs::write(tmp, status.to_string()).is_ok() {
-        let _ = fs::rename(tmp, "/tmp/chumpd-status.json");
+    let status_path = status_file_path();
+    let tmp = chump_pal::temp_file_path("chumpd-status.json.tmp");
+    if fs::write(&tmp, status.to_string()).is_ok() {
+        let _ = fs::rename(&tmp, &status_path);
     }
 }
 
@@ -468,54 +437,48 @@ struct RpcResponse {
     status_json: Option<serde_json::Value>,
 }
 
-async fn handle_socket(cfg: Config, listener: UnixListener) {
+async fn handle_ipc(cfg: Config, listener: TcpListener, expected_token: String) {
     loop {
         match listener.accept().await {
-            Ok((mut stream, _)) => {
+            Ok((stream, peer)) => {
                 let cfg = cfg.clone();
+                let tok = expected_token.clone();
                 tokio::spawn(async move {
-                    let mut buf = [0u8; 1024];
-                    match stream.read(&mut buf).await {
-                        Ok(n) if n > 0 => {
-                            if let Ok(req) = serde_json::from_slice::<RpcRequest>(&buf[..n]) {
-                                let resp = match req {
-                                    RpcRequest::Ping => RpcResponse {
-                                        status: "pong".into(),
-                                        db_path: None,
-                                        status_json: None,
-                                    },
-                                    RpcRequest::DbPath => RpcResponse {
-                                        status: "ok".into(),
-                                        db_path: Some(
-                                            chump_store_path::state_db_path(&cfg.repo)
-                                                .display()
-                                                .to_string(),
-                                        ),
-                                        status_json: None,
-                                    },
-                                    RpcRequest::Status => {
-                                        let status_raw =
-                                            fs::read_to_string("/tmp/chumpd-status.json")
-                                                .unwrap_or_else(|_| "{}".into());
-                                        let status_json = serde_json::from_str(&status_raw).ok();
-                                        RpcResponse {
-                                            status: "ok".into(),
-                                            db_path: None,
-                                            status_json,
-                                        }
-                                    }
-                                };
-                                let _ = stream
-                                    .write_all(serde_json::to_string(&resp).unwrap().as_bytes())
-                                    .await;
+                    if let Ok((req, mut stream)) =
+                        chump_pal::ipc::accept_authenticated::<RpcRequest>(stream, peer, &tok).await
+                    {
+                        let resp = match req {
+                            RpcRequest::Ping => RpcResponse {
+                                status: "pong".into(),
+                                db_path: None,
+                                status_json: None,
+                            },
+                            RpcRequest::DbPath => RpcResponse {
+                                status: "ok".into(),
+                                db_path: Some(
+                                    chump_store_path::state_db_path(&cfg.repo)
+                                        .display()
+                                        .to_string(),
+                                ),
+                                status_json: None,
+                            },
+                            RpcRequest::Status => {
+                                let status_raw = fs::read_to_string(status_file_path())
+                                    .unwrap_or_else(|_| "{}".into());
+                                let status_json = serde_json::from_str(&status_raw).ok();
+                                RpcResponse {
+                                    status: "ok".into(),
+                                    db_path: None,
+                                    status_json,
+                                }
                             }
-                        }
-                        _ => {}
+                        };
+                        let _ = chump_pal::ipc::write_json_response(&mut stream, &resp).await;
                     }
                 });
             }
             Err(e) => {
-                eprintln!("socket accept error: {e}");
+                eprintln!("ipc accept error: {e}");
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
@@ -526,32 +489,39 @@ async fn handle_socket(cfg: Config, listener: UnixListener) {
 async fn main() {
     // PHASE-R R6 / INFRA-8575: thin `chumpd worker` arm — the per-worker loop
     // control (cadence, heartbeat, fleet-paused sentinel, per-tick budget).
-    // Dispatched before any supervisor setup so it never binds the socket or
+    // Dispatched before any supervisor setup so it never binds the IPC server or
     // takes pool ownership; worker.sh execs this.
     let argv: Vec<String> = std::env::args().collect();
     if argv.get(1).map(String::as_str) == Some("worker") {
         std::process::exit(worker_loop::run(&argv[2..]));
     }
 
-    // SAFETY: signal() with a signal-safe handler that only stores an atomic.
-    unsafe {
-        let handler = on_term as extern "C" fn(i32) as *const () as usize;
-        libc::signal(libc::SIGTERM, handler);
-        libc::signal(libc::SIGINT, handler);
-    }
+    chump_pal::install_shutdown_signal(&SHUTDOWN_SIGNAL);
 
     let cfg = Config::load();
     takeover(&cfg);
 
-    // MISSION-052: Start Unix socket API.
-    let socket_path = cfg.home.join(".chump/chumpd.sock");
-    let _ = fs::remove_file(&socket_path);
-    if let Ok(listener) = UnixListener::bind(&socket_path) {
-        let cfg_clone = cfg.clone();
-        tokio::spawn(async move {
-            handle_socket(cfg_clone, listener).await;
-        });
-    }
+    // Cross-platform authenticated loopback TCP IPC (`<state_dir>/run/chumpd.ipc`).
+    let ipc_path = chump_pal::ipc::ipc_file_path_in(&cfg.state_dir(), "chumpd");
+    let _ipc_guard = match chump_pal::ipc::IpcServer::bind_at(&ipc_path) {
+        Ok(server) => {
+            if let Ok(listener) = server.tokio_listener() {
+                let cfg_clone = cfg.clone();
+                let tok = server.token().to_string();
+                tokio::spawn(async move {
+                    handle_ipc(cfg_clone, listener, tok).await;
+                });
+            }
+            Some(server)
+        }
+        Err(e) => {
+            eprintln!(
+                "chumpd: failed to bind local ipc at {}: {e}",
+                ipc_path.display()
+            );
+            None
+        }
+    };
 
     // scanner-anchor: "kind":"chumpd_started"
     emit(
@@ -786,12 +756,12 @@ mod signal_and_gate_tests {
 
     #[test]
     fn exit_code_is_128_plus_signum_for_sigterm() {
-        assert_eq!(exit_code_for_signal(libc::SIGTERM), 143);
+        assert_eq!(exit_code_for_signal(chump_pal::SIGTERM_NUM), 143);
     }
 
     #[test]
     fn exit_code_is_128_plus_signum_for_sigint() {
-        assert_eq!(exit_code_for_signal(libc::SIGINT), 130);
+        assert_eq!(exit_code_for_signal(chump_pal::SIGINT_NUM), 130);
     }
 
     #[test]

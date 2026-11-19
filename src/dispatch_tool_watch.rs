@@ -202,14 +202,11 @@ pub fn find_stalled(procs: &[Proc], root: u32, threshold_secs: u64) -> Vec<Stall
         .collect()
 }
 
-/// SIGKILL a stalled call's subtree, leaves first, so its shell returns an
+/// Force-terminate a stalled call's subtree, leaves first, so its shell returns an
 /// error to the agent instead of hanging on it.
 pub fn kill_subtree(pids: &[u32]) {
     for pid in pids.iter().rev() {
-        // SAFETY: plain kill(2) on a pid we just observed under our child.
-        unsafe {
-            libc::kill(*pid as libc::pid_t, libc::SIGKILL);
-        }
+        let _ = chump_pal::terminate_process(*pid, true);
     }
 }
 
