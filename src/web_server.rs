@@ -734,94 +734,143 @@ async fn handle_broadcast(
         ));
     }
 
-    // Build the broadcast.sh CLI argv.
-    let repo_root = crate::repo_path::runtime_base();
-    let script = repo_root.join("scripts/coord/broadcast.sh");
-    if !script.exists() {
+    // Pure-Rust cross-platform broadcast: append structured event to ambient.jsonl
+    // and deliver targeted inbox messages via `chump_messaging::FileBroker`.
+    let lock_dir = crate::repo_path::runtime_base().join(".chump-locks");
+    if let Err(e) = std::fs::create_dir_all(&lock_dir) {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("broadcast.sh missing at {}", script.display()),
+            format!("create lock_dir {}: {e}", lock_dir.display()),
         ));
     }
-
-    // INFRA-1496: tokio::process::Command + 10s timeout (INFRA-1485 pattern)
-    // so a stalled broadcast.sh cannot block tokio workers, which would stall
-    // /api/health and every other handler sharing the runtime.
-    let mut cmd = tokio::process::Command::new("bash");
-    cmd.arg(&script);
-    // Optional --to flag honored by broadcast.sh for any event.
-    if let Some(recipient) = body
+    let sender_session =
+        get_session_id(&headers).unwrap_or_else(chump_agent_lease::current_session_id);
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let subject = body.subject.as_deref().unwrap_or("").trim().to_string();
+    let rationale = body.rationale.as_deref().unwrap_or("").trim().to_string();
+    let effective_to = body
         .recipient
         .as_deref()
-        .map(|s| s.trim())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            if event == "HANDOFF" {
+                body.to_session
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+            } else {
+                None
+            }
+        })
+        .map(ToOwned::to_owned);
+
+    let mut ambient_obj = serde_json::Map::new();
+    ambient_obj.insert("ts".into(), serde_json::Value::String(ts));
+    ambient_obj.insert("event".into(), serde_json::Value::String(event.clone()));
+    ambient_obj.insert(
+        "session".into(),
+        serde_json::Value::String(sender_session.clone()),
+    );
+    if !subject.is_empty() {
+        ambient_obj.insert("gap".into(), serde_json::Value::String(subject.clone()));
+        ambient_obj.insert("subject".into(), serde_json::Value::String(subject.clone()));
+    }
+    if !rationale.is_empty() {
+        ambient_obj.insert(
+            "reason".into(),
+            serde_json::Value::String(rationale.clone()),
+        );
+    }
+    if let Some(ref k) = body
+        .kind
+        .as_deref()
+        .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        cmd.args(["--to", recipient]);
+        ambient_obj.insert("kind".into(), serde_json::Value::String((*k).to_string()));
     }
-    cmd.arg(&event);
-
-    match event.as_str() {
-        "INTENT" | "DONE" => {
-            cmd.arg(body.subject.as_deref().unwrap_or(""));
-            if let Some(r) = body.rationale.as_deref() {
-                cmd.arg(r);
-            }
-        }
-        "HANDOFF" => {
-            cmd.arg(body.subject.as_deref().unwrap_or(""));
-            let dst = body
-                .to_session
-                .as_deref()
-                .or(body.recipient.as_deref())
-                .unwrap_or("");
-            cmd.arg(dst);
-        }
-        "STUCK" => {
-            cmd.arg(body.subject.as_deref().unwrap_or(""));
-            cmd.arg(body.rationale.as_deref().unwrap_or(""));
-        }
-        "WARN" => {
-            cmd.arg(body.rationale.as_deref().unwrap_or(""));
-        }
-        "ALERT" => {
-            cmd.arg(format!("kind={}", body.kind.as_deref().unwrap_or("")));
-            cmd.arg(body.rationale.as_deref().unwrap_or(""));
-        }
-        "FEEDBACK" => {
-            cmd.arg(body.kind.as_deref().unwrap_or(""));
-            cmd.arg(body.subject.as_deref().unwrap_or(""));
-            cmd.arg(body.rationale.as_deref().unwrap_or(""));
-            if let Some(v) = body.vote.as_deref().filter(|s| !s.is_empty()) {
-                cmd.arg(v);
-            }
-        }
-        _ => unreachable!(),
-    }
-
-    let output = match tokio::time::timeout(std::time::Duration::from_secs(10), cmd.output()).await
+    if let Some(ref v) = body
+        .vote
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
     {
-        Ok(Ok(o)) => o,
-        Ok(Err(e)) => {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("spawn: {e}")));
+        ambient_obj.insert("vote".into(), serde_json::Value::String((*v).to_string()));
+    }
+    if let Some(ref dst) = effective_to {
+        ambient_obj.insert("to".into(), serde_json::Value::String(dst.clone()));
+    }
+
+    let ambient_path = lock_dir.join("ambient.jsonl");
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        Ok(mut f) => {
+            if let Err(e) = writeln!(f, "{}", serde_json::Value::Object(ambient_obj.clone())) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("write ambient.jsonl: {e}"),
+                ));
+            }
         }
-        Err(_) => {
+        Err(e) => {
             return Err((
-                StatusCode::GATEWAY_TIMEOUT,
-                "broadcast.sh timeout >10s".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("open ambient.jsonl: {e}"),
             ));
         }
-    };
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("broadcast.sh exit {}: {}", output.status, stderr),
-        ));
     }
+
+    if let Some(ref dst) = effective_to {
+        if let Ok(level) = chump_messaging::MessageLevel::parse(&event) {
+            let mut msg_body = serde_json::Map::new();
+            if !subject.is_empty() {
+                msg_body.insert("subject".into(), serde_json::Value::String(subject.clone()));
+            }
+            if !rationale.is_empty() {
+                msg_body.insert(
+                    "reason".into(),
+                    serde_json::Value::String(rationale.clone()),
+                );
+            }
+            if let Some(ref v) = body.vote {
+                msg_body.insert("vote".into(), serde_json::Value::String(v.clone()));
+            }
+            let outbound = chump_messaging::OutboundMessage {
+                from: std::borrow::Cow::Owned(sender_session.clone()),
+                to: std::borrow::Cow::Owned(dst.clone()),
+                level,
+                kind: std::borrow::Cow::Owned(body.kind.clone().unwrap_or_default()),
+                urgency: None,
+                corr_id: if subject.is_empty() {
+                    None
+                } else {
+                    Some(std::borrow::Cow::Owned(subject.clone()))
+                },
+                gap: if subject.is_empty() {
+                    None
+                } else {
+                    Some(std::borrow::Cow::Owned(subject))
+                },
+                body: serde_json::Value::Object(msg_body),
+            };
+            let broker = chump_messaging::FileBroker::new(lock_dir.join("inbox"));
+            if let Err(e) = chump_messaging::Broker::send(&broker, outbound).await {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("inbox broker send failed: {e}"),
+                ));
+            }
+        }
+    }
+
     Ok(Json(serde_json::json!({
         "ok": true,
         "event": event,
-        "stdout": String::from_utf8_lossy(&output.stdout).trim(),
+        "stdout": format!("[chump-broadcast] {event} session={sender_session}"),
     })))
 }
 
@@ -2837,19 +2886,7 @@ async fn handle_repo_init(
     let state_db_created = !already_initialized && state_db.exists();
 
     // ── Install hooks ────────────────────────────────────────────────────────
-    let repo_root = crate::repo_path::runtime_base();
-    let hook_script = repo_root.join("scripts/setup/install-hooks.sh");
-    let hooks_installed = if hook_script.exists() {
-        let hook_out = std::process::Command::new("bash")
-            .arg(&hook_script)
-            .arg("--quiet")
-            .current_dir(&canon)
-            .output();
-        hook_out.map(|o| o.status.success()).unwrap_or(false)
-    } else {
-        // Hook script not found — soft failure (repo may not be the main worktree).
-        false
-    };
+    let hooks_installed = chump_git_hooks::install_hooks(&canon).is_ok();
 
     // ── Optional: seed 3 starter gaps ────────────────────────────────────────
     let gaps_seeded: Vec<String> = if body.seed_starter_gaps && state_db_created {

@@ -1418,6 +1418,7 @@ dependencies = [
  "chump-db-pool",
  "chump-eval-harness",
  "chump-gap-store",
+ "chump-git-hooks",
  "chump-handoff",
  "chump-inventory",
  "chump-kpi-report",
@@ -1796,7 +1797,12 @@ name = "chump-git-hooks"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "chump-agent-lease",
+ "chump-pal",
  "clap",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
@@ -2132,6 +2138,7 @@ dependencies = [
  "chrono",
  "chump-pal",
  "clap",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

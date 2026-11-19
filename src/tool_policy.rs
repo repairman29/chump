@@ -130,10 +130,7 @@ pub fn play_approval_audio_cue() {
         .filter(|s| !s.is_empty());
     std::thread::spawn(move || {
         if let Some(cmd) = custom {
-            let _ = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&cmd)
-                .status();
+            let _ = chump_pal::shell_command(&cmd).status();
             return;
         }
         #[cfg(target_os = "macos")]

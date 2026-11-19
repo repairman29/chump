@@ -312,6 +312,10 @@ pub struct ShipReceipt {
     pub head_sha: String,
     /// True iff auto-merge was successfully armed on the PR.
     pub auto_merge_armed: bool,
+    /// Optional diagnostic note when `auto_merge` was requested by the caller
+    /// but refused by [`crate::gate_guard`] (CREDIBLE-1576) or [`crate::arm_policy`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_merge_note: Option<String>,
     /// UTC timestamp at which the receipt was finalised.
     pub shipped_at: DateTime<Utc>,
 }
@@ -398,6 +402,9 @@ pub enum ShipError {
     /// JSON (de)serialization of the receipt failed.
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    /// CREDIBLE-1576: Gate-file guard refused `--auto-merge` arming.
+    #[error("{0}")]
+    GateArmRefused(#[from] crate::gate_guard::GateArmRefusal),
 }
 
 /// Truncate a stderr/stdout blob for inclusion in a [`ShipError`].
@@ -635,6 +642,7 @@ mod tests {
             pr_url: "https://github.com/x/y/pull/1913".into(),
             head_sha: "abc1234".into(),
             auto_merge_armed: true,
+            auto_merge_note: None,
             shipped_at: Utc::now(),
         };
         let j = serde_json::to_string(&r).expect("serialize");

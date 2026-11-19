@@ -211,19 +211,9 @@ pub fn wrap_command(cmd: &str, cwd: &Path) -> Command {
 }
 
 fn plain_sh(cmd: &str, cwd: &Path) -> Command {
-    let mut c = Command::new(if cfg!(target_os = "windows") {
-        "cmd"
-    } else {
-        "sh"
-    });
-    let arg = if cfg!(target_os = "windows") {
-        "/c"
-    } else {
-        "-c"
-    };
-    c.arg(arg).arg(cmd);
-    c.current_dir(cwd);
-    c
+    let mut std_cmd = chump_pal::shell_command(cmd);
+    std_cmd.current_dir(cwd);
+    Command::from(std_cmd)
 }
 
 fn wrap_macos(cmd: &str, cwd: &Path) -> Command {

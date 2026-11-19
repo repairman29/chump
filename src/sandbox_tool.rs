@@ -198,10 +198,9 @@ impl Tool for SandboxTool {
             path: worktree_path.clone(),
         };
 
-        let child = Command::new("sh")
-            .current_dir(&worktree_path)
-            .args(["-c", cmd])
-            .output();
+        let mut std_cmd = chump_pal::shell_command(cmd);
+        std_cmd.current_dir(&worktree_path);
+        let child = Command::from(std_cmd).output();
 
         let output = tokio::time::timeout(Duration::from_secs(timeout), child)
             .await
