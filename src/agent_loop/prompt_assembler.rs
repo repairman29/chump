@@ -213,26 +213,15 @@ impl PromptAssembler {
             }
         }
 
-        // COG-015: inject entity-keyed persisted blackboard facts.
-        // Gated on CHUMP_ENTITY_PREFETCH (default on); no-ops when entities
-        // list is empty or the DB has no matching rows.
-        // EVAL-058: skip entirely when CHUMP_BYPASS_BLACKBOARD=1 (ablation A/B flag).
-        if !crate::env_flags::chump_bypass_blackboard()
-            && crate::blackboard::entity_prefetch_enabled()
-            && !perception.detected_entities.is_empty()
+        // COG-015: inject entity-keyed persisted blackboard facts when experimental
+        // cognition is enabled (and CHUMP_BYPASS_BLACKBOARD is not set).
+        if let Some(block) =
+            crate::cognition_gate::prefetch_blackboard_entities(&perception.detected_entities)
         {
-            if let Some(block) = crate::blackboard::query_persist_for_entities(
-                &perception.detected_entities,
-                crate::blackboard::ENTITY_PREFETCH_MAX_ENTRIES,
-                crate::blackboard::ENTITY_PREFETCH_MAX_CHARS,
-            ) {
-                effective_system = match effective_system {
-                    Some(s) if !s.trim().is_empty() => {
-                        Some(format!("{}\n\n{}", s, block.trim_end()))
-                    }
-                    _ => Some(block.trim_end().to_string()),
-                };
-            }
+            effective_system = match effective_system {
+                Some(s) if !s.trim().is_empty() => Some(format!("{}\n\n{}", s, block.trim_end())),
+                _ => Some(block.trim_end().to_string()),
+            };
         }
 
         // INFRA-084: inject ambient sibling-activity summary. Layer 2 of the
