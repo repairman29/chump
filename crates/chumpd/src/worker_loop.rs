@@ -732,14 +732,23 @@ mod tests {
         .unwrap();
 
         let env_dump = dir.join("child_env.txt");
+        #[cfg(unix)]
+        let tick_cmd = format!(
+            "printf 'FLEET_MODEL=%s\\nFLEET_BACKEND=%s\\nSONNET=%s\\nTIMEOUT=%s\\nMAX_TIMEOUT=%s\\n' \
+             \"$FLEET_MODEL\" \"$FLEET_BACKEND\" \"$ANTHROPIC_DEFAULT_SONNET_MODEL\" \
+             \"$BASH_DEFAULT_TIMEOUT_MS\" \"$BASH_MAX_TIMEOUT_MS\" > \"{}\"",
+            env_dump.display()
+        );
+        #[cfg(windows)]
+        let tick_cmd = format!(
+            "(echo FLEET_MODEL=%FLEET_MODEL%& echo FLEET_BACKEND=%FLEET_BACKEND%& \
+             echo SONNET=%ANTHROPIC_DEFAULT_SONNET_MODEL%& echo TIMEOUT=%BASH_DEFAULT_TIMEOUT_MS%& \
+             echo MAX_TIMEOUT=%BASH_MAX_TIMEOUT_MS%) > \"{}\"",
+            env_dump.display()
+        );
         let cfg = WorkerConfig {
             repo: repo_dir.clone(),
-            tick_cmd: format!(
-                "printf 'FLEET_MODEL=%s\\nFLEET_BACKEND=%s\\nSONNET=%s\\nTIMEOUT=%s\\nMAX_TIMEOUT=%s\\n' \
-                 \"$FLEET_MODEL\" \"$FLEET_BACKEND\" \"$ANTHROPIC_DEFAULT_SONNET_MODEL\" \
-                 \"$BASH_DEFAULT_TIMEOUT_MS\" \"$BASH_MAX_TIMEOUT_MS\" > {}",
-                env_dump.display()
-            ),
+            tick_cmd,
             cadence_secs: 0,
             budget_secs: 0,
             pause_file: repo_dir.join(".chump/fleet-paused"),
