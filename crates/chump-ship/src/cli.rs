@@ -129,7 +129,7 @@ where
     match execute_cli(args).await {
         Ok(code) => code,
         Err(err) => {
-            eprintln!("[chump-ship] {err}");
+            eprintln!("[chump-ship] error: {err}");
             1
         }
     }

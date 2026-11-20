@@ -1029,9 +1029,10 @@ fn kill_urgent_inbox_poll_loop(working_dir: &Path) {
     let _ = std::fs::remove_file(&pidfile);
 }
 
-/// INFRA-8083: Terminate a child process and its entire process group / tree.
-/// Sends graceful termination first, polls briefly for exit, then force-kills
-/// the group, calls `child.kill()`, and reaps `child.wait()`.
+/// INFRA-8083 / INFRA-8198: Terminate a child process and its entire process group / tree.
+/// Sends graceful termination first (`kill_process_group` / `libc::SIGTERM` on Unix,
+/// Win32 Job Objects on Windows via `chump_pal::terminate_process_group`), polls
+/// briefly for exit, then force-kills the group, calls `child.kill()`, and reaps `child.wait()`.
 pub fn kill_child_process_group(child: &mut Child) {
     let pid = child.id();
     if pid > 1 {
