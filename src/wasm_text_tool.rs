@@ -8,13 +8,9 @@ use serde_json::{json, Value};
 
 use crate::wasm_runner;
 
-/// wasmtime on PATH and `wasm/text_transform.wasm` present.
+/// `wasm/text_transform.wasm` present (executed in-process via [`crate::wasm_runner`]).
 pub fn wasm_text_available() -> bool {
-    std::process::Command::new("wasmtime")
-        .arg("--version")
-        .output()
-        .is_ok()
-        && wasm_runner::wasm_artifact_path("text_transform.wasm").exists()
+    wasm_runner::wasm_artifact_path("text_transform.wasm").exists()
 }
 
 pub struct WasmTextTool;

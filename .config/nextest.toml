@@ -1,6 +1,12 @@
 # INFRA-8042: profile for the pre-push test gate (scripts/git-hooks/pre-push).
-# CI runs nextest's built-in default profile; this file only adds `prepush`.
+# Phase 0 laptop safety guardrail: cap default test concurrency so running
+# full-workspace nextest (5,400+ tests) never exhausts unified RAM on 16-24 GB hosts.
+[profile.default]
+test-threads = 4
+slow-timeout = { period = "60s", terminate-after = 4 }
+
 [profile.prepush]
+test-threads = 4
 # A test still running after 4 x 60s is killed and reported as a timeout, so
 # one hung test fails the gate by name instead of stalling the whole push.
 slow-timeout = { period = "60s", terminate-after = 4 }
@@ -10,10 +16,23 @@ slow-timeout = { period = "60s", terminate-after = 4 }
 [test-groups.dispatch-child-lifetime]
 max-threads = 1
 
+# Phase 0 laptop safety guardrail: cap heavy integration / workspace binaries
+# so concurrent RSS never spikes on unified-memory machines.
+[test-groups.heavy-binaries]
+max-threads = 2
+
 [[profile.default.overrides]]
 filter = 'binary(dispatch_child_lifetime)'
 test-group = 'dispatch-child-lifetime'
 
+[[profile.default.overrides]]
+filter = 'binary(chump) | binary(chump-integrator) | binary(chump-orchestrator)'
+test-group = 'heavy-binaries'
+
 [[profile.prepush.overrides]]
 filter = 'binary(dispatch_child_lifetime)'
 test-group = 'dispatch-child-lifetime'
+
+[[profile.prepush.overrides]]
+filter = 'binary(chump) | binary(chump-integrator) | binary(chump-orchestrator)'
+test-group = 'heavy-binaries'

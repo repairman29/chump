@@ -782,21 +782,21 @@ async fn handle_broadcast(
             serde_json::Value::String(rationale.clone()),
         );
     }
-    if let Some(ref k) = body
+    if let Some(k) = body
         .kind
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        ambient_obj.insert("kind".into(), serde_json::Value::String((*k).to_string()));
+        ambient_obj.insert("kind".into(), serde_json::Value::String(k.to_string()));
     }
-    if let Some(ref v) = body
+    if let Some(v) = body
         .vote
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        ambient_obj.insert("vote".into(), serde_json::Value::String((*v).to_string()));
+        ambient_obj.insert("vote".into(), serde_json::Value::String(v.to_string()));
     }
     if let Some(ref dst) = effective_to {
         ambient_obj.insert("to".into(), serde_json::Value::String(dst.clone()));
