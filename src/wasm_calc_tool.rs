@@ -1,4 +1,4 @@
-//! WASM-based calculator tool: runs a WASI module (wasm/calculator.wasm) with wasmtime CLI.
+//! WASM-based calculator tool: runs a WASI module (`wasm/calculator.wasm`) via in-process `wasm_runner`.
 //! No host filesystem or network; input is passed on stdin, result on stdout.
 
 use anyhow::Result;
@@ -8,13 +8,10 @@ use serde_json::{json, Value};
 
 use crate::wasm_runner;
 
-/// Returns true if the WASM calculator is available (wasmtime on PATH and calculator.wasm exists).
+/// Returns true if the WASM calculator artifact (`wasm/calculator.wasm`) is present
+/// (executed in-process via [`crate::wasm_runner`]; no external `wasmtime` CLI required).
 pub fn wasm_calc_available() -> bool {
-    std::process::Command::new("wasmtime")
-        .arg("--version")
-        .output()
-        .is_ok()
-        && wasm_runner::wasm_artifact_path("calculator.wasm").exists()
+    wasm_runner::wasm_artifact_path("calculator.wasm").exists()
 }
 
 pub struct WasmCalcTool;

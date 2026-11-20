@@ -208,8 +208,8 @@ r2d2 = "0.8"
 # backward compatibility with existing plain DBs and lacked a passphrase management
 # system. See docs/strategy/NEXT_GEN_COMPETITIVE_INTEL.md (IronClaw Sprint A) for the proper
 # encrypted-db feature design that needs implementation before re-introducing sqlcipher.
-r2d2_sqlite = { version = "0.25", features = ["bundled"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2_sqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.42", features = ["bundled", "fallible_uint"] }
 serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
 toml = { version = "1.1", features = ["parse"] }
@@ -234,9 +234,8 @@ mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 mimalloc = { version = "0.1", default-features = false }
-wasmtime = "49"
-wasmtime-wasi = "49"
-wasi-common = "46"
+wasmtime = "49.0.7"
+wasmtime-wasi = "49.0.7"
 sha2 = "0.11.0"
 hex = "0.4.3"
 workspace-hack = { version = "0.1", path = "workspace-hack" }

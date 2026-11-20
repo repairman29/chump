@@ -574,8 +574,12 @@ fn the_fleet_wide_installer_wires_both_hooks_idempotently() {
 fn the_guard_and_the_watchdog_are_reachable_from_the_repo() {
     let root = repo_root();
 
-    // main.rs dispatch — without it the subcommand does not exist.
-    let main_rs = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+    // main.rs + cli_dispatch — without it the subcommand does not exist.
+    let mut main_rs = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+    if let Ok(disp) = std::fs::read_to_string(root.join("src/cli_dispatch/mod.rs")) {
+        main_rs.push('\n');
+        main_rs.push_str(&disp);
+    }
     assert!(
         main_rs.contains("git_safety::run_cli"),
         "src/main.rs does not dispatch `chump git-guard`"

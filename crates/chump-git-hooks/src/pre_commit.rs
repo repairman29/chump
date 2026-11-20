@@ -604,6 +604,12 @@ impl PreCommitHook for RustFmtGuard {
         for var in ENV_LEAK_VARS {
             cmd.env_remove(var);
         }
+        if std::env::var_os("CARGO_BUILD_JOBS").is_none() {
+            cmd.env(
+                "CARGO_BUILD_JOBS",
+                chump_pal::derive_cargo_build_jobs().min(4).to_string(),
+            );
+        }
         let out = cmd
             .current_dir(&ctx.repo_root)
             .args(["fmt", "--all", "--", "--check"])

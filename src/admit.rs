@@ -1176,6 +1176,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(admit_env)]
     fn resilient1679_five_concurrent_callers_against_ceiling_two_never_exceed_two() {
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::{Arc, Barrier};
@@ -1246,6 +1247,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(admit_env)]
     fn resilient1679_dead_pid_lease_is_reaped_and_status_lists_live_leases() {
         let dir = tempfile::tempdir().unwrap();
         let node_env = dir.path().join("node.env");
@@ -1290,6 +1292,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(admit_env)]
     fn resilient1640_gate_cargo_before_ship_emits_deferred_once_and_does_not_fail_open() {
         let dir = tempfile::tempdir().unwrap();
         let node_env = dir.path().join("node.env");

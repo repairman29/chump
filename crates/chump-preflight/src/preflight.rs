@@ -516,6 +516,12 @@ fn run_step(s: &Step) -> Outcome {
 
     let mut cmd = Command::new(&s.argv[0]);
     cmd.args(&s.argv[1..]).stdin(Stdio::null());
+    if std::env::var_os("CARGO_BUILD_JOBS").is_none() {
+        cmd.env(
+            "CARGO_BUILD_JOBS",
+            chump_pal::derive_cargo_build_jobs().min(4).to_string(),
+        );
+    }
     let result = cmd.output();
     let elapsed_ms = started.elapsed().as_millis();
     match result {
@@ -4439,6 +4445,12 @@ fn run_baseline_against_ref(
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        if std::env::var_os("CARGO_BUILD_JOBS").is_none() {
+            cmd.env(
+                "CARGO_BUILD_JOBS",
+                chump_pal::derive_cargo_build_jobs().min(4).to_string(),
+            );
+        }
         let pass = cmd.output().map(|o| o.status.success()).unwrap_or(false);
         results.push(BaselineGateResult {
             name: s.name.to_string(),

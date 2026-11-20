@@ -349,11 +349,9 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
 fn takeover(_cfg: &Config) {
     // Test harness / cohabitation guard: CHUMPD_TAKEOVER=0 skips the global
     // sweep (a CI fixture must never pkill a live fleet's workers).
-    if std::env::var("CHUMPD_TAKEOVER").as_deref() == Ok("0") {
-        return;
-    }
+    let takeover_enabled = std::env::var("CHUMPD_TAKEOVER").as_deref() != Ok("0");
     #[cfg(unix)]
-    {
+    if takeover_enabled {
         let _ = Command::new("pkill")
             .args(["-f", "dispatch/worker.sh"])
             .status();
@@ -362,6 +360,8 @@ fn takeover(_cfg: &Config) {
             .stderr(Stdio::null())
             .status();
     }
+    #[cfg(not(unix))]
+    let _ = takeover_enabled;
 }
 
 struct Slot {
