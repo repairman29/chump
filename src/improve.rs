@@ -6692,8 +6692,11 @@ Some prose from the agent.
             exit_code
         );
         fs::write(path, script).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
     }
 
     /// B5: fake gh returns a matching open PR → dedup Redundant.

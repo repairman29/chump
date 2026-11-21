@@ -2338,6 +2338,7 @@ mod tests {
     ///   2. The returned text is the shim's JSON output
     ///   3. The output parses into `LlmGap` objects via `parse_llm_gaps_tolerant`
     #[test]
+    #[cfg(unix)]
     fn test_spawn_agentic_scout_uses_mock_shim() {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
