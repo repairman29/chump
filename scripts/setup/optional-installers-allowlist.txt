@@ -214,3 +214,4 @@ install-holler-systemd.sh
 # requirement. Manually invoked per docs/process/POSSE_TIMER_SETUP.md when
 # enabling scheduled portfolio scans.
 install-posse-systemd.sh
+install-registry-snapshot-systemd.sh
