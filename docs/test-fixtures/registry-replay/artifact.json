@@ -1,0 +1,88 @@
+{
+ "proposals": [
+  {
+   "title": "Proposal 0",
+   "description": "d",
+   "acceptance_criteria": [
+    "a",
+    "b"
+   ],
+   "outcome": "FROOGLE",
+   "external_repo": "repairman29/x",
+   "domain": "PRODUCT",
+   "spine": true
+  },
+  {
+   "title": "Proposal 1",
+   "description": "d",
+   "acceptance_criteria": [
+    "a",
+    "b"
+   ],
+   "outcome": "UPSHIFT",
+   "external_repo": "repairman29/x",
+   "domain": "PRODUCT",
+   "spine": true
+  },
+  {
+   "title": "Proposal 2",
+   "description": "d",
+   "acceptance_criteria": [
+    "a",
+    "b"
+   ],
+   "outcome": "FROOGLE",
+   "external_repo": "repairman29/x",
+   "domain": "PRODUCT",
+   "spine": false
+  },
+  {
+   "title": "Proposal 3",
+   "description": "d",
+   "acceptance_criteria": [
+    "a",
+    "b"
+   ],
+   "outcome": "UPSHIFT",
+   "external_repo": "repairman29/x",
+   "domain": "PRODUCT",
+   "spine": false
+  },
+  {
+   "title": "Proposal 4",
+   "description": "d",
+   "acceptance_criteria": [
+    "a",
+    "b"
+   ],
+   "outcome": "FROOGLE",
+   "external_repo": "repairman29/x",
+   "domain": "PRODUCT",
+   "spine": false
+  },
+  {
+   "title": "Proposal 5",
+   "description": "d",
+   "acceptance_criteria": [
+    "a",
+    "b"
+   ],
+   "outcome": "UPSHIFT",
+   "external_repo": "repairman29/x",
+   "domain": "PRODUCT",
+   "spine": false
+  }
+ ],
+ "p1": [
+  {
+   "id": "DOC-165",
+   "title": "doc",
+   "outcome": "FROOGLE"
+  },
+  {
+   "id": "EFFECTIVE-1936",
+   "title": "eff",
+   "outcome": "FROOGLE"
+  }
+ ]
+}
