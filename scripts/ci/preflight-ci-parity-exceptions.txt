@@ -478,3 +478,4 @@ Re-run verified for this SHA  # reason: verified-recompute.yml rerun-verified jo
 gap list --json seed consistency — fixture produces ≥5 gaps (CREDIBLE-061)  # reason: audit.yml audit-shard step — runs a CI-only gap-store seed-fixture consistency audit against a built chump binary + isolated state.db; exceeds preflight fast-feedback budget and depends on the CI audit harness (Tier-D-class).
 test-r1-inflight-no-repick.py   # reason: CREDIBLE-1513 python test; the parity matcher only parses scripts/ci/*.sh paths, but it IS mirrored in preflight.rs
 No launchd-only organs gate (INFRA-8188)       # reason: diffs against origin/main PR base; only meaningful in PR context
+test-infra-8057-embed-role-scope.sh   # reason: INFRA-8057 — Tier-D installer-shaped gate; pure-bash assertions over organ-manifest-lib role rosters, same shape as test-resilient-1055-role-roster.sh.

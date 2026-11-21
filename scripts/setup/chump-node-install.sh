@@ -59,6 +59,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
+[ "$ROLE" = gpu-embed ] && ROLE=embed   # INFRA-8057: node-role-assign's gpu-embed policy role == capacity role embed
 case "$ROLE" in brain|muscle|all|factory|data|embed) ;; *) echo "role must be brain|muscle|all|factory|data|embed" >&2; exit 2;; esac
 
 STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"

@@ -150,8 +150,13 @@ organ_is_node_local() {
   # node's worker survives a role-scoped reconcile with ZERO manifest or node-local
   # hand-edit. Without it, removing the per-node manifest line let the drift-removal
   # pass reap the worker (mugman went dark 2026-09-08 after a manifest reset --hard).
-  case "$base" in
-    chump-*worker|chump-*worker[0-9]*|chump-worker@*) return 0;;
+  # INFRA-8057: NOT on an embed/gpu-embed node — there the worker is shipping
+  # stack that must be reaped, not exempted.
+  case "${CHUMP_NODE_ROLE:-}" in
+    embed|gpu-embed) ;;
+    *) case "$base" in
+         chump-*worker|chump-*worker[0-9]*|chump-worker@*) return 0;;
+       esac;;
   esac
   local n
   for n in "${NODE_LOCAL_ORGAN_BASES[@]}"; do [[ "$base" == "$n" ]] && return 0; done
