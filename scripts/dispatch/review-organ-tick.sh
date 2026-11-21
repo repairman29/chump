@@ -186,6 +186,7 @@ emit() { printf '%s\n' "$1" >> "$AMBIENT" 2>/dev/null || true; }
 # scanner-anchor: "kind":"pr_repair_dispatched"
 # scanner-anchor: "kind":"pr_disarmed_negative_verdict"
 
+MUTANT_RECORD_OK=0
 REVIEWED=0; APPROVED=0; CHANGES=0; HELD_MUTANTS=0; ARMED=0; DISPATCHED=0; SKIPPED=0
 # CREDIBLE-1602: set to 1 when the post-merge gap step hits a loud failure (a
 # merged PR whose gap is NOT in the canonical store the organ resolved) so the
@@ -608,7 +609,7 @@ current_head_verdict() {
     payload="$(CHUMP_GH_CALL_CRITICALITY=background GH pr view "$pr" ${REPO:+--repo "$REPO"} \
         --json comments 2>/dev/null || true)"
     [[ -n "$payload" ]] || return 1
-    HEAD_SHA="$head" TRUSTED_AUTHOR="$ORGAN_LOGIN" GATE_LIST_VERSION="$GATE_LIST_VERSION" python3 -c '
+    HEAD_SHA="$head" TRUSTED_AUTHOR="$ORGAN_LOGIN" GATE_LIST_VERSION="$GATE_LIST_VERSION" MUTANT_RECORD_OK="${MUTANT_RECORD_OK:-0}" python3 -c '
 import json, os, re, sys
 try:
     d = json.loads(sys.argv[1])
@@ -655,6 +656,11 @@ hits = [("APPROVE" if m.group(1).upper().startswith("APPROVE") else "CHANGES_REQ
 if not hits:
     sys.exit(1)
 if len(set(hits)) == 1:
+    # RESILIENT-2219: a MECHANICAL gate-file hold (it carries the gate-list-version
+    # stamp) is superseded once a trusted mutants record for the current patch-id
+    # exists — treat the head as having no verdict so the organ re-reviews it.
+    if hits[0] == "CHANGES_REQUIRED" and gm and os.environ.get("MUTANT_RECORD_OK") == "1":
+        sys.exit(1)
     print(hits[0]); sys.exit(0)
 # Disagreement WITHIN one organ-authored comment is the parse-downgrade
 # signature (CREDIBLE-1594, #5615 bb2d12c96): the organ wraps its own verdict
@@ -897,6 +903,15 @@ print(any(((l or {}).get("name") or "") == "review-held" for l in d.get("labels"
     # arming on a prior APPROVE (so a PR that only went green after its APPROVE tick
     # still arms). Without this, every 15-min tick re-reviews each PR (burning the
     # budget) and re-dispatches a repair for each still-open CHANGES PR.
+    # RESILIENT-2219: a review-needs-mutants PR with a valid trusted mutants record
+    # for its current patch-id must not stay pinned by its earlier mechanical hold.
+    MUTANT_RECORD_OK=0
+    if grep -q "\"$REVIEW_NEEDS_MUTANTS_LABEL\"" <<< "$meta"; then
+        local mpid
+        mpid="$(pr_diff_patch_id "$pr")"
+        if [[ -n "$mpid" ]] && mutant_record_satisfies "$pr" "$head" "$mpid"; then MUTANT_RECORD_OK=1; fi
+    fi
+
     local prior
     if prior="$(current_head_verdict "$pr" "$head")"; then
         if [[ "$prior" == APPROVE ]]; then

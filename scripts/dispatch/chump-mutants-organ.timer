@@ -1,0 +1,17 @@
+# chump-mutants-organ.timer — RESILIENT-2219
+#
+# Fires chump-mutants-organ.service every 20 minutes so a PR held on
+# review-needs-mutants gets a mutants record without a human running mutants.
+[Unit]
+Description=Timer for Chump mutants organ (RESILIENT-2219)
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=20min
+OnUnitInactiveSec=20min
+RandomizedDelaySec=30sec
+Persistent=true
+Unit=chump-mutants-organ.service
+
+[Install]
+WantedBy=timers.target

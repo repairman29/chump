@@ -287,3 +287,11 @@ installers:
     check: test -f "$HOME/Library/LaunchAgents/com.chump.mission-grade.plist" -o -f "$HOME/.config/systemd/user/chump-mission-grade.timer"
     depends_on: [chump-binary]
     adds: 30-min cadence run of `chump mission-grade` via chump-cron (launchd plist or systemd timer)
+
+  - id: cargo-mutants
+    why: "RESILIENT-2219 — the mutants organ (scripts/dispatch/mutants-organ-tick.sh) needs cargo-mutants to produce the KILLED/SURVIVED record the review organ requires for ship-gate-file PRs; without it every such PR is held on review-needs-mutants forever."
+    priority: P1
+    organ: chump-mutants-organ.timer
+    install: cargo install cargo-mutants --locked
+    check: command -v cargo-mutants >/dev/null 2>&1 || test -x "${CARGO_HOME:-$HOME/.cargo}/bin/cargo-mutants"
+    adds: ~/.cargo/bin/cargo-mutants
