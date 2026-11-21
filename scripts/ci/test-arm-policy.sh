@@ -1979,7 +1979,7 @@ while IFS= read -r line; do
     f="${line%%:*}"
     rel="${f#"$REPO_ROOT"/}"
     case "$rel" in
-        crates/chump-ship/src/lib.rs|crates/chump-ship/src/manual_ship.rs|crates/chump-integrator/src/daemon.rs) ;;
+        crates/chump-ship/src/lib.rs|crates/chump-ship/src/manual_ship.rs|crates/chump-ship/src/bot_merge.rs|crates/chump-integrator/src/daemon.rs) ;;
         crates/chump-ship/src/arm_policy.rs|*/tests/*) ;;
         *)
             code="${line#*:}"; code="${code#*:}"
@@ -1991,13 +1991,14 @@ while IFS= read -r line; do
     esac
 done < <(grep -rnE '"merge"[^;\n]*"--auto"|gh pr merge[^"\n]*--auto' "$REPO_ROOT/crates/" 2>/dev/null || true)
 if [[ -z "$rust_unguarded" ]]; then
-    ok "CREDIBLE-1583: no unguarded gh pr merge --auto sites in crates/ outside the 3 gated callers"
+    ok "CREDIBLE-1583: no unguarded gh pr merge --auto sites in crates/ outside the 4 gated callers"
 else
     bad "CREDIBLE-1583: unguarded Rust gh pr merge --auto sites: $rust_unguarded"
 fi
 for rf in \
     "crates/chump-ship/src/lib.rs" \
     "crates/chump-ship/src/manual_ship.rs" \
+    "crates/chump-ship/src/bot_merge.rs" \
     "crates/chump-integrator/src/daemon.rs" \
   ; do
     grep -q 'arm_policy::require_allowed' "$REPO_ROOT/$rf" \

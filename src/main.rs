@@ -357,7 +357,28 @@ mod test_env; // ZERO-WASTE-152: CHUMP_STATE_DB isolation for tests
 mod cli_dispatch;
 pub(crate) use cli_dispatch::*;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    cli_dispatch::run().await
+/// Universal v1.0 multi-OS stack reserve: Windows defaults the PE main-thread
+/// stack to 1 MiB (vs 8 MiB on macOS/Linux), which overflows on debug `Future`
+/// frames in `cli_dispatch::run()`. Running the Tokio runtime inside an
+/// explicit 32 MiB thread + 16 MiB worker stacks guarantees uniform headroom
+/// across Windows, Linux, and macOS.
+const MAIN_THREAD_STACK_BYTES: usize = 32 * 1024 * 1024;
+const WORKER_THREAD_STACK_BYTES: usize = 16 * 1024 * 1024;
+
+fn main() -> anyhow::Result<()> {
+    let handle = std::thread::Builder::new()
+        .name("chump-main".to_string())
+        .stack_size(MAIN_THREAD_STACK_BYTES)
+        .spawn(|| -> anyhow::Result<()> {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .thread_stack_size(WORKER_THREAD_STACK_BYTES)
+                .enable_all()
+                .build()?;
+            rt.block_on(Box::pin(cli_dispatch::run()))
+        })
+        .map_err(|e| anyhow::anyhow!("failed to spawn chump-main thread: {e}"))?;
+    match handle.join() {
+        Ok(res) => res,
+        Err(_) => anyhow::bail!("chump-main thread panicked"),
+    }
 }

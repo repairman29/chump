@@ -94,7 +94,8 @@ jobs:
           echo "# FTUE Repo" > README.md
           git add README.md
           git commit -m "chore: initial commit"
-          git push -u origin main
+          SEED_BRANCH="main"
+          git push -u origin "$SEED_BRANCH"
 
           # 3. Install & verify native Rust git hooks
           chump hook install
