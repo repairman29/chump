@@ -40,7 +40,29 @@ pr_reopen_allowed() {
     title="$(gh pr view "$pr" --repo "$repo" --json title --jq '.title' 2>/dev/null || true)"
     gid="$(printf '%s' "$title" | grep -oE '^[[:space:]]*[A-Z]+-[0-9]+' | tr -d '[:space:]' || true)"
     [[ -z "$gid" ]] && return 0
-    gap_reopen_allowed "$gid"
+    gap_reopen_allowed "$gid" || return $?
+    pr_conflicting_lowprio_refused "$pr" "$repo" "$gid"
+}
+
+# pr_conflicting_lowprio_refused <PR> <REPO> <GAP-ID> -> rc 3 if the PR branch is
+# CONFLICTING/DIRTY and the gap is P2/P3, else 0 (INFRA-3604). Shared reopen/reap
+# policy: keep a PR alive only if its branch is mergeable; a stale conflicting
+# low-priority PR is retired (gap stays open for a clean re-pick), so a manual
+# close sticks. Fail-open on lookup misses / UNKNOWN mergeability.
+pr_conflicting_lowprio_refused() {
+    local pr="$1" repo="$2" gid="$3" bin="${CHUMP_BIN:-chump}" info prio
+    info="$(gh pr view "$pr" --repo "$repo" --json mergeable,mergeStateStatus --jq '.mergeable + " " + .mergeStateStatus' 2>/dev/null || true)"
+    case "$info" in
+        CONFLICTING*|*DIRTY) ;;
+        *) return 0 ;;
+    esac
+    prio="$("$bin" gap show "$gid" --field priority 2>/dev/null | tr -d '[:space:]' || true)"
+    case "$prio" in
+        P2|P3)
+            echo "pr_reopen_allowed: PR #$pr is conflicting and $gid is $prio — not reopening (INFRA-3604)" >&2
+            return 3 ;;
+    esac
+    return 0
 }
 
 safe_reopen_gap() {

@@ -78,6 +78,8 @@ source "$SCRIPT_DIR/../coord/lib/arm-policy.sh" 2>/dev/null || ARM_POLICY_HOLD_L
 # not a watchdog-local label list.
 # shellcheck source=scripts/coord/lib/pr-cut-guard.sh
 source "$SCRIPT_DIR/../coord/lib/pr-cut-guard.sh" 2>/dev/null || true
+# shellcheck source=scripts/lib/safe-reopen-gap.sh
+source "$SCRIPT_DIR/../lib/safe-reopen-gap.sh" 2>/dev/null || true   # INFRA-3604
 _deliberate_label() { # <labels-json-array> -> prints the matching label, rc 0 when deliberate
     python3 -c '
 import json, sys
@@ -175,6 +177,8 @@ for pr in data:
                     log "SKIP reopen PR #$pr_num — pr-cut (deliberate close, terminal; RESILIENT-1616)"
                 elif held_label=$(_deliberate_label "$pr_labels"); then
                     log "SKIP reopen PR #$pr_num — labeled '$held_label' (deliberate close / arm-policy hold, INFRA-8221)"
+                elif declare -F pr_conflicting_lowprio_refused >/dev/null 2>&1 && ! pr_conflicting_lowprio_refused "$pr_num" "$REPO" "$gap_id" 2>/dev/null; then
+                    log "SKIP reopen PR #$pr_num — conflicting + low-priority gap $gap_id (INFRA-3604)"
                 elif [[ "$REOPEN" == "1" && "$DRY_RUN" != "1" ]]; then
                     if gh api "repos/$REPO/pulls/$pr_num" -X PATCH -f state=open >/dev/null 2>&1; then
                         log "reopened PR #$pr_num for $gap_id"
