@@ -883,7 +883,7 @@ created worktree immediately post-`git worktree add` via
 `git -C "$wt_dir" rev-parse --show-toplevel`, rewrite both `<wt_dir>/.git` and
 `<repo>/.git/worktrees/<wt_name>/gitdir` when dangling or mismatched, run
 `git worktree repair`, and emit `kind=worktree_gitdir_repaired_postadd` with
-`worktree`, `gap_id`, `repaired_from`, and `repaired_to`.
+`worktree`, `gap_id`, `repaired_from`, `repaired_to`, `path`, `expected_toplevel`, and `observed_toplevel`. The check also fires when `rev-parse` succeeds but the toplevel or `.git` pointer names a sibling worktree. Regression: `scripts/ci/test-worktree-gitdir-repair.sh`.
 
 **Related — worktree reaper data-loss protection (INFRA-1347).**
 `scripts/coord/worktree-prune.sh` now refuses to delete a worktree if **any**
