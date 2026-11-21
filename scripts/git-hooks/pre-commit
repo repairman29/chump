@@ -1525,7 +1525,44 @@ if [ -n "$staged_rust" ]; then
             # the debug profile catches >99% of type/borrow errors.
             check_log="/tmp/chump-pre-commit-check-$$.log"
             trap 'rm -f "$check_log"' EXIT
-            if ! cargo check --bin chump --tests >"$check_log" 2>&1; then
+            # ZERO-WASTE-153: on a node marked small (CHUMP_NODE_SIZE=small in env or
+            # ~/.chump/node.env, or <8 GiB RAM) a workspace-wide bin build per worktree
+            # serializes lanes on one cargo target lock (5-40 min commits). There, check
+            # only the touched non-root packages; root-bin-only changes defer to CI.
+            node_size="${CHUMP_NODE_SIZE:-}"
+            if [ -z "$node_size" ] && [ -f "${CHUMP_STATE_DIR:-$HOME/.chump}/node.env" ]; then
+                node_size=$(sed -n 's/^\(export \)\{0,1\}CHUMP_NODE_SIZE=//p' "${CHUMP_STATE_DIR:-$HOME/.chump}/node.env" | tail -1 | tr -d "\"' ")
+            fi
+            if [ -z "$node_size" ] && [ -r /proc/meminfo ]; then
+                mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+                [ "${mem_kb:-0}" -gt 0 ] && [ "$mem_kb" -lt 8388608 ] && node_size=small
+            fi
+            check_cmd=(cargo check --bin chump --tests)
+            skip_check=0
+            if [ "$node_size" = "small" ]; then
+                pkgs=""
+                while IFS= read -r f; do
+                    d=$(dirname "$f")
+                    while [ "$d" != "." ] && [ "$d" != "/" ] && [ ! -f "$d/Cargo.toml" ]; do d=$(dirname "$d"); done
+                    [ "$d" = "." ] && continue
+                    n=$(sed -n '/^\[package\]/,/^\[/ s/^name *= *"\(.*\)"/\1/p' "$d/Cargo.toml" | head -1)
+                    [ -n "$n" ] && pkgs="$pkgs $n"
+                done <<< "$staged_rust"
+                pkgs=$(echo "$pkgs" | tr ' ' '\n' | sort -u | grep -v '^$' || true)
+                if [ -n "$pkgs" ]; then
+                    check_cmd=(cargo check --tests)
+                    for n in $pkgs; do check_cmd+=(-p "$n"); done
+                else
+                    skip_check=1
+                    echo "[pre-commit] small node: root-package change, deferring cargo check to CI (ZERO-WASTE-153)" >&2
+                fi
+            fi
+            if [ "$skip_check" = "0" ]; then
+                _adm="$(git rev-parse --show-toplevel)/scripts/coord/lib/admission-gate.sh"
+                # shellcheck disable=SC1090
+                [ -f "$_adm" ] && { . "$_adm"; chump_admission_wait_cargo || true; }
+            fi
+            if [ "$skip_check" = "0" ] && ! "${check_cmd[@]}" >"$check_log" 2>&1; then
                 echo "[pre-commit] CARGO CHECK FAILED — compile error in staged code." >&2
                 echo "[pre-commit] ---- last 30 lines of error output: ----" >&2
                 tail -30 "$check_log" >&2
