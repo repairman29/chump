@@ -48,6 +48,8 @@ LAST_FIRE_FILE="$STATE_DIR/disk-critical-reactor.last"
 # default (like the integrator daemon); set CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1
 # to arm. Hard guard: never deletes unless the dir is truly quiescent (0 builds).
 SHARED_TARGET="${CHUMP_SHARED_TARGET:-$HOME/.cargo/chump-shared-target}"
+# shellcheck source=../lib/shared-target-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/shared-target-guard.sh"
 SHARED_TARGET_CAP_GB="${CHUMP_SHARED_TARGET_CAP_GB:-50}"
 QUIESCE_EXECUTE="${CHUMP_DISK_REACTOR_QUIESCE_EXECUTE:-0}"
 # Daemons that keep spawning cargo builds and do NOT honor AUTONOMY_LEVEL=0.
@@ -176,8 +178,19 @@ quiesce_and_reclaim() {
     emit "\"kind\":\"disk_reactor_autonomy_resume\",\"restored_level\":$prior_level,\"reason\":\"aborted\""
     return 1
   fi
+  # 5b. RESILIENT-1647: a build that survived quiescence with this target dir
+  # in its env (e.g. an architect build) must not lose its tree.
+  if shared_target_live_build "$SHARED_TARGET"; then
+    emit "\"kind\":\"disk_reactor_quiesce_aborted\",\"reason\":\"live_build_on_target\",\"target\":\"$SHARED_TARGET\""
+    restore_quiesce_daemons
+    echo "$prior_level" > "$AUTON_FILE" 2>/dev/null || true
+    emit "\"kind\":\"disk_reactor_autonomy_resume\",\"restored_level\":$prior_level,\"reason\":\"aborted\""
+    return 1
+  fi
   # 6. Prune, then restore the daemons.
+  local _evict_bytes; _evict_bytes="$(shared_target_size_bytes "$SHARED_TARGET")"
   rm -rf "$SHARED_TARGET" 2>/dev/null || true
+  CHUMP_AMBIENT_LOG="$AMBIENT" shared_target_emit_evicted disk-critical-reactor "$SHARED_TARGET" "$_evict_bytes" "$SHARED_TARGET"
   local after_gb; after_gb="$(free_gb)"; after_gb="${after_gb:-0}"
   emit "\"kind\":\"disk_reactor_quiesce_reclaimed\",\"target\":\"$SHARED_TARGET\",\"reclaimed_gb_approx\":$cur_gb,\"free_gb_after\":$after_gb"
   restore_quiesce_daemons

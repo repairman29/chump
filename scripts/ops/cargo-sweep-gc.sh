@@ -63,6 +63,8 @@ fi
 # RESILIENT-1590: sweep EVERY target dir builds actually write to, each with its own cap.
 # CHUMP_CARGO_SWEEP_TARGET_DIRS = colon-separated "path[=capMB]" entries (default list below).
 # cargo-sweep honors CARGO_TARGET_DIR, so each dir is swept by pointing it there.
+# shellcheck source=../lib/shared-target-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/shared-target-guard.sh"
 DEFAULT_DIRS="$REPO_ROOT/target:$HOME/.cargo/chump-shared-target:$HOME/.cache/chump-fleet-target:$HOME/.cargo/chump-coord-release-target"
 [[ -n "${CARGO_TARGET_DIR:-}" ]] && DEFAULT_DIRS="$DEFAULT_DIRS:$CARGO_TARGET_DIR"
 DIRS="${CHUMP_CARGO_SWEEP_TARGET_DIRS:-$DEFAULT_DIRS}"
@@ -77,6 +79,14 @@ for entry in "${ENTRIES[@]}"; do
   [[ -d "$tdir" ]] || continue
   [[ "$seen" == *":$tdir:"* ]] && continue
   seen="$seen$tdir:"
+
+  # RESILIENT-1647: never sweep a target dir a live build is writing to.
+  if shared_target_live_build "$tdir"; then
+    echo "[cargo-sweep-gc] skip dir=$tdir: live build has CARGO_TARGET_DIR=$tdir"
+    emit "\"kind\":\"cargo_sweep_gc_skipped\",\"reason\":\"live_build_on_target\",\"target_dir\":\"$tdir\""
+    continue
+  fi
+  _before="$(shared_target_size_bytes "$tdir")"
 
   out="$(cd "$REPO_ROOT" && CARGO_TARGET_DIR="$tdir" cargo-sweep sweep --maxsize "$dcap" $DRY . 2>&1)"
   rc=$?
@@ -100,6 +110,10 @@ for entry in "${ENTRIES[@]}"; do
   time_cleaned="${time_cleaned:-nothing to clean}"
   echo "[cargo-sweep-gc] dir=$tdir time-prune days=${TIME_DAYS} -> ${time_cleaned} (rc=$time_rc)"
   emit "\"kind\":\"cargo_sweep_gc_time_pruned\",\"target_dir\":\"$tdir\",\"time_days\":$TIME_DAYS,\"dry_run\":$DRYJ,\"result\":\"$(printf '%s' "$time_cleaned" | tr '"' "'")\",\"rc\":$time_rc"
+  if [[ -z "$DRY" ]]; then
+    _after="$(shared_target_size_bytes "$tdir")"
+    (( _before > _after )) && CHUMP_AMBIENT_LOG="$AMB" shared_target_emit_evicted cargo-sweep-gc "$tdir" $(( _before - _after )) "$tdir"
+  fi
 done
 
 # RESILIENT-1590: reap chump-*.wedged-inode-* binary copies (69MB each, accumulate from

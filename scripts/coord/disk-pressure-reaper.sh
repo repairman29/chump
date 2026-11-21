@@ -28,6 +28,8 @@ TARGET_REAPER="$REPO_ROOT/scripts/coord/target-dir-reaper.sh"
 # uncommitted / unpushed work) — protect in-flight worktrees from whole-worktree
 # reaping, which destroys source + git state, not just reproducible build output.
 source "$(dirname "$0")/lib/worktree-reaper-safety.sh"
+# shellcheck source=../lib/shared-target-guard.sh
+source "$(dirname "$0")/../lib/shared-target-guard.sh"
 
 DRY_RUN=1
 TIER_OVERRIDE=""
@@ -260,8 +262,9 @@ if [[ "$tier" -ge 3 ]]; then
   # Only touch main repo target — worktree targets are handled above. INFRA-2303.
   INCREMENTAL_DIR="$REPO_ROOT/target/debug/incremental"
   if [[ -d "$INCREMENTAL_DIR" ]]; then
-    if pgrep -x rustc >/dev/null 2>&1; then
-      info "tier 3: active rustc process detected — skipping incremental reap"
+    if pgrep -x rustc >/dev/null 2>&1 || shared_target_live_build "$REPO_ROOT/target" \
+        || { [[ -n "${CARGO_TARGET_DIR:-}" ]] && shared_target_live_build "$CARGO_TARGET_DIR"; }; then
+      info "tier 3: active rustc/cargo build detected — skipping incremental reap"
     else
       incr_kb=$(du -sk "$INCREMENTAL_DIR" 2>/dev/null | awk '{print $1}')
       if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -270,6 +273,8 @@ if [[ "$tier" -ge 3 ]]; then
         rm -rf "${INCREMENTAL_DIR:?}"/* 2>/dev/null || true
         incr_freed_bytes=$(( incr_kb * 1024 ))
         ok "tier 3: reaped target/debug/incremental (~${incr_kb}KB freed)"
+        CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" \
+          shared_target_emit_evicted disk-pressure-reaper "$REPO_ROOT/target" "$incr_freed_bytes" "$INCREMENTAL_DIR"
         emit_ambient "\"kind\":\"incremental_reaped\",\"bytes_freed\":${incr_freed_bytes},\"freed_kb\":${incr_kb},\"dir\":\"${INCREMENTAL_DIR}\""
       fi
     fi

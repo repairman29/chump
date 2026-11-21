@@ -14727,6 +14727,28 @@ events:
     # payload: {ts: string, kind: "orphan_branch_manifest_pr", branch: string, rows: number, sweep_run_id: string}
 
   # ── RESILIENT-1680: shared cargo target incremental-cache reaper ─────────────
+  - kind: chump_binary_refresh_skipped
+    effect_metric: binary_staleness
+    emitter: scripts/ops/refresh-chump-binary.sh (RESILIENT-1647)
+    trigger: >-
+      refresh-chump-binary.sh found a live cargo/rustc with the same
+      CARGO_TARGET_DIR and skipped this tick rather than build on top of it.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, reason, target_dir]
+    expected_volume: "0-few per node per day"
+    status: stable
+  - kind: shared_target_evicted
+    effect_metric: disk_free_gb
+    emitter: scripts/lib/shared-target-guard.sh (RESILIENT-1647)
+    trigger: >-
+      An organ (shared-target-cache-reaper, cargo-sweep-gc, disk-critical-reactor,
+      disk-pressure-reaper, bot-merge) deleted paths inside a cargo target dir
+      after confirming no live cargo/rustc had that dir as CARGO_TARGET_DIR; the
+      receipt names the organ, paths and bytes.
+    consumers: [disk-audit, ops-audit]
+    fields_required: [ts, kind, organ, target, bytes, paths]
+    expected_volume: "0-N per node per reap tick"
+    status: stable
   - kind: shared_target_incremental_reaped
     effect_metric: disk_free_gb
     emitter: scripts/coord/shared-target-cache-reaper.sh (RESILIENT-1680)
