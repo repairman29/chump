@@ -2995,6 +2995,15 @@ fn current_branch(repo_root: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// RESILIENT-2222: env bot-merge.sh runs with so its preflight accepts the dispatch's own PR.
+const SHIP_OPEN_PR_ENV: (&str, &str) = (crate::dispatch_repair::ALLOW_DUP_ENV, "1");
+
+/// RESILIENT-2222: a repair targets a gap that has an open PR by definition, so
+/// the CREDIBLE-1613 open-PR refusal must not apply; plain `Work` keeps it.
+fn preflight_allows_open_pr(mode: &DispatchMode) -> bool {
+    matches!(mode, DispatchMode::Repair { .. })
+}
+
 fn preflight(ws: &Workspace) -> Result<()> {
     let opts = ws.opts();
     // INFRA-987 completion: scripts/coord/gap-preflight.sh was deleted (#2014) in
@@ -3013,14 +3022,16 @@ fn preflight(ws: &Workspace) -> Result<()> {
     // state.db explicitly (db_path() checks CHUMP_STATE_DB first).
     // INFRA-8190: the ONE resolver (CHUMP_STATE_DB > main checkout).
     let state_db = chump_gap_store::store_path::state_db_path(&opts.repo_root);
-    let status = Command::new(&exe)
-        .args(["gap", "preflight", opts.gap_id])
+    let mut pf = Command::new(&exe);
+    pf.args(["gap", "preflight", opts.gap_id])
         // INFRA-302 blocker (3): run from the worktree so any worktree-scoped
         // state (lease files at `<wt>/.chump-locks/`) is visible to the check.
         .current_dir(ws.working_dir())
-        .env("CHUMP_STATE_DB", &state_db)
-        .status()
-        .context("invoke chump gap preflight")?;
+        .env("CHUMP_STATE_DB", &state_db);
+    if preflight_allows_open_pr(&opts.mode) {
+        pf.env(crate::dispatch_repair::ALLOW_DUP_ENV, "1");
+    }
+    let status = pf.status().context("invoke chump gap preflight")?;
     if !status.success() {
         bail!(
             "chump gap preflight rejected {} (exit {})",
@@ -3110,6 +3121,11 @@ fn ship(ws: &Workspace) -> Result<ShipResult> {
         cmd.env("CHUMP_SESSION_ID", &ws.session_id);
     }
     cmd.env("CHUMP_DISPATCH_GAP", opts.gap_id);
+    // RESILIENT-2222: by ship time the open-PR gate already ran at dispatch
+    // start, and the PR bot-merge sees is this dispatch's own (the agent may
+    // have opened it). bot-merge's `chump gap preflight` must not refuse it
+    // (exit 10) after the work succeeded.
+    cmd.env(SHIP_OPEN_PR_ENV.0, SHIP_OPEN_PR_ENV.1);
     // INFRA-302 blocker (3): bot-merge.sh derives the branch via
     // `git rev-parse --abbrev-ref HEAD` — it MUST run inside the
     // dispatch's fresh worktree, not the main checkout, or it pushes
@@ -3461,6 +3477,17 @@ mod tests {
     }
 
     // ── CREDIBLE-1506: ship classification decision table ─────────────────────
+    #[test]
+    fn resilient_2222_preflight_open_pr_allowed_only_for_repair() {
+        assert!(preflight_allows_open_pr(&DispatchMode::Repair {
+            head_branch: "chump/x".to_string()
+        }));
+        assert!(!preflight_allows_open_pr(&DispatchMode::Work));
+        assert!(!preflight_allows_open_pr(&DispatchMode::ReviewOnly));
+        assert_eq!(SHIP_OPEN_PR_ENV.0, "CHUMP_CLAIM_ALLOW_DUPLICATE_PR");
+        assert_eq!(SHIP_OPEN_PR_ENV.1, "1");
+    }
+
     #[test]
     fn classify_ship_armed_pending_is_success_even_when_bot_merge_failed() {
         // The CREDIBLE-301 shape: bot-merge exited non-zero (post-arm auto-close
