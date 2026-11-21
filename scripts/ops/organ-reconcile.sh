@@ -613,6 +613,37 @@ if [[ "$(id -u)" != "0" && "${CHUMP_ORGAN_RECONCILE_ALLOW_NONROOT:-0}" != "1" ]]
   exit 0
 fi
 
+# INFRA-8045: a unit installed from a raw primary-node (root-shaped) template on
+# a non-root node carries literal /root paths -> exit 127 every tick. Detect that
+# drift in the installed companion .service and re-place it from the tracked
+# template through the host-rewriter.
+organ_repair_root_path_drift() {
+  local unit="$1" svc tracked installed run_user run_home scope="system"
+  svc="${unit%.timer}.service"
+  installed="$SYSTEMD_DIR/$svc"
+  tracked="$REPO_ROOT/scripts/dispatch/$svc"
+  [[ -f "$installed" && -f "$tracked" ]] || return 0
+  declare -F organ_unit_host_rewrite >/dev/null 2>&1 || return 0
+  grep -Eq '(^|[=[:space:]:"'"'"'])/root(/|[[:space:]"'"'"':]|$)' "$installed" || return 0
+  run_user="$(organ_unit_run_user "$REPO_ROOT")"
+  run_home="$(organ_unit_run_home "$run_user")"
+  [[ "$run_home" != "/root" ]] || return 0
+  [[ "$SYSTEMD_DIR" == "$run_home"/* ]] && scope="user"
+  local tmp; tmp="$(mktemp)"
+  if organ_unit_host_rewrite "$tracked" "$tmp" "$run_user" "$run_home" 0 "$REPO_ROOT" "$scope" 2>/dev/null; then
+    cp -f "$tmp" "$installed"
+    "$SYSTEMCTL_BIN" daemon-reload 2>/dev/null || true
+    "$SYSTEMCTL_BIN" reset-failed "$svc" 2>/dev/null || true
+    CHANGED+=("root-path-rewrite:$unit")
+    echo "REPAIRED root-path drift: $svc (run_home=$run_home)"
+    # scanner-anchor: "kind":"organ_reconcile_root_path_repaired" (INFRA-8045;
+    # fires when an installed organ unit carried /root paths on a non-root node
+    # and was re-rewritten from its tracked template)
+    emit organ_reconcile_root_path_repaired "\"unit\":\"$svc\",\"run_home\":\"$run_home\""
+  fi
+  rm -f "$tmp"
+}
+
 CHANGED=()
 NEED_RELOAD=0
 
@@ -680,6 +711,8 @@ for unit in "${ENABLED[@]}"; do
     emit organ_reconcile_not_applicable "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"$reason\""
     continue
   fi
+
+  organ_repair_root_path_drift "$unit"
 
   if organ_in_backoff "$unit"; then
     echo "SKIP (backed off, cooling down after a prior failure): $unit"

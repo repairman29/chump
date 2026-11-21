@@ -7767,6 +7767,15 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit, role]
 
+  - kind: organ_reconcile_root_path_repaired
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (INFRA-8045)
+    trigger: an installed organ .service carried literal /root paths on a
+      non-root node (exit-127 class) and was re-rewritten from its tracked
+      template via organ_unit_host_rewrite.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, run_home]
+
   - kind: organ_reconcile_drift_removed
     effect_metric: organ_unit_drift_auto_healed
     emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1016)
