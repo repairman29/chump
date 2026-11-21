@@ -7696,6 +7696,26 @@ events:
     consumers: [fleet-brief, ops-audit, curator]
     fields_required: [ts, kind, changed]
 
+  - kind: organ_unit_identity_drift_repaired
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (INFRA-8049)
+    trigger: an installed chump-*.service on a non-root-owned node named a /root
+      path (User=root/HOME=/root/WorkingDirectory=/root/...) left by an abandoned
+      bring-up; the reconcile re-placed it from its tracked template through
+      organ_unit_host_rewrite so it runs the checkout the node's deploy manages.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, run_user]
+
+  - kind: organ_unit_identity_drift_unrepaired
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (INFRA-8049)
+    trigger: an installed chump-*.service on a non-root-owned node names a /root
+      path but has no tracked template (or the rewrite failed), so it cannot be
+      auto-corrected — surfaced so the silent stale-code drift is visible while
+      systemctl --failed stays 0.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, run_user]
+
   - kind: organ_reconcile_noop
     effect_metric: self
     emitter: scripts/ops/organ-reconcile.sh (RESILIENT-305)
