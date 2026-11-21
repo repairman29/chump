@@ -541,7 +541,8 @@ if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
         # INFRA-1059: derive known domain prefixes from state.db to avoid
         # matching non-gap tokens like SHA-256, P0-1, HTTP-200. Fall back to
         # a hard-coded list if sqlite3 or state.db is unavailable.
-        _state_db="$REPO_ROOT/.chump/state.db"
+        _state_db="${MAIN_REPO:-$REPO_ROOT}/.chump/state.db"
+        [[ -s "$_state_db" ]] || _state_db="$REPO_ROOT/.chump/state.db"
         _known_prefixes=""
         if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$_state_db" ]]; then
             # RESILIENT-065-class guard: an empty/uninitialized state.db (no
