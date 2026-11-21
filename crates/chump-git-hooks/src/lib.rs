@@ -707,8 +707,9 @@ pub fn render_portable_hook_shim(subcommand: &str) -> String {
          if command -v chump >/dev/null 2>&1; then\n\
              exec chump hook {subcommand} \"$@\"\n\
          fi\n\
-         for cand in \"${{CARGO_TARGET_DIR:-}}/debug/chump\" \"${{CARGO_TARGET_DIR:-}}/release/chump\" \\\n\
-                     \"${{HOME:-}}/.cargo/chump-shared-target/debug/chump\" \"./target/debug/chump\" \"./target/release/chump\"; do\n\
+         for cand in \"${{CARGO_TARGET_DIR:-}}/debug/chump\" \"${{CARGO_TARGET_DIR:-}}/debug/chump.exe\" \\\n\
+                     \"${{CARGO_TARGET_DIR:-}}/release/chump\" \"${{CARGO_TARGET_DIR:-}}/release/chump.exe\" \\\n\
+                     \"${{HOME:-}}/.cargo/chump-shared-target/debug/chump\" \"./target/debug/chump\" \"./target/debug/chump.exe\" \"./target/release/chump\" \"./target/release/chump.exe\"; do\n\
              if [ -n \"$cand\" ] && [ -x \"$cand\" ]; then\n\
                  exec \"$cand\" hook {subcommand} \"$@\"\n\
              fi\n\

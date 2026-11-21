@@ -731,21 +731,14 @@ mod tests {
         )
         .unwrap();
 
-        let env_dump = dir.join("child_env.txt");
+        let env_dump = repo_dir.join("child_env.txt");
         #[cfg(unix)]
-        let tick_cmd = format!(
-            "printf 'FLEET_MODEL=%s\\nFLEET_BACKEND=%s\\nSONNET=%s\\nTIMEOUT=%s\\nMAX_TIMEOUT=%s\\n' \
-             \"$FLEET_MODEL\" \"$FLEET_BACKEND\" \"$ANTHROPIC_DEFAULT_SONNET_MODEL\" \
-             \"$BASH_DEFAULT_TIMEOUT_MS\" \"$BASH_MAX_TIMEOUT_MS\" > \"{}\"",
-            env_dump.display()
-        );
+        let tick_cmd = "printf 'FLEET_MODEL=%s\\nFLEET_BACKEND=%s\\nANTHROPIC_DEFAULT_SONNET_MODEL=%s\\nBASH_DEFAULT_TIMEOUT_MS=%s\\nBASH_MAX_TIMEOUT_MS=%s\\n' \
+            \"$FLEET_MODEL\" \"$FLEET_BACKEND\" \"$ANTHROPIC_DEFAULT_SONNET_MODEL\" \
+            \"$BASH_DEFAULT_TIMEOUT_MS\" \"$BASH_MAX_TIMEOUT_MS\" > child_env.txt"
+            .to_string();
         #[cfg(windows)]
-        let tick_cmd = format!(
-            "(echo FLEET_MODEL=%FLEET_MODEL%& echo FLEET_BACKEND=%FLEET_BACKEND%& \
-             echo SONNET=%ANTHROPIC_DEFAULT_SONNET_MODEL%& echo TIMEOUT=%BASH_DEFAULT_TIMEOUT_MS%& \
-             echo MAX_TIMEOUT=%BASH_MAX_TIMEOUT_MS%) > \"{}\"",
-            env_dump.display()
-        );
+        let tick_cmd = "set > child_env.txt".to_string();
         let cfg = WorkerConfig {
             repo: repo_dir.clone(),
             tick_cmd,
@@ -773,11 +766,12 @@ mod tests {
             "tick subprocess must receive FLEET_BACKEND: {dumped}"
         );
         assert!(
-            dumped.contains("SONNET=claude-sonnet-4-5"),
+            dumped.contains("ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-5"),
             "tick subprocess must receive ANTHROPIC_DEFAULT_SONNET_MODEL: {dumped}"
         );
         assert!(
-            dumped.contains("TIMEOUT=120000") && dumped.contains("MAX_TIMEOUT=600000"),
+            dumped.contains("BASH_DEFAULT_TIMEOUT_MS=120000")
+                && dumped.contains("BASH_MAX_TIMEOUT_MS=600000"),
             "tick subprocess must receive BASH timeout env vars: {dumped}"
         );
         let _ = fs::remove_dir_all(&dir);
