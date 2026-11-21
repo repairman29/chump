@@ -1807,6 +1807,9 @@ jobs:
       - name: Review-as-Handoff end-to-end smoke test (INFRA-774)
         run: bash scripts/ci/test-review-handoff-smoke.sh
 
+      - name: install-roles-launchd finds plists under scripts/plists (INFRA-8569)
+        run: bash scripts/ci/test-install-roles-launchd.sh
+
       - name: preflight-vs-CI parity smoke (INFRA-1867)
         run: bash scripts/ci/test-preflight-ci-parity.sh
 

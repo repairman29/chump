@@ -95,6 +95,10 @@ impl FileTestMapConfig {
                 "scripts/lib/disk-check.sh",
                 &["scripts/ci/test-worker-disk-gate-before-pick.sh"],
             ),
+            (
+                "scripts/setup/install-roles-launchd.sh",
+                &["scripts/ci/test-install-roles-launchd.sh"],
+            ),
             ("src/acp.rs", &["scripts/ci/test-acp-real-clients.sh"]),
             (
                 "src/acp_server.rs",
