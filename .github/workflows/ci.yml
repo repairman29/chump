@@ -727,6 +727,11 @@ jobs:
       # AdminMergeProposal consensus_result (grep gate + stubbed-gh fixtures).
       - name: admin-merge consensus gate (CREDIBLE-1524)
         run: bash scripts/ci/test-admin-merge-consensus-gate.sh
+      # CREDIBLE-1650: the sandboxed mutant runner the review organ dispatches
+      # on a review-needs-mutants gate-file PR — proves a killed AND a
+      # surviving mutant on a fixture diff (AC4). Mirrored in chump preflight.
+      - name: Mutant runner killed/survived fixture (CREDIBLE-1650)
+        run: bash scripts/ci/test-mutant-run.sh
       # INFRA-8594: refuse PRs whose title lacks a leading/conventional gap ID
       # or equals/derives from its head branch name (e.g. 'claude/infra 8588').
       - name: PR title gap-ID and branch-name guard (INFRA-8594)
