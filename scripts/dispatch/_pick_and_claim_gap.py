@@ -333,6 +333,21 @@ def is_manufactured_pillar_starved_junk(title: str) -> bool:
     return bool(_MANUFACTURED_PILLAR_STARVED_RE.match((title or "").lstrip()))
 
 
+# INFRA-8068: the EFFECTIVE "Wire <script> into curator-opus-<role>" doc
+# cross-reference family is near-zero-value micro-slices that crowd out
+# substantive outcome-linked work. Mirrors fleet_dispatch.py eligible() on the
+# cloud path; the owned-worker picker must exclude it too.
+_DOC_WIRING_FAMILY_RE = re.compile(
+    r"^effective[-\w]*:\s*wire\b.*\binto\b.*\b(curator-opus-[\w-]+|role[- ]docs?)",
+    re.IGNORECASE,
+)
+
+
+def is_doc_wiring_family(title: str) -> bool:
+    """True when `title` is an EFFECTIVE 'Wire X into <role doc>' micro-slice."""
+    return bool(_DOC_WIRING_FAMILY_RE.match((title or "").lstrip()))
+
+
 def extract_pillar(title: str) -> str:
     """Extract pillar tag from gap title (e.g. 'EFFECTIVE: foo bar' → 'EFFECTIVE')."""
     upper = title.lstrip().upper()
@@ -1442,6 +1457,10 @@ def main() -> int:
         if is_manufactured_pillar_starved_junk(g.get("title", "")):
             reasons["manufactured_pillar_junk"] += 1
             continue
+        # INFRA-8068: never serve the doc-wiring micro-slice family.
+        if is_doc_wiring_family(g.get("title", "")):
+            reasons["doc_wiring_family"] += 1
+            continue
         # META-937: waste-SLO-breach corrective-keyword exception (see
         # require_title_substrs comment above).
         if require_title_substrs:
@@ -1587,7 +1606,14 @@ def main() -> int:
         # a P0-self-maintenance gap within the same priority band, but a
         # substrate P0 (prio_rank=0) still beats a mission P1 (prio_rank=1)
         # because prio_rank is compared first.
-        mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
+        # INFRA-8068: tri-state — active-mission 0, any other outcome-linked 1,
+        # un-outcomed 2, so outcome-linked work outranks un-outcomed slices.
+        if _is_mission_linked(g, active_mission):
+            mission_rank = 0
+        elif (g.get("outcome_id") or "").strip():
+            mission_rank = 1
+        else:
+            mission_rank = 2
 
         # INFRA-8224: the third sort key is mode-dependent, preserving the
         # historical tiebreaker of each picker this file consolidates:
