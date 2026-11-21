@@ -93,7 +93,35 @@ if [[ -f "$CACHE_LIB" ]]; then
         fi
     fi
 fi
+# ── INFRA-8050: cache empty -> live gh fallback; gh failure => BLIND (not healthy) ──
+gate_blind=0
+if [[ "$total_open" -eq 0 ]]; then
+    gh_err="$(mktemp)"
+    if gh_json="$(gh pr list --state open --limit 200 --json number,mergeStateStatus 2>"$gh_err")"; then
+        counts="$(printf '%s' "$gh_json" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print(len(d), sum(1 for p in d if p.get("mergeStateStatus")=="BLOCKED"))' 2>/dev/null || true)"
+        if [[ -n "$counts" ]]; then
+            total_open="${counts% *}"; total_blocked="${counts#* }"
+            [[ "$total_open" -gt 0 ]] && blocked_pct=$(( total_blocked * 100 / total_open ))
+        else
+            gate_blind=1
+        fi
+    else
+        gate_blind=1
+    fi
+    [[ $gate_blind -eq 1 ]] && gh_reason="$(head -c 200 "$gh_err" | tr -d '"\\\n')"
+    rm -f "$gh_err"
+fi
 echo "[ci-health-gate] pipeline-jam check: total_open=$total_open total_blocked=$total_blocked blocked_pct=${blocked_pct}%"
+
+if [[ $gate_blind -eq 1 ]]; then
+    echo "[ci-health-gate] BLIND: cache empty and gh unusable (${gh_reason:-unknown}) — NOT reporting healthy, pause state unchanged"
+    # scanner-anchor: "kind":"ci_health_gate_blind"
+    _emit "ci_health_gate_blind" '"reason":"'"${gh_reason:-gh_failed}"'","paused":'"$([[ -f "$PAUSE_FILE" ]] && echo true || echo false)"
+    exit 0
+fi
 
 # ── SLO check (RESILIENT-146: halt only on L1 SAFETY breaches) ────────────────
 # Parse per-SLO breaches from --json. The fleet-pause gate must fire ONLY for

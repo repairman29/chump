@@ -231,6 +231,33 @@ else
     ok "worker.sh does not reference CHUMP_IGNORE_WASTE_PAUSE — bypass correctly removed"
 fi
 
+# ── 11. INFRA-8050: gh auth failure + empty cache => blind, never healthy ────
+FAKE_GH="$TMPDIR_LOCAL/bin11"; mkdir -p "$FAKE_GH"
+printf '#!/usr/bin/env bash\necho "populate the GH_TOKEN environment variable" >&2\nexit 4\n' > "$FAKE_GH/gh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_GH/chump"
+chmod +x "$FAKE_GH/gh" "$FAKE_GH/chump"
+out11="$(PATH="$FAKE_GH:$PATH" CHUMP_FLEET_PAUSE_FILE="$TMPDIR_LOCAL/fp11" \
+    CHUMP_CI_HEALTH_CONSEC_FILE="$TMPDIR_LOCAL/c11" CHUMP_AMBIENT_LOG="$TMPDIR_LOCAL/a11.jsonl" \
+    bash "$SCRIPT" 2>&1 || true)"
+if grep -q "BLIND" <<<"$out11" && ! grep -q "\] healthy" <<<"$out11" && grep -q ci_health_gate_blind "$TMPDIR_LOCAL/a11.jsonl"; then
+    ok "gh auth failure with empty cache reports blind, not healthy"
+else
+    fail "gh auth failure did not yield blind verdict: $out11"
+fi
+
+# ── 12. INFRA-8050: live gh fallback computes real blocked_pct and pauses ────
+FAKE_GH12="$TMPDIR_LOCAL/bin12"; mkdir -p "$FAKE_GH12"
+printf '#!/usr/bin/env bash\necho '"'"'[{"number":1,"mergeStateStatus":"BLOCKED"},{"number":2,"mergeStateStatus":"BLOCKED"},{"number":3,"mergeStateStatus":"CLEAN"}]'"'"'\n' > "$FAKE_GH12/gh"
+cp "$FAKE_GH/chump" "$FAKE_GH12/chump"; chmod +x "$FAKE_GH12/gh" "$FAKE_GH12/chump"
+PATH="$FAKE_GH12:$PATH" CHUMP_FLEET_PAUSE_FILE="$TMPDIR_LOCAL/fp12" \
+    CHUMP_CI_HEALTH_CONSEC_FILE="$TMPDIR_LOCAL/c12" CHUMP_AMBIENT_LOG="$TMPDIR_LOCAL/a12.jsonl" \
+    bash "$SCRIPT" >"$TMPDIR_LOCAL/out12.txt" 2>&1 || true
+if [[ -f "$TMPDIR_LOCAL/fp12" ]] && grep -q pipeline_jam "$TMPDIR_LOCAL/fp12"; then
+    ok "gh fallback: 2/3 BLOCKED trips pipeline_jam"
+else
+    fail "gh fallback did not trip pipeline_jam: $(cat "$TMPDIR_LOCAL/out12.txt")"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
