@@ -3528,6 +3528,7 @@ mod tests {
     /// `headless_command_skeleton` and assert `--settings {"disableAllHooks":true}`
     /// is delivered to the child process.
     #[test]
+    #[cfg(unix)]
     fn credible_1581_headless_spawn_argv_disables_all_hooks() {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -4174,6 +4175,7 @@ mod tests {
     /// `<tmp>/target/release/chump` that always exits 1 — `resolve_chump_binary`
     /// finds it before falling back to PATH, so the real chump is never called.
     #[test]
+    #[cfg(unix)]
     #[serial_test::serial(ambient_env)]
     fn release_with_retry_emits_ambient_event_and_propagates_on_double_failure() {
         use std::os::unix::fs::PermissionsExt as _;
@@ -4228,6 +4230,7 @@ mod tests {
     /// Single `release()` call must propagate a non-zero exit status as Err
     /// rather than silently succeeding.
     #[test]
+    #[cfg(unix)]
     fn release_returns_err_on_nonzero_exit() {
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -4279,6 +4282,7 @@ mod tests {
     /// present. Without the fix, this test fails because `release()` returns
     /// `Err("chump --release exited with exit status: 1")`.
     #[test]
+    #[cfg(unix)]
     fn release_passes_force_flag_to_avoid_interactive_prompt() {
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -4323,6 +4327,7 @@ mod tests {
     /// EOF instead of blocking on an inherited-but-unfed pipe — the second,
     /// defense-in-depth half of the RESILIENT-293 fix.
     #[test]
+    #[cfg(unix)]
     fn release_runs_with_stdin_closed() {
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -4367,6 +4372,7 @@ mod tests {
     /// retry window aborted the whole dispatch cycle; the 4-attempt,
     /// exponential-backoff budget (~3.75s) rides it out.
     #[test]
+    #[cfg(unix)]
     #[serial_test::serial(ambient_env)]
     fn release_with_retry_survives_transient_failures_within_budget() {
         use std::os::unix::fs::PermissionsExt as _;

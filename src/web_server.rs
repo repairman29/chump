@@ -12141,7 +12141,6 @@ mod workflow_e2e_tests {
     /// - `--execute-gap <id>` → exits 0
     /// - `gap ship <id> --update-yaml` → updates DB status to 'done', exits 0
     fn make_stub_bin(dir: &std::path::Path) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let bin = dir.join("stub-chump");
         let db_path = dir.join(".chump/state.db");
         let script = format!(
@@ -12159,7 +12158,11 @@ mod workflow_e2e_tests {
             db_path.display()
         );
         fs::write(&bin, &script).unwrap();
-        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+        }
         bin
     }
 
