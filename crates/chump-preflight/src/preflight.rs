@@ -3005,6 +3005,12 @@ pub fn run(argv: &[String]) -> i32 {
             ],
             GateKind::Scripts,
         ));
+        // RESILIENT-130: cargo-target-reaper EXIT emit stays alive + honest counts.
+        steps.push(step(
+            "cargo-target-reaper-honesty",
+            &["bash", "scripts/ci/test-cargo-target-reaper-honesty.sh"],
+            GateKind::Scripts,
+        ));
         // RESILIENT-1681: shared-target-cache-reaper (RESILIENT-1680) — reaps
         // incremental/ dirs under the shared target when disk floor or size
         // budget triggers, guarded by lane locks + cargo admit + build check.
