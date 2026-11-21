@@ -7945,6 +7945,22 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, peer, tailnet_ip, prior_misses]
 
+  - kind: node_reachable
+    effect_metric: node_unreachable_duration
+    emitter: scripts/ops/peer-deadman.sh (RESILIENT-1901)
+    trigger: the hub answered ping, ssh or :7070/health again after a
+      node_unreachable page — emitted exactly once per outage.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, peer, down_seconds, probes]
+
+  - kind: peer_deadman_tick
+    effect_metric: node_unreachable_duration
+    emitter: scripts/ops/peer-deadman.sh (RESILIENT-1901)
+    trigger: every 5-minute deadman cycle; hub_state is up|suspect|dark|unknown
+      and observer_tailnet reports whether the probing node itself is reachable.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, hub, observer_tailnet, hub_state, probes]
+
   - kind: node_remote_heal_attempted
     effect_metric: node_unreachable_duration
     emitter: scripts/ops/apex-watchdog.sh (RESILIENT-1098; on-by-default per

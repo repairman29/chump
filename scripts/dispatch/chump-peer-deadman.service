@@ -1,0 +1,17 @@
+# RESILIENT-1901 — off-node hub deadman. Runs on slim (never the hub): probes
+# the hub via tailscale ping + ssh + :7070/health, pages once after 10 min dark,
+# emits node_reachable on recovery, and runs the digest from this node while
+# the hub is dark. Paired with chump-peer-deadman.timer.
+#
+# Placeholder TEMPLATE: __HOME__ / __REPO_ROOT__ are resolved per host by
+# `chump node render-unit` / organ_unit_host_rewrite.
+[Unit]
+Description=Chump peer deadman — off-node hub liveness probe (RESILIENT-1901)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=__HOME__
+Environment=CHUMP_REPO_ROOT=__REPO_ROOT__
+ExecStart=/bin/bash -lc 'source __REPO_ROOT__/scripts/dispatch/lib/load-provider-auth.env __HOME__/.chump/providers.env 2>/dev/null; exec __REPO_ROOT__/scripts/ops/peer-deadman.sh'
