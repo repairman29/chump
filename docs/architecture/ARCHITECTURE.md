@@ -1,10 +1,24 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-04-25
+last_audited: 2026-11-18
 ---
 
 # Architecture
+
+## Universal v1.0 Multi-OS Architecture
+
+Chump v1.0 runs natively on **macOS, Windows, and Linux** as a pure-Rust control plane and optional governed agent, eliminating bash, `tmux`, `launchd`-only scripts, and Unix-domain socket assumptions from the core execution path:
+
+| Layer | Implementation | Role |
+|---|---|---|
+| **CLI & Agent Entrypoint (`chump`)** | `src/main.rs` (<500 LOC crate root) + `src/cli_dispatch/{mod,helpers,eval_modes,ship_modes,store_modes}.rs` | Unified switchboard for gap coordination, built-in agent, `chump config`, `chump hook`, `chump ship`, `chump up`, `chump service`, Web PWA, and ACP stdio server. |
+| **Supervisor Daemon (`chumpd`)** | `crates/chumpd` (`main.rs`, `worker_loop.rs`, `oauth_sync.rs`, `lease_reaper.rs`) | Self-contained multi-OS worker pool supervisor with loopback TCP control plane, 5-minute OAuth credential refresh (`0o600` atomic write + `sk-ant-oat*` pinning), dead-PID/expired `.chump-locks/*.json` reaper, and native Rust worker loop (`@native-chump-worker-tick` → `chump --worker-tick`) emitting RFC3339 UTC `ambient.jsonl` telemetry. |
+| **OS Abstraction Layer** | `crates/chump-pal` (`host`, `process`, `signal`, `paths`, `shell`, `ipc`, `win32`) | OS-native host RAM/CPU/disk probing, Win32 Job Objects / Unix PGID process-tree lifecycle, loopback TCP `IpcEndpoint` (`127.0.0.1:<port>` persisted in `.chump/chumpd.addr`), `CHUMP_HOME` → `HOME` → `USERPROFILE` → `temp_dir` path resolution, `cmd /C` vs `sh -c` shell dispatch, and multi-OS single-instance lockfiles. |
+| **Unified Config & 4-Lane BYO-LLM** | `crates/chump-config` + `src/auth.rs` + `src/provider_cascade.rs` | Validated `~/.chump/config.toml` (`chump config <init\|show\|validate\|path>`) + `CHUMP_*` env overrides powering four inference lanes: (1) **Subscription OAuth** (`CLAUDE_CODE_OAUTH_TOKEN`, macOS Keychain, `~/.claude/.credentials.json` / `%USERPROFILE%\.claude\.credentials.json`, `~/.chump/oauth-token.json`), (2) **40-Slot API-Key Cascade** (`[[providers]]` / `CHUMP_PROVIDER_{1..40}_*` with circuit breakers, RPD caps, and `BanditRouter`), (3) **BYO Harnesses** (`claude`, `opencode`, `codex`, `aider`), and (4) **Local Zero-Key Endpoints** (`Ollama`, `LM Studio`, `llama.cpp`, `vLLM`). |
+| **Rust Ship & Hook Firewall** | `crates/chump-ship` + `crates/chump-git-hooks` | `chump ship` (`ManualShipPath` + `BotMergePath` + `CREDIBLE-1576` gate-file auto-merge refusal) and `chump hook <install\|status\|pre-commit\|pre-push>` (`LeaseCollisionGuard`, `SecretPatternGuard`, `SubmoduleSanityGuard`, `BookSyncGuard`, `RustFmtGuard`, `ProtectedBranchGuard`, `BotMergeRequiredGuard`), retiring 10K+ LOC of legacy bash scripts preserved under `legacy/unwired-ci/`. |
+| **Deterministic Cognition Gate** | `src/cognition_gate.rs` (`--features experimental-cognition` / `CHUMP_COGNITION_ENABLED=1`) | Default builds execute deterministic, zero-surprisal no-op cognition hooks in `src/agent_loop/` while keeping all nine research cognitive modules (`blackboard`, `precision_controller`, `phi_proxy`, `neuromodulation`, `belief_state`, `counterfactual`, `consciousness_traits`, etc.) 100% intact and opt-in at compile time or runtime. |
+| **Surfaces & Dual-Authority Coord** | `src/acp_server.rs`, `src/web_server.rs`, `crates/chump-gap-store`, NATS | Editor-native JSON-RPC stdio (`chump --acp`), `axum` Web PWA + SSE cockpit (`http://127.0.0.1:3000`), and dual-authority coordination combining canonical local SQLite (`.chump/state.db`) with append-only `ambient.jsonl` and NATS `chump.events.*` fan-out. |
 
 ## What Chump is
 

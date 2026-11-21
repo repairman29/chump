@@ -312,17 +312,17 @@ pub async fn execute_tool_calls_sequential<'a>(
                         if !approval_resolver::is_pending(&req_id_for_push) {
                             return; // operator already decided.
                         }
-                        #[cfg(feature = "web-push")]
+                        #[cfg(all(feature = "web-push", not(windows)))]
                         let title = format!("Chump: approve {}?", tool_for_push);
-                        #[cfg(feature = "web-push")]
+                        #[cfg(all(feature = "web-push", not(windows)))]
                         let body = format!(
                             "{} request pending for {}s (risk={})",
                             tool_for_push, escalation_secs, risk_for_push
                         );
-                        #[cfg(feature = "web-push")]
+                        #[cfg(all(feature = "web-push", not(windows)))]
                         let (ok, fail) =
                             crate::web_push_send::broadcast_json_notification(&title, &body).await;
-                        #[cfg(not(feature = "web-push"))]
+                        #[cfg(not(all(feature = "web-push", not(windows))))]
                         let (ok, fail) = (0usize, 0usize);
                         tool_policy::emit_ambient_json(
                             "tool_approval_escalated",

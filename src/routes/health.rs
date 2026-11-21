@@ -223,12 +223,7 @@ pub async fn handle_favicon() -> Redirect {
 // ── Cascade slot config.toml helpers (PRODUCT-054) ────────────────────────
 
 fn cascade_config_path() -> std::path::PathBuf {
-    let home = std::env::var("CHUMP_HOME")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| "/tmp".into());
-    std::path::PathBuf::from(home)
-        .join(".chump")
-        .join("config.toml")
+    chump_pal::chump_home().join("config.toml")
 }
 
 /// Read `[cascade_slots] disabled = [...]` from ~/.chump/config.toml.

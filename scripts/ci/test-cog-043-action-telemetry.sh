@@ -55,14 +55,14 @@ else
 fi
 
 # --- 5. main.rs has chump lesson-grade subcommand ---
-if grep -q 'Some("lesson-grade")' "$REPO_ROOT/src/main.rs"; then
+if grep -rq 'Some("lesson-grade")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "chump lesson-grade subcommand wired in main.rs"
 else
     fail "chump lesson-grade subcommand missing"
 fi
 
 # --- 6. main.rs run_lesson_grade exists ---
-if grep -qE '^fn run_lesson_grade' "$REPO_ROOT/src/main.rs"; then
+if grep -rqE '^(pub(\(crate\))? )?fn run_lesson_grade' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "run_lesson_grade fn defined"
 else
     fail "run_lesson_grade fn missing"

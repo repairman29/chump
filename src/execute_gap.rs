@@ -880,24 +880,39 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
     verify_fix_before_ship(gap_id, repo_root).await?;
 
     // CREDIBLE-1607 / arm-policy: delegated (INFRA-8221). Worker ship paths NEVER
-    // arm auto-merge by default: bot-merge.sh opens the PR and exits; arming is
-    // delegated to the review organ / auto-merge-armer.sh (arm_policy_allows)
+    // arm auto-merge by default: bot-merge.sh / chump-ship opens the PR and exits;
+    // arming is delegated to the review organ / auto-merge-armer.sh (arm_policy_allows)
     // after VERDICT: APPROVE.
-    let script = repo_root.join("scripts/coord/bot-merge.sh");
-    eprintln!("[execute-gap] free-tier ship: bot-merge.sh --gap {gap_id} --fast");
-    let status = tokio::process::Command::new("bash")
-        .arg(&script)
-        .arg("--gap")
-        .arg(gap_id)
-        .arg("--fast")
-        .current_dir(repo_root)
-        .status()
+    eprintln!("[execute-gap] free-tier ship: chump-ship --gap {gap_id} --mode bot-merge --fast");
+    let cli_args = chump_ship::cli::ShipCliArgs {
+        gaps: vec![gap_id.to_string()],
+        mode: chump_ship::cli::ShipModeCliArg::BotMerge,
+        branch: None,
+        base: "main".to_string(),
+        stack_on: None,
+        commit_message: None,
+        session_id: None,
+        bot_session_id: None,
+        repo_root: Some(repo_root.to_path_buf()),
+        dry_run: false,
+        auto_merge: false,
+        gate_arm_check: false,
+        skip_tests: false,
+        fast: true,
+        no_local_build: false,
+        no_merge_driver: false,
+        lane: None,
+        branch_prefix: None,
+        pr_template: None,
+        required_checks: None,
+    };
+    let exit_code = chump_ship::cli::execute_cli(cli_args)
         .await
-        .with_context(|| format!("launching bot-merge.sh for {gap_id}"))?;
-    if !status.success() {
+        .with_context(|| format!("executing chump-ship for {gap_id}"))?;
+    if exit_code != 0 {
         return Err(anyhow!(
-            "bot-merge.sh exited {} for gap {}",
-            status.code().unwrap_or(-1),
+            "chump-ship exited {} for gap {}",
+            exit_code,
             gap_id
         ));
     }

@@ -77,17 +77,18 @@ fn emit_cascade_exhausted_event(slots: &[ProviderSlot], reason: &str) {
 
     // Trim reason to keep the JSON line short; full diagnosis is in cycle log.
     let reason_trim: String = reason.chars().take(200).collect();
-    let reason_esc = reason_trim
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', " ");
 
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"worktree\":\"{worktree}\",\
-         \"event\":\"cascade_all_exhausted\",\"slot_count\":{slot_count},\
-         \"per_slot\":\"{per_slot}\",\"reason\":\"{reason_esc}\"}}",
-        slot_count = slots.len()
-    );
+    // scanner-anchor: "event":"cascade_all_exhausted"
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "worktree": worktree,
+        "event": "cascade_all_exhausted",
+        "slot_count": slots.len(),
+        "per_slot": per_slot,
+        "reason": reason_trim,
+    })
+    .to_string();
 
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -110,9 +111,13 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
         .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
     let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"event\":\"{kind}\",\"backoff_s\":{backoff_s}}}"
-    );
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "event": kind,
+        "backoff_s": backoff_s,
+    })
+    .to_string();
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -132,6 +137,7 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
 /// Anthropic-only path — so `tokens` here is what `chump kpi report`'s
 /// free-tier-savings section sums to estimate dollars saved vs an
 /// Anthropic-only baseline.
+// scanner-anchor: "kind":"cascade_routed"
 fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, tokens: u64) {
     let repo_root = crate::repo_path::runtime_base();
     let lock_dir = repo_root.join(".chump-locks");
@@ -143,11 +149,16 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, to
         .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
         .unwrap_or_else(|_| "unknown".to_string());
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"cascade_routed\",\
-         \"slot\":\"{slot_name}\",\"tier\":\"{tier}\",\"cascade_mode\":\"{cascade_mode}\",\
-         \"tokens\":{tokens}}}"
-    );
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "kind": "cascade_routed",
+        "slot": slot_name,
+        "tier": tier,
+        "cascade_mode": cascade_mode,
+        "tokens": tokens,
+    })
+    .to_string();
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -156,14 +167,6 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, to
     {
         let _ = writeln!(f, "{line}");
     }
-}
-
-/// Escape a string for embedding in a hand-built JSON line (matches the
-/// escaping already used by `emit_cascade_exhausted_event`'s `reason_esc`).
-fn json_escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', " ")
 }
 
 /// CREDIBLE-266: emit a `provider_slot_resolved` ambient event once per agent
@@ -184,25 +187,26 @@ pub fn emit_provider_slot_ambient_event(request_id: &str, provider_slot: &str, m
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     let failovers = get_last_failovers();
-    let failovers_json: Vec<String> = failovers
+    let failovers_json: Vec<serde_json::Value> = failovers
         .iter()
         .map(|f| {
-            format!(
-                "{{\"slot\":\"{}\",\"reason\":\"{}\"}}",
-                json_escape(&f.slot),
-                json_escape(&f.reason)
-            )
+            serde_json::json!({
+                "slot": f.slot,
+                "reason": f.reason,
+            })
         })
         .collect();
 
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"provider_slot_resolved\",\
-         \"request_id\":\"{}\",\"slot\":\"{}\",\"model\":\"{}\",\"failovers\":[{}]}}",
-        json_escape(request_id),
-        json_escape(provider_slot),
-        json_escape(model),
-        failovers_json.join(",")
-    );
+    let line = serde_json::json!({
+        "ts": ts,
+        "session": session,
+        "kind": "provider_slot_resolved",
+        "request_id": request_id,
+        "slot": provider_slot,
+        "model": model,
+        "failovers": failovers_json,
+    })
+    .to_string();
 
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -839,6 +843,70 @@ impl ProviderCascade {
                 cooldown_until: Mutex::new(None),
                 xml_tool_tags,
             });
+        }
+
+        // Milestone 4 (`crates/chump-config`): additively load `[[providers]]` slots
+        // from `config.toml` when no env slot already occupies the same slot name.
+        if let Ok(file_cfg) =
+            chump_config::ChumpConfig::load_from_path(&chump_config::default_config_path())
+        {
+            for (idx, cfg_slot) in file_cfg.providers.iter().enumerate() {
+                if !cfg_slot.enabled || slots.len() >= MAX_SLOTS as usize {
+                    continue;
+                }
+                let base = cfg_slot.base_url.trim().trim_end_matches('/').to_string();
+                let name = cfg_slot.name.trim().to_string();
+                if base.is_empty() || name.is_empty() || slots.iter().any(|s| s.name == name) {
+                    continue;
+                }
+                let key = cfg_slot.resolve_api_key();
+                let model = upgrade_retired_provider_model(&base, cfg_slot.model.trim());
+                let priority = cfg_slot
+                    .priority
+                    .unwrap_or_else(|| ((idx as u32) + 1) * 10 + 100);
+                let tier = match cfg_slot.tier {
+                    chump_config::ProviderTierConfig::Local => ProviderTier::Local,
+                    _ => ProviderTier::Cloud,
+                };
+                let privacy = cfg_slot
+                    .privacy
+                    .as_deref()
+                    .map(parse_privacy_tier)
+                    .unwrap_or(PrivacyTier::Safe);
+                let rpm = cfg_slot
+                    .rpm_limit
+                    .unwrap_or(if tier == ProviderTier::Local { 0 } else { 30 });
+                let rpd = cfg_slot
+                    .rpd_limit
+                    .unwrap_or(if tier == ProviderTier::Local {
+                        0
+                    } else {
+                        DEFAULT_RPD_WHEN_UNSET
+                    });
+                let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
+                slots.push(ProviderSlot {
+                    name,
+                    base_url: base,
+                    provider,
+                    priority,
+                    tier,
+                    privacy,
+                    context_k: cfg_slot.context_k,
+                    model_class: cfg_slot
+                        .model_class
+                        .as_ref()
+                        .map(|s| s.trim().to_ascii_lowercase())
+                        .filter(|s| !s.is_empty()),
+                    rpm_limit: rpm,
+                    calls_this_minute: AtomicU32::new(0),
+                    minute_start: Mutex::new(Instant::now()),
+                    rpd_limit: rpd,
+                    calls_today: AtomicU32::new(0),
+                    day_start: Mutex::new(Instant::now()),
+                    cooldown_until: Mutex::new(None),
+                    xml_tool_tags: cfg_slot.xml_tool_tags,
+                });
+            }
         }
 
         // EFFECTIVE-1933: When CHUMP_AUTO_BYOK_SLOTS=1, auto-register Google AI
@@ -4218,5 +4286,91 @@ mod tests {
             Some(v) => std::env::set_var("GEMINI_API_KEY", v),
             None => std::env::remove_var("GEMINI_API_KEY"),
         }
+    }
+
+    #[test]
+    #[serial_test::serial(openai_env)]
+    fn config_toml_providers_load_additively_into_cascade() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-cascade-cfg-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_file = dir.join("config.toml");
+        std::fs::write(
+            &cfg_file,
+            r#"
+[[providers]]
+name = "toml-ollama-slot"
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5-coder:14b"
+tier = "local"
+rpm_limit = 0
+rpd_limit = 0
+enabled = true
+"#,
+        )
+        .unwrap();
+
+        let prev_cfg = std::env::var("CHUMP_CONFIG_FILE").ok();
+        std::env::set_var("CHUMP_CONFIG_FILE", &cfg_file);
+        let cascade = ProviderCascade::from_env();
+        match prev_cfg {
+            Some(v) => std::env::set_var("CHUMP_CONFIG_FILE", v),
+            None => std::env::remove_var("CHUMP_CONFIG_FILE"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let slot = cascade
+            .slots
+            .iter()
+            .find(|s| s.name == "toml-ollama-slot")
+            .expect("slot from config.toml must be loaded");
+        assert_eq!(slot.base_url, "http://127.0.0.1:11434/v1");
+        assert!(matches!(slot.tier, ProviderTier::Local));
+        assert_eq!(slot.rpm_limit, 0);
+        assert_eq!(slot.rpd_limit, 0);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn ambient_emitters_serialize_control_chars_as_valid_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-cascade-ambient-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ambient_file = dir.join("ambient.jsonl");
+        let prev = std::env::var("CHUMP_AMBIENT_LOG").ok();
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_file);
+
+        emit_cascade_exhausted_event(&[], "bad \"quote\" \\slash\r\n\t\u{0007}reason");
+        emit_cascade_backoff_event("cascade_backoff_sleep\t\"x\"", 42);
+
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_AMBIENT_LOG", v),
+            None => std::env::remove_var("CHUMP_AMBIENT_LOG"),
+        }
+
+        let raw = std::fs::read_to_string(&ambient_file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let lines: Vec<&str> = raw.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let v0: serde_json::Value = serde_json::from_str(lines[0]).expect("valid json line 0");
+        assert_eq!(v0["event"], "cascade_all_exhausted");
+        assert_eq!(v0["slot_count"], 0);
+        assert!(v0["reason"].as_str().unwrap().contains('\u{0007}'));
+
+        let v1: serde_json::Value = serde_json::from_str(lines[1]).expect("valid json line 1");
+        assert_eq!(v1["backoff_s"], 42);
     }
 }

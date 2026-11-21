@@ -914,6 +914,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn find_open_pr_by_branch_prefix_with_stub_gh_and_emit_credible_1613() {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();

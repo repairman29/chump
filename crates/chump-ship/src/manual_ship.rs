@@ -40,7 +40,6 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use tokio::net::UnixListener;
 use tokio::process::Command;
 
 use crate::ship::{
@@ -82,25 +81,15 @@ pub struct ManualShipPath {
     auto_merge: bool,
 }
 
-/// RAII wrapper that holds the bound socket + path-to-clean-up-on-drop.
+/// RAII wrapper that holds the bound loopback IPC server + `.ipc` file cleanup on drop.
 struct SingleInstanceGuard {
-    _listener: UnixListener,
-    socket_path: PathBuf,
-}
-
-impl Drop for SingleInstanceGuard {
-    fn drop(&mut self) {
-        // Best-effort cleanup of the socket file. Failure to remove is
-        // tolerable — the next process will simply rebind a fresh node.
-        let _ = std::fs::remove_file(&self.socket_path);
-    }
+    _ipc: chump_pal::ipc::IpcServer,
 }
 
 impl ManualShipPath {
-    /// Construct a new executor. Binds the single-instance socket at
-    /// `/tmp/chump-ship-{session_id}.sock` — returns
-    /// [`ShipError::BotMergeDoubleInstance`] if another process already
-    /// holds it.
+    /// Construct a new executor. Binds the exclusive single-instance IPC endpoint
+    /// under `chump_home()/run/chump-ship-{session_id}.ipc` — returns
+    /// [`ShipError::BotMergeDoubleInstance`] if another process already holds it.
     ///
     /// `repo_root` is the working directory for subprocess `git`+`gh`.
     /// `dry_run=true` skips the push + PR-create + arm-auto-merge calls
@@ -112,43 +101,13 @@ impl ManualShipPath {
     ) -> Result<Self, ShipError> {
         let socket_path = socket_path_for(&intent.session_id);
 
-        // EADDRINUSE on bind → another instance is alive. Some platforms
-        // (Linux) leave a stale socket node on crash, so we attempt to
-        // unlink first IFF the file exists AND nothing is listening on it.
-        //
-        // The probe-and-unlink IS racy in principle, but the kernel-enforced
-        // semantic we want is: "two ManualShipPath::new() calls for the
-        // same session id, racing, AT MOST ONE wins." The probe step
-        // doesn't undermine that — whichever caller wins the subsequent
-        // bind() is the live instance.
-        if socket_path.exists() {
-            // Try to connect; if connect succeeds, somebody is listening
-            // → genuine collision. If it fails, the socket is stale.
-            match std::os::unix::net::UnixStream::connect(&socket_path) {
-                Ok(_) => {
-                    return Err(ShipError::BotMergeDoubleInstance {
-                        detail: format!(
-                            "socket {} already bound by an active ManualShipPath \
-                             (session_id={}). Another ship is in flight for this session.",
-                            socket_path.display(),
-                            intent.session_id
-                        ),
-                    });
-                }
-                Err(_) => {
-                    // Stale socket → remove and continue to bind below.
-                    let _ = std::fs::remove_file(&socket_path);
-                }
-            }
-        }
-
-        let listener = match UnixListener::bind(&socket_path) {
-            Ok(l) => l,
+        let ipc_server = match chump_pal::ipc::IpcServer::bind_exclusive_at(&socket_path) {
+            Ok(s) => s,
             Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
                 return Err(ShipError::BotMergeDoubleInstance {
                     detail: format!(
-                        "socket {} bind failed with EADDRINUSE — concurrent ManualShipPath \
-                         instance for session_id={}",
+                        "ipc endpoint {} already bound by an active ManualShipPath \
+                         (session_id={}): {err}",
                         socket_path.display(),
                         intent.session_id
                     ),
@@ -160,10 +119,7 @@ impl ManualShipPath {
         Ok(ManualShipPath {
             intent,
             repo_root: repo_root.as_ref().to_path_buf(),
-            _socket_guard: SingleInstanceGuard {
-                _listener: listener,
-                socket_path,
-            },
+            _socket_guard: SingleInstanceGuard { _ipc: ipc_server },
             dry_run,
             auto_merge: false,
         })
@@ -308,14 +264,15 @@ impl ManualShipPath {
     /// no retry on lease rejection — caller falls back to bash if so.
     async fn push_branch(&self) -> Result<(), ShipError> {
         if self.dry_run {
-            tracing::info!(
-                branch = %self.intent.branch,
-                "[dry-run] skipping git push --force-with-lease"
+            println!(
+                "[dry-run] git push -u origin {} --force-with-lease",
+                self.intent.branch
             );
             return Ok(());
         }
         let out = self
             .git()
+            .env("CHUMP_BOT_MERGE_IN_PROGRESS", "1")
             .args([
                 "push",
                 "-u",
@@ -337,9 +294,9 @@ impl ManualShipPath {
     /// Open the PR via `gh pr create`. Returns the parsed PR number + URL.
     async fn create_pr(&self) -> Result<(u64, String), ShipError> {
         if self.dry_run {
-            tracing::info!(
-                gap = %self.intent.gap_id,
-                "[dry-run] skipping gh pr create"
+            println!(
+                "[dry-run] gh pr create --base {} --head {} --title {:?}",
+                self.intent.base, self.intent.branch, self.intent.commit_message
             );
             return Ok((
                 0,
@@ -412,12 +369,28 @@ impl ManualShipPath {
     }
 
     /// Arm GitHub auto-merge (`--auto --squash`). Returns false if the
-    /// arm subcommand failed in a non-fatal way (secondary rate limit
-    /// is the common case); operator can re-arm manually.
+    /// arm subcommand failed in a non-fatal way (secondary rate limit,
+    /// arm-policy hold, or CREDIBLE-1576 gate-file guard); operator can
+    /// review and arm manually.
     async fn arm_auto_merge(&self, pr_number: u64) -> Result<bool, ShipError> {
+        let (armed, _note) = self.arm_auto_merge_with_note(pr_number).await?;
+        Ok(armed)
+    }
+
+    async fn arm_auto_merge_with_note(
+        &self,
+        pr_number: u64,
+    ) -> Result<(bool, Option<String>), ShipError> {
         if self.dry_run {
+            if let Err(refusal) =
+                crate::gate_guard::check_gate_arm_refused(&self.repo_root, &self.intent.base, true)
+            {
+                let msg = refusal.to_string();
+                eprintln!("{msg}");
+                return Ok((false, Some(msg)));
+            }
             tracing::info!(pr = pr_number, "[dry-run] skipping auto-merge arm");
-            return Ok(true);
+            return Ok((true, None));
         }
         // INFRA-8221: the one arm policy. A held PR (no-auto-merge label or an
         // `Auto-merge: hold` line, possibly carried in from the intent's body)
@@ -429,8 +402,19 @@ impl ManualShipPath {
             crate::arm_policy::GateAction::Arm,
             Some(&self.repo_root),
         ) {
+            let msg = held.to_string();
             tracing::warn!(pr = pr_number, %held, "arm policy: PR held; not arming");
-            return Ok(false);
+            return Ok((false, Some(msg)));
+        }
+        // CREDIBLE-1576: refuse arming auto-merge when PR diff vs origin/<base>
+        // touches a protected gate file or cannot be computed (fail-closed).
+        if let Err(refusal) =
+            crate::gate_guard::check_gate_arm_refused(&self.repo_root, &self.intent.base, true)
+        {
+            let msg = refusal.to_string();
+            eprintln!("{msg}");
+            tracing::warn!(pr = pr_number, reason = %msg, "gate_guard refused auto-merge");
+            return Ok((false, Some(msg)));
         }
         let out = self
             .gh()
@@ -440,15 +424,19 @@ impl ManualShipPath {
         if !out.status.success() {
             // Phase 1 happy-path: log + return false (not-armed) rather
             // than fail the whole ship. The PR is up; operator can arm.
+            let stderr_tail = truncate_for_log(&String::from_utf8_lossy(&out.stderr), 240);
             tracing::warn!(
                 pr = pr_number,
                 rc = out.status.code().unwrap_or(-1),
-                stderr_tail = %truncate_for_log(&String::from_utf8_lossy(&out.stderr), 240),
+                stderr_tail = %stderr_tail,
                 "auto-merge arm failed; PR open but not armed"
             );
-            return Ok(false);
+            return Ok((
+                false,
+                Some(format!("gh pr merge --auto failed: {stderr_tail}")),
+            ));
         }
-        Ok(true)
+        Ok((true, None))
     }
 }
 
@@ -489,13 +477,29 @@ impl Ship for ManualShipPath {
         // 4. Resolve head SHA for the receipt.
         let head_sha = self.resolve_head_sha().await?;
 
-        // 5. CREDIBLE-1607: Arm auto-merge ONLY when explicitly requested.
-        //    Worker ship paths leave auto_merge=false; arming is owned by the
-        //    review organ after VERDICT: APPROVE.
-        let auto_merge_armed = if self.auto_merge {
-            self.arm_auto_merge(pr_number).await?
+        // 4b. Record typed gap_prs link when .chump/state.db exists locally.
+        if !self.dry_run && pr_number > 0 {
+            if let Err(err) = crate::bot_merge::record_gap_pr_if_store_exists(
+                &self.repo_root,
+                &self.intent.gap_id,
+                pr_number,
+                &head_sha,
+            ) {
+                tracing::warn!(
+                    gap = %self.intent.gap_id,
+                    pr = pr_number,
+                    %err,
+                    "failed to record gap_prs link in ManualShipPath"
+                );
+            }
+        }
+
+        // 5. CREDIBLE-1607 + CREDIBLE-1576: Arm auto-merge ONLY when explicitly
+        //    requested AND allowed by arm_policy + gate_guard.
+        let (auto_merge_armed, auto_merge_note) = if self.auto_merge {
+            self.arm_auto_merge_with_note(pr_number).await?
         } else {
-            false
+            (false, None)
         };
 
         Ok(ShipReceipt {
@@ -503,6 +507,7 @@ impl Ship for ManualShipPath {
             pr_url,
             head_sha,
             auto_merge_armed,
+            auto_merge_note,
             shipped_at: Utc::now(),
         })
     }
@@ -516,7 +521,7 @@ pub(crate) fn socket_path_for(session_id: &str) -> PathBuf {
     // accidental directory traversal. Session ids in practice are
     // `claim-infra-NNNN-PID-TS` shaped — all safe — but defensive.
     let safe = session_id.replace(['/', '\\'], "_");
-    PathBuf::from(format!("/tmp/chump-ship-{}.sock", safe))
+    chump_pal::ipc::ipc_file_path(&format!("chump-ship-{safe}"))
 }
 
 /// Extract a PR number from a GitHub PR URL like
@@ -673,12 +678,11 @@ mod tests {
     #[test]
     fn socket_path_sanitizes_slashes() {
         let p = socket_path_for("a/b\\c");
-        let lossy = p.to_string_lossy();
-        assert!(lossy.contains("a_b_c"));
-        // Any '/' that remains must be from the "/tmp/" prefix only.
-        if lossy.contains('/') {
-            assert!(lossy.starts_with("/tmp/"));
-        }
+        let fname = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("ipc filename");
+        assert_eq!(fname, "chump-ship-a_b_c.ipc");
     }
 
     #[tokio::test]

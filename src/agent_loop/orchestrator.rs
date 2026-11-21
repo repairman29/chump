@@ -363,27 +363,7 @@ fn maybe_suggest_skill(outcome: &AgentRunOutcome) {
     if threshold == 0 || outcome.total_tool_calls < threshold {
         return;
     }
-    let msg = format!(
-        "This turn used {} tool calls — consider capturing the workflow as a reusable skill \
-         via skill_manage(action=create, name=<kebab-name>, description=<one line>, content=<SKILL.md body>). \
-         Skills help Chump repeat successful patterns without re-deriving them each time.",
-        outcome.total_tool_calls
-    );
-    crate::blackboard::post(
-        crate::blackboard::Module::Custom("agent_loop".to_string()),
-        msg,
-        crate::blackboard::SalienceFactors {
-            novelty: 0.8,
-            uncertainty_reduction: 0.2,
-            goal_relevance: 0.7,
-            urgency: 0.3,
-        },
-    );
-    tracing::info!(
-        tool_calls = outcome.total_tool_calls,
-        threshold,
-        "skill suggestion posted to blackboard"
-    );
+    crate::cognition_gate::post_skill_suggestion(outcome.total_tool_calls, threshold);
 }
 
 #[cfg(test)]

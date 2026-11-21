@@ -5937,7 +5937,7 @@ pub mod nugget_prefetch {
 
         // Relative target so the symlink survives the worktree base moving.
         let relative_target = Path::new("../../.chump/github_cache.db");
-        if let Err(e) = std::os::unix::fs::symlink(relative_target, &worktree_cache) {
+        if let Err(e) = chump_pal::symlink_or_copy_file(relative_target, &worktree_cache) {
             log::warn!(
                 "INFRA-1733: failed to symlink {} -> {}: {}",
                 worktree_cache.display(),
@@ -6011,7 +6011,7 @@ pub mod nugget_prefetch {
                 return;
             }
         };
-        if let Err(e) = std::os::unix::fs::symlink(&target, &worktree_db) {
+        if let Err(e) = chump_pal::symlink_or_copy_file(&target, &worktree_db) {
             log::warn!(
                 "INFRA-3834: failed to symlink {} -> {}: {}",
                 worktree_db.display(),

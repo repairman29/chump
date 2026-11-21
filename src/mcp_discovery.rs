@@ -668,6 +668,7 @@ pub fn write_mcp_config(config_root: &Path, cfg: &ChumpMcpConfig) -> anyhow::Res
 mod tests {
     use super::*;
     use std::fs;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
@@ -793,9 +794,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let bin = tmp.path().join("my-server");
         fs::write(&bin, b"#!/bin/sh\n").unwrap();
-        let mut perms = fs::metadata(&bin).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&bin, perms).unwrap();
+        make_executable(&bin);
 
         let mut cfg = ChumpMcpConfig::default();
         cfg.mcp_servers.insert(
@@ -817,9 +816,14 @@ mod tests {
     }
 
     fn make_executable(path: &Path) {
-        let mut perms = fs::metadata(path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(path, perms).unwrap();
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(path, perms).unwrap();
+        }
+        #[cfg(not(unix))]
+        let _ = path;
     }
 
     fn write_binary(dir: &Path, name: &str) -> PathBuf {

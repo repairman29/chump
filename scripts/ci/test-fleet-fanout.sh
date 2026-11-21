@@ -48,7 +48,7 @@ else
     fail "main.rs missing fleet_fanout module declaration"
 fi
 
-if grep -q 'Some("fanout")' "$REPO_ROOT/src/main.rs"; then
+if grep -rq 'Some("fanout")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "main.rs dispatches 'chump fanout' top-level subcommand"
 else
     fail "main.rs missing 'fanout' top-level dispatch"
@@ -56,7 +56,7 @@ fi
 
 for arm in '"plan" =>' '"apply" =>' '"status" =>'; do
     # Each subcommand arm should appear in fanout's match block.
-    if grep -q "$arm" "$REPO_ROOT/src/main.rs"; then
+    if grep -rq "$arm" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
         ok "main.rs dispatches fanout subcommand $arm"
     else
         fail "main.rs missing fanout dispatch arm $arm"

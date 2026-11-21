@@ -75,7 +75,7 @@ for m in "^mod inspect_cmd;" "^mod resume_cmd;" "^mod scrap_cmd;"; do
     fi
 done
 for arm in '"inspect"' '"resume"' '"scrap"'; do
-    if grep -q "$arm" "$REPO_ROOT/src/main.rs"; then
+    if grep -rq "$arm" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
         ok "main.rs dispatches $arm"
     else
         fail "main.rs missing $arm dispatch"

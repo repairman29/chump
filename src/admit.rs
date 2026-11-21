@@ -349,22 +349,15 @@ pub fn slot_dir(resource: Resource, node_env: &Path) -> PathBuf {
     base.join("admit-slots").join(resource.label())
 }
 
-/// Check whether a process ID is currently alive on this host (`kill(pid, 0)`).
+/// Check whether a process ID is currently alive on this host.
 pub fn pid_is_alive(pid: u32) -> bool {
-    if pid == 0 {
-        return false;
-    }
-    // SAFETY: kill(pid, 0) sends no signal; it only probes process existence.
-    let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
-    if rc == 0 {
-        return true;
-    }
-    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    chump_pal::is_pid_alive(pid)
 }
 
 /// Resolve the default lease owner PID for CLI calls: `CHUMP_ADMIT_OWNER_PID`
-/// if set, otherwise parent process ID (`getppid()`) so a shell invoking
-/// `chump admit claude` owns the lease for the lifetime of that shell.
+/// if set, otherwise parent process ID (`getppid()` on Unix, falling back to
+/// `std::process::id()`) so a shell invoking `chump admit claude` owns the lease
+/// for the lifetime of that shell.
 pub fn default_owner_pid() -> u32 {
     if let Ok(v) = std::env::var("CHUMP_ADMIT_OWNER_PID") {
         if let Ok(pid) = v.trim().parse::<u32>() {
@@ -373,41 +366,13 @@ pub fn default_owner_pid() -> u32 {
             }
         }
     }
-    // SAFETY: getppid() is always safe and returns the parent PID.
-    let ppid = unsafe { libc::getppid() };
-    if ppid > 1 {
-        ppid as u32
-    } else {
-        std::process::id()
-    }
+    chump_pal::parent_pid().unwrap_or_else(std::process::id)
 }
 
-/// Run `f` while holding an exclusive `flock(LOCK_EX)` on `<dir>/.coord.lock`.
+/// Run `f` while holding an exclusive file lock on `<dir>/.coord.lock`.
 fn with_coord_lock<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
     let _ = std::fs::create_dir_all(dir);
-    let lock_path = dir.join(".coord.lock");
-    let lock_file = std::fs::OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(&lock_path)
-        .ok();
-    if let Some(ref file) = lock_file {
-        use std::os::unix::io::AsRawFd as _;
-        // SAFETY: file.as_raw_fd() is a valid open descriptor for the duration of this scope.
-        unsafe {
-            libc::flock(file.as_raw_fd(), libc::LOCK_EX);
-        }
-    }
-    let out = f();
-    if let Some(ref file) = lock_file {
-        use std::os::unix::io::AsRawFd as _;
-        unsafe {
-            libc::flock(file.as_raw_fd(), libc::LOCK_UN);
-        }
-    }
-    out
+    chump_pal::with_file_lock(&dir.join(".coord.lock"), f)
 }
 
 /// Read all live leases in `dir`, reaping any lease file whose `pid` is dead.
@@ -1211,6 +1176,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(admit_env)]
     fn resilient1679_five_concurrent_callers_against_ceiling_two_never_exceed_two() {
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::{Arc, Barrier};
@@ -1281,6 +1247,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(admit_env)]
     fn resilient1679_dead_pid_lease_is_reaped_and_status_lists_live_leases() {
         let dir = tempfile::tempdir().unwrap();
         let node_env = dir.path().join("node.env");
@@ -1325,6 +1292,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(admit_env)]
     fn resilient1640_gate_cargo_before_ship_emits_deferred_once_and_does_not_fail_open() {
         let dir = tempfile::tempdir().unwrap();
         let node_env = dir.path().join("node.env");

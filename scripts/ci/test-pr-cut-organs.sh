@@ -177,6 +177,7 @@ end_case
 
 # ── 6. closed-pr-watchdog.sh — guard before the reopen ───────────────────────
 new_case
+RECENT_CLOSED_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 cat > "$STUB/chump" <<'GHEOF'
 #!/usr/bin/env bash
 [[ "$1" == "gap" && "$2" == "show" ]] && { echo "  status: open"; exit 0; }
@@ -187,8 +188,8 @@ chmod +x "$STUB/chump"
 if [[ "\$1" == "api" ]]; then
   case "\$2" in
     repos/*/pulls\?state=closed*)
-cat <<'JSON'
-[{"number":$CUT_PR,"title":"ZERO-WASTE-135 dup","merged_at":null,"state":"closed","closed_at":"2026-10-17T18:13:30Z","head":{"ref":"chump/zero-waste-135"},"labels":[{"name":"pr-cut"}]}]
+cat <<JSON
+[{"number":$CUT_PR,"title":"ZERO-WASTE-135 dup","merged_at":null,"state":"closed","closed_at":"$RECENT_CLOSED_ISO","head":{"ref":"chump/zero-waste-135"},"labels":[{"name":"pr-cut"}]}]
 JSON
       exit 0 ;;
   esac

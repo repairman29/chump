@@ -88,7 +88,7 @@ grep -q 'scripts/coord/gap-gardener.py' <<<"$out" && ok "gap-gardener.py is in t
 
 # Sites the pattern scan cannot see (git force-push, or the step runner that
 # executes chump-ship's planned gh steps) must still call the policy.
-for spec in "src/rebase_stuck.rs:arm_policy::require_touch_allowed" "src/main.rs:chump_ship::gate_plan"; do
+for spec in "src/rebase_stuck.rs:arm_policy::require_touch_allowed" "src/cli_dispatch/ship_modes.rs:chump_ship::gate_plan"; do
     f="${spec%%:*}"; sym="${spec#*:}"
     grep -q "$sym" "$f" && ok "$f calls $sym" || bad "$f does not call $sym"
 done
@@ -109,7 +109,7 @@ done
 grep -q 'scanner-anchor: "kind":"pr_arm_skipped_hold"' scripts/coord/gap-gardener.py \
     && ok "Python literal \"kind\":\"pr_arm_skipped_hold\" anchored" || bad "gap-gardener.py lacks the kind anchor"
 grep -q 'kind: pr_cut$' docs/observability/EVENT_REGISTRY.yaml && ok "pr_cut registered" || bad "pr_cut missing from EVENT_REGISTRY.yaml"
-grep -q 'commands::pr_cut::run_cli' src/main.rs && ok "chump pr cut arm wired in src/main.rs" \
+grep -rq 'commands::pr_cut::run_cli' src/main.rs src/cli_dispatch/ && ok "chump pr cut arm wired in src/main.rs" \
     || bad "chump pr cut arm missing from src/main.rs"
 
 echo "[b] gap-gardener.py: hold detection + arm_allowed"

@@ -53,13 +53,13 @@ else
 fi
 
 # 2. decompose arm parses --backend and routes through build_decompose_provider.
-if grep -q 'DecomposeBackend::resolve' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'DecomposeBackend::resolve' -r "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "decompose arm resolves --backend"
 else
     fail "decompose arm does not resolve --backend"
 fi
 
-if grep -q 'decompose_backend::build_decompose_provider' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'decompose_backend::build_decompose_provider' -r "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "decompose routes through build_decompose_provider"
 else
     fail "decompose does not call build_decompose_provider"
@@ -73,7 +73,7 @@ else
 fi
 
 # 4. --backend documented + env var registered.
-if grep -q '\-\-backend auto|cascade|claude' "$REPO_ROOT/src/main.rs"; then
+if grep -q '\-\-backend auto|cascade|claude' -r "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "--backend documented in decompose usage string"
 else
     fail "--backend missing from decompose usage string"

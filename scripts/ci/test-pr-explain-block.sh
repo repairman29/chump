@@ -29,7 +29,7 @@ if grep -q "^mod pr_explain;" "$REPO_ROOT/src/main.rs"; then
 else
     fail "main.rs missing pr_explain"
 fi
-if grep -q 'Some("explain-block")' "$REPO_ROOT/src/main.rs"; then
+if grep -rq 'Some("explain-block")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "main.rs dispatches pr explain-block"
 else
     fail "main.rs missing explain-block dispatch"

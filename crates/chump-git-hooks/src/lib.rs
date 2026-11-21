@@ -48,6 +48,8 @@
 
 #![warn(missing_docs)]
 
+pub mod pre_commit;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -441,6 +443,330 @@ pub fn phase1_chain() -> Vec<Box<dyn Hook>> {
     ]
 }
 
+/// Guard blocking direct pushes to `main` or `master` unless explicitly allowed
+/// via `CHUMP_ALLOW_MAIN_PUSH=1` or `CHUMP_OPERATOR_RECOVERY=1`.
+pub struct ProtectedBranchGuard;
+
+impl Hook for ProtectedBranchGuard {
+    fn name(&self) -> &'static str {
+        "protected_branch_guard"
+    }
+
+    fn run(&self, ctx: &HookContext) -> Result<HookOutcome, HookError> {
+        let allow = std::env::var("CHUMP_ALLOW_MAIN_PUSH")
+            .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+            || std::env::var("CHUMP_OPERATOR_RECOVERY")
+                .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+        if allow {
+            return Ok(HookOutcome::Skipped {
+                reason: "CHUMP_ALLOW_MAIN_PUSH=1 or CHUMP_OPERATOR_RECOVERY=1".to_string(),
+            });
+        }
+        for refspec in &ctx.refspecs {
+            if refspec.is_branch_delete() {
+                continue;
+            }
+            let branch = refspec.branch();
+            if branch == "main" || branch == "master" {
+                let diagnostic = format!(
+                    "Direct push to protected branch `{branch}` is blocked.\n\
+                     Open a PR from a feature branch (`chump ship` / `chump-ship`), \
+                     or set CHUMP_ALLOW_MAIN_PUSH=1 for authorized operator recovery."
+                );
+                return Ok(HookOutcome::Block(BlockReason {
+                    code: "protected_branch_push".to_string(),
+                    diagnostic,
+                }));
+            }
+        }
+        Ok(HookOutcome::Pass)
+    }
+}
+
+/// Guard 4 (`INFRA-719` / `INFRA-1441`): requires new gap branches (`chump/<domain>-<num>*`
+/// or `claude/<domain>-<num>*`) to be pushed via `chump ship` / `bot-merge`
+/// (`CHUMP_BOT_MERGE_IN_PROGRESS=1`), unless bypassed with BOTH
+/// `CHUMP_BYPASS_BOT_MERGE=1` and a `Bot-Merge-Bypass:` commit trailer (or
+/// `CHUMP_OPERATOR_RECOVERY=1`).
+pub struct BotMergeRequiredGuard;
+
+impl Hook for BotMergeRequiredGuard {
+    fn name(&self) -> &'static str {
+        "bot_merge_required_guard"
+    }
+
+    fn run(&self, ctx: &HookContext) -> Result<HookOutcome, HookError> {
+        let in_bot_merge = std::env::var("CHUMP_BOT_MERGE_IN_PROGRESS")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false);
+        let op_recovery = std::env::var("CHUMP_OPERATOR_RECOVERY")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false);
+        if in_bot_merge || op_recovery {
+            return Ok(HookOutcome::Skipped {
+                reason: "CHUMP_BOT_MERGE_IN_PROGRESS=1 or CHUMP_OPERATOR_RECOVERY=1".to_string(),
+            });
+        }
+        let bypass_env = std::env::var("CHUMP_BYPASS_BOT_MERGE")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false);
+
+        for refspec in &ctx.refspecs {
+            if !refspec.is_new_branch() || refspec.is_branch_delete() {
+                continue;
+            }
+            let branch = refspec.branch();
+            if !is_gap_branch_name(branch) {
+                continue;
+            }
+            if bypass_env && commit_has_bot_merge_bypass_trailer(ctx, &refspec.local_sha) {
+                continue;
+            }
+            let diagnostic = format!(
+                "Bypass: CHUMP_BYPASS_BOT_MERGE=1 (+ Bot-Merge-Bypass trailer) or CHUMP_OPERATOR_RECOVERY=1\n\
+                 BLOCKED (INFRA-719): new gap branch `{branch}` must be shipped via `chump ship` / `chump-ship` \
+                 so preflight + PR metadata run atomically."
+            );
+            return Ok(HookOutcome::Block(BlockReason {
+                code: "bot_merge_required".to_string(),
+                diagnostic,
+            }));
+        }
+        Ok(HookOutcome::Pass)
+    }
+}
+
+fn is_gap_branch_name(branch: &str) -> bool {
+    let Some(rest) = branch
+        .strip_prefix("chump/")
+        .or_else(|| branch.strip_prefix("claude/"))
+    else {
+        return false;
+    };
+    let mut parts = rest.split('-');
+    let Some(domain) = parts.next() else {
+        return false;
+    };
+    let Some(num) = parts.next() else {
+        return false;
+    };
+    !domain.is_empty()
+        && domain.chars().all(|c| c.is_ascii_alphabetic())
+        && !num.is_empty()
+        && num.chars().all(|c| c.is_ascii_digit())
+}
+
+fn commit_has_bot_merge_bypass_trailer(ctx: &HookContext, sha: &str) -> bool {
+    let Ok(out) = ctx.git().args(["log", "-1", "--format=%B", sha]).output() else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    let body = String::from_utf8_lossy(&out.stdout);
+    body.lines().any(|l| {
+        let t = l.trim();
+        t.starts_with("Bot-Merge-Bypass:")
+            && !t.trim_start_matches("Bot-Merge-Bypass:").trim().is_empty()
+    })
+}
+
+/// Assemble the complete cross-platform `pre-push` guard chain (Milestone 3).
+pub fn default_pre_push_chain() -> Vec<Box<dyn Hook>> {
+    vec![
+        Box::new(StdinDoubleDrainGuard),
+        Box::new(ProtectedBranchGuard),
+        Box::new(ForceWithLeaseRaceGuard),
+        Box::new(BotMergeRequiredGuard),
+        Box::new(SilentNoopAlarmGuard),
+    ]
+}
+
+/// Execute the default `pre-commit` hook chain for the current repository and
+/// return the desired process exit code (`0` = pass/skipped, `1` = blocked/error).
+pub fn run_pre_commit_cli() -> u8 {
+    let ctx = match pre_commit::PreCommitContext::new() {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("[chump hook pre-commit] context init failed: {err}");
+            return 1;
+        }
+    };
+    let chain = pre_commit::default_pre_commit_chain();
+    match pre_commit::run_pre_commit_hooks(&ctx, &chain) {
+        Ok(HookOutcome::Pass) | Ok(HookOutcome::Skipped { .. }) => 0,
+        Ok(HookOutcome::Block(reason)) => {
+            eprintln!();
+            eprintln!("[chump hook pre-commit] BLOCKED ({}):", reason.code);
+            eprintln!("{}", reason.diagnostic);
+            eprintln!();
+            1
+        }
+        Err(err) => {
+            eprintln!("[chump hook pre-commit] error: {err}");
+            1
+        }
+    }
+}
+
+/// Execute the default `pre-push` hook chain against `stdin_buf` and return
+/// the desired process exit code (`0` = pass/skipped, `1` = blocked/error).
+pub fn run_pre_push_cli(remote_name: Option<String>, stdin_buf: &str) -> u8 {
+    if std::env::var("CHUMP_OPERATOR_RECOVERY")
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
+    {
+        return 0;
+    }
+    let remote = remote_name.unwrap_or_else(|| "origin".to_string());
+    let ctx = match HookContext::new_from_stdin(remote, stdin_buf) {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("[chump hook pre-push] context init failed: {err}");
+            return 1;
+        }
+    };
+    let chain = default_pre_push_chain();
+    match run_hooks(&ctx, &chain) {
+        Ok(HookOutcome::Pass) | Ok(HookOutcome::Skipped { .. }) => 0,
+        Ok(HookOutcome::Block(reason)) => {
+            eprintln!();
+            eprintln!("[chump hook pre-push] BLOCKED ({}):", reason.code);
+            eprintln!("{}", reason.diagnostic);
+            eprintln!();
+            1
+        }
+        Err(err) => {
+            eprintln!("[chump hook pre-push] error: {err}");
+            1
+        }
+    }
+}
+
+/// Result of installing portable `pre-commit` and `pre-push` shims into a git repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookInstallReport {
+    /// Directory where hook shims were written (e.g. `.git/hooks`).
+    pub hooks_dir: PathBuf,
+    /// Installed `pre-commit` shim path.
+    pub pre_commit_path: PathBuf,
+    /// Installed `pre-push` shim path.
+    pub pre_push_path: PathBuf,
+}
+
+/// Status snapshot returned by [`hooks_status`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookStatusReport {
+    /// Resolved git hooks directory.
+    pub hooks_dir: PathBuf,
+    /// True if `pre-commit` exists and delegates to `chump hook pre-commit`.
+    pub pre_commit_installed: bool,
+    /// True if `pre-push` exists and delegates to `chump hook pre-push`.
+    pub pre_push_installed: bool,
+}
+
+/// Resolve the active git hooks directory for `repo_root` (honoring `core.hooksPath`
+/// and linked worktree `gitdir` indirection via `git rev-parse --git-path hooks`).
+pub fn resolve_git_hooks_dir(repo_root: &Path) -> PathBuf {
+    let mut cmd = Command::new("git");
+    for var in ENV_LEAK_VARS {
+        cmd.env_remove(var);
+    }
+    if let Ok(out) = cmd
+        .arg("-C")
+        .arg(repo_root)
+        .args(["rev-parse", "--git-path", "hooks"])
+        .output()
+    {
+        if out.status.success() {
+            let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !raw.is_empty() {
+                let p = PathBuf::from(&raw);
+                return if p.is_absolute() {
+                    p
+                } else {
+                    repo_root.join(p)
+                };
+            }
+        }
+    }
+    repo_root.join(".git").join("hooks")
+}
+
+/// Render a portable POSIX `#!/bin/sh` hook shim that works identically across
+/// Git for Windows (`/bin/sh`), macOS, and Linux.
+pub fn render_portable_hook_shim(subcommand: &str) -> String {
+    format!(
+        "#!/bin/sh\n\
+         # Auto-generated by `chump hook install` — portable across macOS, Linux, and Git for Windows.\n\
+         if [ -n \"${{CHUMP_BIN:-}}\" ] && [ -x \"${{CHUMP_BIN}}\" ]; then\n\
+             exec \"${{CHUMP_BIN}}\" hook {subcommand} \"$@\"\n\
+         fi\n\
+         if command -v chump >/dev/null 2>&1; then\n\
+             exec chump hook {subcommand} \"$@\"\n\
+         fi\n\
+         for cand in \"${{CARGO_TARGET_DIR:-}}/debug/chump\" \"${{CARGO_TARGET_DIR:-}}/debug/chump.exe\" \\\n\
+                     \"${{CARGO_TARGET_DIR:-}}/release/chump\" \"${{CARGO_TARGET_DIR:-}}/release/chump.exe\" \\\n\
+                     \"${{HOME:-}}/.cargo/chump-shared-target/debug/chump\" \"./target/debug/chump\" \"./target/debug/chump.exe\" \"./target/release/chump\" \"./target/release/chump.exe\"; do\n\
+             if [ -n \"$cand\" ] && [ -x \"$cand\" ]; then\n\
+                 exec \"$cand\" hook {subcommand} \"$@\"\n\
+             fi\n\
+         done\n\
+         echo \"[chump hook] warning: chump binary not found on PATH; skipping {subcommand}\" >&2\n\
+         exit 0\n"
+    )
+}
+
+/// Write portable `pre-commit` and `pre-push` shims into `repo_root`'s git hooks directory.
+pub fn install_hooks(repo_root: &Path) -> std::io::Result<HookInstallReport> {
+    let hooks_dir = resolve_git_hooks_dir(repo_root);
+    std::fs::create_dir_all(&hooks_dir)?;
+
+    let pre_commit_path = hooks_dir.join("pre-commit");
+    let pre_push_path = hooks_dir.join("pre-push");
+
+    write_executable_shim(&pre_commit_path, &render_portable_hook_shim("pre-commit"))?;
+    write_executable_shim(&pre_push_path, &render_portable_hook_shim("pre-push"))?;
+
+    Ok(HookInstallReport {
+        hooks_dir,
+        pre_commit_path,
+        pre_push_path,
+    })
+}
+
+fn write_executable_shim(path: &Path, content: &str) -> std::io::Result<()> {
+    // Remove any existing symlink first so we NEVER write through a symlink into
+    // another checkout's tracked files!
+    if path.symlink_metadata().is_ok() {
+        let _ = std::fs::remove_file(path);
+    }
+    std::fs::write(path, content)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
+}
+
+/// Inspect whether `chump hook` shims are installed in `repo_root`.
+pub fn hooks_status(repo_root: &Path) -> HookStatusReport {
+    let hooks_dir = resolve_git_hooks_dir(repo_root);
+    let check = |name: &str, marker: &str| -> bool {
+        std::fs::read_to_string(hooks_dir.join(name))
+            .map(|s| s.contains(marker))
+            .unwrap_or(false)
+    };
+    HookStatusReport {
+        pre_commit_installed: check("pre-commit", "hook pre-commit"),
+        pre_push_installed: check("pre-push", "hook pre-push"),
+        hooks_dir,
+    }
+}
+
 /// Re-exported for the binary: read all of stdin into a String.
 pub fn read_stdin_to_string() -> std::io::Result<String> {
     use std::io::Read;
@@ -625,5 +951,93 @@ mod tests {
         assert!(names.contains(&"stdin_double_drain_guard"));
         assert!(names.contains(&"force_with_lease_race_guard"));
         assert!(names.contains(&"silent_noop_alarm_guard"));
+    }
+
+    #[test]
+    fn protected_branch_guard_blocks_main_unless_allowed() {
+        std::env::remove_var("CHUMP_ALLOW_MAIN_PUSH");
+        std::env::remove_var("CHUMP_OPERATOR_RECOVERY");
+        let ctx = context_from_explicit_root(
+            "/tmp",
+            "origin".to_string(),
+            vec![RefspecPush {
+                local_ref: "refs/heads/main".to_string(),
+                local_sha: "abc".to_string(),
+                remote_ref: "refs/heads/main".to_string(),
+                remote_sha: "def".to_string(),
+            }],
+        );
+        let blocked = ProtectedBranchGuard.run(&ctx).unwrap();
+        assert!(matches!(blocked, HookOutcome::Block(_)));
+
+        let ctx_feat = context_from_explicit_root(
+            "/tmp",
+            "origin".to_string(),
+            vec![RefspecPush {
+                local_ref: "refs/heads/feature/ok".to_string(),
+                local_sha: "abc".to_string(),
+                remote_ref: "refs/heads/feature/ok".to_string(),
+                remote_sha: "def".to_string(),
+            }],
+        );
+        assert_eq!(
+            ProtectedBranchGuard.run(&ctx_feat).unwrap(),
+            HookOutcome::Pass
+        );
+    }
+
+    #[test]
+    fn bot_merge_required_guard_enforces_new_gap_branches() {
+        std::env::remove_var("CHUMP_BOT_MERGE_IN_PROGRESS");
+        std::env::remove_var("CHUMP_BYPASS_BOT_MERGE");
+        std::env::remove_var("CHUMP_OPERATOR_RECOVERY");
+        let zero = "0000000000000000000000000000000000000000".to_string();
+
+        let ctx_gap = context_from_explicit_root(
+            "/tmp",
+            "origin".to_string(),
+            vec![RefspecPush {
+                local_ref: "refs/heads/chump/infra-999-claim".to_string(),
+                local_sha: "abc".to_string(),
+                remote_ref: "refs/heads/chump/infra-999-claim".to_string(),
+                remote_sha: zero.clone(),
+            }],
+        );
+        assert!(matches!(
+            BotMergeRequiredGuard.run(&ctx_gap).unwrap(),
+            HookOutcome::Block(_)
+        ));
+
+        let ctx_non_gap = context_from_explicit_root(
+            "/tmp",
+            "origin".to_string(),
+            vec![RefspecPush {
+                local_ref: "refs/heads/chump/fix-auth-issue".to_string(),
+                local_sha: "abc".to_string(),
+                remote_ref: "refs/heads/chump/fix-auth-issue".to_string(),
+                remote_sha: zero,
+            }],
+        );
+        assert_eq!(
+            BotMergeRequiredGuard.run(&ctx_non_gap).unwrap(),
+            HookOutcome::Pass
+        );
+    }
+
+    #[test]
+    fn install_hooks_writes_portable_shims_and_reports_status() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(tmp.path())
+            .args(["init", "-b", "main"])
+            .status()
+            .unwrap();
+        let report = install_hooks(tmp.path()).unwrap();
+        assert!(report.pre_commit_path.is_file());
+        assert!(report.pre_push_path.is_file());
+        let status = hooks_status(tmp.path());
+        assert!(status.pre_commit_installed);
+        assert!(status.pre_push_installed);
     }
 }

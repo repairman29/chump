@@ -1,0 +1,19 @@
+[package]
+name = "chump-config"
+version = "0.1.0"
+edition = "2021"
+description = "Validated cross-platform config.toml loader and environment-override merger for Universal Chump v1.0"
+repository = "https://github.com/repairman29/chump"
+license = "Apache-2.0"
+keywords = ["chump", "config", "toml", "llm", "providers"]
+categories = ["config", "development-tools"]
+
+[dependencies]
+chump-pal = { path = "../chump-pal", version = "0.1.0" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+toml = "1.1"
+
+[dev-dependencies]
+tempfile = "3"

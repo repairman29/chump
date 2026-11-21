@@ -596,7 +596,9 @@ fn fix_env_var_coverage(pr: u32, vars: &[String], dry_run: bool) -> Result<()> {
         .to_string();
 
     let repo_root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
-    let wt = format!("/tmp/chump-pr-rescue-{pr}");
+    let wt = chump_pal::temp_file_path(&format!("chump-pr-rescue-{pr}"))
+        .to_string_lossy()
+        .into_owned();
 
     // Create / reuse a worktree.
     if !PathBuf::from(&wt).exists() {
@@ -708,7 +710,9 @@ fn fix_debt_ceiling(pr: u32, count: u64, dry_run: bool) -> Result<()> {
         .ok_or_else(|| anyhow!("headRefName missing"))?
         .to_string();
     let repo_root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
-    let wt = format!("/tmp/chump-pr-rescue-{pr}");
+    let wt = chump_pal::temp_file_path(&format!("chump-pr-rescue-{pr}"))
+        .to_string_lossy()
+        .into_owned();
     if !PathBuf::from(&wt).exists() {
         let status = Command::new("git")
             .current_dir(&repo_root)
@@ -923,7 +927,9 @@ fn fix_compile_missing_dep(
         .ok_or_else(|| anyhow!("headRefName missing"))?
         .to_string();
     let repo_root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
-    let wt = format!("/tmp/chump-pr-rescue-{pr}");
+    let wt = chump_pal::temp_file_path(&format!("chump-pr-rescue-{pr}"))
+        .to_string_lossy()
+        .into_owned();
     if !PathBuf::from(&wt).exists() {
         let status = Command::new("git")
             .current_dir(&repo_root)
@@ -1150,7 +1156,9 @@ fn fix_dirty_conflict(pr: u32, dry_run: bool) -> Result<()> {
         .to_string();
 
     let repo_root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
-    let wt = format!("/tmp/chump-pr-rescue-{pr}");
+    let wt = chump_pal::temp_file_path(&format!("chump-pr-rescue-{pr}"))
+        .to_string_lossy()
+        .into_owned();
 
     // 2. Create / reuse a worktree on the branch. Same pattern as
     // fix_env_var_coverage.

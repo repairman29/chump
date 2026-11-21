@@ -361,7 +361,7 @@ impl<'a> IterationController<'a> {
                 }
             }
 
-            crate::belief_state::decay_turn();
+            crate::cognition_gate::on_iteration_start();
 
             // EFFECTIVE-465: investigation-path force-edit nudge. The EFFECTIVE-448
             // nudge below only fires on `StopReason::EndTurn`; a model that keeps
@@ -602,11 +602,7 @@ impl<'a> IterationController<'a> {
 
                     let display_text = thinking_strip::strip_for_streaming_preview(&text);
                     let turn_duration_ms = ctx.turn_start.elapsed().as_millis() as u64;
-                    crate::precision_controller::record_turn_metrics(
-                        tool_calls_count,
-                        0,
-                        turn_duration_ms,
-                    );
+                    crate::cognition_gate::on_turn_complete(tool_calls_count, turn_duration_ms);
 
                     // FSM: EndTurn with no tools → Complete.
                     if self.state.transition_to(&AgentState::Complete) {
@@ -878,10 +874,6 @@ impl<'a> IterationController<'a> {
 // alongside other signal-sensitive machinery in the same process.
 static LOOP_SHUTDOWN_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 
-extern "C" fn loop_on_signal(sig: i32) {
-    LOOP_SHUTDOWN_SIGNAL.store(sig, std::sync::atomic::Ordering::SeqCst);
-}
-
 /// Repeatedly spawns `cmd` (argv[0] + args) every `interval_secs` seconds,
 /// printing one JSON line per iteration to stdout with `run`, `status`,
 /// `start_ts`, and `end_ts` fields. Stops after `max_iters` iterations
@@ -892,12 +884,7 @@ pub fn run_ephemeral_loop(cmd: &[String], interval_secs: u64, max_iters: Option<
         return 1;
     }
 
-    // SAFETY: handler only stores an atomic; async-signal-safe.
-    unsafe {
-        let handler = loop_on_signal as extern "C" fn(i32) as *const () as usize;
-        libc::signal(libc::SIGINT, handler);
-        libc::signal(libc::SIGTERM, handler);
-    }
+    chump_pal::install_shutdown_signal(&LOOP_SHUTDOWN_SIGNAL);
 
     let mut run: u64 = 0;
     loop {

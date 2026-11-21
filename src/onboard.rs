@@ -370,8 +370,7 @@ fn run_inner(args: &[String]) -> Result<()> {
     } else {
         let path = PathBuf::from(&repo_url_or_path);
         let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let external_root = PathBuf::from(home).join(".chump").join("external");
+        let external_root = chump_pal::user_home().join(".chump").join("external");
         let slug = derive_local_slug(&path, &canonical, &external_root);
         let dest = match opts.clone_to {
             Some(ref p) => p.clone(),
@@ -684,8 +683,7 @@ fn run_inner(args: &[String]) -> Result<()> {
 /// Schedule state file: `~/.chump/external-repo-schedule.json`.
 /// Maps `repo_path -> { label, scheduled_at, last_iter_at }`.
 fn schedule_state_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home)
+    chump_pal::user_home()
         .join(".chump")
         .join("external-repo-schedule.json")
 }
@@ -724,8 +722,7 @@ fn plist_label(repo_path: &str) -> String {
 
 /// Plist installation directory for per-user launchd agents.
 fn launchd_agents_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join("Library").join("LaunchAgents")
+    chump_pal::user_home().join("Library").join("LaunchAgents")
 }
 
 /// Path where we install the generated plist.
@@ -798,8 +795,12 @@ fn render_plist_template(label: &str, repo_path: &str, sanitized: &str) -> Resul
         .to_string_lossy()
         .to_string();
 
-    let log_out = format!("/tmp/chump-external-repo-{sanitized}.out.log");
-    let log_err = format!("/tmp/chump-external-repo-{sanitized}.err.log");
+    let log_out = chump_pal::temp_file_path(&format!("chump-external-repo-{sanitized}.out.log"))
+        .to_string_lossy()
+        .into_owned();
+    let log_err = chump_pal::temp_file_path(&format!("chump-external-repo-{sanitized}.err.log"))
+        .to_string_lossy()
+        .into_owned();
 
     let rendered = template
         .replace("{{LABEL}}", label)
@@ -1124,8 +1125,7 @@ fn inject_l1_gaps(clone_dir: &Path, _owner_repo: &str) -> Vec<ProposedGap> {
 
 /// Returns `~/.chump/external/<owner>/<repo>/`.
 fn external_repo_dir(owner_repo: &str) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home)
+    chump_pal::user_home()
         .join(".chump")
         .join("external")
         .join(owner_repo)
@@ -2338,6 +2338,7 @@ mod tests {
     ///   2. The returned text is the shim's JSON output
     ///   3. The output parses into `LlmGap` objects via `parse_llm_gaps_tolerant`
     #[test]
+    #[cfg(unix)]
     fn test_spawn_agentic_scout_uses_mock_shim() {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;

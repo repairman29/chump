@@ -2,6 +2,8 @@
 name = "coord-mesh"
 version = "0.1.0"
 edition = "2021"
+description = "Local workspace coordination mesh bridge shim for chump-coord"
+license = "AGPL-3.0-only"
 publish = false
 
 [dependencies]

@@ -36,9 +36,13 @@ PATH_RE = re.compile(r"(?<![\w./-])((?:scripts|src|crates)/[\w./-]+\.(?:sh|py|rs
 CHUMP_RE = re.compile(r"(?:^|[;&|(]\s*|\s)chump\s+([a-z][a-z0-9-]*)")
 
 def subcommand_known(root, sub):
-    main = open(os.path.join(root, "src/main.rs"), errors="replace").read()
-    if f'"{sub}"' in main:
-        return True
+    sources = [os.path.join(root, "src/main.rs")]
+    disp_dir = os.path.join(root, "src/cli_dispatch")
+    if os.path.isdir(disp_dir):
+        sources.extend(os.path.join(disp_dir, fn) for fn in os.listdir(disp_dir) if fn.endswith(".rs"))
+    for sp in sources:
+        if os.path.isfile(sp) and f'"{sub}"' in open(sp, errors="replace").read():
+            return True
     cmd_dir = os.path.join(root, "src/commands")
     for f in os.listdir(cmd_dir):
         if f.endswith(".rs") and f'CommandEntry::new("{sub}"' in open(os.path.join(cmd_dir, f)).read():

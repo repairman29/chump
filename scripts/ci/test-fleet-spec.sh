@@ -40,7 +40,7 @@ else
 fi
 
 for arm in '"plan" =>' '"apply" =>' '"spec-status" =>'; do
-    if grep -q "$arm" "$REPO_ROOT/src/main.rs"; then
+    if grep -rq "$arm" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
         ok "main.rs dispatches $arm"
     else
         fail "main.rs missing dispatch arm $arm"

@@ -50,7 +50,7 @@ else
 fi
 
 # 2. The decompose handler calls the guard before filing anything.
-if grep -q 'store.count_open_slices(&gap_id)' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'store.count_open_slices(&gap_id)' "$REPO_ROOT/src/cli_dispatch/mod.rs"; then
     ok "decompose handler calls count_open_slices"
 else
     fail "decompose handler does not call count_open_slices"
@@ -60,9 +60,9 @@ fi
 #    a refusal) — the guard's exit(11) must appear earlier in the file
 #    than the provider_cascade::build_provider() call inside the same
 #    decompose arm.
-DECOMPOSE_START=$(grep -n '"decompose" => {' "$REPO_ROOT/src/main.rs" | head -1 | cut -d: -f1)
-GUARD_LINE=$(awk -v start="$DECOMPOSE_START" 'NR>=start && /std::process::exit\(11\)/{print NR; exit}' "$REPO_ROOT/src/main.rs")
-PROVIDER_LINE=$(awk -v start="$DECOMPOSE_START" 'NR>=start && /provider_cascade::build_provider\(\)/{print NR; exit}' "$REPO_ROOT/src/main.rs")
+DECOMPOSE_START=$(grep -n '"decompose" => {' "$REPO_ROOT/src/cli_dispatch/mod.rs" | head -1 | cut -d: -f1)
+GUARD_LINE=$(awk -v start="$DECOMPOSE_START" 'NR>=start && /std::process::exit\(11\)/{print NR; exit}' "$REPO_ROOT/src/cli_dispatch/mod.rs")
+PROVIDER_LINE=$(awk -v start="$DECOMPOSE_START" 'NR>=start && /provider_cascade::build_provider\(\)/{print NR; exit}' "$REPO_ROOT/src/cli_dispatch/mod.rs")
 if [[ -n "$GUARD_LINE" && -n "$PROVIDER_LINE" && "$GUARD_LINE" -lt "$PROVIDER_LINE" ]]; then
     ok "re-slice guard (exit 11) runs before the LLM provider is built"
 else
