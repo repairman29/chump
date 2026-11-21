@@ -2034,6 +2034,44 @@ check_cargo_nextest() {
     fi
 }
 
+# ── Check 23b (RESILIENT-1605): every enabled MCP server must be spawnable ─────
+# A configured-but-dead MCP command (e.g. almanac-mcp that was never built on
+# this node) leaves every worker blind with no signal. Also rejects the retired
+# helsinki literal IP in the MCP config's env.
+check_mcp_servers_spawnable() {
+    local cfg="${CHUMP_MCP_CONFIG:-$REPO_ROOT/chump-mcp.json}"
+    if [[ ! -f "$cfg" ]]; then
+        register_check "mcp-servers" "skip" "no chump-mcp.json at $cfg" ""
+        return
+    fi
+    local bad
+    bad="$(python3 - "$cfg" <<'PY'
+import json, os, shutil, sys
+try:
+    cfg = json.load(open(sys.argv[1]))
+except Exception as e:
+    print(f"unparseable: {e}"); sys.exit(0)
+bad = []
+for name, s in (cfg.get("mcpServers") or {}).items():
+    if not s.get("enabled", True):
+        continue
+    cmd = os.path.expandvars(os.path.expanduser(s.get("command", "")))
+    ok = os.access(cmd, os.X_OK) if "/" in cmd else shutil.which(cmd)
+    if not ok:
+        bad.append(f"{name}: command not found ({cmd})")
+    if "100.101.188.30" in json.dumps(s.get("env", {})):
+        bad.append(f"{name}: env points at retired host 100.101.188.30")
+print("; ".join(bad))
+PY
+)"
+    if [[ -z "$bad" ]]; then
+        register_check "mcp-servers" "pass" "all enabled MCP servers in $cfg resolve" ""
+    else
+        register_check "mcp-servers" "fail" "$bad (RESILIENT-1605)" \
+            "run scripts/setup/install-almanac.sh (builds almanac-mcp + rewires chump-mcp.json)"
+    fi
+}
+
 # ── Check 23 (INFRA-8589): installed systemd units carry no foreign host literals ──
 # Scans installed units in ${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user on a
 # Linux host for non-comment lines containing /home/<other-user>, /Users/<name>,
@@ -2437,6 +2475,7 @@ check_load_aware_deadman
 check_single_store
 check_cargo_storage_fixed_disk
 check_cargo_nextest
+check_mcp_servers_spawnable
 check_installed_unit_host_literals
 check_organ_home_placement
 check_core_organs_not_neutered
