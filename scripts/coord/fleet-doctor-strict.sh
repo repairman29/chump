@@ -884,6 +884,18 @@ check_organ_roll_call_live() {
     while read -r state unit rest; do
         [[ -z "${state:-}" ]] && continue
         [[ "$state" == \#* ]] && continue
+        # RESILIENT-1600: decommissioned organs must be ABSENT — fail loud if live.
+        if [[ "$state" == "retired" ]]; then
+            if "$systemctl_bin" is-active --quiet "$unit" 2>/dev/null \
+               || "$systemctl_bin" --user is-active --quiet "$unit" 2>/dev/null; then
+                register_check "organ-retired:$unit" "fail" \
+                    "$unit is declared retired/decommissioned in organ-manifest.txt but is ACTIVE" \
+                    "systemctl --user disable --now $unit; bash scripts/ops/node-converge.sh"
+            else
+                register_check "organ-retired:$unit" "pass" "retired organ is absent/inactive" ""
+            fi
+            continue
+        fi
         [[ "$state" != "enabled" ]] && continue
 
         # role=/requires= parsing mirrors organ-reconcile.sh's manifest reader.
@@ -2286,7 +2298,6 @@ check_core_organs_not_neutered() {
         "chump-pr-shepherd"
         "chump-review-organ"
         "chump-organ-reconcile"
-        "chump-merge-serializer"
         "chump-farmer"
         "chump-gap-closure-reconcile"
     )

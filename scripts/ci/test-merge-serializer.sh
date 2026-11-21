@@ -40,11 +40,11 @@ echo "=== bounded / idempotent knobs ==="
 grep -q "CHUMP_MERGE_SERIALIZER_MAX_MERGES"        "$SER" && ok "MAX_MERGES knob"        || bad "no MAX_MERGES"
 grep -q "CHUMP_MERGE_SERIALIZER_VERIFY_TIMEOUT_S"  "$SER" && ok "VERIFY_TIMEOUT knob"    || bad "no verify timeout"
 
-echo "=== units present ==="
+echo "=== units absent (RESILIENT-1600: decommissioned) ==="
 for u in chump-merge-serializer.service chump-merge-serializer.timer; do
-    [[ -f "$ROOT/scripts/dispatch/$u" ]] && ok "$u present" || bad "$u missing"
+    [[ ! -f "$ROOT/scripts/dispatch/$u" ]] && ok "$u not shipped" || bad "$u still shipped"
 done
-grep -q "chump-merge-serializer.timer" "$ROOT/scripts/ops/organ-manifest.txt" && ok "manifest row present" || bad "no manifest row"
+grep -Eq "^retired[[:space:]]+chump-merge-serializer.timer" "$ROOT/scripts/ops/organ-manifest.txt" && ok "manifest row retired" || bad "no retired manifest row"
 
 echo "=== RESILIENT-1537 (BEHIND update-branch) & RESILIENT-1511 (shepherd timer OnActiveSec=10s) ==="
 grep -q 'pr update-branch "\$pr" --repo "\$REPO" --rebase' "$SER" && ok "RESILIENT-1537: merge-serializer calls pr update-branch --rebase on BEHIND PRs" || bad "RESILIENT-1537: missing pr update-branch --rebase in merge-serializer.sh"
