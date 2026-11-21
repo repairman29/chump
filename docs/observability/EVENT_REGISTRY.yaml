@@ -2835,6 +2835,22 @@ events:
     trigger: PR rebase repair attempted
     consumers: [audit-log]
 
+  - kind: pr_repair_rebased_held
+    effect_metric: resilient
+    emitter: scripts/ops/pr-repair-rebase.sh (RESILIENT-1763)
+    trigger: >
+      A review-held PR (label review-held or review-needs-mutants) was
+      rebased onto main and force-pushed, but deliberately NOT armed —
+      the new head has not been reviewed by the independent review organ
+      yet. Distinct from a deliberate human/architect hold (no-auto-merge /
+      hold / do-not-merge / CHUMP_HOLD / "Auto-merge: hold" marker), which
+      still skips rebase entirely (INFRA-8221).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr]
+    expected_volume: "0-N per tick while a review-held PR is DIRTY/BEHIND"
+    status: stable
+    # payload: {pr: number, ts: string}
+
   - kind: pr_title_drift
     effect_metric: self
     emitter: scripts/ci/pr-title-check.sh

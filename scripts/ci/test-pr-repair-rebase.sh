@@ -51,5 +51,37 @@ else
     exit 1
 fi
 
+echo "Test 6: review-held (label review-held / review-needs-mutants) is distinguished from a deliberate hold"
+if grep -q 'label:review-held|label:review-needs-mutants' "$SCRIPT"; then
+    echo "  PASS"
+else
+    echo "  FAIL: script does not branch on review-held vs. a deliberate hold (RESILIENT-1763)"
+    exit 1
+fi
+
+echo "Test 7: a review-held match does NOT 'continue' (i.e. still falls through to rebase)"
+if awk '/label:review-held\|label:review-needs-mutants\)/,/;;/' "$SCRIPT" | grep -q 'continue'; then
+    echo "  FAIL: review-held branch still skips rebase (held+dirty must still be rebased)"
+    exit 1
+else
+    echo "  PASS"
+fi
+
+echo "Test 8: a successful rebase+push on a review-held PR emits pr_repair_rebased_held and skips the armer"
+if grep -q 'held_review == 1' "$SCRIPT" && grep -q 'pr_repair_rebased_held' "$SCRIPT"; then
+    echo "  PASS"
+else
+    echo "  FAIL: missing held_review gate or pr_repair_rebased_held emit"
+    exit 1
+fi
+
+echo "Test 9: the deliberate-hold path (no-auto-merge / hold / do-not-merge / CHUMP_HOLD / marker) still skips rebase entirely"
+if awk '/^            \*\)/,/;;/' "$SCRIPT" | grep -q 'continue'; then
+    echo "  PASS"
+else
+    echo "  FAIL: deliberate-hold fallback branch no longer skips rebase/force-push/arm"
+    exit 1
+fi
+
 echo ""
 echo "All pr-repair-rebase tests passed."
