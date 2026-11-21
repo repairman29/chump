@@ -300,6 +300,40 @@ STUB
     rm -rf "$FD_TMP"
 fi
 
+# Test RS2224: threshold uses real cores (not cgroup-quota nproc) and kills only claude -p
+RS_TMP="$(mktemp -d)"
+RS_BIN="$RS_TMP/bin"; mkdir -p "$RS_BIN"
+printf '#!/bin/sh\necho 1\n' > "$RS_BIN/nproc"; chmod +x "$RS_BIN/nproc"
+RS_PROC_SRC="$(sed -n '/^get_nproc() {/,/^}/p' "$DEADMAN_SCRIPT")"
+RS_N="$(PATH="$RS_BIN:$PATH" bash -c "$RS_PROC_SRC; get_nproc")"
+RS_REAL="$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 0)"
+if [[ "$RS_REAL" -ge 1 && "$RS_N" == "$RS_REAL" ]]; then
+    log "OK: get_nproc ignores a quota-limited nproc (got $RS_N)"
+else
+    fail "get_nproc returned $RS_N with stub nproc=1; expected real core count $RS_REAL (RESILIENT-2224 AC1)"
+    ((FAILED++))
+fi
+# Victim selection: a ugrep-like child must never be chosen; a claude -p must.
+cat > "$RS_BIN/ps" <<'PSEOF'
+#!/bin/sh
+printf '  100 claude claude -p do-work\n  200 ugrep ugrep -r claude .\n  300 bash bash -c claude\n'
+PSEOF
+chmod +x "$RS_BIN/ps"
+RS_KILL_SRC="$(sed -n '/^kill_newest_process() {/,/^}/p' "$DEADMAN_SCRIPT")"
+RS_OUT="$(PATH="$RS_BIN:$PATH" CHUMP_AMBIENT_LOG="$RS_TMP/amb.jsonl" bash -c "
+    DRY_RUN=1; AMBIENT_LOG=$RS_TMP/amb.jsonl
+    log() { echo \"\$*\"; }
+    emit_ambient() { :; }
+    $RS_KILL_SRC
+    kill_newest_process claude test" 2>&1)"
+if grep -q 'PID 100 ' <<<"$RS_OUT" && ! grep -q 'PID 200\|PID 300' <<<"$RS_OUT"; then
+    log "OK: deadman victim is the claude -p process only (AC2)"
+else
+    fail "deadman victim selection wrong (AC2): $RS_OUT"
+    ((FAILED++))
+fi
+rm -rf "$RS_TMP"
+
 # Summary
 echo ""
 if [[ "$FAILED" -eq 0 ]]; then

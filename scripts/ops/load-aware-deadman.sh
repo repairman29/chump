@@ -88,7 +88,15 @@ now_secs() {
 }
 
 get_nproc() {
-    nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4
+    # RESILIENT-2224: plain `nproc` honors the unit's CPUQuota=25% cgroup limit
+    # (4 cores -> 1), which made threshold=3 instead of 12. Count real cores.
+    local n
+    n=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || true)
+    if [[ -z "$n" || "$n" -lt 1 ]]; then
+        n=$(nproc --all 2>/dev/null || true)
+    fi
+    if [[ -z "$n" || "$n" -lt 1 ]]; then n=4; fi
+    echo "$n"
 }
 
 get_load() {
@@ -112,11 +120,19 @@ check_ssh_responsive() {
     return 1
 }
 
+# RESILIENT-2224: exact comm match (never a substring, so a child tool such as
+# ugrep is never a victim); "claude" additionally requires a `-p` argument so
+# only headless claude -p agents are killable.
 kill_newest_process() {
     local pattern="$1" reason="$2"
     local newest_pid newest_cmd
-    # shellcheck disable=SC2009  # comm= match keeps pgrep-free portability (macOS + Linux)
-    newest_pid=$(ps -Ao pid=,comm= 2>/dev/null | grep "$pattern" | tail -1 | awk '{print $1}')
+    if [[ "$pattern" == "claude" ]]; then
+        newest_pid=$(ps -Ao pid=,comm=,args= 2>/dev/null \
+            | awk '$2 == "claude" { for (i = 3; i <= NF; i++) if ($i == "-p" || $i == "--print") { print $1; break } }' \
+            | tail -1)
+    else
+        newest_pid=$(ps -Ao pid=,comm= 2>/dev/null | awk -v p="$pattern" '$2 == p {print $1}' | tail -1)
+    fi
     if [[ -z "$newest_pid" ]]; then
         log "INFO: no process matching '$pattern' found"
         return 0
