@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# DEPRECATED / DEAD (INFRA-8051): macOS-only launchd path (hardcoded /opt/homebrew
+# and /Users/jeffadkins paths). Its launchd agent is no longer loaded and it is
+# NOT scheduled on any Linux node. It is NOT the fleet deploy authority — the
+# live authority is scripts/ops/node-refresh-chump.sh (which now carries the
+# RESILIENT-408 worker-PATH verify). Kept for reference / macOS-only reuse.
 # scripts/ops/auto-deploy.sh — MISSION-012
 #
 # Auto-deploy daemon: ensures the installed /opt/homebrew/bin/chump binary
