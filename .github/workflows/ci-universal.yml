@@ -92,6 +92,7 @@ jobs:
           git init --bare --initial-branch=main "$TMP_ROOT/origin.git"
           git clone "$TMP_ROOT/origin.git" "$TMP_ROOT/repo"
           cd "$TMP_ROOT/repo"
+          export CHUMP_REPO="$TMP_ROOT/repo"
           git config user.name "Chump FTUE Smoke"
           git config user.email "ftue@chump.local"
           echo "# FTUE Repo" > README.md
