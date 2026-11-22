@@ -351,8 +351,16 @@ impl ClaimArgs {
         }
 
         let worktree_base = std::env::var("CHUMP_WORKTREE_BASE")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/tmp"));
+            .unwrap_or_else(|| {
+                if cfg!(windows) {
+                    chump_pal::temp_dir()
+                } else {
+                    PathBuf::from("/tmp")
+                }
+            });
         let remote = std::env::var("CHUMP_REMOTE").unwrap_or_else(|_| "origin".into());
         let base_branch = std::env::var("CHUMP_BASE_BRANCH").unwrap_or_else(|_| "main".into());
 

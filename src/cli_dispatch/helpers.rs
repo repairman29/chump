@@ -1066,6 +1066,7 @@ pub(crate) fn parse_llm_complete_args(
     let mut system = None;
     let mut max_tokens = 1024u32;
     let mut prompt = None;
+    let mut positional: Vec<String> = Vec::new();
     // INFRA-3462: --model <class> (haiku/sonnet/opus) biases the cascade's slot
     // selection via CHUMP_PREFERRED_MODEL_CLASS; None = cascade default.
     let mut model_class = None;
@@ -1088,8 +1089,15 @@ pub(crate) fn parse_llm_complete_args(
                 model_class = args.get(i + 1).cloned().filter(|s| !s.is_empty());
                 i += 2;
             }
+            other if !other.starts_with('-') => {
+                positional.push(other.to_string());
+                i += 1;
+            }
             _ => i += 1,
         }
+    }
+    if prompt.is_none() && !positional.is_empty() {
+        prompt = Some(positional.join(" "));
     }
     (system, max_tokens, prompt, model_class)
 }
@@ -1207,5 +1215,13 @@ mod llm_complete_tests {
         let a = argv(&["chump", "llm-complete", "--model", ""]);
         let (_, _, _, model) = parse_llm_complete_args(&a);
         assert!(model.is_none());
+    }
+
+    #[test]
+    fn positional_prompt_when_flag_omitted() {
+        let a = argv(&["chump", "llm-complete", "--max-tokens", "16", "Reply", "OK"]);
+        let (_, mt, prompt, _) = parse_llm_complete_args(&a);
+        assert_eq!(mt, 16);
+        assert_eq!(prompt.as_deref(), Some("Reply OK"));
     }
 }

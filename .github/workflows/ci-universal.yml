@@ -47,7 +47,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy v1.0 control-plane crates
-        run: cargo clippy -p chump-pal -p chump-config -p chump-ship -p chump-git-hooks -p chumpd --all-targets -- -D warnings
+        run: cargo clippy -p chump-pal -p chump-config -p chump-ship -p chump-git-hooks -p chumpd -p chump-atomic-claim --all-targets -- -D warnings
 
       - name: Workspace check (default deterministic cognition)
         run: cargo check --workspace --exclude chump-desktop
@@ -56,7 +56,9 @@ jobs:
         run: cargo check --workspace --exclude chump-desktop --features experimental-cognition
 
       - name: Unit tests — v1.0 control-plane crates
-        run: cargo test -p chump-pal -p chump-config -p chump-ship -p chump-git-hooks -p chumpd
+        run: |
+          cargo test -p chump-pal -p chump-config -p chump-ship -p chump-git-hooks -p chumpd
+          cargo test -p chump-atomic-claim autonomy_level::tests
 
       - name: Unit tests — chump auth, service, and cognition gate
         run: |
@@ -73,10 +75,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          WORK_START="$PWD"
           BIN_DIR="$PWD/target/debug"
           export PATH="$BIN_DIR:$PATH"
           TMP_ROOT="$(mktemp -d)"
-          trap 'rm -rf "$TMP_ROOT"' EXIT
+          trap 'cd "$WORK_START" 2>/dev/null || true; rm -rf "$TMP_ROOT" 2>/dev/null || true' EXIT
 
           export CHUMP_HOME="$TMP_ROOT/chump-home"
           mkdir -p "$CHUMP_HOME"
@@ -113,3 +116,13 @@ jobs:
 
           # 6. Native Rust ship dry-run receipt
           chump ship --gap TEST-FTUE --dry-run
+
+          # 7. Cross-OS USERPROFILE fallback (HOME empty/unset) + reserve + claim + briefing
+          WIN_PROFILE="$TMP_ROOT/win-profile"
+          mkdir -p "$WIN_PROFILE" "$TMP_ROOT/wt"
+          git checkout "$SEED_BRANCH"
+          HOME="" USERPROFILE="$WIN_PROFILE" chump fleet level 5
+          GAP_ID="$(HOME="" USERPROFILE="$WIN_PROFILE" chump gap reserve --domain INFRA --title "INFRA: universal FTUE smoke" --effort s --quiet)"
+          HOME="" USERPROFILE="$WIN_PROFILE" CHUMP_WORKTREE_BASE="$TMP_ROOT/wt" CHUMP_SESSION_ID="ftue-session-1" chump claim "$GAP_ID" --role implementer --skip-doctor
+          HOME="" USERPROFILE="$WIN_PROFILE" chump --briefing "$GAP_ID" >/dev/null
+          chump llm-complete --help >/dev/null

@@ -360,6 +360,13 @@ pub async fn run() -> Result<()> {
     // reach the shared service instead of hand-rolling `curl` + `x-api-key`,
     // which is the class of bug the shared-service contract exists to kill.
     if args.get(1).map(String::as_str) == Some("llm-complete") {
+        if args.iter().skip(2).any(|a| a == "--help" || a == "-h") {
+            println!(
+                "Usage: chump llm-complete [--prompt <text> | <text>] [--system <text>] [--max-tokens <n>] [--model <class>]\n\
+                 Reads prompt from --prompt, positional arguments, or stdin."
+            );
+            return Ok(());
+        }
         let (system, max_tokens, prompt_flag, model_class) = parse_llm_complete_args(&args);
         let prompt = match prompt_flag {
             Some(p) => p,
@@ -10383,29 +10390,33 @@ pub async fn run() -> Result<()> {
 
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
-                    use std::process::Command;
-                    if !quiet {
-                        eprint!("checking registry health...");
-                    }
-                    let glance_result = Command::new("bash")
-                        .arg("scripts/coord/chump-ambient-glance.sh")
-                        .arg("--domain")
-                        .arg(&domain)
-                        .arg("--title")
-                        .arg(&title)
-                        .arg("--check-prs")
-                        .current_dir(repo_path::repo_root())
-                        .status();
-
-                    if let Ok(status) = glance_result {
-                        if !status.success() {
-                            eprintln!();
-                            eprintln!("[reserve] Potential overlap detected. Pass --force to proceed anyway, or review the matches above.");
-                            std::process::exit(1);
+                    let glance_script =
+                        repo_path::repo_root().join("scripts/coord/chump-ambient-glance.sh");
+                    if glance_script.is_file() {
+                        use std::process::Command;
+                        if !quiet {
+                            eprint!("checking registry health...");
                         }
-                    }
-                    if !quiet {
-                        eprintln!(" ok");
+                        let glance_result = Command::new("bash")
+                            .arg("scripts/coord/chump-ambient-glance.sh")
+                            .arg("--domain")
+                            .arg(&domain)
+                            .arg("--title")
+                            .arg(&title)
+                            .arg("--check-prs")
+                            .current_dir(repo_path::repo_root())
+                            .status();
+
+                        if let Ok(status) = glance_result {
+                            if !status.success() {
+                                eprintln!();
+                                eprintln!("[reserve] Potential overlap detected. Pass --force to proceed anyway, or review the matches above.");
+                                std::process::exit(1);
+                            }
+                        }
+                        if !quiet {
+                            eprintln!(" ok");
+                        }
                     }
                 }
 
@@ -11483,23 +11494,27 @@ pub async fn run() -> Result<()> {
 
                 // FLEET-029: ambient glance before claiming
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
-                    use std::process::Command;
-                    if let Ok(Some(gap_row)) = store.get(&gap_id) {
-                        let glance_result = Command::new("bash")
-                            .arg("scripts/coord/chump-ambient-glance.sh")
-                            .arg("--domain")
-                            .arg(&gap_row.domain)
-                            .arg("--title")
-                            .arg(&gap_row.title)
-                            .arg("--check-prs")
-                            .current_dir(repo_path::repo_root())
-                            .status();
+                    let glance_script =
+                        repo_path::repo_root().join("scripts/coord/chump-ambient-glance.sh");
+                    if glance_script.is_file() {
+                        use std::process::Command;
+                        if let Ok(Some(gap_row)) = store.get(&gap_id) {
+                            let glance_result = Command::new("bash")
+                                .arg("scripts/coord/chump-ambient-glance.sh")
+                                .arg("--domain")
+                                .arg(&gap_row.domain)
+                                .arg("--title")
+                                .arg(&gap_row.title)
+                                .arg("--check-prs")
+                                .current_dir(repo_path::repo_root())
+                                .status();
 
-                        if let Ok(status) = glance_result {
-                            if !status.success() {
-                                eprintln!();
-                                eprintln!("[claim] Potential overlap detected for {gap_id}. Pass --force to proceed anyway.");
-                                std::process::exit(1);
+                            if let Ok(status) = glance_result {
+                                if !status.success() {
+                                    eprintln!();
+                                    eprintln!("[claim] Potential overlap detected for {gap_id}. Pass --force to proceed anyway.");
+                                    std::process::exit(1);
+                                }
                             }
                         }
                     }

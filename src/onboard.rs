@@ -217,10 +217,7 @@ fn run_iter_once(args: &[String]) -> Result<()> {
         .ok_or_else(|| anyhow!("usage: chump onboard --iter-once <repo-url-or-path>"))?;
 
     // Operator kill-switch (fail-closed): AUTONOMY_LEVEL must be >= 1.
-    let al_path = format!(
-        "{}/.chump/AUTONOMY_LEVEL",
-        std::env::var("HOME").unwrap_or_default()
-    );
+    let al_path = chump_atomic_claim::autonomy_level::default_path();
     let al: u32 = std::fs::read_to_string(&al_path)
         .ok()
         .and_then(|s| s.trim().parse().ok())
