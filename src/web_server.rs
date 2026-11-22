@@ -10444,6 +10444,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     let app = Router::new()
         .merge(api)
         .route("/", get(|| async { Redirect::permanent("/v2/") }))
+        .route("/site", get(|| async { Redirect::permanent("/site/") }))
         .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
         .layer(cors);
 

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing &amp; Open-Core TCO — Chump</title>
+  <meta name="description" content="Transparent $0 open-core licensing. Unlimited local workers, zero per-seat SaaS tax, zero API token markup, and an interactive Cloud-Agent TCO comparator." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Chump" />
+  <meta property="og:title" content="Chump Pricing &amp; Cloud-Agent TCO Comparator" />
+  <meta property="og:description" content="$0 self-hosted coordinator. Your plan scales with raw compute you control, never your headcount." />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/site/assets/site.css" />
+  <style>
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+    }
+    .tier-card {
+      background: var(--stone-card);
+      border: 1px solid var(--stone-rule);
+      border-radius: var(--radius-lg);
+      padding: 26px 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: var(--shadow-xs);
+    }
+    .tier-accent-stone { border-top: 4px solid var(--stone-rule-strong); }
+    .tier-accent-sage { border-top: 4px solid var(--stone-sage); }
+    .tier-accent-dark { border-top: 4px solid var(--stone-dark); }
+    .tier-accent-bronze { border-top: 4px solid var(--stone-bronze); }
+    .tier-price {
+      font-family: var(--font-display);
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 12px 0 4px;
+    }
+    .tier-list {
+      list-style: none;
+      margin: 18px 0 24px;
+      padding: 0;
+      font-size: 13.5px;
+      color: var(--stone-muted);
+    }
+    .tier-list li {
+      padding: 6px 0;
+      border-bottom: 1px solid var(--stone-rule);
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .tier-list li:last-child {
+      border-bottom: 0;
+    }
+    .check-glyph {
+      color: var(--stone-sage);
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+    @media (max-width: 1060px) {
+      .tier-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    @media (max-width: 680px) {
+      .tier-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <chump-site-header pillar="overview" page="pricing" base="/site"></chump-site-header>
+
+  <main>
+    <!-- ── 1. Pricing Hero & 4 Tier Cards ────────────────────────────────── -->
+    <section class="arch-band">
+      <div class="arch-grid-frame section-pad">
+        <div style="max-width:70ch; margin-bottom:34px;">
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Open-Core Sovereign Licensing</div>
+          <h1 class="display-h1">
+            Zero seat tax. Unlimited workers. <span class="muted-tail">Pay only for compute you choose to run.</span>
+          </h1>
+          <p class="lede" style="margin-bottom:14px;">
+            Cloud coding-agent vendors charge $250–$500 per seat plus a 20–40% markup on upstream model tokens. Chump runs locally on your hardware with <strong>$0 coordinator licensing</strong>.
+          </p>
+          <div class="mono" style="font-size:12px; color:var(--stone-muted);">
+            Compare below against: <a href="#compare-matrix" style="color:var(--stone-bronze); text-decoration:underline;">Hosted Cloud Agents ($500/seat)</a> · <a href="#compare-matrix" style="color:var(--stone-bronze); text-decoration:underline;">IDE Background Bots</a> · <a href="#compare-matrix" style="color:var(--stone-bronze); text-decoration:underline;">DIY Worktree Scripts</a>
+          </div>
+        </div>
+
+        <div class="tier-grid">
+          <article class="tier-card tier-accent-stone">
+            <div>
+              <span class="pill pill-sage">AIR-GAP READY</span>
+              <h2 class="display-h3" style="margin-top:10px;">Solo Local</h2>
+              <div class="tier-price">$0</div>
+              <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">No account · No API key required</div>
+              <ul class="tier-list">
+                <li><span class="check-glyph">✓</span><span>Unlimited workers on Ollama, LM Studio, llama.cpp, or vLLM</span></li>
+                <li><span class="check-glyph">✓</span><span>SQLite WAL gap registry &amp; Markdown briefings</span></li>
+                <li><span class="check-glyph">✓</span><span>Native Rust <code>pre-commit</code> lease &amp; secret firewall</span></li>
+                <li><span class="check-glyph">✓</span><span>Local PWA Cockpit (<code>/v2/</code>) &amp; analytical tools</span></li>
+                <li><span class="check-glyph">✓</span><span>14 reusable crates under Apache-2.0</span></li>
+              </ul>
+            </div>
+            <button type="button" class="btn btn-stone" style="width:100%;" data-trigger-install>Install Free</button>
+          </article>
+
+          <article class="tier-card tier-accent-sage">
+            <div>
+              <span class="pill pill-sky">MOST COMMON</span>
+              <h2 class="display-h3" style="margin-top:10px;">BYO Keys &amp; OAuth</h2>
+              <div class="tier-price">$0</div>
+              <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">0% token markup · Direct to provider</div>
+              <ul class="tier-list">
+                <li><span class="check-glyph">✓</span><span>Everything in Solo Local</span></li>
+                <li><span class="check-glyph">✓</span><span>Claude Subscription OAuth credential sync</span></li>
+                <li><span class="check-glyph">✓</span><span>40-slot cascading API router + Thompson bandit</span></li>
+                <li><span class="check-glyph">✓</span><span><code>claude</code>, <code>opencode</code>, <code>codex</code>, <code>aider</code>, <code>goose</code></span></li>
+                <li><span class="check-glyph">✓</span><span>Native <code>launchd</code>, <code>systemd</code> &amp; Windows supervision</span></li>
+              </ul>
+            </div>
+            <a class="btn btn-dark" style="width:100%;" href="/site/cascade/#daemon-builder">Generate config.toml →</a>
+          </article>
+
+          <article class="tier-card tier-accent-dark">
+            <div>
+              <span class="pill pill-plum">TEAM SELF-HOSTED</span>
+              <h2 class="display-h3" style="margin-top:10px;">Sovereign Fleet</h2>
+              <div class="tier-price">$0</div>
+              <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">AGPL-3.0 Open Core · Unlimited seats</div>
+              <ul class="tier-list">
+                <li><span class="check-glyph">✓</span><span>Multi-machine NATS fleet coordination bus</span></li>
+                <li><span class="check-glyph">✓</span><span>Local SQLite GitHub webhook cache (&lt;100ms)</span></li>
+                <li><span class="check-glyph">✓</span><span>CREDIBLE-1576 gate-file auto-merge refusal</span></li>
+                <li><span class="check-glyph">✓</span><span>INFRA-1392 proof-of-merge verification</span></li>
+                <li><span class="check-glyph">✓</span><span>Full RFC3339 <code>ambient.jsonl</code> audit stream</span></li>
+              </ul>
+            </div>
+            <a class="btn btn-stone" style="width:100%;" href="https://github.com/repairman29/chump" target="_blank" rel="noopener">Clone Source on GitHub ↗</a>
+          </article>
+
+          <article class="tier-card tier-accent-bronze">
+            <div>
+              <span class="pill pill-bronze">COMMERCIAL / OEM</span>
+              <h2 class="display-h3" style="margin-top:10px;">Embedded License</h2>
+              <div class="tier-price">Custom</div>
+              <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">Closed-source redistribution exemption</div>
+              <ul class="tier-list">
+                <li><span class="check-glyph">✓</span><span>Commercial license exempt from AGPL-3.0 copyleft</span></li>
+                <li><span class="check-glyph">✓</span><span>Embed coordinator inside proprietary products</span></li>
+                <li><span class="check-glyph">✓</span><span>Air-gapped VPC / defense appliance deployment</span></li>
+                <li><span class="check-glyph">✓</span><span>Custom gate-policy &amp; harness integration review</span></li>
+                <li><span class="check-glyph">✓</span><span>Direct maintainer architecture advisory</span></li>
+              </ul>
+            </div>
+            <a class="btn btn-bronze" style="width:100%;" href="https://github.com/repairman29/chump/issues" target="_blank" rel="noopener">Inquire via GitHub ↗</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 2. Interactive Cloud-Agent TCO Comparator ─────────────────────── -->
+    <section class="arch-band" id="tco-comparator">
+      <div class="arch-grid-frame section-pad">
+        <div style="max-width:68ch; margin-bottom:26px;">
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Interactive Annual TCO Calculator</div>
+          <h2 class="display-h2">
+            Model your real annual cost <span class="muted-tail">against hosted agent seats.</span>
+          </h2>
+        </div>
+
+        <div class="sandstone-surface">
+          <div class="frosted-inner">
+            <div class="bento-3" style="margin-bottom:22px;">
+              <div class="trace-card" style="margin:0;">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:8px;">
+                  <label for="tco-devs">Engineers Using Fleet</label>
+                  <span class="mono" id="tco-devs-val">6 devs</span>
+                </div>
+                <input id="tco-devs" type="range" min="1" max="40" value="6" style="width:100%; accent-color:var(--stone-bronze);" />
+              </div>
+
+              <div class="trace-card" style="margin:0;">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:8px;">
+                  <label for="tco-prs">Merged Agent PRs / Month</label>
+                  <span class="mono" id="tco-prs-val">240 PRs</span>
+                </div>
+                <input id="tco-prs" type="range" min="20" max="1000" step="20" value="240" style="width:100%; accent-color:var(--stone-bronze);" />
+              </div>
+
+              <div class="trace-card" style="margin:0;">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:8px;">
+                  <label for="tco-offload">Local / Flat-OAuth Share</label>
+                  <span class="mono" id="tco-offload-val">65%</span>
+                </div>
+                <input id="tco-offload" type="range" min="0" max="100" step="5" value="65" style="width:100%; accent-color:var(--stone-bronze);" />
+              </div>
+            </div>
+
+            <div class="bento-3" id="tco-cards"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 3. Exhaustive 8-Category Comparison Matrix ────────────────────── -->
+    <section class="arch-band" id="compare-matrix">
+      <div class="arch-grid-frame section-pad">
+        <div class="eyebrow"><span class="eyebrow-dot"></span>Capability &amp; Sovereignty Matrix</div>
+        <h2 class="display-h2" style="margin-bottom:24px;">Compare Architecture Line by Line</h2>
+
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:32%;">Capability</th>
+                <th>Chump (Open Core)</th>
+                <th>Hosted Cloud Agent SaaS</th>
+                <th>DIY Git Worktree Scripts</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><th colspan="4">1 · Coordination &amp; File Ownership</th></tr>
+              <tr>
+                <td>Path &amp; symbol-region file leases</td>
+                <td><span class="pill pill-sage">Built-in (Rust)</span></td>
+                <td>Opaque cloud VM per task</td>
+                <td>None (manual discipline)</td>
+              </tr>
+              <tr>
+                <td>Pre-commit cross-agent stomp block</td>
+                <td><span class="pill pill-sage">&lt; 2ms local hook</span></td>
+                <td>Discovered late at PR merge</td>
+                <td>Discovered late at git rebase</td>
+              </tr>
+              <tr><th colspan="4">2 · Model &amp; Credential Routing</th></tr>
+              <tr>
+                <td>Subscription OAuth + BYO API keys</td>
+                <td><span class="pill pill-sage">0% markup · 40 slots</span></td>
+                <td>Vendor credit units + markup</td>
+                <td>Single hardcoded key</td>
+              </tr>
+              <tr>
+                <td>100% offline local Ollama / vLLM operation</td>
+                <td><span class="pill pill-sage">Native first-class</span></td>
+                <td>Impossible (cloud-tethered)</td>
+                <td>Manual per-tool wiring</td>
+              </tr>
+              <tr><th colspan="4">3 · Git &amp; Merge Firewall</th></tr>
+              <tr>
+                <td>Compile-time CI/hook self-merge refusal</td>
+                <td><span class="pill pill-sage">CREDIBLE-1576 constant</span></td>
+                <td>Not enforced</td>
+                <td>Not enforced</td>
+              </tr>
+              <tr>
+                <td>Proof-of-merge before closing task</td>
+                <td><span class="pill pill-sage">Verified on origin/main</span></td>
+                <td>Agent self-reported status</td>
+                <td>Manual tracking</td>
+              </tr>
+              <tr><th colspan="4">4 · Cross-OS &amp; Laptop Safety</th></tr>
+              <tr>
+                <td>Native macOS, Linux &amp; Windows daemon</td>
+                <td><span class="pill pill-sage">launchd · systemd · schtasks</span></td>
+                <td>Linux cloud container only</td>
+                <td>Fragile bash + tmux scripts</td>
+              </tr>
+              <tr>
+                <td>RAM-derived <code>CARGO_BUILD_JOBS</code> guard</td>
+                <td><span class="pill pill-sage">Automatic via chump-pal</span></td>
+                <td>N/A (remote VM)</td>
+                <td>Frequent laptop swap thrash</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 4. Licensing FAQ ──────────────────────────────────────────────── -->
+    <section class="arch-band">
+      <div class="arch-grid-frame section-pad">
+        <div class="eyebrow"><span class="eyebrow-dot"></span>Licensing Clarity</div>
+        <h2 class="display-h2" style="margin-bottom:22px;">Licensing &amp; Commercial Use Q&amp;A</h2>
+
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary>Can my company use Chump internally to build proprietary closed-source software for $0?</summary>
+            <div class="faq-body">
+              <strong>Yes.</strong> Running Chump internally on your developer laptops, workstations, or private CI servers to write your company's proprietary code does <em>not</em> trigger AGPL-3.0 copyleft on the repositories Chump edits. Your application code remains 100% yours under whatever license you choose.
+            </div>
+          </details>
+          <details class="faq-item">
+            <summary>When does AGPL-3.0 apply, and why are 14 crates Apache-2.0?</summary>
+            <div class="faq-body">
+              AGPL-3.0 applies only if you modify Chump itself and host Chump as a network service for external users without sharing your Chump modifications—preventing cloud providers from wrapping Chump as a closed SaaS. Meanwhile, 14 standalone building-block crates on crates.io carry permissive <strong>Apache-2.0</strong> licenses so any Rust project can embed them freely.
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <chump-site-footer base="/site"></chump-site-footer>
+  <chump-install-modal></chump-install-modal>
+
+  <script src="/site/assets/site.js"></script>
+  <script>
+    (function () {
+      document.querySelectorAll("[data-trigger-install]").forEach((btn) => {
+        btn.addEventListener("click", () => window.ChumpSite.openInstallModal());
+      });
+
+      const devsEl = document.getElementById("tco-devs");
+      const prsEl = document.getElementById("tco-prs");
+      const offEl = document.getElementById("tco-offload");
+
+      function renderTco() {
+        const devs = Number(devsEl.value);
+        const prs = Number(prsEl.value);
+        const offload = Number(offEl.value) / 100;
+
+        document.getElementById("tco-devs-val").textContent = `${devs} dev${devs === 1 ? "" : "s"}`;
+        document.getElementById("tco-prs-val").textContent = `${prs} PRs`;
+        document.getElementById("tco-offload-val").textContent = `${Math.round(offload * 100)}%`;
+
+        /* Raw cloud API cost ~$0.65 per merged PR on metered portion */
+        const chumpMonthly = prs * (1 - offload) * 0.65;
+        const chumpAnnual = Math.round(chumpMonthly * 12);
+
+        /* Cloud autonomous agent SaaS: ~$500/seat/mo + overage above 40 PRs/seat */
+        const includedPrs = devs * 40;
+        const overagePrs = Math.max(0, prs - includedPrs);
+        const saasMonthly = devs * 500 + overagePrs * 4.5;
+        const saasAnnual = Math.round(saasMonthly * 12);
+
+        /* Background IDE bot add-ons: $60/seat/mo + ~$1.80 marked-up compute/PR */
+        const addonMonthly = devs * 60 + prs * 1.8;
+        const addonAnnual = Math.round(addonMonthly * 12);
+
+        const savings = Math.max(0, saasAnnual - chumpAnnual);
+
+        document.getElementById("tco-cards").innerHTML = `
+          <div class="trace-card" style="margin:0; border-color:var(--stone-sage);">
+            <span class="pill pill-sage" style="margin-bottom:8px;">CHUMP SELF-HOSTED</span>
+            <div class="display-h2" style="margin:4px 0;">$${chumpAnnual.toLocaleString()}<span style="font-size:15px; color:var(--stone-muted);"> / yr</span></div>
+            <div style="font-size:13px; color:var(--stone-muted);">$0 seat license · $${Math.round(chumpMonthly).toLocaleString()}/mo direct API compute after ${Math.round(offload * 100)}% offload.</div>
+            <div class="mono" style="margin-top:10px; font-size:12px; color:var(--stone-sage); font-weight:600;">Saves $${savings.toLocaleString()}/yr vs Agent SaaS</div>
+          </div>
+
+          <div class="trace-card" style="margin:0;">
+            <span class="pill pill-amber" style="margin-bottom:8px;">IDE BACKGROUND BOTS</span>
+            <div class="display-h2" style="margin:4px 0;">$${addonAnnual.toLocaleString()}<span style="font-size:15px; color:var(--stone-muted);"> / yr</span></div>
+            <div style="font-size:13px; color:var(--stone-muted);">Per-seat base fee + metered cloud-container &amp; token markup on all ${prs} PRs/mo.</div>
+          </div>
+
+          <div class="trace-card" style="margin:0;">
+            <span class="pill pill-coral" style="margin-bottom:8px;">HOSTED AGENT SAAS</span>
+            <div class="display-h2" style="margin:4px 0;">$${saasAnnual.toLocaleString()}<span style="font-size:15px; color:var(--stone-muted);"> / yr</span></div>
+            <div style="font-size:13px; color:var(--stone-muted);">$500/mo per engineer seat + task credit overages; source code leaves your machine.</div>
+          </div>
+        `;
+      }
+
+      [devsEl, prsEl, offEl].forEach((el) => el.addEventListener("input", renderTco));
+      renderTco();
+    })();
+  </script>
+</body>
+</html>
