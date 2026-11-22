@@ -5,6 +5,7 @@
 
 (function () {
   const THEME_KEY = "chump_site_theme";
+  let probed = false;
 
   function applySavedTheme() {
     try {
@@ -38,7 +39,7 @@
       localStorage.setItem(THEME_KEY, next);
     } catch (_) {}
     document.querySelectorAll("[data-theme-label]").forEach((el) => {
-      el.textContent = next === "dark" ? "☀ Stone" : "☾ Charcoal";
+      el.textContent = next === "dark" ? "Theme: Stone" : "Theme: Charcoal";
     });
     window.dispatchEvent(new CustomEvent("chump-theme-change", { detail: { theme: next } }));
   }
@@ -88,7 +89,7 @@
       const pillar = this.getAttribute("pillar") || "overview";
       const page = this.getAttribute("page") || "overview";
       const base = this.getAttribute("base") || "/site";
-      const themeText = currentTheme() === "dark" ? "☀ Stone" : "☾ Charcoal";
+      const themeText = currentTheme() === "dark" ? "Theme: Stone" : "Theme: Charcoal";
 
       this.innerHTML = `
         <header class="site-header-wrap">
@@ -98,6 +99,7 @@
                 <a class="pillar-tab" href="${base}/" aria-current="${pillar === "overview" ? "true" : "false"}">Chump Overview</a>
                 <a class="pillar-tab" href="${base}/fleet/" aria-current="${pillar === "fleet" ? "true" : "false"}">Chump Fleet</a>
                 <a class="pillar-tab" href="${base}/cascade/" aria-current="${pillar === "cascade" ? "true" : "false"}">Chump Cascade</a>
+                <a class="pillar-tab" href="${base}/tools/fleet-simulator/" aria-current="${pillar === "tools" ? "true" : "false"}">Free Tools</a>
               </nav>
               <div class="utility-right">
                 <span class="live-daemon-pill" data-live="false" data-daemon-badge>
@@ -314,7 +316,6 @@ chump --web --port 3000</code></pre>
 
   /* ── Live /api/health Probe (When Served via `chump --web`) ────────────── */
 
-  let probed = false;
   async function probeLocalDaemon() {
     if (probed) return;
     probed = true;

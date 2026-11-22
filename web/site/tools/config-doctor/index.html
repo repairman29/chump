@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/site/assets/site.css" />
 </head>
 <body>
-  <chump-site-header pillar="overview" page="doctor" base="/site"></chump-site-header>
+  <chump-site-header pillar="tools" page="doctor" base="/site"></chump-site-header>
 
   <main>
     <section class="arch-band">
@@ -63,12 +63,12 @@
           <!-- Right: 4-Pillar Scorecard & Findings -->
           <div style="display:flex; flex-direction:column; gap:16px;">
             <div class="bento-card" style="padding:20px 22px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
                 <div>
                   <div class="mono" style="font-size:11px; color:var(--stone-muted);">OVERALL FLEET POSTURE</div>
-                  <div class="display-h2" style="margin:2px 0 0;" id="doc-grade-title">Grade C- · 61 / 100</div>
+                  <div class="display-h2" style="margin:2px 0 0; font-size:clamp(1.4rem, 2.1vw, 1.85rem); white-space:nowrap;" id="doc-grade-title">Grade C- · 61 / 100</div>
                 </div>
-                <span class="pill pill-amber" id="doc-grade-pill" style="font-size:13px; padding:6px 14px;">NEEDS HARDENING</span>
+                <span class="pill pill-amber" id="doc-grade-pill" style="font-size:12px; padding:6px 12px; white-space:nowrap;">NEEDS HARDENING</span>
               </div>
 
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;" id="pillar-bars"></div>
