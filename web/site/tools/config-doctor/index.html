@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Config &amp; 4-Pillar Sovereignty Doctor — Chump Free Engineering Tool</title>
+  <meta name="description" content="Client-side .env and config.toml auditor for AI coding fleets. Grades Credible, Effective, Resilient, and Zero-Waste posture with zero data uploaded." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Chump" />
+  <meta property="og:title" content="Chump Config &amp; Sovereignty Doctor" />
+  <meta property="og:description" content="Audit single-provider SPOFs, laptop OOM build settings, and missing git lease hooks right in your browser." />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/site/assets/site.css" />
+</head>
+<body>
+  <chump-site-header pillar="overview" page="doctor" base="/site"></chump-site-header>
+
+  <main>
+    <section class="arch-band">
+      <div class="arch-grid-frame section-pad">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:26px;">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span>100% Client-Side Diagnostic Tool · Zero Uploads</div>
+            <h1 class="display-h1" style="font-size:clamp(2rem, 3.8vw, 3.2rem); margin-bottom:10px;">
+              Config &amp; Sovereignty Doctor
+            </h1>
+            <p class="lede" style="margin-bottom:0;">
+              Paste an existing <code>.env</code> or <code>config.toml</code>—or load a preset—to grade your setup across Chump's four engineering pillars and generate a hardened configuration.
+            </p>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;" id="doc-presets">
+            <button type="button" class="copy-chip" data-doc-preset="spof">Preset 1: Fragile Single-Key .env</button>
+            <button type="button" class="copy-chip" data-doc-preset="oom">Preset 2: Laptop OOM Trap</button>
+            <button type="button" class="copy-chip" data-doc-preset="hybrid">Preset 3: Balanced OAuth + Ollama</button>
+            <button type="button" class="copy-chip" data-doc-preset="sovereign">Preset 4: 6-Slot Sovereign Fleet</button>
+          </div>
+        </div>
+
+        <div class="bento-2">
+          <!-- Left: Input Editor -->
+          <div class="app-window" style="display:flex; flex-direction:column;">
+            <div class="app-window-bar">
+              <span>Input (.env or ~/.chump/config.toml)</span>
+              <span class="mono">Evaluated locally in browser JS</span>
+            </div>
+            <div style="padding:16px; flex:1; display:flex; flex-direction:column;">
+              <textarea
+                id="doctor-input"
+                aria-label="Paste .env or config.toml content"
+                spellcheck="false"
+                style="width:100%; min-height:340px; flex:1; padding:14px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-elevated); font-family:var(--font-mono); font-size:12.5px; line-height:1.6; resize:vertical;"
+              ></textarea>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+                <span style="font-size:12px; color:var(--stone-muted);">Tip: Redact real secret strings; key variable names alone are enough to grade.</span>
+                <button type="button" class="btn btn-dark btn-sm" id="run-doctor-btn">Grade Setup</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: 4-Pillar Scorecard & Findings -->
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <div class="bento-card" style="padding:20px 22px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px;">
+                <div>
+                  <div class="mono" style="font-size:11px; color:var(--stone-muted);">OVERALL FLEET POSTURE</div>
+                  <div class="display-h2" style="margin:2px 0 0;" id="doc-grade-title">Grade C- · 61 / 100</div>
+                </div>
+                <span class="pill pill-amber" id="doc-grade-pill" style="font-size:13px; padding:6px 14px;">NEEDS HARDENING</span>
+              </div>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;" id="pillar-bars"></div>
+            </div>
+
+            <div class="bento-card" style="padding:20px 22px;">
+              <div class="mono" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--stone-muted); margin-bottom:10px;">
+                Diagnostic Findings
+              </div>
+              <div id="doc-findings" style="display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auto-Remediated config.toml Output -->
+        <div class="app-window" style="margin-top:22px;">
+          <div class="app-window-bar">
+            <span>Auto-Synthesized Remediation (~/.chump/config.toml + Hook Checklist)</span>
+            <button type="button" class="copy-chip" id="copy-remediated-btn">Copy Hardened TOML</button>
+          </div>
+          <div style="padding:18px;">
+            <pre id="remediated-toml" style="margin:0; padding:14px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:12px; line-height:1.6; overflow-x:auto;"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <chump-site-footer base="/site"></chump-site-footer>
+  <chump-install-modal></chump-install-modal>
+
+  <script src="/site/assets/site.js"></script>
+  <script>
+    (function () {
+      const samples = {
+        spof: `# Typical fragile single-provider .env\nOPENAI_API_KEY=REDACTED_KEY\nOPENAI_MODEL=gpt-4o\nFLEET_SIZE=6\n`,
+        oom: `# Unthrottled 16 GB laptop config\nauth_mode = "api_key"\ndesired_workers = 8\ncargo_build_jobs = 12\n\n[[providers]]\nname = "anthropic"\napi_key_env = "ANTHROPIC_API_KEY"\nmodel = "claude-sonnet-4-5"\npriority = 1\n`,
+        hybrid: `# Balanced macOS / Linux hybrid config\nauth_mode = "auto"\nfleet_mode = "grind"\ndesired_workers = 4\ncargo_build_jobs = 2\nlease_firewall = true\nautonomy_level = 3\n\n[[providers]]\nname = "gemini-flash"\napi_key_env = "GEMINI_API_KEY"\nmodel = "gemini-2.5-flash"\npriority = 10\n\n[[providers]]\nname = "ollama-floor"\nbase_url = "http://127.0.0.1:11434/v1"\nmodel = "qwen2.5-coder:14b"\ntier = "local"\npriority = 20\n`,
+        sovereign: `# Full 6-slot sovereign cascade + hooks + RPM headroom\nauth_mode = "auto"\nfleet_mode = "grind"\ndesired_workers = 6\ncargo_build_jobs = 4\nlease_firewall = true\ngate_file_guard = true\nrpm_headroom_pct = 80\nautonomy_level = 4\n\n[[providers]]\nname = "claude-oauth"\ntier = "oauth"\nmodel = "claude-sonnet"\npriority = 5\n\n[[providers]]\nname = "gemini-2-5-flash"\napi_key_env = "GEMINI_API_KEY"\nmodel = "gemini-2.5-flash"\npriority = 10\n\n[[providers]]\nname = "mistral-codestral"\napi_key_env = "MISTRAL_API_KEY"\nmodel = "codestral-latest"\npriority = 14\n\n[[providers]]\nname = "ollama-qwen"\nbase_url = "http://127.0.0.1:11434/v1"\nmodel = "qwen2.5-coder:14b"\ntier = "local"\npriority = 20\n`,
+      };
+
+      const inputEl = document.getElementById("doctor-input");
+
+      function evaluateConfig(raw) {
+        const text = raw || "";
+        const lower = text.toLowerCase();
+        const findings = [];
+
+        let credible = 55;
+        let effective = 60;
+        let resilient = 40;
+        let zeroWaste = 45;
+
+        const providerMatches = (text.match(/\[\[providers\]\]/g) || []).length +
+          (text.match(/_API_KEY\s*=/g) || []).length;
+        const hasLocal =
+          lower.includes("11434") ||
+          lower.includes("ollama") ||
+          lower.includes("vllm") ||
+          lower.includes('tier = "local"');
+        const hasOauth =
+          lower.includes("oauth") || lower.includes('auth_mode = "auto"');
+        const hasLeases = lower.includes("lease_firewall = true") || lower.includes("chump hook");
+        const hasGateGuard = lower.includes("gate_file_guard = true") || lower.includes("autonomy_level");
+
+        /* Check build jobs cap */
+        const jobsMatch = text.match(/cargo_build_jobs\s*=\s*(\d+)/i);
+        const workersMatch = text.match(/(?:desired_workers|FLEET_SIZE)\s*=\s*(\d+)/i);
+        const jobs = jobsMatch ? Number(jobsMatch[1]) : null;
+        const workers = workersMatch ? Number(workersMatch[1]) : 2;
+
+        if (providerMatches <= 1 && !hasLocal) {
+          findings.push({
+            sev: "CRITICAL",
+            pill: "pill-coral",
+            msg: "Single-provider SPOF: only 1 upstream credential detected with no secondary API slot or local Ollama floor.",
+          });
+          resilient -= 15;
+        } else {
+          resilient += 28;
+          findings.push({
+            sev: "PASS",
+            pill: "pill-sage",
+            msg: `Multi-slot routing detected (${Math.max(providerMatches, 2)} provider signals).`,
+          });
+        }
+
+        if (hasLocal) {
+          resilient += 22;
+          zeroWaste += 25;
+          findings.push({
+            sev: "PASS",
+            pill: "pill-sage",
+            msg: "Local $0 inference floor (Ollama / vLLM) configured for offline survivability and xs/s offload.",
+          });
+        } else {
+          findings.push({
+            sev: "WARN",
+            pill: "pill-amber",
+            msg: "No local model floor (127.0.0.1:11434). Routine xs/s tasks will burn metered cloud tokens and fail offline.",
+          });
+        }
+
+        if (jobs === null) {
+          findings.push({
+            sev: "WARN",
+            pill: "pill-amber",
+            msg: "Missing cargo_build_jobs cap: parallel rustc linkers can burst past 16–24 GB unified memory on laptops.",
+          });
+        } else if (jobs > 6) {
+          zeroWaste -= 15;
+          findings.push({
+            sev: "CRITICAL",
+            pill: "pill-coral",
+            msg: `cargo_build_jobs = ${jobs} with ${workers} workers risks swap thrashing / kernel panic on 16–32 GB hosts. Cap to 2–4.`,
+          });
+        } else {
+          zeroWaste += 24;
+          findings.push({
+            sev: "PASS",
+            pill: "pill-sage",
+            msg: `RAM-safe compile cap (cargo_build_jobs = ${jobs}) protects host responsiveness.`,
+          });
+        }
+
+        if (hasLeases) {
+          credible += 24;
+          effective += 18;
+          findings.push({
+            sev: "PASS",
+            pill: "pill-sage",
+            msg: "Pre-commit file-lease firewall enabled; parallel workers cannot overwrite active sibling scopes.",
+          });
+        } else {
+          findings.push({
+            sev: "WARN",
+            pill: "pill-amber",
+            msg: `Running ${workers} workers without lease_firewall / 'chump hook install' invites cross-branch merge stomps.`,
+          });
+        }
+
+        if (hasGateGuard) {
+          credible += 18;
+        }
+        if (hasOauth) {
+          effective += 16;
+          zeroWaste += 8;
+        }
+
+        credible = Math.max(20, Math.min(100, credible));
+        effective = Math.max(20, Math.min(100, effective));
+        resilient = Math.max(20, Math.min(100, resilient));
+        zeroWaste = Math.max(20, Math.min(100, zeroWaste));
+
+        const avg = Math.round((credible + effective + resilient + zeroWaste) / 4);
+        let letter = "C";
+        let badge = "NEEDS HARDENING";
+        let pill = "pill-amber";
+        if (avg >= 92) {
+          letter = "A+";
+          badge = "SOVEREIGN GRADE";
+          pill = "pill-sage";
+        } else if (avg >= 82) {
+          letter = "A";
+          badge = "PRODUCTION READY";
+          pill = "pill-sage";
+        } else if (avg >= 70) {
+          letter = "B";
+          badge = "SOLID BASELINE";
+          pill = "pill-sky";
+        } else if (avg < 52) {
+          letter = "D";
+          badge = "FRAGILE SPOF";
+          pill = "pill-coral";
+        }
+
+        document.getElementById("doc-grade-title").textContent = `Grade ${letter} · ${avg} / 100`;
+        const gp = document.getElementById("doc-grade-pill");
+        gp.className = `pill ${pill}`;
+        gp.textContent = badge;
+
+        const pillars = [
+          { name: "Credible", val: credible },
+          { name: "Effective", val: effective },
+          { name: "Resilient", val: resilient },
+          { name: "Zero-Waste", val: zeroWaste },
+        ];
+        document.getElementById("pillar-bars").innerHTML = pillars
+          .map(
+            (p) => `
+          <div class="trace-card" style="margin:0;">
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px;">
+              <strong>${p.name}</strong>
+              <span class="mono">${p.val}/100</span>
+            </div>
+            <div style="height:6px; border-radius:99px; background:var(--stone-inset); overflow:hidden;">
+              <div style="width:${p.val}%; height:100%; background:var(--stone-bronze);"></div>
+            </div>
+          </div>
+        `
+          )
+          .join("");
+
+        document.getElementById("doc-findings").innerHTML = findings
+          .map(
+            (f) => `
+          <div class="trace-card" style="margin:0; display:flex; align-items:flex-start; gap:10px;">
+            <span class="pill ${f.pill}" style="flex-shrink:0;">${f.sev}</span>
+            <span style="font-size:13px; color:var(--stone-ink);">${f.msg}</span>
+          </div>
+        `
+          )
+          .join("");
+
+        const safeWorkers = Math.min(Math.max(workers, 2), 6);
+        const safeJobs = jobs && jobs <= 4 ? jobs : 2;
+        document.getElementById("remediated-toml").textContent =
+`# Hardened ~/.chump/config.toml generated by Config Sovereignty Doctor
+auth_mode = "auto"
+fleet_mode = "grind"
+desired_workers = ${safeWorkers}
+cargo_build_jobs = ${safeJobs}
+lease_firewall = true
+gate_file_guard = true
+rpm_headroom_pct = 80
+
+[[providers]]
+name = "primary-cloud-slot"
+api_key_env = "GEMINI_API_KEY"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+model = "gemini-2.5-flash"
+priority = 10
+tier = "cloud"
+enabled = true
+
+[[providers]]
+name = "secondary-code-slot"
+api_key_env = "MISTRAL_API_KEY"
+base_url = "https://api.mistral.ai/v1"
+model = "codestral-latest"
+priority = 14
+tier = "cloud"
+enabled = true
+
+[[providers]]
+name = "local-ollama-floor"
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5-coder:14b"
+priority = 20
+tier = "local"
+enabled = true
+
+# Apply & verify in your repository:
+# $ chump config validate && chump hook install && chump fleet level 3`;
+      }
+
+      document.querySelectorAll("[data-doc-preset]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const k = btn.getAttribute("data-doc-preset");
+          inputEl.value = samples[k] || samples.spof;
+          evaluateConfig(inputEl.value);
+        });
+      });
+
+      document.getElementById("run-doctor-btn").addEventListener("click", () =>
+        evaluateConfig(inputEl.value)
+      );
+      inputEl.addEventListener("input", () => evaluateConfig(inputEl.value));
+
+      document.getElementById("copy-remediated-btn").addEventListener("click", (e) =>
+        window.ChumpSite.copyText(
+          document.getElementById("remediated-toml").textContent,
+          e.currentTarget
+        )
+      );
+
+      inputEl.value = samples.spof;
+      evaluateConfig(inputEl.value);
+    })();
+  </script>
+</body>
+</html>
