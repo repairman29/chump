@@ -8013,7 +8013,6 @@ mod tests {
     /// writes `stderr_msg` to stderr.
     fn write_coord_shim(path: &Path, rc: i32, stderr_msg: &str) {
         use std::io::Write as _;
-        use std::os::unix::fs::PermissionsExt;
         let body = format!(
             "#!/usr/bin/env bash\n>&2 printf '%s\\n' \"{}\"\nexit {}\n",
             stderr_msg.replace('"', "\\\""),
@@ -8026,9 +8025,13 @@ mod tests {
             f.write_all(body.as_bytes()).unwrap();
             f.sync_all().unwrap();
         }
-        let mut perms = std::fs::metadata(path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(path, perms).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
     }
 
     #[test]
@@ -8127,10 +8130,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let fake = tmp.path().join("chump-coord");
         std::fs::write(&fake, b"#!/bin/sh\n").unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        let mut p = std::fs::metadata(&fake).unwrap().permissions();
-        p.set_mode(0o755);
-        std::fs::set_permissions(&fake, p).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut p = std::fs::metadata(&fake).unwrap().permissions();
+            p.set_mode(0o755);
+            std::fs::set_permissions(&fake, p).unwrap();
+        }
 
         let saved = std::env::var("CHUMP_COORD_BIN").ok();
         std::env::set_var("CHUMP_COORD_BIN", &fake);
@@ -8145,7 +8151,6 @@ mod tests {
 
     fn write_whois_shim(path: &Path, rc: i32, stdout_msg: &str) {
         use std::io::Write as _;
-        use std::os::unix::fs::PermissionsExt;
         let body = format!(
             "#!/usr/bin/env bash\nprintf '%s\\n' \"{}\"\nexit {}\n",
             stdout_msg.replace('"', "\\\""),
@@ -8156,9 +8161,13 @@ mod tests {
             f.write_all(body.as_bytes()).unwrap();
             f.sync_all().unwrap();
         }
-        let mut perms = std::fs::metadata(path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(path, perms).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
     }
 
     #[test]

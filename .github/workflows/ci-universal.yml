@@ -122,7 +122,8 @@ jobs:
           mkdir -p "$WIN_PROFILE" "$TMP_ROOT/wt"
           git checkout "$SEED_BRANCH"
           HOME="" USERPROFILE="$WIN_PROFILE" chump fleet level 5
-          GAP_ID="$(HOME="" USERPROFILE="$WIN_PROFILE" chump gap reserve --domain INFRA --title "INFRA: universal FTUE smoke" --effort s --quiet)"
-          HOME="" USERPROFILE="$WIN_PROFILE" CHUMP_WORKTREE_BASE="$TMP_ROOT/wt" CHUMP_SESSION_ID="ftue-session-1" chump claim "$GAP_ID" --role implementer --skip-doctor
+          GAP_ID="$(HOME="" USERPROFILE="$WIN_PROFILE" ANTHROPIC_API_KEY="ftue-configured" chump gap reserve --domain INFRA --title "INFRA: universal FTUE smoke" --effort s --quiet)"
+          HOME="" USERPROFILE="$WIN_PROFILE" ANTHROPIC_API_KEY="ftue-configured" CHUMP_WORKTREE_BASE="$TMP_ROOT/wt" CHUMP_SESSION_ID="ftue-session-1" chump claim "$GAP_ID" --role implementer --skip-doctor
           HOME="" USERPROFILE="$WIN_PROFILE" chump --briefing "$GAP_ID" >/dev/null
+          git worktree prune 2>/dev/null || true
           chump llm-complete --help >/dev/null
