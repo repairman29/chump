@@ -67,7 +67,6 @@ jobs:
             --ignore RUSTSEC-2025-0119 \
             --ignore RUSTSEC-2025-0134 \
             --ignore RUSTSEC-2026-0049 \
-            --ignore RUSTSEC-2026-0097 \
             --ignore RUSTSEC-2026-0098 \
             --ignore RUSTSEC-2026-0099 \
             --ignore RUSTSEC-2026-0104 \
@@ -125,4 +124,3 @@ jobs:
           #                                           NOT REACHABLE via Discord WS (no CRLs)
           #                                           discord feature is off by default
           #   2024-0436  paste unmaintained          — transitive (tauri/wasmtime), benign
-          #   2026-0097  rand 0.7 unsound logger     — transitive (tauri/phf), no fix path
