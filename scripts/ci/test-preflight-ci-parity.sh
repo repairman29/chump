@@ -223,6 +223,8 @@ SIBLING_INFRA_JOBS = {
     "bot-autonomous",
     # ftue clean-machine (brew install + clean env, cloud-only)
     "ftue",
+    # ci-universal.yml: 3-OS cloud matrix (ubuntu/macos/windows) + clean-machine FTUE smoke
+    "universal-matrix",
     # PWA visual diff (requires running server + PR)
     "visual-diff",
     # ACP real-client integration (requires live Zed/JetBrains clients)

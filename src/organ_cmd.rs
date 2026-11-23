@@ -59,12 +59,7 @@ pub fn resolve_paused_timers_file() -> PathBuf {
             return PathBuf::from(sd.trim()).join("paused-timers.txt");
         }
     }
-    let home = std::env::var("CHUMP_HOME")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("HOME").ok().filter(|s| !s.trim().is_empty()))
-        .unwrap_or_else(|| "/tmp".to_string());
-    PathBuf::from(home).join(".chump/paused-timers.txt")
+    chump_pal::chump_home().join("paused-timers.txt")
 }
 
 /// Record `unit` as paused in `paused_file` with `# <iso-ts> <reason>`,

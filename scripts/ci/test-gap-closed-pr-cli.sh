@@ -53,8 +53,8 @@ echo "--- Test 1: 'chump gap set' usage advertises --closed-pr ---"
 # line exits before the producer finishes writing, so the producer dies of
 # SIGPIPE (rc=141) and pipefail turns that into a false failure regardless
 # of whether the match was found.
-GAP_CMD_BLOCK=$(grep -A 20 "fn .*gap_cmd\|\"gap\".*=>\|\"set\" => {" "$MAIN_RS" 2>/dev/null || true)
-GAP_SET_USAGE_BLOCK=$(grep -B 2 -A 30 'chump gap set:' "$MAIN_RS" 2>/dev/null || true)
+GAP_CMD_BLOCK=$(grep -r -A 20 "fn .*gap_cmd\|\"gap\".*=>\|\"set\" => {" "$MAIN_RS" "$REPO_ROOT/src/cli_dispatch" 2>/dev/null || true)
+GAP_SET_USAGE_BLOCK=$(grep -r -B 2 -A 30 'chump gap set:' "$MAIN_RS" "$REPO_ROOT/src/cli_dispatch" 2>/dev/null || true)
 if echo "$GAP_CMD_BLOCK" | grep -q -- "--closed-pr" \
    || echo "$GAP_SET_USAGE_BLOCK" | grep -q -- "--closed-pr"; then
     ok "src/main.rs documents --closed-pr in 'gap set' usage"
@@ -64,7 +64,7 @@ fi
 
 # ── Test 2: src/main.rs `gap ship` usage advertises --closed-pr ─────────────
 echo "--- Test 2: 'chump gap ship' usage advertises --closed-pr ---"
-if grep -B 2 -A 5 'Usage: chump gap ship' "$MAIN_RS" | grep -q -- "--closed-pr"; then
+if grep -r -B 2 -A 5 'Usage: chump gap ship' "$MAIN_RS" "$REPO_ROOT/src/cli_dispatch" | grep -q -- "--closed-pr"; then
     ok "src/main.rs documents --closed-pr in 'gap ship' usage line"
 else
     fail "src/main.rs 'gap ship' usage line missing --closed-pr"

@@ -40,6 +40,7 @@ hits="$(
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(echo|printf|log|info|warn)[[:space:]]' \
   | grep -vE '^scripts/ci/(test-cargo-target-no-worktree-default|test-cargo-mutex-isolation|cargo-target-worktree-allowlist)' \
+  | grep -vE '^scripts/archived/' \
   | grep -vE '^scripts/ops/cargo-target-reaper\.sh:' \
   | cut -d: -f1 | sort -u
 )"

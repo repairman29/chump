@@ -7,9 +7,23 @@
 use std::path::PathBuf;
 
 fn main_rs() -> String {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let path = PathBuf::from(manifest).join("src/main.rs");
-    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read src/main.rs: {e}"))
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut combined = std::fs::read_to_string(manifest.join("src/main.rs"))
+        .unwrap_or_else(|e| panic!("cannot read src/main.rs: {e}"));
+    for sub in [
+        "mod.rs",
+        "helpers.rs",
+        "eval_modes.rs",
+        "ship_modes.rs",
+        "store_modes.rs",
+    ] {
+        let p = manifest.join("src/cli_dispatch").join(sub);
+        if let Ok(s) = std::fs::read_to_string(&p) {
+            combined.push('\n');
+            combined.push_str(&s);
+        }
+    }
+    combined
 }
 
 const CMDS_WITH_USAGE: &[&str] = &[

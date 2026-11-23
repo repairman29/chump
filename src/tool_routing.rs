@@ -545,10 +545,13 @@ mod tests {
 
     // ── RESILIENT-209: tool provisioning ──────────────────────────────────
     fn write_mock_installer(dir: &std::path::Path, exit_code: i32) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let p = dir.join("mock-installer.sh");
         std::fs::write(&p, format!("#!/usr/bin/env bash\nexit {exit_code}\n")).unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         p
     }
 

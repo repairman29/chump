@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fleet Throughput &amp; Sankey Simulator — Chump Free Engineering Tool</title>
+  <meta name="description" content="Zero-signup interactive multi-agent fleet modeller. Simulate concurrent agents, file-hotspot collision probability, local Ollama offload, and monthly cloud spend with a live Sankey flow diagram." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Chump" />
+  <meta property="og:title" content="Chump Fleet Throughput &amp; Cost Sankey Simulator" />
+  <meta property="og:description" content="Model concurrent coding agents, merge-stomp prevention, and local GPU offload in real time." />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/site/assets/site.css" />
+  <style>
+    .sim-workspace {
+      display: grid;
+      grid-template-columns: 280px 1fr 310px;
+      min-height: calc(100vh - 110px);
+      border-bottom: 1px solid var(--stone-rule);
+    }
+    .sim-sidebar {
+      border-right: 1px solid var(--stone-rule);
+      background: var(--stone-elevated);
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .sim-canvas {
+      padding: 24px clamp(18px, 3vw, 34px);
+      background: var(--stone-canvas);
+    }
+    .sim-inspector {
+      border-left: 1px solid var(--stone-rule);
+      background: var(--stone-card);
+      padding: 20px 18px;
+    }
+    .sim-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .sim-kpi {
+      background: var(--stone-card);
+      border: 1px solid var(--stone-rule);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-xs);
+    }
+    .sim-kpi-val {
+      font-family: var(--font-mono);
+      font-size: 22px;
+      font-weight: 600;
+      display: block;
+      margin: 4px 0;
+    }
+    .ctrl-group {
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--stone-rule);
+    }
+    .ctrl-group:last-child {
+      border-bottom: 0;
+    }
+    .ctrl-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12.5px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .ctrl-range {
+      width: 100%;
+      accent-color: var(--stone-bronze);
+    }
+    @media (max-width: 1120px) {
+      .sim-workspace {
+        grid-template-columns: 1fr;
+      }
+      .sim-sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--stone-rule);
+      }
+      .sim-inspector {
+        border-left: 0;
+        border-top: 1px solid var(--stone-rule);
+      }
+      .sim-kpi-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <chump-site-header pillar="tools" page="simulator" base="/site"></chump-site-header>
+
+  <main class="sim-workspace">
+    <!-- ── Left Sidebar: Presets & Workstream Mix ────────────────────────── -->
+    <aside class="sim-sidebar" aria-label="Scenario presets and workstreams">
+      <div>
+        <div class="eyebrow" style="margin-bottom:10px;"><span class="eyebrow-dot"></span>Free Analytical Tool</div>
+        <h1 class="display-h3" style="font-size:19px; margin-bottom:6px;">Fleet Sankey Modeller</h1>
+        <p style="font-size:12.5px; color:var(--stone-muted); margin:0 0 16px;">
+          Zero signup. Load an engineering preset or adjust concurrency and hotspot overlap to model merged PR yield and cloud spend.
+        </p>
+
+        <div class="mono" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--stone-faint); margin-bottom:8px;">
+          + Load Example Scenario
+        </div>
+        <div id="preset-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:18px;"></div>
+
+        <div class="trace-card" style="margin:0;">
+          <div class="mono" style="font-size:11px; color:var(--stone-muted); margin-bottom:8px;">Workstream Mix (% of Backlog)</div>
+          <div style="font-size:12px; display:flex; justify-content:space-between; margin-bottom:5px;">
+            <span>Core Implementation</span><span class="mono">35%</span>
+          </div>
+          <div style="font-size:12px; display:flex; justify-content:space-between; margin-bottom:5px;">
+            <span>Bug &amp; CI Repairs</span><span class="mono">30%</span>
+          </div>
+          <div style="font-size:12px; display:flex; justify-content:space-between; margin-bottom:5px;">
+            <span>Module Refactors</span><span class="mono">20%</span>
+          </div>
+          <div style="font-size:12px; display:flex; justify-content:space-between;">
+            <span>Tests &amp; Documentation</span><span class="mono">15%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="trace-card" style="margin:0;">
+        <div class="mono" style="font-size:11px; color:var(--stone-bronze-deep); margin-bottom:6px;">Export Scenario</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="copy-chip" style="flex:1;" id="sim-copy-toml">Copy config.toml</button>
+          <button type="button" class="copy-chip" style="flex:1;" id="sim-export-json">Copy JSON</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Center Analytical Canvas: KPIs + Sankey + Pro-Forma Table ─────── -->
+    <section class="sim-canvas" aria-label="Simulation output canvas">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div>
+          <span class="pill pill-bronze" id="active-preset-badge">SCENARIO · STARTUP 8-AGENT HYBRID</span>
+        </div>
+        <div class="mono" style="font-size:11.5px; color:var(--stone-muted);" id="ram-guard-banner">
+          Host RAM Guard: CARGO_BUILD_JOBS=4 (safe)
+        </div>
+      </div>
+
+      <div class="sim-kpi-grid">
+        <div class="sim-kpi">
+          <span class="mono" style="font-size:11px; color:var(--stone-muted);">Net Merged PRs / Wk</span>
+          <span class="sim-kpi-val" id="kpi-merged">84</span>
+          <span class="mono" style="font-size:11px; color:var(--stone-sage);" id="kpi-merged-delta">+22 vs unleased</span>
+        </div>
+        <div class="sim-kpi">
+          <span class="mono" style="font-size:11px; color:var(--stone-muted);">Stomps Prevented / Mo</span>
+          <span class="sim-kpi-val" id="kpi-stomps">96</span>
+          <span class="mono" style="font-size:11px; color:var(--stone-bronze-deep);" id="kpi-collision-rate">35% hotspot overlap</span>
+        </div>
+        <div class="sim-kpi">
+          <span class="mono" style="font-size:11px; color:var(--stone-muted);">Monthly Cloud Spend</span>
+          <span class="sim-kpi-val" id="kpi-spend">$79</span>
+          <span class="mono" style="font-size:11px; color:var(--stone-sage);" id="kpi-spend-delta">Saves $263/mo via offload</span>
+        </div>
+        <div class="sim-kpi">
+          <span class="mono" style="font-size:11px; color:var(--stone-muted);">Cost / Merged PR</span>
+          <span class="sim-kpi-val" id="kpi-cpr">$0.23</span>
+          <span class="mono" style="font-size:11px; color:var(--stone-muted);" id="kpi-saas-anchor">vs ~$14.80 SaaS agent</span>
+        </div>
+      </div>
+
+      <!-- Live SVG Sankey Flow Diagram -->
+      <div class="app-window" style="margin-bottom:20px;">
+        <div class="app-window-bar">
+          <span>Weekly Task &amp; Compute Flow (Pre-Dispatch → Routing Tier → Merge Outcome)</span>
+          <span class="mono" id="sankey-subtitle">95 tasks/wk</span>
+        </div>
+        <div style="padding:18px; background:var(--stone-card);">
+          <svg id="sankey-svg" viewBox="0 0 820 270" width="100%" style="display:block;" aria-label="Sankey flow diagram of agent tasks"></svg>
+        </div>
+      </div>
+
+      <!-- Pro-Forma Fleet Ledger -->
+      <div class="app-window">
+        <div class="app-window-bar">
+          <span>Pro-Forma Weekly &amp; Monthly Fleet Ledger</span>
+          <span class="mono">4.33 weeks / month</span>
+        </div>
+        <div class="data-table-wrap" style="border:0; border-radius:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Workstream</th>
+                <th class="num">Tasks / Wk</th>
+                <th class="num">$0 Local / OAuth</th>
+                <th class="num">Stomps Blocked</th>
+                <th class="num">Net Merged / Wk</th>
+                <th class="num">Cloud Cost / Mo</th>
+              </tr>
+            </thead>
+            <tbody id="proforma-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Right Assumptions Inspector ───────────────────────────────────── -->
+    <aside class="sim-inspector" aria-label="Model assumptions inspector">
+      <div class="mono" style="font-size:11px; text-transform:uppercase; letter-spacing:0.07em; color:var(--stone-bronze); margin-bottom:14px;">
+        Assumptions Inspector
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label">
+          <label for="in-agents">Concurrent Agents</label>
+          <span class="mono" id="val-agents">8</span>
+        </div>
+        <input id="in-agents" class="ctrl-range" type="range" min="1" max="24" value="8" />
+        <div style="font-size:11.5px; color:var(--stone-muted);">Parallel worker processes supervised by <code>chumpd</code>.</div>
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label">
+          <label for="in-tasks">Attempted Tasks / Week</label>
+          <span class="mono" id="val-tasks">95</span>
+        </div>
+        <input id="in-tasks" class="ctrl-range" type="range" min="10" max="300" step="5" value="95" />
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label">
+          <label for="in-overlap">Repo Hotspot Overlap</label>
+          <span class="mono" id="val-overlap">35%</span>
+        </div>
+        <input id="in-overlap" class="ctrl-range" type="range" min="5" max="75" step="5" value="35" />
+        <div style="font-size:11.5px; color:var(--stone-muted);">Share of tasks touching shared routers, schemas, or configs.</div>
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label">
+          <label for="in-offload">$0 Local / OAuth Offload</label>
+          <span class="mono" id="val-offload">65%</span>
+        </div>
+        <input id="in-offload" class="ctrl-range" type="range" min="0" max="100" step="5" value="65" />
+        <div style="font-size:11.5px; color:var(--stone-muted);">Turns served by Ollama/vLLM or flat-rate subscription OAuth.</div>
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label">
+          <label for="in-unitcost">Metered Cloud $/Task</label>
+          <span class="mono" id="val-unitcost">$0.60</span>
+        </div>
+        <input id="in-unitcost" class="ctrl-range" type="range" min="0.10" max="2.50" step="0.05" value="0.60" />
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-label">
+          <label for="in-ram">Host RAM (GB)</label>
+          <span class="mono" id="val-ram">32 GB</span>
+        </div>
+        <select id="in-ram" style="width:100%; padding:8px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-elevated); font-family:var(--font-mono); font-size:12px;">
+          <option value="8">8 GB Laptop</option>
+          <option value="16">16 GB MacBook / Dev Box</option>
+          <option value="32" selected>32 GB Workstation</option>
+          <option value="64">64 GB Studio / Server</option>
+          <option value="128">128 GB Rack Node</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-size:13px; font-weight:600;">
+          <span>Atomic Lease Firewall</span>
+          <input id="in-leases" type="checkbox" checked style="width:18px; height:18px; accent-color:var(--stone-sage);" />
+        </label>
+        <div style="font-size:11.5px; color:var(--stone-muted); margin-top:4px;">
+          Toggle OFF to compare against raw uncoordinated git agents.
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <chump-site-footer base="/site"></chump-site-footer>
+  <chump-install-modal></chump-install-modal>
+
+  <script src="/site/assets/site.js"></script>
+  <script>
+    (function () {
+      const presets = [
+        {
+          id: "hybrid8",
+          label: "Startup Sprint · 8 Agents Hybrid",
+          sub: "Claude OAuth + Flash + Ollama",
+          agents: 8,
+          tasks: 95,
+          overlap: 35,
+          offload: 65,
+          unitCost: 0.60,
+          ram: 32,
+          leases: true,
+        },
+        {
+          id: "solo4",
+          label: "Solo Builder · 4 Agents (16 GB Mac)",
+          sub: "Overnight backlog grind",
+          agents: 4,
+          tasks: 45,
+          overlap: 25,
+          offload: 75,
+          unitCost: 0.45,
+          ram: 16,
+          leases: true,
+        },
+        {
+          id: "airgap12",
+          label: "Sovereign Air-Gap · 12 Agents vLLM",
+          sub: "100% local GPU · $0 cloud",
+          agents: 12,
+          tasks: 140,
+          overlap: 30,
+          offload: 100,
+          unitCost: 0.50,
+          ram: 64,
+          leases: true,
+        },
+        {
+          id: "oss6",
+          label: "OSS Maintainer · CI & Deps Sweep",
+          sub: "Low overlap, high offload",
+          agents: 6,
+          tasks: 70,
+          overlap: 15,
+          offload: 85,
+          unitCost: 0.35,
+          ram: 32,
+          leases: true,
+        },
+        {
+          id: "chaos6",
+          label: "Uncoordinated Baseline (No Leases)",
+          sub: "6 raw agents stomping files",
+          agents: 6,
+          tasks: 65,
+          overlap: 40,
+          offload: 0,
+          unitCost: 0.85,
+          ram: 16,
+          leases: false,
+        },
+      ];
+
+      let activePresetId = "hybrid8";
+
+      const elAgents = document.getElementById("in-agents");
+      const elTasks = document.getElementById("in-tasks");
+      const elOverlap = document.getElementById("in-overlap");
+      const elOffload = document.getElementById("in-offload");
+      const elUnit = document.getElementById("in-unitcost");
+      const elRam = document.getElementById("in-ram");
+      const elLeases = document.getElementById("in-leases");
+
+      function renderPresetButtons() {
+        const box = document.getElementById("preset-list");
+        box.innerHTML = presets
+          .map(
+            (p) => `
+          <button type="button" class="queue-item" data-preset-id="${p.id}" aria-selected="${p.id === activePresetId ? "true" : "false"}" style="margin:0;">
+            <div style="font-size:12.5px; font-weight:600;">${p.label}</div>
+            <div class="mono" style="font-size:11px; color:var(--stone-muted);">${p.sub}</div>
+          </button>
+        `
+          )
+          .join("");
+
+        box.querySelectorAll("[data-preset-id]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const p = presets.find((x) => x.id === btn.getAttribute("data-preset-id"));
+            if (!p) return;
+            activePresetId = p.id;
+            elAgents.value = p.agents;
+            elTasks.value = p.tasks;
+            elOverlap.value = p.overlap;
+            elOffload.value = p.offload;
+            elUnit.value = p.unitCost;
+            elRam.value = String(p.ram);
+            elLeases.checked = p.leases;
+            document.getElementById("active-preset-badge").textContent = "SCENARIO · " + p.label.toUpperCase();
+            renderPresetButtons();
+            recalc();
+          });
+        });
+      }
+
+      function ribbonPath(x0, y0, x1, y1) {
+        const mx = (x0 + x1) * 0.5;
+        return `M ${x0} ${y0} C ${mx} ${y0}, ${mx} ${y1}, ${x1} ${y1}`;
+      }
+
+      function recalc() {
+        const agents = Number(elAgents.value);
+        const tasks = Number(elTasks.value);
+        const overlap = Number(elOverlap.value) / 100;
+        const offload = Number(elOffload.value) / 100;
+        const unitCost = Number(elUnit.value);
+        const ram = Number(elRam.value);
+        const leases = elLeases.checked;
+
+        document.getElementById("val-agents").textContent = String(agents);
+        document.getElementById("val-tasks").textContent = String(tasks);
+        document.getElementById("val-overlap").textContent = Math.round(overlap * 100) + "%";
+        document.getElementById("val-offload").textContent = Math.round(offload * 100) + "%";
+        document.getElementById("val-unitcost").textContent = "$" + unitCost.toFixed(2);
+        document.getElementById("val-ram").textContent = ram + " GB";
+
+        /* Pairwise collision rate grows with concurrency and hotspot overlap */
+        const concurrencyFactor = agents <= 1 ? 0 : 1 - Math.pow(1 - overlap * 0.32, agents - 1);
+        const rawCollisionFraction = Math.min(0.62, concurrencyFactor * 0.78);
+
+        const residualWasteFrac = leases
+          ? 0.05 + rawCollisionFraction * 0.08
+          : 0.09 + rawCollisionFraction;
+
+        const unleasedWasteFrac = 0.09 + rawCollisionFraction;
+        const netMergedWk = Math.max(1, Math.round(tasks * (1 - residualWasteFrac)));
+        const unleasedMergedWk = Math.max(1, Math.round(tasks * (1 - unleasedWasteFrac)));
+        const mergedDelta = netMergedWk - unleasedMergedWk;
+
+        const preventedWk = leases
+          ? Math.max(0, Math.round(tasks * rawCollisionFraction * 0.92))
+          : 0;
+        const preventedMo = Math.round(preventedWk * 4.33);
+
+        const localTasksWk = Math.round(tasks * offload);
+        const cloudTasksWk = tasks - localTasksWk;
+
+        /* Unleased collisions waste extra cloud retries */
+        const retryMultiplier = leases ? 1.04 : 1 + rawCollisionFraction * 0.65;
+        const monthlySpend = cloudTasksWk * unitCost * retryMultiplier * 4.33;
+        const allCloudBaseline = tasks * unitCost * (1 + rawCollisionFraction * 0.65) * 4.33;
+        const monthlySaved = Math.max(0, allCloudBaseline - monthlySpend);
+
+        const costPerPr = monthlySpend / Math.max(1, netMergedWk * 4.33);
+        const saasSeatEquivalent = Math.max(500, Math.min(agents, 6) * 250);
+        const saasPerPr = saasSeatEquivalent / Math.max(1, netMergedWk * 4.33);
+
+        document.getElementById("kpi-merged").textContent = String(netMergedWk);
+        document.getElementById("kpi-merged-delta").textContent = leases
+          ? `+${mergedDelta} PRs/wk saved vs unleased`
+          : `-${Math.round(tasks * rawCollisionFraction)} PRs/wk lost to stomps`;
+        document.getElementById("kpi-stomps").textContent = String(preventedMo);
+        document.getElementById("kpi-collision-rate").textContent = leases
+          ? `${Math.round(overlap * 100)}% hotspot scope guarded`
+          : "LEASE FIREWALL DISABLED";
+        document.getElementById("kpi-spend").textContent = "$" + Math.round(monthlySpend);
+        document.getElementById("kpi-spend-delta").textContent =
+          `Saves $${Math.round(monthlySaved)}/mo vs all-cloud`;
+        document.getElementById("kpi-cpr").textContent = "$" + costPerPr.toFixed(2);
+        document.getElementById("kpi-saas-anchor").textContent =
+          `vs ~$${saasPerPr.toFixed(2)} cloud seat model`;
+
+        const safeJobs = ram <= 8 ? 1 : ram <= 16 ? 2 : ram <= 32 ? 4 : ram <= 64 ? 8 : 12;
+        const ramBanner = document.getElementById("ram-guard-banner");
+        if (agents > safeJobs * 3) {
+          ramBanner.textContent = `⚠ RAM Guard: ${agents} agents on ${ram} GB exceeds comfort; chump-pal caps CARGO_BUILD_JOBS=${safeJobs}`;
+        } else {
+          ramBanner.textContent = `✓ Host RAM Guard: CARGO_BUILD_JOBS=${safeJobs} (${ram} GB safe envelope)`;
+        }
+
+        document.getElementById("sankey-subtitle").textContent =
+          `${tasks} attempted/wk → ${netMergedWk} merged PRs/wk`;
+
+        /* Draw SVG Sankey */
+        const scale = 150 / Math.max(tasks, 1);
+        const wLocal = Math.max(6, localTasksWk * scale);
+        const wCloud = Math.max(6, cloudTasksWk * scale);
+        const wMerged = Math.max(8, netMergedWk * scale);
+        const wWaste = Math.max(4, (tasks - netMergedWk) * scale);
+
+        const localToMerged = Math.max(4, wLocal * (1 - residualWasteFrac));
+        const cloudToMerged = Math.max(4, wCloud * (1 - residualWasteFrac));
+        const localToWaste = Math.max(2, wLocal * residualWasteFrac);
+        const cloudToWaste = Math.max(2, wCloud * residualWasteFrac);
+
+        const svg = document.getElementById("sankey-svg");
+        svg.innerHTML = `
+          <!-- Left -> Middle ribbons -->
+          <path d="${ribbonPath(165, 100, 360, 78)}" fill="none" stroke="var(--stone-sage)" stroke-opacity="0.32" stroke-width="${wLocal}" />
+          <path d="${ribbonPath(165, 165, 360, 192)}" fill="none" stroke="var(--stone-bronze)" stroke-opacity="0.32" stroke-width="${wCloud}" />
+
+          <!-- Middle -> Right ribbons -->
+          <path d="${ribbonPath(465, 74, 655, 86)}" fill="none" stroke="var(--stone-sage)" stroke-opacity="0.38" stroke-width="${localToMerged}" />
+          <path d="${ribbonPath(465, 186, 655, 126)}" fill="none" stroke="var(--stone-bronze)" stroke-opacity="0.38" stroke-width="${cloudToMerged}" />
+          <path d="${ribbonPath(465, 96, 655, 212)}" fill="none" stroke="var(--stone-coral)" stroke-opacity="0.28" stroke-width="${localToWaste}" />
+          <path d="${ribbonPath(465, 206, 655, 224)}" fill="none" stroke="var(--stone-coral)" stroke-opacity="0.36" stroke-width="${cloudToWaste}" />
+
+          <!-- Left Node: Backlog -->
+          <rect x="24" y="54" width="140" height="162" rx="10" fill="var(--stone-elevated)" stroke="var(--stone-rule-strong)" />
+          <text x="94" y="122" text-anchor="middle" fill="var(--stone-faint)" font-family="IBM Plex Mono, monospace" font-size="10">WEEKLY QUEUE</text>
+          <text x="94" y="146" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="18" font-weight="600">${tasks} gaps</text>
+          <text x="94" y="166" text-anchor="middle" fill="var(--stone-muted)" font-family="Inter, sans-serif" font-size="11">${agents} workers</text>
+
+          <!-- Middle Nodes: Routing -->
+          <rect x="360" y="34" width="106" height="88" rx="10" fill="var(--stone-sage-tint)" stroke="var(--stone-sage)" />
+          <text x="413" y="68" text-anchor="middle" fill="var(--stone-sage)" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">$0 LOCAL / OAUTH</text>
+          <text x="413" y="92" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="15" font-weight="600">${localTasksWk}/wk</text>
+
+          <rect x="360" y="148" width="106" height="88" rx="10" fill="var(--stone-bronze-tint)" stroke="var(--stone-bronze)" />
+          <text x="413" y="182" text-anchor="middle" fill="var(--stone-bronze-deep)" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">METERED CLOUD</text>
+          <text x="413" y="206" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="15" font-weight="600">${cloudTasksWk}/wk</text>
+
+          <!-- Right Nodes: Outcomes -->
+          <rect x="655" y="42" width="142" height="122" rx="10" fill="var(--stone-card)" stroke="var(--stone-sage)" stroke-width="2" />
+          <text x="726" y="88" text-anchor="middle" fill="var(--stone-sage)" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">MERGED CLEAN</text>
+          <text x="726" y="114" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="19" font-weight="600">${netMergedWk} PRs</text>
+          <text x="726" y="134" text-anchor="middle" fill="var(--stone-muted)" font-family="IBM Plex Mono, monospace" font-size="10.5">${preventedWk} stomps blocked</text>
+
+          <rect x="655" y="180" width="142" height="68" rx="10" fill="var(--stone-coral-tint)" stroke="var(--stone-coral)" />
+          <text x="726" y="208" text-anchor="middle" fill="var(--stone-coral)" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">${leases ? "CI RETRIES" : "STOMPS + RETRIES"}</text>
+          <text x="726" y="229" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600">${tasks - netMergedWk} tasks</text>
+        `;
+
+        /* Pro-Forma Table */
+        const streams = [
+          { name: "Core Implementation", share: 0.35 },
+          { name: "Bug & CI Repairs", share: 0.30 },
+          { name: "Module Refactors", share: 0.20 },
+          { name: "Tests & Documentation", share: 0.15 },
+        ];
+        document.getElementById("proforma-tbody").innerHTML = streams
+          .map((st) => {
+            const stTasks = Math.round(tasks * st.share);
+            const stLocal = Math.round(stTasks * offload);
+            const stBlocked = Math.round(preventedWk * st.share);
+            const stMerged = Math.max(0, Math.round(netMergedWk * st.share));
+            const stCost = monthlySpend * st.share;
+            return `
+              <tr>
+                <td><strong>${st.name}</strong></td>
+                <td class="num">${stTasks}</td>
+                <td class="num">${stLocal} (${Math.round(offload * 100)}%)</td>
+                <td class="num">${stBlocked}</td>
+                <td class="num"><strong>${stMerged}</strong></td>
+                <td class="num">$${stCost.toFixed(2)}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      [elAgents, elTasks, elOverlap, elOffload, elUnit, elRam, elLeases].forEach((el) => {
+        el.addEventListener("input", () => {
+          document.getElementById("active-preset-badge").textContent = "SCENARIO · CUSTOM ASSUMPTIONS";
+          recalc();
+        });
+      });
+
+      document.getElementById("sim-copy-toml").addEventListener("click", (e) => {
+        const ram = Number(elRam.value);
+        const safeJobs = ram <= 8 ? 1 : ram <= 16 ? 2 : ram <= 32 ? 4 : 8;
+        const toml = `# Generated from Chump Fleet Sankey Modeller\nauth_mode = "auto"\nfleet_mode = "grind"\ndesired_workers = ${elAgents.value}\ncargo_build_jobs = ${safeJobs}\nlease_firewall = ${elLeases.checked}\nlocal_offload_target_pct = ${elOffload.value}\n`;
+        window.ChumpSite.copyText(toml, e.currentTarget);
+      });
+
+      document.getElementById("sim-export-json").addEventListener("click", (e) => {
+        const payload = JSON.stringify(
+          {
+            concurrent_agents: Number(elAgents.value),
+            weekly_tasks: Number(elTasks.value),
+            hotspot_overlap_pct: Number(elOverlap.value),
+            local_offload_pct: Number(elOffload.value),
+            metered_unit_cost_usd: Number(elUnit.value),
+            host_ram_gb: Number(elRam.value),
+            lease_firewall: elLeases.checked,
+          },
+          null,
+          2
+        );
+        window.ChumpSite.copyText(payload, e.currentTarget);
+      });
+
+      renderPresetButtons();
+      recalc();
+    })();
+  </script>
+</body>
+</html>

@@ -21,7 +21,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/cli_dispatch"
 source "$(dirname "$0")/lib/discover-chump-bin.sh"
 echo "=== CREDIBLE-015 CLI help system consistency ==="
 echo
@@ -55,7 +55,7 @@ CMDS_NEED_USAGE=(
 )
 
 for cmd in "${CMDS_NEED_USAGE[@]}"; do
-    if grep -q "Usage: chump $cmd" "$MAIN_RS" 2>/dev/null; then
+    if grep -rq "Usage: chump $cmd" "$REPO_ROOT/src/main.rs" "$MAIN_RS" 2>/dev/null; then
         ok "Source: 'Usage: chump $cmd' present"
     else
         fail "Source: 'Usage: chump $cmd' missing from main.rs"
@@ -76,7 +76,7 @@ CMDS_IN_HELP=(
 )
 
 for cmd in "${CMDS_IN_HELP[@]}"; do
-    if grep -q "$cmd" "$MAIN_RS" 2>/dev/null; then
+    if grep -rq "$cmd" "$REPO_ROOT/src/main.rs" "$MAIN_RS" 2>/dev/null; then
         ok "print_help coverage: $cmd referenced in main.rs"
     else
         fail "print_help coverage: $cmd not found in main.rs"

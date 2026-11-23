@@ -22,13 +22,27 @@ use std::path::{Path, PathBuf};
 pub const AUTONOMY_LEVEL_REL: &str = ".chump/AUTONOMY_LEVEL";
 
 /// Returns the path to the AUTONOMY_LEVEL file: `~/.chump/AUTONOMY_LEVEL`.
-/// Falls back to `/tmp/chump-AUTONOMY_LEVEL` if $HOME is unset (never
-/// reachable in normal operation; purely defensive).
+/// Resolves user home across Unix (`HOME`) and Windows (`USERPROFILE` /
+/// `HOMEDRIVE`+`HOMEPATH`), falling back to `<temp_dir>/chump-AUTONOMY_LEVEL`
+/// if no user home variable is set (purely defensive). Deliberately does NOT
+/// read `CHUMP_HOME` per RESILIENT-073 so sandboxed workers cannot override
+/// the operator kill switch via `CHUMP_HOME`.
 pub fn default_path() -> PathBuf {
-    std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join(AUTONOMY_LEVEL_REL))
-        .unwrap_or_else(|| PathBuf::from("/tmp/chump-AUTONOMY_LEVEL"))
+    for var in ["HOME", "USERPROFILE"] {
+        if let Ok(val) = std::env::var(var) {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed).join(AUTONOMY_LEVEL_REL);
+            }
+        }
+    }
+    if let (Ok(drive), Ok(path)) = (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
+        let combined = format!("{}{}", drive.trim(), path.trim());
+        if !combined.is_empty() {
+            return PathBuf::from(combined).join(AUTONOMY_LEVEL_REL);
+        }
+    }
+    chump_pal::temp_file_path("chump-AUTONOMY_LEVEL")
 }
 
 /// Read the autonomy level from the flag file at `path`.
@@ -357,5 +371,40 @@ mod tests {
 
         write_autonomy_level(AutonomyLevel::Unleashed, &p).unwrap();
         assert_eq!(read_autonomy_level(&p), AutonomyLevel::Unleashed);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn default_path_falls_back_to_userprofile_when_home_unset() {
+        let win_home = tmp();
+        let chump_override = tmp();
+        let orig_home = std::env::var_os("HOME");
+        let orig_up = std::env::var_os("USERPROFILE");
+        let orig_chump_home = std::env::var_os("CHUMP_HOME");
+
+        std::env::remove_var("HOME");
+        std::env::set_var("USERPROFILE", win_home.path());
+        std::env::set_var("CHUMP_HOME", chump_override.path());
+
+        let resolved = default_path();
+
+        match orig_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        match orig_up {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        match orig_chump_home {
+            Some(v) => std::env::set_var("CHUMP_HOME", v),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+
+        assert_eq!(
+            resolved,
+            win_home.path().join(".chump/AUTONOMY_LEVEL"),
+            "Windows USERPROFILE must resolve ~/.chump/AUTONOMY_LEVEL without allowing CHUMP_HOME bypass"
+        );
     }
 }

@@ -41,8 +41,7 @@ fn al_path() -> PathBuf {
     if let Ok(p) = std::env::var("CHUMP_AUTONOMY_LEVEL_FILE") {
         return PathBuf::from(p);
     }
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".chump/AUTONOMY_LEVEL")
+    chump_atomic_claim::autonomy_level::default_path()
 }
 
 fn pause_path(repo_root: &Path) -> PathBuf {

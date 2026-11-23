@@ -20,9 +20,22 @@ fn chump_bin() -> String {
 }
 
 fn main_rs_src() -> String {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let p = PathBuf::from(manifest).join("src/main.rs");
-    fs::read_to_string(p).expect("read src/main.rs")
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut combined = fs::read_to_string(manifest.join("src/main.rs")).expect("read src/main.rs");
+    for sub in [
+        "mod.rs",
+        "helpers.rs",
+        "eval_modes.rs",
+        "ship_modes.rs",
+        "store_modes.rs",
+    ] {
+        let p = manifest.join("src/cli_dispatch").join(sub);
+        if let Ok(s) = fs::read_to_string(&p) {
+            combined.push('\n');
+            combined.push_str(&s);
+        }
+    }
+    combined
 }
 
 /// Minimal repo layout that chump needs in a tempdir.

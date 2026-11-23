@@ -41,6 +41,8 @@ const GAP_STORE_FILES: &[&str] = &[
     "crates/chump-gap-store/src/lib.rs",
     "src/gap_store.rs", // legacy fallback
     "src/main.rs",
+    "src/cli_dispatch/mod.rs",
+    "src/cli_dispatch/store_modes.rs",
 ];
 
 /// Outcome of [`check_gap_binary_staleness`].

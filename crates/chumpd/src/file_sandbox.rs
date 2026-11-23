@@ -72,6 +72,12 @@ pub fn tcc_deny_surfaces(home: &Path) -> Vec<PathBuf> {
     ]
 }
 
+/// Format a path using forward slashes for macOS SBPL `(subpath "...")` stanzas,
+/// even when unit-tested on a Windows host where `Path::join` uses `\`.
+fn sbpl_path(p: &Path) -> String {
+    p.to_string_lossy().replace('\\', "/")
+}
+
 /// Build the SBPL profile for a worker process.
 ///
 /// - Writes: deny-by-default, explicit allow-list (repo, worktree base if
@@ -83,26 +89,26 @@ pub fn tcc_deny_surfaces(home: &Path) -> Vec<PathBuf> {
 ///   subpaths.
 pub fn build_worker_profile(repo: &Path, worktree_base: Option<&Path>, home: &Path) -> String {
     let mut write_subpaths = vec![
-        format!("(subpath \"{}\")", repo.display()),
+        format!("(subpath \"{}\")", sbpl_path(repo)),
         "(subpath \"/private/tmp\")".to_string(),
         "(subpath \"/private/var/folders\")".to_string(),
         "(subpath \"/tmp\")".to_string(),
-        format!("(subpath \"{}\")", home.join(".chump").display()),
-        format!("(subpath \"{}\")", home.join(".cargo").display()),
-        format!("(subpath \"{}\")", home.join(".rustup").display()),
-        format!("(subpath \"{}\")", home.join(".local").display()),
-        format!("(subpath \"{}\")", home.join(".npm").display()),
-        format!("(subpath \"{}\")", home.join(".claude").display()),
+        format!("(subpath \"{}\")", sbpl_path(&home.join(".chump"))),
+        format!("(subpath \"{}\")", sbpl_path(&home.join(".cargo"))),
+        format!("(subpath \"{}\")", sbpl_path(&home.join(".rustup"))),
+        format!("(subpath \"{}\")", sbpl_path(&home.join(".local"))),
+        format!("(subpath \"{}\")", sbpl_path(&home.join(".npm"))),
+        format!("(subpath \"{}\")", sbpl_path(&home.join(".claude"))),
     ];
     if let Some(wt) = worktree_base {
         if wt != repo && !wt.starts_with(repo) {
-            write_subpaths.push(format!("(subpath \"{}\")", wt.display()));
+            write_subpaths.push(format!("(subpath \"{}\")", sbpl_path(wt)));
         }
     }
 
     let deny_read_subpaths: Vec<String> = tcc_deny_surfaces(home)
         .into_iter()
-        .map(|p| format!("(subpath \"{}\")", p.display()))
+        .map(|p| format!("(subpath \"{}\")", sbpl_path(&p)))
         .collect();
 
     format!(

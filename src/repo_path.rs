@@ -1,8 +1,6 @@
 //! Resolve paths relative to CHUMP_REPO or CHUMP_HOME or cwd; validate no escape.
 //! When CHUMP_MULTI_REPO_ENABLED=1, set_working_repo() can override repo root for the session.
 
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -36,37 +34,21 @@ pub(crate) fn reset_chumpd_cache_for_test() {
 }
 
 fn try_chumpd_db_path() -> Option<PathBuf> {
-    let home = std::env::var("CHUMP_HOME")
-        .or_else(|_| std::env::var("CHUMP_REPO"))
-        .ok()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            #[allow(deprecated)]
-            std::env::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"))
-        });
-    let socket_path = home.join(".chump/chumpd.sock");
-    if !socket_path.exists() {
+    let chump_dir = if std::env::var_os("CHUMP_HOME").is_some() {
+        chump_pal::chump_home()
+    } else if let Ok(repo) = std::env::var("CHUMP_REPO") {
+        PathBuf::from(repo).join(".chump")
+    } else {
+        chump_pal::user_home().join(".chump")
+    };
+    let ipc_path = chump_pal::ipc::ipc_file_path_in(&chump_dir, "chumpd");
+    if !ipc_path.exists() {
         return None;
     }
-
-    let mut stream = UnixStream::connect(&socket_path).ok()?;
-    stream
-        .set_read_timeout(Some(Duration::from_millis(50)))
-        .ok()?;
-    stream
-        .set_write_timeout(Some(Duration::from_millis(50)))
-        .ok()?;
 
     let req = serde_json::json!({ "method": "db-path" });
-    let _ = stream.write_all(req.to_string().as_bytes());
-
-    let mut buf = [0u8; 1024];
-    let n = stream.read(&mut buf).ok()?;
-    if n == 0 {
-        return None;
-    }
-
-    let resp: serde_json::Value = serde_json::from_slice(&buf[..n]).ok()?;
+    let resp: serde_json::Value =
+        chump_pal::ipc::request_json_sync(&ipc_path, &req, Duration::from_millis(100)).ok()?;
     let path_str = resp.get("db_path")?.as_str()?;
     let pb = PathBuf::from(path_str);
     if pb.exists() {

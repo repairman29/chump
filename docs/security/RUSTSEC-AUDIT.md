@@ -122,3 +122,12 @@ Canonical ignore lists are now synchronized across `.cargo/audit.toml`, `deny.to
   enable untrusted multi-tenant Component Model async lifting, Wasm GC, or host-dir mounts.
 - **`zip 7.2.0` (`RUSTSEC-2026-0367`..`0369`):** transitive archive dependency blocked on
   upstream migration to `zip >= 9.0.0`.
+
+---
+
+## 2026-11-20 Universal v1.0 Remediation Update
+
+- **Patched & Removed from Ignore List:** Deleted unused `wasi-common = "46"` (eliminating the duplicate `wasmtime 46` + `cranelift` tree), upgraded `wasmtime` and `wasmtime-wasi` to `49.0.7` (resolving all `RUSTSEC-2026-0316`, `0321`..`0327`, `0352`..`0364`, `0378`, `0379`, `0420`, `0422`..`0424`, `0566`..`0573`, and `0587` advisories), upgraded `rusqlite` (`0.42.0`) / `r2d2_sqlite` (`0.37.1`) / `libsqlite3-sys` (`0.40.0`, resolving `RUSTSEC-2026-0459`), upgraded `quinn-proto` (`0.11.19`) and `quinn-udp` (`0.5.16`, resolving `RUSTSEC-2026-0338`..`0342`), upgraded `zstd` (`0.13.5`) / `zstd-safe` (`7.4.1`) / `zstd-sys` (`2.1.3`), and upgraded `rustls` (`0.23.46`), `rustls-webpki` (`0.103.17`), `webpki-roots` (`1.0.12`), `webpki-root-certs` (`1.0.12`), `h2` (`0.4.20`), and `rustix` (`1.1.6`).
+- **Remaining Upstream-Blocked Optional Dependencies:**
+  - `zip 7.2.0` (`RUSTSEC-2026-0429`, `RUSTSEC-2026-0545`..`0548`, alongside `0367`..`0369`): enters solely through optional `mistralrs 0.8.1 -> candle-core 0.10.2` (disabled in default builds; `mistralrs 0.8.1` is latest on crates.io, and `candle-core` never invokes `ZipArchive::extract`, `ZipStreamReader`, or AES archive decryption).
+  - `chrono 0.4.45` (`RUSTSEC-2026-0543`) and `humantime 2.4.0` (`RUSTSEC-2026-0542`): informational `unmaintained` notices across upstream workspace dependencies.

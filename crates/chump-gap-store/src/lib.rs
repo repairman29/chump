@@ -2860,8 +2860,10 @@ impl GapStore {
         // Network failure is non-fatal: print a one-line warning and continue
         // with lease+DB+YAML coverage. Bricking reserve on a flaky network
         // would be worse than tolerating a slightly higher residual race risk.
-        if std::env::var("CHUMP_RESERVE_SCAN_OPEN_PRS").as_deref() != Ok("0") {
-            match list_open_pr_titles() {
+        if std::env::var("CHUMP_RESERVE_SCAN_OPEN_PRS").as_deref() != Ok("0")
+            && has_non_local_git_remote(&self.repo_root)
+        {
+            match list_open_pr_titles(&self.repo_root) {
                 Ok(pr_titles) => {
                     let pat = regex_lite_for_domain(&domain_upper);
                     for title in pr_titles {
@@ -6295,12 +6297,33 @@ fn gh_smoke_check() -> bool {
         .unwrap_or(false)
 }
 
+/// Returns `true` when `repo_root` is a git repo/worktree whose `origin` remote
+/// points to a network host rather than a local directory (or has no `.git`).
+fn has_non_local_git_remote(repo_root: &Path) -> bool {
+    if !repo_root.join(".git").exists() {
+        return false;
+    }
+    let Ok(out) = std::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(repo_root)
+        .output()
+    else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    !url.is_empty() && !Path::new(&url).exists()
+}
+
 /// INFRA-1039: use REST endpoint (gh api repos/{nwo}/pulls) instead of GraphQL
 /// (gh pr list) so the scan works even when GraphQL quota is exhausted.
 /// Returns Err on any failure so the caller can degrade gracefully.
-fn list_open_pr_titles() -> Result<Vec<String>> {
+fn list_open_pr_titles(repo_root: &Path) -> Result<Vec<String>> {
     // Resolve the repo nameWithOwner via REST (never touches GraphQL).
     let nwo_out = std::process::Command::new("gh")
+        .current_dir(repo_root)
         .args([
             "repo",
             "view",
@@ -6325,6 +6348,7 @@ fn list_open_pr_titles() -> Result<Vec<String>> {
     // Fetch open PRs via REST (core bucket; unaffected by GraphQL exhaustion).
     let endpoint = format!("repos/{nwo}/pulls");
     let output = std::process::Command::new("gh")
+        .current_dir(repo_root)
         .args([
             "api",
             &endpoint,

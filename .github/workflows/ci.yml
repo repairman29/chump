@@ -193,6 +193,7 @@ jobs:
               - 'extensions/**'
               - 'experiments/**'
               - 'launchd/**'
+              - 'legacy/**'
               - 'migrations/**'
               - 'org/**'
               - 'path/**'

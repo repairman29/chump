@@ -19,8 +19,10 @@
 //! socket (CLI reads via chumpd) is the next slice; see MISSION-051 AC.
 
 mod file_sandbox;
+pub mod lease_reaper;
 #[path = "../../../src/node_pause.rs"]
 pub mod node_pause;
+pub mod oauth_sync;
 mod worker_loop;
 
 use serde::{Deserialize, Serialize};
@@ -31,8 +33,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixListener;
+use tokio::net::TcpListener;
 
 /// 0 = running; nonzero = the raw signal number that requested shutdown.
 /// Carrying the signal (not just a bool) lets `main` exit with the
@@ -41,25 +42,17 @@ use tokio::net::UnixListener;
 /// stop apart from a SIGINT stop apart from a clean internal exit.
 static SHUTDOWN_SIGNAL: AtomicI32 = AtomicI32::new(0);
 
-extern "C" fn on_term(sig: i32) {
-    SHUTDOWN_SIGNAL.store(sig, Ordering::SeqCst);
-}
-
 /// MISSION-073 AC3: map the signal that requested shutdown to a process
 /// exit code. `0` (no signal — reserved for future non-signal shutdown
 /// paths) exits clean; any real signal uses the standard `128 + signum`
 /// convention shells and systemd/launchd already expect.
 fn exit_code_for_signal(sig: i32) -> i32 {
-    if sig == 0 {
-        0
-    } else {
-        128 + sig
-    }
+    chump_pal::exit_code_for_signal(sig)
 }
 
 /// MISSION-073 AC2 / MISSION-069: fail-open disk-floor gate. Returns
 /// `false` only when free space on the repo filesystem is measurably
-/// below the critical threshold — an unreadable/unparseable `df` never
+/// below the critical threshold — an unreadable/unparseable disk probe never
 /// blocks worker spawning, since chumpd's job is supervising the fleet,
 /// not acting as a disk monitor of record (that's chump-disk-inventory).
 fn disk_floor_gate_open(free_gb: Option<f64>, threshold_gb: f64) -> bool {
@@ -70,49 +63,21 @@ fn disk_floor_gate_open(free_gb: Option<f64>, threshold_gb: f64) -> bool {
 }
 
 fn measure_free_gb(path: &Path) -> Option<f64> {
-    let path_str = path.to_str()?;
-    let out = Command::new("df").args(["-kP", path_str]).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let line = text.lines().nth(1)?;
-    let (_, _, avail_kb) = chump_disk_inventory::parse_df_line(line)?;
-    Some(chump_disk_inventory::kb_to_gb(avail_kb))
+    chump_pal::free_disk_gb(path)
 }
 
 /// Derive CARGO_BUILD_JOBS from physical RAM (~1.2GB per rustc job, half of RAM
 /// budgeted for builds), clamped to 1..=cpus. Falls back to 4 if RAM is unknown.
 fn derive_cargo_build_jobs(total_ram_gb: Option<f64>, cpus: usize) -> usize {
-    let cpus = cpus.max(1);
-    match total_ram_gb {
-        Some(gb) if gb > 0.0 => (((gb * 0.5) / 1.2) as usize).clamp(1, cpus),
-        _ => 4.min(cpus),
-    }
+    chump_pal::derive_cargo_build_jobs_from(total_ram_gb, cpus)
 }
 
 fn measure_total_ram_gb() -> Option<f64> {
-    if let Ok(text) = fs::read_to_string("/proc/meminfo") {
-        let kb: f64 = text
-            .lines()
-            .find(|l| l.starts_with("MemTotal:"))?
-            .split_whitespace()
-            .nth(1)?
-            .parse()
-            .ok()?;
-        return Some(kb / 1024.0 / 1024.0);
-    }
-    let out = Command::new("sysctl")
-        .args(["-n", "hw.memsize"])
-        .output()
-        .ok()?;
-    let bytes: f64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
-    Some(bytes / 1024.0 / 1024.0 / 1024.0)
+    chump_pal::total_ram_gb()
 }
 
 fn cargo_build_jobs() -> usize {
-    let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
-    derive_cargo_build_jobs(measure_total_ram_gb(), cpus)
+    derive_cargo_build_jobs(measure_total_ram_gb(), chump_pal::available_cpus())
 }
 
 const TICK_SECS: u64 = 15;
@@ -132,9 +97,7 @@ fn now_epoch() -> u64 {
 }
 
 fn iso_now() -> String {
-    // chrono-free ISO8601: date -u equivalent via libc time would drag deps in;
-    // epoch seconds are unambiguous and every consumer parses ts loosely.
-    format!("epoch:{}", now_epoch())
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 #[derive(Clone)]
@@ -146,11 +109,11 @@ struct Config {
 
 impl Config {
     fn load() -> Self {
-        let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()));
+        let home = chump_pal::user_home();
         let repo = std::env::var("CHUMP_REPO")
             .map(PathBuf::from)
             .unwrap_or_else(|_| home.join("Projects/Chump"));
-        let log_dir = PathBuf::from(format!("/tmp/chumpd-fleet-{}", now_epoch()));
+        let log_dir = chump_pal::temp_file_path(&format!("chumpd-fleet-{}", now_epoch()));
         Config {
             repo,
             home,
@@ -169,8 +132,14 @@ impl Config {
     }
 
     fn mode(&self) -> String {
-        fs::read_to_string(self.home.join(".chump/fleet-mode"))
-            .map(|s| s.trim().to_string())
+        if let Ok(s) = fs::read_to_string(self.home.join(".chump/fleet-mode")) {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+        chump_config::ChumpConfig::load_effective()
+            .map(|c| c.fleet.mode.as_str().to_string())
             .unwrap_or_else(|_| "off".into())
     }
 
@@ -178,8 +147,12 @@ impl Config {
         let from_file = fs::read_to_string(self.repo.join(".chump/fleet-desired-size"))
             .ok()
             .and_then(|s| s.trim().parse::<usize>().ok());
-        match (from_file, self.mode().as_str()) {
-            (Some(n), _) if n > 0 => n.min(8),
+        let cfg_desired = chump_config::ChumpConfig::load_effective()
+            .ok()
+            .map(|c| c.fleet.desired_workers)
+            .filter(|&n| n > 0);
+        match (from_file.or(cfg_desired), self.mode().as_str()) {
+            (Some(n), _) if n > 0 => n.min(64),
             (_, "grind") => 2,
             (_, "travel") => 2,
             _ => 0,
@@ -203,7 +176,12 @@ fn emit(cfg: &Config, json: &str) {
 }
 
 fn heartbeat_dir() -> String {
-    std::env::var("CHUMP_HEARTBEAT_DIR").unwrap_or_else(|_| "/tmp".into())
+    std::env::var("CHUMP_HEARTBEAT_DIR")
+        .unwrap_or_else(|_| chump_pal::temp_dir().to_string_lossy().into_owned())
+}
+
+fn status_file_path() -> PathBuf {
+    chump_pal::temp_file_path("chumpd-status.json")
 }
 
 fn heartbeat_age(agent_id: usize) -> Option<u64> {
@@ -243,33 +221,53 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
     let log_err = log.try_clone()?;
 
     let worker = cfg.repo.join("scripts/dispatch/worker.sh");
-    let path_env = format!(
-        "/opt/homebrew/bin:{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/usr/bin:/bin",
-        cfg.home.display(),
-        cfg.home.display()
-    );
+    let use_legacy_sh = !cfg!(windows)
+        && std::env::var("CHUMP_WORKER_LEGACY_SH").as_deref() == Ok("1")
+        && worker.is_file();
+    let chumpd_exe = std::env::current_exe().unwrap_or_else(|_| {
+        PathBuf::from(if cfg!(windows) {
+            "chumpd.exe"
+        } else {
+            "chumpd"
+        })
+    });
 
-    // RESILIENT-178: workers run with the operator's full user file
-    // authority by default (macOS TCC prompt, 2026-07-19 — a stray
-    // find/grep reached an iCloud-synced path and the OS attributed the
-    // access-request dialog to the operator). chumpd is the chokepoint
-    // that spawns every worker, so it wraps the process in a sandbox-exec
-    // profile scoped to repo + worktrees + tmp + toolchains, with the
-    // known TCC-prompting surfaces explicitly denied. Structural fix, not
-    // advisory prompt discipline.
+    let path_env = {
+        let mut dirs: Vec<PathBuf> = vec![cfg.home.join(".cargo/bin"), cfg.home.join(".local/bin")];
+        if !cfg!(windows) {
+            dirs.insert(0, PathBuf::from("/opt/homebrew/bin"));
+        }
+        if let Some(existing) = std::env::var_os("PATH") {
+            dirs.extend(std::env::split_paths(&existing));
+        }
+        std::env::join_paths(dirs)
+            .map(|os| os.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+
     let worktree_base = std::env::var("CHUMP_WORKTREE_BASE").ok().map(PathBuf::from);
     let sandboxed = file_sandbox::worker_sandbox_enabled();
     let mut command = if sandboxed {
         let profile =
             file_sandbox::build_worker_profile(&cfg.repo, worktree_base.as_deref(), &cfg.home);
         let mut c = Command::new("/usr/bin/sandbox-exec");
-        c.arg("-p").arg(profile).arg("/bin/bash").arg(&worker);
+        c.arg("-p").arg(profile);
+        if use_legacy_sh {
+            c.arg("/bin/sh").arg(&worker);
+        } else {
+            c.arg(&chumpd_exe).arg("worker").arg("--native");
+        }
         c
-    } else {
-        let mut c = Command::new("/bin/bash");
+    } else if use_legacy_sh {
+        let mut c = Command::new("/bin/sh");
         c.arg(&worker);
         c
+    } else {
+        let mut c = Command::new(&chumpd_exe);
+        c.arg("worker").arg("--native");
+        c
     };
+    chump_pal::configure_isolated_child(&mut command);
 
     // MISSION-051 / RESILIENT-184: backend selection. CHUMPD_FLEET_BACKEND
     // lets an operator run the fleet on an open model (chump-local) instead
@@ -305,10 +303,11 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
     let build_jobs = cargo_build_jobs();
     eprintln!("chumpd: worker {agent_id} CARGO_BUILD_JOBS={build_jobs} (derived from RAM/cpus)");
 
+    let file_cfg = chump_config::ChumpConfig::load_effective().unwrap_or_default();
     let agent_harness = std::env::var("CHUMP_AGENT_HARNESS")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "claude".to_string());
+        .unwrap_or_else(|| file_cfg.effective_harness().to_string());
 
     for (k, v) in worker_loop::resolve_worker_child_env(&state_dir) {
         command.env(k, v);
@@ -350,18 +349,19 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
 fn takeover(_cfg: &Config) {
     // Test harness / cohabitation guard: CHUMPD_TAKEOVER=0 skips the global
     // sweep (a CI fixture must never pkill a live fleet's workers).
-    if std::env::var("CHUMPD_TAKEOVER").as_deref() == Ok("0") {
-        return;
+    let takeover_enabled = std::env::var("CHUMPD_TAKEOVER").as_deref() != Ok("0");
+    #[cfg(unix)]
+    if takeover_enabled {
+        let _ = Command::new("pkill")
+            .args(["-f", "dispatch/worker.sh"])
+            .status();
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", "chump-fleet"])
+            .stderr(Stdio::null())
+            .status();
     }
-    let _ = Command::new("/usr/bin/pkill")
-        .args(["-f", "dispatch/worker.sh"])
-        .status();
-    let _ = Command::new("/bin/bash")
-        .args([
-            "-lc",
-            "/opt/homebrew/bin/tmux kill-session -t chump-fleet 2>/dev/null; true",
-        ])
-        .status();
+    #[cfg(not(unix))]
+    let _ = takeover_enabled;
 }
 
 struct Slot {
@@ -445,9 +445,10 @@ fn write_status(_cfg: &Config, mode: &str, desired: usize, slots: &HashMap<usize
         "desired": desired,
         "workers": workers,
     });
-    let tmp = "/tmp/chumpd-status.json.tmp";
-    if fs::write(tmp, status.to_string()).is_ok() {
-        let _ = fs::rename(tmp, "/tmp/chumpd-status.json");
+    let status_path = status_file_path();
+    let tmp = chump_pal::temp_file_path("chumpd-status.json.tmp");
+    if fs::write(&tmp, status.to_string()).is_ok() {
+        let _ = fs::rename(&tmp, &status_path);
     }
 }
 
@@ -468,54 +469,48 @@ struct RpcResponse {
     status_json: Option<serde_json::Value>,
 }
 
-async fn handle_socket(cfg: Config, listener: UnixListener) {
+async fn handle_ipc(cfg: Config, listener: TcpListener, expected_token: String) {
     loop {
         match listener.accept().await {
-            Ok((mut stream, _)) => {
+            Ok((stream, peer)) => {
                 let cfg = cfg.clone();
+                let tok = expected_token.clone();
                 tokio::spawn(async move {
-                    let mut buf = [0u8; 1024];
-                    match stream.read(&mut buf).await {
-                        Ok(n) if n > 0 => {
-                            if let Ok(req) = serde_json::from_slice::<RpcRequest>(&buf[..n]) {
-                                let resp = match req {
-                                    RpcRequest::Ping => RpcResponse {
-                                        status: "pong".into(),
-                                        db_path: None,
-                                        status_json: None,
-                                    },
-                                    RpcRequest::DbPath => RpcResponse {
-                                        status: "ok".into(),
-                                        db_path: Some(
-                                            chump_store_path::state_db_path(&cfg.repo)
-                                                .display()
-                                                .to_string(),
-                                        ),
-                                        status_json: None,
-                                    },
-                                    RpcRequest::Status => {
-                                        let status_raw =
-                                            fs::read_to_string("/tmp/chumpd-status.json")
-                                                .unwrap_or_else(|_| "{}".into());
-                                        let status_json = serde_json::from_str(&status_raw).ok();
-                                        RpcResponse {
-                                            status: "ok".into(),
-                                            db_path: None,
-                                            status_json,
-                                        }
-                                    }
-                                };
-                                let _ = stream
-                                    .write_all(serde_json::to_string(&resp).unwrap().as_bytes())
-                                    .await;
+                    if let Ok((req, mut stream)) =
+                        chump_pal::ipc::accept_authenticated::<RpcRequest>(stream, peer, &tok).await
+                    {
+                        let resp = match req {
+                            RpcRequest::Ping => RpcResponse {
+                                status: "pong".into(),
+                                db_path: None,
+                                status_json: None,
+                            },
+                            RpcRequest::DbPath => RpcResponse {
+                                status: "ok".into(),
+                                db_path: Some(
+                                    chump_store_path::state_db_path(&cfg.repo)
+                                        .display()
+                                        .to_string(),
+                                ),
+                                status_json: None,
+                            },
+                            RpcRequest::Status => {
+                                let status_raw = fs::read_to_string(status_file_path())
+                                    .unwrap_or_else(|_| "{}".into());
+                                let status_json = serde_json::from_str(&status_raw).ok();
+                                RpcResponse {
+                                    status: "ok".into(),
+                                    db_path: None,
+                                    status_json,
+                                }
                             }
-                        }
-                        _ => {}
+                        };
+                        let _ = chump_pal::ipc::write_json_response(&mut stream, &resp).await;
                     }
                 });
             }
             Err(e) => {
-                eprintln!("socket accept error: {e}");
+                eprintln!("ipc accept error: {e}");
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
@@ -526,32 +521,54 @@ async fn handle_socket(cfg: Config, listener: UnixListener) {
 async fn main() {
     // PHASE-R R6 / INFRA-8575: thin `chumpd worker` arm — the per-worker loop
     // control (cadence, heartbeat, fleet-paused sentinel, per-tick budget).
-    // Dispatched before any supervisor setup so it never binds the socket or
+    // Dispatched before any supervisor setup so it never binds the IPC server or
     // takes pool ownership; worker.sh execs this.
     let argv: Vec<String> = std::env::args().collect();
     if argv.get(1).map(String::as_str) == Some("worker") {
         std::process::exit(worker_loop::run(&argv[2..]));
     }
 
-    // SAFETY: signal() with a signal-safe handler that only stores an atomic.
-    unsafe {
-        let handler = on_term as extern "C" fn(i32) as *const () as usize;
-        libc::signal(libc::SIGTERM, handler);
-        libc::signal(libc::SIGINT, handler);
-    }
+    chump_pal::install_shutdown_signal(&SHUTDOWN_SIGNAL);
 
     let cfg = Config::load();
     takeover(&cfg);
 
-    // MISSION-052: Start Unix socket API.
-    let socket_path = cfg.home.join(".chump/chumpd.sock");
-    let _ = fs::remove_file(&socket_path);
-    if let Ok(listener) = UnixListener::bind(&socket_path) {
-        let cfg_clone = cfg.clone();
-        tokio::spawn(async move {
-            handle_socket(cfg_clone, listener).await;
-        });
-    }
+    // Cross-platform authenticated loopback TCP IPC (`<state_dir>/run/chumpd.ipc`).
+    let ipc_path = chump_pal::ipc::ipc_file_path_in(&cfg.state_dir(), "chumpd");
+    let _ipc_guard = match chump_pal::ipc::IpcServer::bind_at(&ipc_path) {
+        Ok(server) => {
+            if let Ok(listener) = server.tokio_listener() {
+                let cfg_clone = cfg.clone();
+                let tok = server.token().to_string();
+                tokio::spawn(async move {
+                    handle_ipc(cfg_clone, listener, tok).await;
+                });
+            }
+            Some(server)
+        }
+        Err(e) => {
+            eprintln!(
+                "chumpd: failed to bind local ipc at {}: {e}",
+                ipc_path.display()
+            );
+            None
+        }
+    };
+
+    // Spawn native cross-platform maintenance organs (Milestone 4):
+    // 1. Subscription OAuth token sync/refresher (every 5 min + immediate startup pass).
+    let oauth_interval = std::env::var("CHUMP_OAUTH_REFRESH_INTERVAL_S")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(oauth_sync::DEFAULT_OAUTH_REFRESH_INTERVAL_SECS);
+    oauth_sync::spawn_background_sync(oauth_sync::resolve_oauth_token_target(), oauth_interval);
+
+    // 2. Pure-Rust stale `.chump-locks/*.json` lease reaper (every 60s + immediate pass).
+    let reap_interval = std::env::var("CHUMP_LEASE_REAP_INTERVAL_S")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(lease_reaper::DEFAULT_LEASE_REAP_INTERVAL_SECS);
+    lease_reaper::spawn_background_reaper(cfg.repo.join(".chump-locks"), reap_interval);
 
     // scanner-anchor: "kind":"chumpd_started"
     emit(
@@ -741,7 +758,7 @@ async fn main() {
 
         write_status(&cfg, &mode, desired, &slots);
         scan_worker_sandbox_denials(&cfg, TICK_SECS);
-        std::thread::sleep(Duration::from_secs(TICK_SECS));
+        tokio::time::sleep(Duration::from_secs(TICK_SECS)).await;
     }
 
     // Graceful shutdown: take the children with us (launchd/systemd own OUR
@@ -786,12 +803,12 @@ mod signal_and_gate_tests {
 
     #[test]
     fn exit_code_is_128_plus_signum_for_sigterm() {
-        assert_eq!(exit_code_for_signal(libc::SIGTERM), 143);
+        assert_eq!(exit_code_for_signal(chump_pal::SIGTERM_NUM), 143);
     }
 
     #[test]
     fn exit_code_is_128_plus_signum_for_sigint() {
-        assert_eq!(exit_code_for_signal(libc::SIGINT), 130);
+        assert_eq!(exit_code_for_signal(chump_pal::SIGINT_NUM), 130);
     }
 
     #[test]

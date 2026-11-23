@@ -145,8 +145,7 @@ impl SessionExport {
 
 /// Default path for a session export file: `~/.chump/sessions/<session-id>.md`
 pub fn export_path(session_id: &str) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home)
+    chump_pal::user_home()
         .join(".chump")
         .join("sessions")
         .join(format!("{}.md", session_id))

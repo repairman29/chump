@@ -28,13 +28,13 @@ echo
 
 # ── Source checks (static, no binary needed) ──────────────────────────────────
 
-if grep -q 'no-ac-required' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'no-ac-required' -r "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "--no-ac-required bypass wired in main.rs"
 else
     fail "--no-ac-required not found in main.rs"
 fi
 
-if grep -q 'ac_gate_bypassed' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'ac_gate_bypassed' -r "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch"; then
     ok "ac_gate_bypassed audit event wired in main.rs"
 else
     fail "ac_gate_bypassed not found in main.rs"

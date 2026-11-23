@@ -1,372 +1,884 @@
-// web/v2/cockpit.js — PRODUCT-122
+// web/v2/cockpit.js — Sovereign Operator Cockpit (PRODUCT-122 / PRODUCT-128 / PRODUCT-372)
 //
-// <chump-view-cockpit> — Phase 1 Cockpit-MVP landing shell.
+// Unified three-column operator command center aligned with the Warm-Stone,
+// Sovereign Forest & Bronze design language of /site/ (and Warm-Obsidian dark mode).
 //
-// Composition-only: arranges existing web components into a 5-zone CSS
-// grid. No new components defined. Operator reacts to the layout in 5
-// seconds rather than reviewing PWA_ROADMAP.md prose.
-//
-// Layout (1440x900 first; collapses on narrow):
-//
-//   ┌──────────────────────────────────────────────────────────────────┐
-//   │                       (top bar — global header)                   │
-//   ├────────────────┬─────────────────────────────┬───────────────────┤
-//   │  Attention     │  Daily brief / center       │  Fleet roster     │
-//   │  queue         │  (placeholder until         │                   │
-//   │                │   PRODUCT-078 lands)        │                   │
-//   │                │                             │  Ambient tail     │
-//   │  Inbox         │                             │  (collapsible)    │
-//   │  preview       │                             │                   │
-//   ├────────────────┴─────────────────────────────┴───────────────────┤
-//   │                  (footer — quick-actions verb nav)               │
-//   └──────────────────────────────────────────────────────────────────┘
-//
-// Reach this from URL: /v2/?view=cockpit
-// (Routing into chump-nav cadence happens in a follow-up to avoid colliding
-// with 5 live leases editing app.js + index.html — PRODUCT-112/113/INFRA-
-// 1203/1204/1207.)
-//
-// Reaction-target for PRODUCT-121 sign-off. If the operator opens this and
-// says "wrong shape", we re-cut Phase 1 before sinking effort into atomic
-// component gaps PRODUCT-117/078/083/080.
+// Combines:
+//   - Executive 4-KPI telemetry strip (Gap Ledger, 24h Throughput & Leases,
+//     Inference Cascade & Spend, 4-Pillar Posture & GitHub Budget)
+//   - Left Zone: Synthesized Situation Read + Actionable Signal Cards (including
+//     fleet wake/restart and drift repair actions)
+//   - Center Zone: Live interactive Gap Queue (filter, search, 1-click Claim /
+//     Dispatch, inline + Reserve Gap drawer) + Provider Cascade Slots + Active Leases
+//   - Right Zone: Live Operations Advisor & Task Console (/api/advisor/ask +
+//     /api/shortcut/task) + tabbed Fleet / Daemons / Triage / Ambient telemetry
 
 const CSS = `
   :host {
     display: block;
-    height: 100%;
-    background: var(--bg, #0d0d0f);
-    color: var(--text, #e5e5ea);
-    font-family: inherit;
+    color: var(--text);
+    background: var(--bg);
+    font-family: var(--font-sans);
   }
-  .cockpit {
-    display: grid;
-    grid-template-columns: 320px 1fr 360px;
-    grid-template-rows: auto auto 1fr auto;
-    grid-template-areas:
-      "title  title   title"
-      "tiles  tiles   tiles"
-      "left   center  right"
-      "footer footer  footer";
-    gap: 12px;
-    padding: 12px;
-    height: 100%;
-    min-height: 600px;
-  }
-  .cockpit-title {
-    grid-area: title;
+
+  .cockpit-shell {
+    max-width: 1520px;
+    margin: 0 auto;
+    padding: 20px 24px 28px;
     display: flex;
-    align-items: baseline;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ── Command Header Row ─────────────────────────────────────────────── */
+  .cmd-header {
+    display: flex;
+    align-items: flex-end;
     justify-content: space-between;
-    padding: 4px 8px;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
   }
-  .cockpit-title h1 {
-    font-size: 18px;
+  .cmd-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cmd-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
     font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cmd-heading-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .cmd-heading {
     margin: 0;
-    color: var(--text, #e5e5ea);
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: var(--text);
+    line-height: 1.15;
   }
-  .cockpit-title .subtitle {
-    font-size: 12px;
-    color: var(--text-secondary, #8a8a8e);
+  .cmd-repo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
   }
-  .zone {
-    background: var(--bg-secondary, #1a1a1c);
-    border: 1px solid var(--border, #2a2a2e);
-    border-radius: 10px;
-    padding: 12px;
-    overflow: auto;
-    min-height: 0;
+  .cmd-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
-  .zone-header {
+  .autopilot-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-secondary, #8a8a8e);
-    margin-bottom: 8px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border, #2a2a2e);
-    display: flex;
-    justify-content: space-between;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .autopilot-pill.running {
+    background: var(--tone-ok-bg);
+    border-color: var(--tone-ok-border);
+    color: var(--success);
+  }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .btn {
+    display: inline-flex;
     align-items: center;
-  }
-  .zone-header .question {
-    color: var(--accent, #0a84ff);
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: 0;
-  }
-  .zone-tiles  { grid-area: tiles; display: block; background: transparent; border: none; padding: 0; overflow: visible; }
-  .zone-left   { grid-area: left;   }
-  .zone-center { grid-area: center; }
-  .zone-right  { grid-area: right;  display: flex; flex-direction: column; gap: 12px; }
-  .zone-footer {
-    grid-area: footer;
-    background: transparent;
-    border: none;
-    padding: 0;
-    overflow: visible;
-  }
-  .center-placeholder {
-    padding: 24px;
-    text-align: center;
-    color: var(--text-secondary, #8a8a8e);
-    font-size: 13px;
-    border: 1px dashed var(--border, #2a2a2e);
-    border-radius: 8px;
-  }
-  .center-placeholder strong { color: var(--text, #e5e5ea); display: block; margin-bottom: 8px; }
-  .center-placeholder code   {
-    background: var(--bg, #0d0d0f); padding: 1px 5px; border-radius: 3px;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 13px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text);
     font-size: 12px;
-  }
-  .cockpit-center-stack {
-    display: flex; flex-direction: column; gap: 16px;
-    height: 100%;
-  }
-  .center-half {
-    flex: 1 1 0; min-height: 0;
-    display: flex; flex-direction: column;
-  }
-  .center-half .zone-header { flex: 0 0 auto; }
-  .brief-list {
-    flex: 1 1 auto; overflow: auto;
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .brief-loading, .brief-empty {
-    padding: 16px; text-align: center;
-    color: var(--text-secondary, #8a8a8e); font-size: 12px;
-    border: 1px dashed var(--border, #2a2a2e); border-radius: 6px;
-  }
-  .brief-item {
-    padding: 10px 12px; border: 1px solid var(--border, #2a2a2e);
-    border-radius: 6px; background: var(--bg, #0d0d0f);
-    display: flex; gap: 10px; align-items: flex-start;
-    font-size: 13px;
-  }
-  .brief-item:hover { background: var(--bg-tertiary, #25252a); }
-  .brief-pill {
-    flex: 0 0 auto; font-size: 10px; font-weight: 600;
-    padding: 2px 6px; border-radius: 4px;
-    background: var(--bg-tertiary, #25252a); color: var(--text-secondary, #8a8a8e);
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.14s, border-color 0.14s, color 0.14s;
     white-space: nowrap;
   }
-  .brief-pill.priority-P0 { background: rgba(204,51,68,.22); color: #ff8a99; }
-  .brief-pill.priority-P1 { background: rgba(10,132,255,.22); color: #6ab8ff; }
-  .brief-pill.priority-P2 { background: rgba(120,140,180,.18); color: #aab5cc; }
-  .brief-pill.ship-pr     { background: rgba(48,209,88,.20);  color: #6cd9a0; }
-  .brief-pill.ship-gap    { background: rgba(204,136,0,.22);  color: #ffc56a; }
-  .brief-body { flex: 1 1 auto; min-width: 0; }
-  .brief-title {
-    color: var(--text, #e5e5ea); margin-bottom: 2px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  .btn:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-strong);
   }
-  .brief-meta {
-    font-size: 11px; color: var(--text-secondary, #8a8a8e);
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: default;
   }
-  .brief-meta a {
-    color: var(--accent, #0a84ff); text-decoration: none;
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
   }
-  .brief-meta a:hover { text-decoration: underline; }
-  /* EFFECTIVE-027: wedge-watch zone */
-  .wedge-watch-zone {
-    flex: 0 0 auto;
-    min-height: 120px;
-    max-height: 260px;
+  .btn-primary:hover {
+    filter: brightness(1.08);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .btn-bronze {
+    background: var(--bronze-dim);
+    border-color: var(--bronze-dim);
+    color: var(--bronze);
+    font-weight: 600;
+  }
+  .btn-bronze:hover {
+    border-color: var(--bronze);
+  }
+  .btn-xs {
+    padding: 3px 9px;
+    font-size: 11px;
+  }
+
+  /* ── Inline Reserve-Gap Drawer ──────────────────────────────────────── */
+  .reserve-drawer {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .reserve-drawer[hidden] { display: none; }
+  .reserve-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .reserve-title {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .reserve-grid {
+    display: grid;
+    grid-template-columns: 120px 95px 95px 140px 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+  @media (max-width: 1100px) {
+    .reserve-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .field-input, .field-select {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12.5px;
+  }
+  .field-mono { font-family: var(--font-mono); font-size: 11.5px; }
+  .reserve-feedback {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .reserve-feedback.ok  { color: var(--success); }
+  .reserve-feedback.err { color: var(--error); }
+
+  /* ── 4-KPI Executive Strip ──────────────────────────────────────────── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  @media (max-width: 1100px) {
+    .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 600px) {
+    .kpi-strip { grid-template-columns: 1fr; }
+  }
+  .kpi-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .kpi-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .kpi-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .kpi-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+  }
+  .kpi-chip.ok   { background: var(--tone-ok-bg); color: var(--success); }
+  .kpi-chip.warn { background: var(--tone-warn-bg); color: var(--warn); }
+  .kpi-chip.err  { background: var(--tone-err-bg); color: var(--error); }
+  .kpi-value-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .kpi-value {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-unit {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .kpi-sub {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 4px;
+  }
+  .kpi-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .kpi-link:hover { text-decoration: underline; }
+
+  .pillar-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .pillar-cell {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .pillar-code {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-secondary);
+  }
+  .pillar-grade {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .pillar-grade.grade-A { color: var(--success); }
+  .pillar-grade.grade-B { color: var(--accent); }
+  .pillar-grade.grade-C { color: var(--warn); }
+  .pillar-grade.grade-F { color: var(--error); }
+
+  /* ── 3-Column Sovereign Workbench ───────────────────────────────────── */
+  .workbench {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.92fr) minmax(430px, 1.38fr) minmax(320px, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+  @media (max-width: 1220px) {
+    .workbench {
+      grid-template-columns: 1fr 1fr;
+    }
+    .col-right {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 820px) {
+    .workbench {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
-  .wedge-watch-zone chump-wedge-watch {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-    display: block;
-  }
-  .ambient-collapsed {
-    flex: 0 0 auto; max-height: 38px; overflow: hidden;
-    transition: max-height 0.2s;
-  }
-  .ambient-expanded { flex: 1 1 auto; max-height: none; overflow: auto; }
-  .ambient-toggle {
-    width: 100%; background: var(--bg, #0d0d0f);
-    border: 1px solid var(--border, #2a2a2e); border-radius: 6px;
-    color: var(--text-secondary, #8a8a8e); padding: 6px 10px;
-    cursor: pointer; font-size: 12px; text-align: left;
-  }
-  .ambient-toggle:hover { background: var(--bg-tertiary, #25252a); }
-  /* PRODUCT-133: right-zone action overlay */
-  .right-actions {
-    padding: 10px 12px;
-    background: linear-gradient(135deg, rgba(10,132,255,.10), rgba(10,132,255,.03));
-    border: 1px solid rgba(10,132,255,.25);
-    border-radius: 7px;
-    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  .panel-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     flex-wrap: wrap;
   }
-  .right-actions[hidden] { display: none; }
-  .right-actions-text {
-    font-size: 12px; color: var(--text, #e5e5ea); flex: 1 1 auto;
+  .panel-title {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text);
   }
-  .right-actions-text strong { color: var(--accent, #0a84ff); font-weight: 600; }
-  .right-actions-btn {
-    background: var(--accent, #0a84ff); color: white;
-    border: none; border-radius: 5px; padding: 5px 12px;
-    font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  .panel-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
   }
-  .right-actions-btn:hover { filter: brightness(1.15); }
-  .right-actions-btn:disabled { opacity: 0.6; cursor: default; }
-  .inbox-preview-wrap {
-    margin-top: 12px;
-    border-top: 1px solid var(--border, #2a2a2e);
-    padding-top: 12px;
-  }
-  /* ── Intelligence layer: Read → Signal → Noise ─────────────────────── */
-  .intel-stack {
-    display: flex; flex-direction: column; gap: 14px;
-    height: 100%;
-  }
-  /* The Read — one sentence, highest visual weight */
-  .intel-read {
+  .panel-body {
     padding: 14px 16px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, rgba(10,132,255,.08), rgba(10,132,255,.02));
-    border: 1px solid rgba(10,132,255,.25);
-  }
-  .intel-read-label {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
-    color: var(--accent, #0a84ff); text-transform: uppercase;
-    margin-bottom: 6px;
-  }
-  .intel-read-text {
-    font-size: 15px; line-height: 1.45;
-    color: var(--text, #e5e5ea);
-  }
-  .intel-read-meta {
-    margin-top: 8px; font-size: 11px;
-    color: var(--text-secondary, #8a8a8e);
-    display: flex; gap: 12px; align-items: center;
-  }
-  .intel-confidence {
-    display: inline-flex; align-items: center; gap: 4px;
-  }
-  .intel-confidence-dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  }
-  .intel-confidence-dot.high   { background: #30d158; }
-  .intel-confidence-dot.medium { background: #ffd60a; }
-  .intel-confidence-dot.low    { background: #ff453a; }
-  .intel-read-evidence {
-    background: none; border: none; padding: 0;
-    color: var(--accent, #0a84ff); cursor: pointer;
-    font-size: 11px; text-decoration: underline;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  /* Signal — narrative cards */
-  .intel-signal {
-    flex: 1 1 auto; min-height: 0; overflow: auto;
-    display: flex; flex-direction: column; gap: 10px;
+  /* ── Left Zone: Situation Read + Signal Cards ───────────────────────── */
+  .intel-read {
+    padding: 13px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-dim);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
   }
-  .intel-signal-label {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
-    color: var(--text-secondary, #8a8a8e); text-transform: uppercase;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border, #2a2a2e);
+  .intel-read-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .intel-read-text {
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.45;
+    color: var(--text);
+  }
+  .intel-read-meta {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .intel-confidence {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .intel-confidence-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+  .intel-confidence-dot.high   { background: var(--success); }
+  .intel-confidence-dot.medium { background: var(--warn); }
+  .intel-confidence-dot.low    { background: var(--bronze); }
+  .intel-read-evidence {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-decoration: underline;
+  }
+
+  .intel-signal {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
   .intel-card {
-    padding: 11px 13px;
-    border: 1px solid var(--border, #2a2a2e);
-    border-radius: 7px;
-    background: var(--bg, #0d0d0f);
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 10px 12px;
-    align-items: start;
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .intel-card.counter {
-    border-color: rgba(255,159,10,.35);
-    background: linear-gradient(135deg, rgba(255,159,10,.05), transparent);
+    border-left: 3px solid var(--bronze);
   }
-  .intel-card-icon {
-    grid-row: 1 / span 2;
-    font-size: 18px; line-height: 1; padding-top: 1px;
+  .intel-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
+  .intel-tag {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+  }
+  .intel-tag.bronze { background: var(--bronze-dim); color: var(--bronze); }
   .intel-card-title {
-    font-size: 13px; font-weight: 600;
-    color: var(--text, #e5e5ea);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.35;
   }
   .intel-card-detail {
     font-size: 12px;
-    color: var(--text-secondary, #8a8a8e);
-    grid-column: 2 / span 2;
+    color: var(--text-secondary);
+    line-height: 1.45;
   }
   .intel-card-actions {
-    grid-row: 1; grid-column: 3;
-    display: flex; gap: 6px; align-items: center;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 2px;
   }
   .intel-card-btn {
-    background: var(--bg-tertiary, #25252a);
-    border: 1px solid var(--border, #2a2a2e);
-    color: var(--text, #e5e5ea);
-    padding: 3px 8px; border-radius: 4px;
-    font-size: 11px; cursor: pointer; text-decoration: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 9px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
     white-space: nowrap;
   }
-  .intel-card-btn:hover { background: var(--accent, #0a84ff); color: white; border-color: transparent; }
-  .intel-card-btn.wrong {
-    color: var(--text-secondary, #8a8a8e);
-    padding: 3px 6px;
+  .intel-card-btn:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-strong);
   }
-  .intel-card-btn.wrong:hover { background: #ff453a; color: white; }
   .intel-card-btn.primary {
-    background: var(--accent, #0a84ff); color: white; border-color: transparent;
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .intel-card-btn.wrong {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 7px;
+  }
+  .intel-card-btn.wrong:hover {
+    color: var(--error);
+    border-color: var(--tone-err-border);
   }
 
-  /* Noise — collapsed by default */
   .intel-noise {
-    flex: 0 0 auto;
-    border-top: 1px solid var(--border, #2a2a2e);
+    border-top: 1px solid var(--border);
     padding-top: 10px;
   }
   .intel-noise-toggle {
-    background: none; border: none;
-    color: var(--text-secondary, #8a8a8e);
-    font-size: 11px; cursor: pointer;
-    padding: 0; text-align: left;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
     width: 100%;
   }
-  .intel-noise-toggle:hover { color: var(--accent, #0a84ff); }
+  .intel-noise-toggle:hover { color: var(--accent); }
   .intel-noise-body {
-    margin-top: 10px;
-    max-height: 200px; overflow: auto;
-    font-family: ui-monospace, monospace; font-size: 11px;
-    color: var(--text-secondary, #8a8a8e);
+    margin-top: 8px;
+    max-height: 180px;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
     display: none;
   }
   .intel-noise-body.open { display: block; }
   .intel-noise-event {
-    padding: 4px 0;
-    border-bottom: 1px solid var(--border, #2a2a2e);
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
   }
-  .intel-noise-event:last-child { border: none; }
+  .intel-noise-event:last-child { border-bottom: none; }
 
-  /* Narrow viewport: stack columns. */
-  @media (max-width: 1000px) {
-    .cockpit {
-      grid-template-columns: 1fr;
-      grid-template-areas:
-        "title"
-        "tiles"
-        "left"
-        "center"
-        "right"
-        "footer";
-    }
+  /* ── Center Zone: Workbench Tabs (Gap Queue / Cascade / Leases) ─────── */
+  .seg-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+  }
+  .seg-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .seg-tab[aria-selected="true"] {
+    background: var(--bg-surface);
+    color: var(--accent);
+    box-shadow: var(--shadow-card);
+  }
+
+  .queue-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .queue-search {
+    flex: 1 1 160px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+  }
+  .filter-pills {
+    display: inline-flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .filter-pill {
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .filter-pill.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .queue-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 460px;
+    overflow-y: auto;
+  }
+  .q-row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    transition: border-color 0.12s;
+  }
+  .q-row:hover { border-color: var(--border-strong); }
+  .q-row-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .q-id {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .q-prio {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+  }
+  .q-prio.prio-high {
+    background: var(--bronze-dim);
+    color: var(--bronze);
+  }
+  .q-status {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--tone-ok-bg);
+    color: var(--success);
+  }
+  .q-status.leased {
+    background: var(--tone-warn-bg);
+    color: var(--warn);
+  }
+  .q-domain {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .q-title {
+    font-size: 12.5px;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .q-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .q-lease-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--bronze);
+  }
+  .q-actions {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  /* Cascade table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+  }
+  .data-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .mono-cell { font-family: var(--font-mono); font-size: 11.5px; }
+
+  .empty-box {
+    padding: 18px 14px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  /* ── Right Zone: Advisor Console + Live Telemetry ───────────────────── */
+  .col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .advisor-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .advisor-textarea {
+    width: 100%;
+    min-height: 68px;
+    max-height: 160px;
+    resize: vertical;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .advisor-textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .advisor-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .advisor-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+  }
+  .advisor-reply {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text);
+    max-height: 210px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .advisor-reply[hidden] { display: none; }
+
+  .right-actions {
+    padding: 10px 12px;
+    background: var(--accent-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .right-actions[hidden] { display: none; }
+  .right-actions-text {
+    font-size: 12px;
+    color: var(--text);
+    flex: 1 1 auto;
+  }
+  .right-actions-text strong {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .right-actions-btn {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 5px 11px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .telem-pane[hidden] { display: none; }
+  .triage-section {
+    padding-top: 10px;
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .triage-section:first-child {
+    padding-top: 0;
+    margin-top: 0;
+    border-top: none;
+  }
+  .triage-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
   }
 `;
 
 class ChumpViewCockpit extends HTMLElement {
   #shadow;
-  #ambientExpanded = false;
+  #centerTab = 'queue';
+  #queueFilter = 'all';
+  #queueQuery = '';
+  #telemTab = 'fleet';
+  #ambientMounted = false;
+  #latestInputs = null;
+  #pollTimer = null;
 
   constructor() {
     super();
@@ -374,230 +886,881 @@ class ChumpViewCockpit extends HTMLElement {
   }
 
   connectedCallback() {
-    this.#render();
+    this.#renderShell();
+    this.#refreshAll();
+    this.#pollTimer = setInterval(() => this.#refreshAll(), 30_000);
   }
 
-  #render() {
-    // Shadow DOM can't host custom-element instances that need the document
-    // to find them (slot-projection works, but cleaner to use light-DOM
-    // children of the view via slotted construction). We render the grid
-    // into shadow DOM, but mount the live components into the shadow as
-    // direct children — the components themselves attach their own shadow
-    // roots so they remain encapsulated. This works for every chump-* we
-    // use here (verified: each uses attachShadow internally).
+  disconnectedCallback() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
+
+  #renderShell() {
     this.#shadow.innerHTML = `
       <style>${CSS}</style>
-      <div class="cockpit" role="region" aria-label="Cockpit">
-        <div class="cockpit-title">
-          <h1>Cockpit</h1>
-          <span class="subtitle">PRODUCT-121 Phase 1 — Cockpit-MVP shell (PRODUCT-122)</span>
-        </div>
-
-        <div class="zone zone-tiles" aria-label="Dashboard summary" id="slot-dashboard-tiles"></div>
-
-        <div class="zone zone-left" aria-label="Attention queue">
-          <div class="zone-header">
-            <span>Attention</span>
-            <span class="question">What needs me?</span>
-          </div>
-          <div id="slot-attention"></div>
-          <div class="inbox-preview-wrap" style="margin-top:12px; border-top:1px solid var(--border,#2a2a2e); padding-top:12px;">
-            <div class="zone-header">
-              <span>Stuck Items</span>
-              <span class="question">What's blocked?</span>
+      <div class="cockpit-shell" role="region" aria-label="Operator Cockpit">
+        <!-- Command Header -->
+        <header class="cmd-header">
+          <div class="cmd-title-group">
+            <span class="cmd-eyebrow">Sovereign Fleet Command</span>
+            <div class="cmd-heading-row">
+              <h1 class="cmd-heading">Operator Cockpit</h1>
+              <span class="cmd-repo-pill" id="cmd-repo-pill">repo: detecting…</span>
             </div>
-            <div id="slot-stuck"></div>
           </div>
-          <div class="inbox-preview-wrap">
-            <div class="zone-header">
-              <span>Inbox</span>
-              <span class="question">What did they send?</span>
-            </div>
-            <div id="slot-inbox"></div>
+          <div class="cmd-controls">
+            <span class="autopilot-pill" id="cmd-autopilot-pill">
+              <span class="status-dot"></span>
+              <span id="cmd-autopilot-label">Autopilot: Parked</span>
+            </span>
+            <button type="button" class="btn btn-primary" id="cmd-fleet-cta" data-action-view="wake-fleet">Wake fleet</button>
+            <button type="button" class="btn btn-bronze" id="cmd-reserve-toggle" aria-expanded="false">+ Reserve Gap</button>
+            <button type="button" class="btn" id="cmd-refresh-btn" title="Refresh live telemetry">Refresh</button>
           </div>
-        </div>
+        </header>
 
-        <div class="zone zone-center" aria-label="Intelligence">
-          <div class="intel-stack">
-            <!-- THE READ: one synthesized sentence with confidence -->
-            <section class="intel-read" id="intel-read" aria-label="The read">
-              <div class="intel-read-label">The read</div>
-              <div class="intel-read-text" id="intel-read-text">
-                Synthesizing…
+        <!-- Inline Gap Reservation Drawer (POST /api/gap) -->
+        <section class="reserve-drawer" id="reserve-drawer" hidden aria-label="Reserve new gap">
+          <div class="reserve-head">
+            <span class="reserve-title">Reserve Verified Gap in state.db</span>
+            <button type="button" class="btn btn-xs" id="reserve-close-btn">Close</button>
+          </div>
+          <form class="reserve-grid" id="reserve-form">
+            <select class="field-select field-mono" id="res-domain" aria-label="Gap domain">
+              <option value="PRODUCT">PRODUCT</option>
+              <option value="INFRA">INFRA</option>
+              <option value="RESILIENT">RESILIENT</option>
+              <option value="CREDIBLE">CREDIBLE</option>
+              <option value="EFFECTIVE">EFFECTIVE</option>
+            </select>
+            <select class="field-select field-mono" id="res-priority" aria-label="Priority">
+              <option value="P2">P2</option>
+              <option value="P1">P1</option>
+              <option value="P0">P0</option>
+              <option value="P3">P3</option>
+            </select>
+            <select class="field-select field-mono" id="res-effort" aria-label="Effort">
+              <option value="s">effort: s</option>
+              <option value="xs">effort: xs</option>
+              <option value="m" selected>effort: m</option>
+              <option value="l">effort: l</option>
+            </select>
+            <input type="text" class="field-input field-mono" id="res-outcome" value="MISSION-010" placeholder="Outcome ID" aria-label="Outcome ID">
+            <input type="text" class="field-input" id="res-title" placeholder="Concise engineering title (1–200 chars)…" required maxlength="200" aria-label="Gap title">
+            <button type="submit" class="btn btn-primary" id="res-submit-btn">Create Gap</button>
+          </form>
+          <div class="reserve-feedback" id="reserve-feedback">Collision-safe reservation via GapStore::reserve_verified (P0/P1 linked to MISSION-010).</div>
+        </section>
+
+        <!-- 4-Card Executive Metric Strip -->
+        <section class="kpi-strip" aria-label="Executive metrics">
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Gap Ledger · state.db</span>
+              <span class="kpi-chip ok" id="kpi-drift-chip">0 drift</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" id="kpi-open-gaps">—</span>
+              <span class="kpi-unit" id="kpi-claimable-unit">open</span>
+            </div>
+            <div class="kpi-sub">
+              <span id="kpi-gap-sub">Loading registry…</span>
+              <button type="button" class="kpi-link" data-nav="agent">Full queue →</button>
+            </div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">24h Ships &amp; Leases</span>
+              <span class="kpi-chip" id="kpi-lease-chip">0 leases</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" id="kpi-ships-today">0</span>
+              <span class="kpi-unit">merged (24h)</span>
+            </div>
+            <div class="kpi-sub">
+              <span id="kpi-ci-sub">CI telemetry idle</span>
+              <button type="button" class="kpi-link" data-nav="prs">Pull requests →</button>
+            </div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Cascade &amp; Spend</span>
+              <span class="kpi-chip ok" id="kpi-posture-chip">network</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" id="kpi-cost-today">$0.00</span>
+              <span class="kpi-unit" id="kpi-slots-unit">session</span>
+            </div>
+            <div class="kpi-sub">
+              <span id="kpi-model-sub">Probing provider cascade…</span>
+              <button type="button" class="kpi-link" data-nav="models">Cascade →</button>
+            </div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">4-Pillar Posture</span>
+              <span class="kpi-chip ok" id="kpi-gh-chip">GH —</span>
+            </div>
+            <div class="pillar-mini-grid" id="kpi-pillars-grid">
+              <div class="pillar-cell"><span class="pillar-code">EFF</span><span class="pillar-grade">—</span></div>
+              <div class="pillar-cell"><span class="pillar-code">CRED</span><span class="pillar-grade">—</span></div>
+              <div class="pillar-cell"><span class="pillar-code">RES</span><span class="pillar-grade">—</span></div>
+              <div class="pillar-cell"><span class="pillar-code">ZERO</span><span class="pillar-grade">—</span></div>
+            </div>
+            <div class="kpi-sub">
+              <span id="kpi-pillar-sub">SLO check</span>
+              <button type="button" class="kpi-link" data-nav="health">Vitals →</button>
+            </div>
+          </article>
+        </section>
+
+        <!-- 3-Column Sovereign Workbench -->
+        <div class="workbench">
+          <!-- Column 1: Situation Read + Signal -->
+          <section class="panel" aria-label="Operational synthesis">
+            <div class="panel-head">
+              <div>
+                <div class="panel-eyebrow">Synthesis</div>
+                <div class="panel-title">Situation Read &amp; Signal</div>
               </div>
-              <div class="intel-read-meta" id="intel-read-meta"></div>
-            </section>
+            </div>
+            <div class="panel-body">
+              <section class="intel-read" id="intel-read" aria-label="The read">
+                <div class="intel-read-label">Current Read</div>
+                <div class="intel-read-text" id="intel-read-text">Synthesizing live repository and ambient state…</div>
+                <div class="intel-read-meta" id="intel-read-meta"></div>
+              </section>
 
-            <!-- SIGNAL: 3-4 narrative cards -->
-            <section class="intel-signal" aria-label="Signal">
-              <div class="intel-signal-label">Signal</div>
-              <div id="intel-cards">
-                <div class="brief-loading">Pattern-extracting…</div>
+              <section class="intel-signal" id="intel-cards" aria-label="Signal">
+                <div class="empty-box">Extracting operational signal…</div>
+              </section>
+
+              <section class="intel-noise" aria-label="Event evidence">
+                <button type="button" class="intel-noise-toggle" id="intel-noise-toggle" aria-expanded="false">
+                  ▶ <span id="intel-noise-count">0</span> ambient events in synthesis window
+                </button>
+                <div class="intel-noise-body" id="intel-noise-body"></div>
+              </section>
+            </div>
+          </section>
+
+          <!-- Column 2: Interactive Gap Queue / Cascade / Leases Workbench -->
+          <section class="panel" aria-label="Dispatch workbench">
+            <div class="panel-head">
+              <div>
+                <div class="panel-eyebrow">Execution Ledger</div>
+                <div class="panel-title">Queue, Cascade &amp; Leases</div>
+              </div>
+              <div class="seg-tabs" role="tablist" aria-label="Workbench view">
+                <button type="button" class="seg-tab" role="tab" data-wb-tab="queue" aria-selected="true" id="wb-tab-queue">Queue</button>
+                <button type="button" class="seg-tab" role="tab" data-wb-tab="cascade" aria-selected="false" id="wb-tab-cascade">Cascade</button>
+                <button type="button" class="seg-tab" role="tab" data-wb-tab="leases" aria-selected="false" id="wb-tab-leases">Leases</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <!-- Queue Pane -->
+              <div id="wb-pane-queue">
+                <div class="queue-toolbar">
+                  <input type="search" class="queue-search" id="wb-queue-search" placeholder="Filter by gap ID, domain, or title…" aria-label="Filter gap queue">
+                  <div class="filter-pills" id="wb-filter-pills">
+                    <button type="button" class="filter-pill active" data-qfilter="all">All</button>
+                    <button type="button" class="filter-pill" data-qfilter="claimable">Claimable</button>
+                    <button type="button" class="filter-pill" data-qfilter="high">P0 / P1</button>
+                    <button type="button" class="filter-pill" data-qfilter="leased">Leased</button>
+                  </div>
+                </div>
+                <div class="queue-rows" id="wb-queue-rows" style="margin-top:10px;">
+                  <div class="empty-box">Loading gap queue…</div>
+                </div>
+              </div>
+
+              <!-- Cascade Pane -->
+              <div id="wb-pane-cascade" hidden>
+                <div id="wb-cascade-content">
+                  <div class="empty-box">Loading provider cascade slots…</div>
+                </div>
+              </div>
+
+              <!-- Leases Pane -->
+              <div id="wb-pane-leases" hidden>
+                <div id="wb-leases-content">
+                  <div class="empty-box">Loading active file leases…</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Column 3: Advisor Console + Live Fleet/Daemon/Triage/Ambient -->
+          <div class="col-right">
+            <section class="panel" aria-label="Operations Advisor">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-eyebrow">Direct Command</div>
+                  <div class="panel-title">Advisor &amp; Quick Task</div>
+                </div>
+                <button type="button" class="btn btn-xs" data-nav="chat">Full Chat →</button>
+              </div>
+              <div class="panel-body">
+                <form class="advisor-form" id="advisor-form">
+                  <textarea class="advisor-textarea" id="advisor-input" placeholder="Ask Operations Advisor about repo state, or prefix with /task to queue work…"></textarea>
+                  <div class="advisor-bar">
+                    <span class="advisor-hint">Uses shared ProviderCascade</span>
+                    <button type="submit" class="btn btn-primary btn-xs" id="advisor-submit">Send</button>
+                  </div>
+                </form>
+                <div class="advisor-reply" id="advisor-reply" hidden></div>
               </div>
             </section>
 
-            <!-- NOISE: collapsed raw event stream -->
-            <section class="intel-noise" aria-label="Noise">
-              <button type="button" class="intel-noise-toggle"
-                      id="intel-noise-toggle" aria-expanded="false">
-                ▶ <span id="intel-noise-count">…</span> raw events fed this synthesis
-              </button>
-              <div class="intel-noise-body" id="intel-noise-body"></div>
+            <section class="panel" aria-label="Fleet and daemon telemetry">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-eyebrow">Live Runtime</div>
+                  <div class="panel-title">Fleet &amp; Daemons</div>
+                </div>
+                <div class="seg-tabs" role="tablist" aria-label="Telemetry view">
+                  <button type="button" class="seg-tab" role="tab" data-telem-tab="fleet" aria-selected="true">Fleet</button>
+                  <button type="button" class="seg-tab" role="tab" data-telem-tab="daemons" aria-selected="false">Daemons</button>
+                  <button type="button" class="seg-tab" role="tab" data-telem-tab="triage" aria-selected="false">Triage</button>
+                  <button type="button" class="seg-tab" role="tab" data-telem-tab="ambient" aria-selected="false">Ambient</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="right-actions" id="right-actions" hidden></div>
+
+                <div class="telem-pane" id="telem-pane-fleet">
+                  <div id="slot-fleet"></div>
+                </div>
+
+                <div class="telem-pane" id="telem-pane-daemons" hidden>
+                  <div id="slot-daemon-set"></div>
+                </div>
+
+                <div class="telem-pane" id="telem-pane-triage" hidden>
+                  <div class="triage-section">
+                    <div class="triage-label">Stuck Items</div>
+                    <div id="slot-stuck"></div>
+                  </div>
+                  <div class="triage-section">
+                    <div class="triage-label">Operator Attention</div>
+                    <div id="slot-attention"></div>
+                  </div>
+                  <div class="triage-section">
+                    <div class="triage-label">Agent Inbox</div>
+                    <div id="slot-inbox"></div>
+                  </div>
+                </div>
+
+                <div class="telem-pane" id="telem-pane-ambient" hidden>
+                  <div id="slot-wedge-watch"></div>
+                  <div id="slot-ambient" style="margin-top:10px;"></div>
+                </div>
+              </div>
             </section>
           </div>
-        </div>
-
-        <div class="zone zone-right" aria-label="Fleet + ambient">
-          <!-- PRODUCT-133: right-zone action overlay. Reuses center-zone
-               synthesis inputs to propose the right action for the right
-               zone's actual state (no workers → Wake, idle picker →
-               Stop+restart, sparse stream → Tail). Action-model Rule 2:
-               every empty state IS the action button. -->
-          <div class="right-actions" id="right-actions" hidden></div>
-          <div>
-            <div class="zone-header">
-              <span>Fleet</span>
-              <span class="question">What's running?</span>
-            </div>
-            <div id="slot-fleet"></div>
-          </div>
-          <!-- EFFECTIVE-026: daemon-set health panel alongside autopilot toggle -->
-          <div>
-            <div class="zone-header">
-              <span>Daemon set</span>
-              <span class="question">What's loaded?</span>
-            </div>
-            <div id="slot-daemon-set"></div>
-          </div>
-          <!-- EFFECTIVE-027: wedge-watch live-tail panel -->
-          <div class="wedge-watch-zone">
-            <div class="zone-header">
-              <span>Wedge watch</span>
-              <span class="question">What's stuck?</span>
-            </div>
-            <div id="slot-wedge-watch"></div>
-          </div>
-          <div class="ambient-collapsed" id="ambient-wrap">
-            <button class="ambient-toggle" id="ambient-toggle" type="button"
-                    aria-expanded="false">
-              ▶ Ambient stream (click to expand)
-            </button>
-            <div id="slot-ambient" style="display:none;"></div>
-          </div>
-        </div>
-
-        <div class="zone zone-footer" aria-label="Quick actions">
-          <div id="slot-quick"></div>
         </div>
       </div>
     `;
 
-    // Mount live components into slot containers. We use createElement so
-    // each component runs its own connectedCallback lifecycle inside the
-    // shadow tree.
-    this.#mount('slot-dashboard-tiles', 'chump-dashboard-tiles'); // INFRA-2215
-    this.#mount('slot-attention', 'chump-operator-attention');
-    this.#mount('slot-stuck', 'chump-stuck-items');   // PRODUCT-080
-    this.#mount('slot-inbox', 'chump-inbox');
+    // Mount primary Fleet panel immediately; mount Daemons / Triage / Ambient lazily on tab select.
     this.#mount('slot-fleet', 'chump-fleet-sidebar');
-    this.#mount('slot-daemon-set', 'chump-daemon-set-panel'); // EFFECTIVE-026
-    this.#mount('slot-wedge-watch', 'chump-wedge-watch');    // EFFECTIVE-027
-    this.#mount('slot-ambient', 'chump-ambient-viewer');
-    this.#mount('slot-quick', 'chump-quick-actions');
-    // Center: synthesize Read/Signal/Noise from ambient + gap-queue.
-    this.#synthesize();
+
+    this.#wireInteractions();
+  }
+
+  #mount(slotId, tagName) {
+    const slot = this.#shadow.getElementById(slotId);
+    if (!slot || slot.children.length > 0) return;
+    try {
+      slot.appendChild(document.createElement(tagName));
+    } catch {
+      slot.innerHTML = `<div class="empty-box">${this.#escape(tagName)} unavailable</div>`;
+    }
+  }
+
+  #wireInteractions() {
+    // Navigation links.
+    this.#shadow.querySelectorAll('[data-nav]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const target = el.dataset.nav;
+        if (target) {
+          document.dispatchEvent(new CustomEvent('chump:navigate', { detail: target }));
+        }
+      });
+    });
+
+    // Header Refresh + Fleet CTA + Reserve drawer toggle.
+    this.#shadow.getElementById('cmd-refresh-btn')?.addEventListener('click', () => {
+      this.#refreshAll();
+    });
+    this.#shadow.getElementById('cmd-fleet-cta')?.addEventListener('click', (e) => {
+      this.#onCardAction(e.currentTarget);
+    });
+
+    const reserveDrawer = this.#shadow.getElementById('reserve-drawer');
+    const reserveToggle = this.#shadow.getElementById('cmd-reserve-toggle');
+    const toggleReserve = (force) => {
+      if (!reserveDrawer || !reserveToggle) return;
+      const open = typeof force === 'boolean' ? force : reserveDrawer.hasAttribute('hidden');
+      if (open) {
+        reserveDrawer.removeAttribute('hidden');
+        reserveToggle.setAttribute('aria-expanded', 'true');
+        this.#shadow.getElementById('res-title')?.focus();
+      } else {
+        reserveDrawer.setAttribute('hidden', '');
+        reserveToggle.setAttribute('aria-expanded', 'false');
+      }
+    };
+    reserveToggle?.addEventListener('click', () => toggleReserve());
+    this.#shadow.getElementById('reserve-close-btn')?.addEventListener('click', () => toggleReserve(false));
+
+    // Reserve Gap form submission -> POST /api/gap
+    this.#shadow.getElementById('reserve-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn = this.#shadow.getElementById('res-submit-btn');
+      const fb = this.#shadow.getElementById('reserve-feedback');
+      const domain = this.#shadow.getElementById('res-domain')?.value || 'PRODUCT';
+      const priority = this.#shadow.getElementById('res-priority')?.value || 'P2';
+      const effort = this.#shadow.getElementById('res-effort')?.value || 'm';
+      const outcome_id = (this.#shadow.getElementById('res-outcome')?.value || '').trim();
+      const titleInput = this.#shadow.getElementById('res-title');
+      const title = (titleInput?.value || '').trim();
+      if (!title) return;
+
+      if (submitBtn) submitBtn.disabled = true;
+      if (fb) {
+        fb.className = 'reserve-feedback';
+        fb.textContent = 'Reserving gap in state.db…';
+      }
+      try {
+        const payload = { domain, title, priority, effort };
+        if (outcome_id) payload.outcome_id = outcome_id;
+        const r = await fetch('/api/gap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          body: JSON.stringify(payload),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) {
+          throw new Error(d.error || `HTTP ${r.status}`);
+        }
+        const createdId = d.id || d.gap_id || 'gap';
+        if (fb) {
+          fb.className = 'reserve-feedback ok';
+          fb.textContent = `Reserved ${createdId} in state.db.`;
+        }
+        if (titleInput) titleInput.value = '';
+        await this.#refreshAll();
+      } catch (err) {
+        if (fb) {
+          fb.className = 'reserve-feedback err';
+          fb.textContent = `Reservation refused: ${err.message || err}`;
+        }
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+
+    // Center workbench segmented tabs.
+    this.#shadow.querySelectorAll('[data-wb-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.#centerTab = btn.dataset.wbTab || 'queue';
+        this.#shadow.querySelectorAll('[data-wb-tab]').forEach((b) => {
+          b.setAttribute('aria-selected', String(b === btn));
+        });
+        ['queue', 'cascade', 'leases'].forEach((id) => {
+          const pane = this.#shadow.getElementById(`wb-pane-${id}`);
+          if (pane) pane.hidden = id !== this.#centerTab;
+        });
+      });
+    });
+
+    // Queue search & filter pills.
+    this.#shadow.getElementById('wb-queue-search')?.addEventListener('input', (e) => {
+      this.#queueQuery = (e.target.value || '').trim().toLowerCase();
+      if (this.#latestInputs) this.#renderQueueWorkbench(this.#latestInputs.queue);
+    });
+    this.#shadow.querySelectorAll('[data-qfilter]').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        this.#queueFilter = pill.dataset.qfilter || 'all';
+        this.#shadow.querySelectorAll('[data-qfilter]').forEach((p) => {
+          p.classList.toggle('active', p === pill);
+        });
+        if (this.#latestInputs) this.#renderQueueWorkbench(this.#latestInputs.queue);
+      });
+    });
+
+    // Right-column telemetry segmented tabs.
+    this.#shadow.querySelectorAll('[data-telem-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.#telemTab = btn.dataset.telemTab || 'fleet';
+        this.#shadow.querySelectorAll('[data-telem-tab]').forEach((b) => {
+          b.setAttribute('aria-selected', String(b === btn));
+        });
+        ['fleet', 'daemons', 'triage', 'ambient'].forEach((id) => {
+          const pane = this.#shadow.getElementById(`telem-pane-${id}`);
+          if (pane) pane.hidden = id !== this.#telemTab;
+        });
+        if (this.#telemTab === 'daemons') {
+          this.#mount('slot-daemon-set', 'chump-daemon-set-panel');
+        } else if (this.#telemTab === 'triage') {
+          this.#mount('slot-stuck', 'chump-stuck-items');
+          this.#mount('slot-attention', 'chump-operator-attention');
+          this.#mount('slot-inbox', 'chump-inbox');
+        } else if (this.#telemTab === 'ambient' && !this.#ambientMounted) {
+          this.#ambientMounted = true;
+          this.#mount('slot-wedge-watch', 'chump-wedge-watch');
+          this.#mount('slot-ambient', 'chump-ambient-viewer');
+        }
+      });
+    });
+
     // Noise toggle.
     const noiseToggle = this.#shadow.getElementById('intel-noise-toggle');
     const noiseBody = this.#shadow.getElementById('intel-noise-body');
     noiseToggle?.addEventListener('click', () => {
       const open = noiseBody.classList.toggle('open');
       noiseToggle.setAttribute('aria-expanded', String(open));
-      noiseToggle.firstChild.textContent = open ? '▼ ' : '▶ ';
+      if (noiseToggle.firstChild) noiseToggle.firstChild.textContent = open ? '▼ ' : '▶ ';
     });
 
-    // Wire ambient toggle.
-    const toggle = this.#shadow.getElementById('ambient-toggle');
-    const ambientSlot = this.#shadow.getElementById('slot-ambient');
-    const wrap = this.#shadow.getElementById('ambient-wrap');
-    toggle?.addEventListener('click', () => {
-      this.#ambientExpanded = !this.#ambientExpanded;
-      ambientSlot.style.display = this.#ambientExpanded ? '' : 'none';
-      wrap.classList.toggle('ambient-expanded', this.#ambientExpanded);
-      wrap.classList.toggle('ambient-collapsed', !this.#ambientExpanded);
-      toggle.setAttribute('aria-expanded', String(this.#ambientExpanded));
-      toggle.textContent = this.#ambientExpanded
-        ? '▼ Ambient stream (click to collapse)'
-        : '▶ Ambient stream (click to expand)';
+    // Advisor / Quick Task form.
+    this.#shadow.getElementById('advisor-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = this.#shadow.getElementById('advisor-input');
+      const submit = this.#shadow.getElementById('advisor-submit');
+      const replyBox = this.#shadow.getElementById('advisor-reply');
+      const text = (input?.value || '').trim();
+      if (!text || !replyBox) return;
+
+      if (submit) {
+        submit.disabled = true;
+        submit.textContent = 'Running…';
+      }
+      replyBox.removeAttribute('hidden');
+      replyBox.textContent = 'Routing via ProviderCascade…';
+
+      try {
+        if (text.startsWith('/task ')) {
+          const title = text.slice(6).trim();
+          const r = await fetch('/api/shortcut/task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+          replyBox.textContent = d.message || `Task created: ${title}`;
+          if (input) input.value = '';
+        } else {
+          const r = await fetch('/api/advisor/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const d = await r.json();
+          replyBox.textContent = d.reply || '(empty response)';
+        }
+      } catch (err) {
+        replyBox.textContent = `Advisor request failed (${err.message || err}). Open Full Chat to inspect provider status.`;
+      } finally {
+        if (submit) {
+          submit.disabled = false;
+          submit.textContent = 'Send';
+        }
+      }
     });
   }
 
-  #mount(slotId, tagName) {
-    const slot = this.#shadow.getElementById(slotId);
-    if (!slot) return;
-    try {
-      slot.appendChild(document.createElement(tagName));
-    } catch (e) {
-      slot.innerHTML = `<div class="center-placeholder">
-        <strong>${tagName}</strong>missing — script not loaded?
-      </div>`;
-    }
+  async #refreshAll() {
+    await this.#synthesize();
   }
 
-  // ── Synthesis pipeline: ambient + gap-queue → Read / Signal / Noise ──────
-  //
-  // ALGORITHM (also documented in docs/product/COCKPIT_SYNTHESIS.md):
-  //
-  //   inputs  = /api/ambient/recent?limit=200 + /api/gap-queue
-  //   ships   = events where kind in {pr_merged, gap_shipped, gap_done,
-  //                                    pr_closed_merged}
-  //   feedback= events where kind in {feedback_emitted, operator_feedback,
-  //                                    ambient_feedback}
-  //   queue   = gaps where status='open', sorted by priority then effort
-  //
-  //   THE READ = pick highest-signal narrative:
-  //     (a) if recent (<10min) feedback exists referencing an open gap by
-  //         subject substring  → "active reshape" read
-  //     (b) elif ships in last 24h > 0
-  //         → "{N} PR shipped, {top_domain} dominant" read
-  //     (c) else "fleet idle for {since_last_ship}" read
-  //   confidence = high if data window ≥ 12h AND ≥ 3 events; medium if
-  //                ≥ 1 event in window; low otherwise
-  //
-  //   SIGNAL cards (in this fixed order — NOT ranked):
-  //     1. Today's arc      — count ships in 24h, list top 2 PRs
-  //     2. Active reshape   — most recent feedback event with open-gap ref
-  //     3. Counter-evidence — hard-coded anti-pattern: phase ships but no
-  //                           external dogfooders (PRODUCT-119 status)
-  //     4. Next decision    — highest-priority unclaimed open gap w/ AC
-  //
-  //   NOISE = total raw event count + ALL events fed the synthesis (drillable)
-  //
-  // BIAS MITIGATIONS:
-  //   - synthesis is templated, not LLM/opinion
-  //   - every card has 🚩 wrong button → emits FEEDBACK kind=preference
-  //     vote=-1 subject=cockpit_card_<id> for tomorrow's re-rank
-  //   - counter-evidence card is REQUIRED — never hidden, even if good news
-  //   - confidence indicator on the Read (high/medium/low dot)
-  //   - all evidence (raw events) one click away under Noise
   async #synthesize() {
-    const inputs = await this.#fetchInputs();
+    // Phase 1: Fast <60ms local SQLite/in-memory endpoints — paint immediately!
+    const fast = await this.#fetchFastInputs();
+    const merged = {
+      ...(this.#latestInputs || { autopilot: null, driftStatus: null, stack: {}, pillars: {} }),
+      ...fast,
+    };
+    this.#latestInputs = merged;
+    this.#paintAll(merged);
+
+    // Phase 2: Slow subprocess-backed endpoints — enrich in background without blocking paint.
+    this.#fetchSlowInputs().then((slow) => {
+      if (!this.isConnected) return;
+      this.#latestInputs = { ...(this.#latestInputs || merged), ...slow };
+      this.#paintAll(this.#latestInputs);
+    }).catch(() => {});
+  }
+
+  #paintAll(inputs) {
+    this.#renderKpis(inputs);
     const synth = this.#computeSynthesis(inputs);
     this.#renderRead(synth.read, synth.confidence, synth.evidenceCount);
     this.#renderSignal(synth.cards);
     this.#renderNoise(inputs.events);
+    this.#renderQueueWorkbench(inputs.queue);
+    this.#renderCascadeWorkbench(inputs.slots, inputs.stack);
+    this.#renderLeasesWorkbench(inputs.summary);
     this.#renderRightZoneAction(inputs);
   }
 
-  // PRODUCT-133: right-zone action overlay. The center zone proposes
-  // intelligence; the right zone's evidence panels also surface a primary
-  // action when their underlying state is degraded. Action-model Rule 2:
-  // empty state IS the action button.
-  //
-  // Decision ladder (first match wins):
-  //   1. autopilot off + queue has dispatchable → [Wake fleet]
-  //   2. autopilot on + 0 ships in 24h + sparse ambient → [Restart autopilot]
-  //   3. ambient stream sparse (<5 events) → [Copy tail command]
-  //   4. None of above → overlay hidden (right zone fine as-is)
+  async #fetchFastInputs() {
+    const [eventsR, queueR, summaryR, costR, slotsR, repoR] = await Promise.allSettled([
+      fetch('/api/ambient/recent?limit=80'),
+      fetch('/api/gap-queue'),
+      fetch('/api/dashboard-summary'),
+      fetch('/api/telemetry/cost'),
+      fetch('/api/slots'),
+      fetch('/api/repo/context'),
+    ]);
+
+    const jsonOr = async (settled, fallback) => {
+      try {
+        if (settled.status === 'fulfilled' && settled.value.ok) {
+          return await settled.value.json();
+        }
+      } catch {}
+      return fallback;
+    };
+
+    const eventsDoc = await jsonOr(eventsR, {});
+    const queueDoc = await jsonOr(queueR, {});
+    const summary = await jsonOr(summaryR, {});
+    const cost = await jsonOr(costR, {});
+    const slotsDoc = await jsonOr(slotsR, {});
+    const repo = await jsonOr(repoR, {});
+
+    return {
+      events: Array.isArray(eventsDoc.events) ? eventsDoc.events : [],
+      queue: Array.isArray(queueDoc.gaps) ? queueDoc.gaps : [],
+      claimableCount: queueDoc.claimable_count ?? null,
+      summary: summary || {},
+      cost: cost || {},
+      slots: Array.isArray(slotsDoc.slots) ? slotsDoc.slots : [],
+      repo: repo || {},
+    };
+  }
+
+  async #fetchSlowInputs() {
+    const [autopilotR, driftR, stackR, pillarsR] = await Promise.allSettled([
+      fetch('/api/autopilot/status'),
+      fetch('/api/gap/drift-status'),
+      fetch('/api/stack-status'),
+      fetch('/api/health/pillars'),
+    ]);
+
+    const jsonOr = async (settled, fallback) => {
+      try {
+        if (settled.status === 'fulfilled' && settled.value.ok) {
+          return await settled.value.json();
+        }
+      } catch {}
+      return fallback;
+    };
+
+    return {
+      autopilot: await jsonOr(autopilotR, null),
+      driftStatus: await jsonOr(driftR, null),
+      stack: (await jsonOr(stackR, {})) || {},
+      pillars: (await jsonOr(pillarsR, {})) || {},
+    };
+  }
+
+  #renderKpis({ queue, claimableCount, driftStatus, summary, stack, cost, pillars, slots, repo, autopilot }) {
+    // Header repo & autopilot controls.
+    const repoPill = this.#shadow.getElementById('cmd-repo-pill');
+    if (repoPill) {
+      const root = String(repo.effective_root || '');
+      const name = root ? root.split('/').filter(Boolean).pop() : 'workspace';
+      repoPill.textContent = `repo: ${name}`;
+      repoPill.title = root || 'Active Chump repository';
+    }
+
+    const autopilotRunning = !!(autopilot && (
+      autopilot.actual_state === 'running'
+      || autopilot.actual_state === 'starting'
+      || autopilot.desired_enabled === true
+    ));
+    const apPill = this.#shadow.getElementById('cmd-autopilot-pill');
+    const apLabel = this.#shadow.getElementById('cmd-autopilot-label');
+    const apCta = this.#shadow.getElementById('cmd-fleet-cta');
+    if (apPill && apLabel) {
+      apPill.classList.toggle('running', autopilotRunning);
+      apLabel.textContent = autopilotRunning ? 'Autopilot: Running' : 'Autopilot: Parked';
+    }
+    if (apCta && !apCta.disabled) {
+      apCta.dataset.actionView = autopilotRunning ? 'restart-fleet' : 'wake-fleet';
+      apCta.textContent = autopilotRunning ? 'Stop + restart' : 'Wake fleet';
+    }
+
+    // KPI 1: Gap Ledger
+    const openGaps = queue.filter((g) => (g.status || 'open') === 'open');
+    const claimable = claimableCount != null
+      ? claimableCount
+      : openGaps.filter((g) => g.preflight_status === 'claimable' || (!g.assigned_session && !g.claimed_by)).length;
+    const highPrio = openGaps.filter((g) => g.priority === 'P0' || g.priority === 'P1').length;
+    const driftCount = driftStatus?.count ?? queue.filter((g) => g.closed_pr && (g.status || 'open') === 'open').length;
+
+    const openEl = this.#shadow.getElementById('kpi-open-gaps');
+    const unitEl = this.#shadow.getElementById('kpi-claimable-unit');
+    const gapSub = this.#shadow.getElementById('kpi-gap-sub');
+    const driftChip = this.#shadow.getElementById('kpi-drift-chip');
+    if (openEl) openEl.textContent = String(openGaps.length);
+    if (unitEl) unitEl.textContent = `open · ${claimable} claimable`;
+    if (gapSub) gapSub.textContent = `${highPrio} P0/P1 priority items`;
+    if (driftChip) {
+      driftChip.textContent = driftCount > 0 ? `${driftCount} drift` : '0 drift';
+      driftChip.className = `kpi-chip ${driftCount > 0 ? 'warn' : 'ok'}`;
+    }
+
+    // KPI 2: 24h Ships & Leases
+    const ships = Number.isFinite(summary.today_ships) ? summary.today_ships : 0;
+    const leases = Array.isArray(summary.active_leases) ? summary.active_leases : [];
+    const ci = summary.ci_qa_score || null;
+    const shipsEl = this.#shadow.getElementById('kpi-ships-today');
+    const leaseChip = this.#shadow.getElementById('kpi-lease-chip');
+    const ciSub = this.#shadow.getElementById('kpi-ci-sub');
+    if (shipsEl) shipsEl.textContent = String(ships);
+    if (leaseChip) {
+      leaseChip.textContent = `${leases.length} active lease${leases.length === 1 ? '' : 's'}`;
+      leaseChip.className = `kpi-chip ${leases.length > 0 ? 'ok' : ''}`;
+    }
+    if (ciSub) {
+      ciSub.textContent = ci && typeof ci.pct === 'number'
+        ? `CI ${ci.pct.toFixed(0)}% (${ci.sample_size} runs)`
+        : (leases.length > 0 ? `Holding ${leases[0].gap}` : 'No active file locks');
+    }
+
+    // KPI 3: Cascade & Spend
+    const dollars = Number(cost.session_cost_usd ?? cost.total_cost_usd ?? cost.cost_today ?? 0);
+    const airgap = stack.air_gap_mode === true;
+    const lastModel = stack.llm_last_completion?.label || stack.primary_backend || (slots[0]?.name) || 'cascade ready';
+    const costEl = this.#shadow.getElementById('kpi-cost-today');
+    const slotsUnit = this.#shadow.getElementById('kpi-slots-unit');
+    const postureChip = this.#shadow.getElementById('kpi-posture-chip');
+    const modelSub = this.#shadow.getElementById('kpi-model-sub');
+    if (costEl) costEl.textContent = `$${dollars.toFixed(2)}`;
+    if (slotsUnit) slotsUnit.textContent = `${slots.length} slot${slots.length === 1 ? '' : 's'}`;
+    if (postureChip) {
+      postureChip.textContent = airgap ? 'air-gap' : 'network';
+      postureChip.className = 'kpi-chip ok';
+    }
+    if (modelSub) modelSub.textContent = this.#truncate(String(lastModel), 28);
+
+    // KPI 4: 4-Pillar Posture & GitHub Budget
+    const rl = stack.github_rate_limit || stack.gh_rate_limit;
+    const ghChip = this.#shadow.getElementById('kpi-gh-chip');
+    if (ghChip && rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
+      const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
+      ghChip.textContent = `GH ${pct}%`;
+      ghChip.className = `kpi-chip ${pct < 20 ? 'err' : pct < 50 ? 'warn' : 'ok'}`;
+    }
+    const pGrid = this.#shadow.getElementById('kpi-pillars-grid');
+    const pSub = this.#shadow.getElementById('kpi-pillar-sub');
+    if (pGrid && Array.isArray(pillars.pillars) && pillars.pillars.length > 0) {
+      const shortMap = { EFFECTIVE: 'EFF', CREDIBLE: 'CRED', RESILIENT: 'RES', 'ZERO-WASTE': 'ZERO' };
+      pGrid.innerHTML = pillars.pillars.map((p) => {
+        const code = shortMap[p.pillar] || String(p.pillar || '').slice(0, 4);
+        const g = String(p.grade || pillars.fleet_grade || '—');
+        return `<div class="pillar-cell" title="${this.#escape(p.pillar)}: ${p.pickable_count ?? 0} pickable, ${p.p0_count ?? 0} P0">
+          <span class="pillar-code">${this.#escape(code)}</span>
+          <span class="pillar-grade grade-${this.#escape(g)}">${this.#escape(g)}</span>
+        </div>`;
+      }).join('');
+    }
+    if (pSub) {
+      const breaches = Number(pillars.fleet_slo_breaches ?? 0);
+      pSub.textContent = breaches === 0 ? '0 fleet SLO breaches' : `${breaches} SLO breach${breaches === 1 ? '' : 'es'}`;
+    }
+
+    // Update Center Workbench tab counts.
+    const qTab = this.#shadow.getElementById('wb-tab-queue');
+    const cTab = this.#shadow.getElementById('wb-tab-cascade');
+    const lTab = this.#shadow.getElementById('wb-tab-leases');
+    if (qTab) qTab.textContent = `Queue (${openGaps.length})`;
+    if (cTab) cTab.textContent = `Cascade (${slots.length})`;
+    if (lTab) lTab.textContent = `Leases (${leases.length})`;
+  }
+
+  #renderQueueWorkbench(queue) {
+    const host = this.#shadow.getElementById('wb-queue-rows');
+    if (!host) return;
+    const open = (queue || []).filter((g) => (g.status || 'open') === 'open');
+
+    const filtered = open.filter((g) => {
+      const isLeased = !!(g.assigned_session || g.claimed_by);
+      const isClaimable = g.preflight_status === 'claimable' || !isLeased;
+      if (this.#queueFilter === 'claimable' && !isClaimable) return false;
+      if (this.#queueFilter === 'leased' && !isLeased) return false;
+      if (this.#queueFilter === 'high' && g.priority !== 'P0' && g.priority !== 'P1') return false;
+      if (this.#queueQuery) {
+        const hay = `${g.id || ''} ${g.domain || ''} ${g.pillar || ''} ${g.title || ''}`.toLowerCase();
+        if (!hay.includes(this.#queueQuery)) return false;
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      host.innerHTML = `<div class="empty-box">No gaps match the current filter. Click <strong>+ Reserve Gap</strong> above to add work to state.db.</div>`;
+      return;
+    }
+
+    host.innerHTML = filtered.slice(0, 25).map((g) => {
+      const isLeased = !!(g.assigned_session || g.claimed_by);
+      const prioHigh = g.priority === 'P0' || g.priority === 'P1';
+      const holder = g.assigned_session || g.claimed_by || '';
+      const shortHolder = holder ? holder.slice(0, 28) : '';
+      return `
+        <article class="q-row" data-gap-id="${this.#escape(g.id)}">
+          <div class="q-row-head">
+            <span class="q-id">${this.#escape(g.id)}</span>
+            <span class="q-prio ${prioHigh ? 'prio-high' : ''}">${this.#escape(g.priority || 'P2')}/${this.#escape(g.effort || 'm')}</span>
+            ${g.domain ? `<span class="q-domain">${this.#escape(g.domain)}</span>` : ''}
+            <span class="q-status ${isLeased ? 'leased' : ''}">${isLeased ? 'leased' : 'claimable'}</span>
+          </div>
+          <div class="q-title">${this.#escape(g.title || '(untitled gap)')}</div>
+          <div class="q-foot">
+            <span class="q-lease-meta">${shortHolder ? `lease: ${this.#escape(shortHolder)}` : (g.acceptance_criteria_count ? `${g.acceptance_criteria_count} acceptance criteria` : 'ready for claim')}</span>
+            <div class="q-actions">
+              ${!isLeased ? `<button type="button" class="btn btn-xs" data-q-claim="${this.#escape(g.id)}">Claim</button>` : ''}
+              <button type="button" class="btn btn-primary btn-xs" data-q-dispatch="${this.#escape(g.id)}">Dispatch</button>
+            </div>
+          </div>
+        </article>
+      `;
+    }).join('');
+
+    host.querySelectorAll('[data-q-claim]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.qClaim;
+        if (!id) return;
+        btn.disabled = true;
+        btn.textContent = 'Claiming…';
+        try {
+          const r = await fetch(`/api/gap/claim/${encodeURIComponent(id)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+          btn.textContent = 'Claimed';
+          setTimeout(() => this.#refreshAll(), 800);
+        } catch (err) {
+          btn.textContent = `Failed`;
+          btn.title = String(err.message || err);
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Claim'; }, 2500);
+        }
+      });
+    });
+
+    host.querySelectorAll('[data-q-dispatch]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.qDispatch;
+        if (!id) return;
+        btn.disabled = true;
+        btn.textContent = 'Dispatching…';
+        try {
+          const r = await fetch(`/api/gap/work/${encodeURIComponent(id)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          btn.textContent = 'Dispatched';
+          setTimeout(() => this.#refreshAll(), 1200);
+        } catch (err) {
+          btn.textContent = 'Error';
+          btn.title = String(err.message || err);
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Dispatch'; }, 2500);
+        }
+      });
+    });
+  }
+
+  #renderCascadeWorkbench(slots, stack) {
+    const host = this.#shadow.getElementById('wb-cascade-content');
+    if (!host) return;
+    if (!slots || slots.length === 0) {
+      const fallbackBackend = stack?.primary_backend || 'local / unconfigured';
+      host.innerHTML = `<div class="empty-box">No multi-slot cascade active (primary backend: <code>${this.#escape(fallbackBackend)}</code>). Configure slots in Settings.</div>`;
+      return;
+    }
+
+    const rows = slots.map((s) => {
+      const p50 = s.latency_ms_p50 != null ? `${Math.round(s.latency_ms_p50)} ms` : '—';
+      const tps = s.avg_tokens_per_sec != null ? `${s.avg_tokens_per_sec.toFixed(1)} tok/s` : '—';
+      const ok = Number(s.success_count ?? 0);
+      const fail = Number(s.sanity_fail_count ?? 0);
+      return `
+        <tr>
+          <td class="mono-cell">${this.#escape(s.name)}</td>
+          <td class="mono-cell">${p50}</td>
+          <td class="mono-cell">${tps}</td>
+          <td class="mono-cell">${ok} ok / ${fail} fail</td>
+        </tr>
+      `;
+    }).join('');
+
+    host.innerHTML = `
+      <table class="data-table" aria-label="Provider cascade slots">
+        <thead>
+          <tr>
+            <th>Slot</th>
+            <th>p50 Latency</th>
+            <th>Throughput</th>
+            <th>Receipts</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button type="button" class="btn btn-xs" id="wb-cascade-settings">Configure Slot Toggles →</button>
+      </div>
+    `;
+    host.querySelector('#wb-cascade-settings')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+    });
+  }
+
+  #renderLeasesWorkbench(summary) {
+    const host = this.#shadow.getElementById('wb-leases-content');
+    if (!host) return;
+    const leases = Array.isArray(summary?.active_leases) ? summary.active_leases : [];
+    if (leases.length === 0) {
+      host.innerHTML = `<div class="empty-box">No active file leases in <code>.chump-locks/</code>. Claiming a gap acquires path-scoped collision protection automatically.</div>`;
+      return;
+    }
+    const rows = leases.map((l) => {
+      const exp = l.expires_at ? this.#until(new Date(l.expires_at)) : 'active';
+      return `
+        <tr>
+          <td class="mono-cell">${this.#escape(l.gap || '—')}</td>
+          <td class="mono-cell">${this.#escape(l.session_id || l.holder || 'local-session')}</td>
+          <td class="mono-cell">${this.#escape(exp)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    host.innerHTML = `
+      <table class="data-table" aria-label="Active file leases">
+        <thead>
+          <tr>
+            <th>Gap</th>
+            <th>Session</th>
+            <th>Lease TTL</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  // PRODUCT-133: right-zone action overlay.
   #renderRightZoneAction({ events, queue, autopilot }) {
     const overlay = this.#shadow.getElementById('right-actions');
     if (!overlay) return;
@@ -609,8 +1772,7 @@ class ChumpViewCockpit extends HTMLElement {
     const dispatchable = (queue || []).some((g) =>
       (g.status || 'open') === 'open'
       && (g.priority === 'P0' || g.priority === 'P1')
-      && Array.isArray(g.acceptance_criteria) && g.acceptance_criteria.length > 0
-      && !g.claimed_by && !g.assignee
+      && !g.claimed_by && !g.assigned_session
     );
     const recentEvents = (events || []).length;
     let html = '';
@@ -628,13 +1790,6 @@ class ChumpViewCockpit extends HTMLElement {
         </span>
         <button class="right-actions-btn" data-action-view="restart-fleet">Stop + restart</button>
       `;
-    } else if (recentEvents < 5) {
-      html = `
-        <span class="right-actions-text">
-          <strong>Ambient stream sparse.</strong> Stream may not be wired here.
-        </span>
-        <button class="right-actions-btn" data-action-view="copy-tail">Copy tail command</button>
-      `;
     } else {
       overlay.setAttribute('hidden', '');
       overlay.innerHTML = '';
@@ -648,92 +1803,54 @@ class ChumpViewCockpit extends HTMLElement {
     }
   }
 
-  async #fetchInputs() {
-    const [eventsR, queueR, autopilotR, driftR] = await Promise.allSettled([
-      fetch('/api/ambient/recent?limit=200'),
-      fetch('/api/gap-queue'),
-      fetch('/api/autopilot/status'),
-      fetch('/api/gap/drift-status'),  // PRODUCT-127: drift count from state.db
-    ]);
-    let events = [];
-    let queue = [];
-    let autopilot = null;
-    let driftStatus = null;
-    try {
-      if (eventsR.status === 'fulfilled' && eventsR.value.ok) {
-        const d = await eventsR.value.json();
-        events = d.events || [];
-      }
-    } catch {}
-    try {
-      if (queueR.status === 'fulfilled' && queueR.value.ok) {
-        const d = await queueR.value.json();
-        queue = d.gaps || [];
-      }
-    } catch {}
-    try {
-      if (autopilotR.status === 'fulfilled' && autopilotR.value.ok) {
-        autopilot = await autopilotR.value.json();
-      }
-    } catch {}
-    try {
-      if (driftR.status === 'fulfilled' && driftR.value.ok) {
-        driftStatus = await driftR.value.json();
-      }
-    } catch {}
-    return { events, queue, autopilot, driftStatus };
-  }
-
-  #computeSynthesis({ events, queue, autopilot, driftStatus }) {
+  #computeSynthesis({ events, queue, autopilot, driftStatus, slots, summary }) {
     const now = Date.now();
     const dayMs = 24 * 3600 * 1000;
     const tenMin = 10 * 60 * 1000;
-    const SHIP_KINDS = new Set([
-      'pr_merged', 'gap_shipped', 'gap_done', 'pr_closed_merged',
-    ]);
-    const FEEDBACK_KINDS = new Set([
-      'feedback_emitted', 'operator_feedback', 'ambient_feedback',
-    ]);
+    const SHIP_KINDS = new Set(['pr_merged', 'gap_shipped', 'gap_done', 'pr_closed_merged']);
+    const FEEDBACK_KINDS = new Set(['feedback_emitted', 'operator_feedback', 'ambient_feedback']);
 
-    const tsOf = (e) => e.ts ? new Date(e.ts).getTime() : 0;
+    const tsOf = (e) => (e.ts ? new Date(e.ts).getTime() : 0);
     const within = (e, ms) => (now - tsOf(e)) < ms;
 
-    const ships24h   = events.filter((e) => SHIP_KINDS.has((e.kind || '').toLowerCase()) && within(e, dayMs));
-    const recentFb   = events.filter((e) => FEEDBACK_KINDS.has((e.kind || '').toLowerCase()) && within(e, tenMin));
-    const lastShip   = events.find((e) => SHIP_KINDS.has((e.kind || '').toLowerCase()));
-    const openGaps   = queue.filter((g) => (g.status || 'open') === 'open');
-    const nextDec    = openGaps
-      .filter((g) => Array.isArray(g.acceptance_criteria) && g.acceptance_criteria.length > 0)
+    const ships24h = events.filter((e) => SHIP_KINDS.has((e.kind || '').toLowerCase()) && within(e, dayMs));
+    const recentFb = events.filter((e) => FEEDBACK_KINDS.has((e.kind || '').toLowerCase()) && within(e, tenMin));
+    const lastShip = events.find((e) => SHIP_KINDS.has((e.kind || '').toLowerCase()));
+    const openGaps = queue.filter((g) => (g.status || 'open') === 'open');
+    const activeLeases = Array.isArray(summary?.active_leases) ? summary.active_leases : [];
+    const nextDec = openGaps
+      .filter((g) => !g.assigned_session && !g.claimed_by)
       .sort((a, b) => {
         const o = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
         return (o[a.priority] ?? 9) - (o[b.priority] ?? 9);
       })[0];
 
-    // ─ THE READ ────────────────────────────────────────────────────────────
     let read, confidence;
     if (recentFb.length > 0) {
       const fb = recentFb[0];
-      const subj = fb.subject || fb.body?.subject || 'unspecified';
+      const subj = fb.subject || fb.body?.subject || 'operator signal';
       const ago = this.#ago(new Date(tsOf(fb)));
-      read = `Your "${subj}" feedback (${ago}) is reshaping current work. Synthesis is responding live.`;
+      read = `Operator feedback "${subj}" (${ago}) is active in the coordination stream.`;
       confidence = 'high';
     } else if (ships24h.length > 0) {
       const n = ships24h.length;
       const sinceLast = lastShip ? this.#ago(new Date(tsOf(lastShip))) : 'recently';
-      read = `${n} ship${n === 1 ? '' : 's'} in the last 24h. Most recent ${sinceLast}.`;
+      read = `${n} verified ship${n === 1 ? '' : 's'} landed in the last 24h (latest ${sinceLast}); ${openGaps.length} gaps open in state.db.`;
       confidence = ships24h.length >= 3 ? 'high' : 'medium';
+    } else if (activeLeases.length > 0) {
+      read = `${activeLeases.length} active file lease${activeLeases.length === 1 ? '' : 's'} in flight (${activeLeases.map((l) => l.gap).slice(0, 2).join(', ')}); ${openGaps.length} open gaps in registry.`;
+      confidence = 'high';
     } else if (lastShip) {
-      read = `Fleet idle — no ships in 24h. Last ship was ${this.#ago(new Date(tsOf(lastShip)))}.`;
+      read = `Fleet idle — no ships in 24h (last ship ${this.#ago(new Date(tsOf(lastShip)))}). ${openGaps.length} open gaps ready for claim or autopilot dispatch.`;
       confidence = 'medium';
     } else {
-      read = 'No recent activity in ambient. Either the fleet hasn\'t shipped yet, or ambient.jsonl isn\'t being read here.';
-      confidence = 'low';
+      read = `Supervisor standing by with ${openGaps.length} open gaps in state.db and ${slots.length} cascade slots configured.`;
+      confidence = openGaps.length > 0 ? 'medium' : 'low';
     }
 
-    // ─ SIGNAL CARDS ────────────────────────────────────────────────────────
     const cards = [];
 
-    // Card 1: Today's arc — PRODUCT-128 (Wake-fleet action when idle + autopilot off)
+    // Card 1: Today's arc (action when idle + autopilot off)
     const autopilotRunning = !!(autopilot && (
       autopilot.actual_state === 'running'
       || autopilot.actual_state === 'starting'
@@ -743,175 +1860,84 @@ class ChumpViewCockpit extends HTMLElement {
       const topPrs = ships24h
         .filter((e) => e.pr_number)
         .slice(0, 2)
-        .map((e) => `#${e.pr_number}`)
-        .join(' + ');
+        .map((e) => `pull/${e.pr_number}`)
+        .join(', ');
       cards.push({
         id: 'todays-arc',
-        icon: '📈',
+        tag: 'ARC',
         title: `Today's arc — ${ships24h.length} ship${ships24h.length === 1 ? '' : 's'}`,
-        detail: topPrs ? `Most recent: ${topPrs}` : 'No PR numbers attached.',
-        actions: [{ label: 'see ships', view: 'noise' }],
+        detail: topPrs ? `Recent merges: ${topPrs}` : 'Verified commits recorded in ambient stream.',
+        actions: [{ label: 'Inspect events', view: 'noise' }],
       });
     } else if (!autopilotRunning) {
-      // Idle + autopilot off → propose [Wake fleet]
       cards.push({
         id: 'todays-arc',
-        icon: '📈',
+        tag: 'ARC',
         title: `Today's arc — zero ships, autopilot off`,
-        detail: `Fleet is parked. Wake autopilot to start the dispatch loop, or pick a one-off gap manually.`,
+        detail: `Fleet is parked. Wake autopilot to start autonomous dispatch, or claim a gap directly in the center workbench.`,
         actions: [
           { label: 'Wake fleet', view: 'wake-fleet', primary: true },
-          { label: 'see fleet panel', view: 'fleet' },
+          { label: 'Inspect fleet', view: 'fleet' },
         ],
       });
     } else {
-      // Idle but autopilot is on — diff diagnosis
       const lastErr = autopilot?.last_error;
       cards.push({
         id: 'todays-arc',
-        icon: '📈',
+        tag: 'ARC',
         title: `Today's arc — zero ships (autopilot on)`,
         detail: lastErr
-          ? `Autopilot running but picker stuck. Last error: ${this.#truncate(String(lastErr), 90)}`
-          : `Autopilot on but nothing's shipping. Picker may be wedged or queue is dry.`,
+          ? `Autopilot running with picker error: ${this.#truncate(String(lastErr), 90)}`
+          : `Autopilot running with zero merges in 24h. Restart the loop if the picker is stalled.`,
         actions: [
           { label: 'Stop + restart', view: 'restart-fleet', primary: true },
-          { label: 'see fleet panel', view: 'fleet' },
+          { label: 'Inspect fleet', view: 'fleet' },
         ],
       });
     }
 
-    // Card 1b: Gap-store drift — PRODUCT-127 (Repair-drift action)
-    // Prefer the authoritative /api/gap/drift-status count; fall back to
-    // local queue heuristic (closed_pr + status=open) when the endpoint is
-    // unavailable (e.g. binary not rebuilt yet after this change lands).
+    // Card 2: Gap-store drift — PRODUCT-127
     const apiDriftCount = driftStatus?.count ?? null;
-    const localDriftCount = queue.filter((g) =>
-      g.closed_pr && (g.status || 'open') === 'open'
-    ).length;
+    const localDriftCount = queue.filter((g) => g.closed_pr && (g.status || 'open') === 'open').length;
     const driftCount = apiDriftCount !== null ? apiDriftCount : localDriftCount;
     if (driftCount >= 1) {
       cards.push({
         id: 'gap-store-drift',
-        icon: '🧹',
-        title: `Gap drift: ${driftCount} instance${driftCount === 1 ? '' : 's'}`,
-        detail: `${driftCount} gap${driftCount === 1 ? '' : 's'} with closed_pr set but status still 'open'. Picker may re-claim already-shipped work. One-click repair reconciles state.db.`,
-        actions: [
-          { label: 'Repair drift', view: 'repair-drift', primary: true },
-        ],
+        tag: 'DRIFT',
+        title: `Registry drift — ${driftCount} stale open row${driftCount === 1 ? '' : 's'}`,
+        detail: `${driftCount} gap${driftCount === 1 ? '' : 's'} carry closed_pr receipts while status remains open.`,
+        actions: [{ label: 'Repair drift', view: 'repair-drift', primary: true }],
       });
     }
 
-    // Card 2: Active reshape (only if feedback exists)
-    if (recentFb.length > 0) {
-      const fb = recentFb[0];
-      const subj = fb.subject || fb.body?.subject || 'unspecified';
-      cards.push({
-        id: 'active-reshape',
-        icon: '🔄',
-        title: `Active reshape — "${subj}"`,
-        detail: `Feedback emitted ${this.#ago(new Date(tsOf(fb)))}. Synthesis demoting this card if you 🚩 it.`,
-        actions: [{ label: 'see feedback', href: '#', view: 'noise' }],
-      });
-    }
-
-    // Card 1c: No workers + queue has P1 → propose dispatch (PRODUCT-130)
-    const fleetWorkers = autopilot?.recent_events?.filter?.((e) =>
-      (e.kind || '').includes('worker') || (e.kind || '').includes('claim_')) || [];
-    const noWorkers = !autopilotRunning && fleetWorkers.length === 0;
-    const dispatchable = openGaps
-      .filter((g) => g.priority === 'P1' || g.priority === 'P0')
-      .filter((g) => !g.claimed_by && !g.assignee)
-      .filter((g) => Array.isArray(g.acceptance_criteria) && g.acceptance_criteria.length > 0)
-      .sort((a, b) => {
-        const o = { P0: 0, P1: 1 };
-        return (o[a.priority] ?? 9) - (o[b.priority] ?? 9);
-      })[0];
-    if (noWorkers && dispatchable) {
-      cards.push({
-        id: 'no-workers-dispatch',
-        icon: '🚀',
-        title: `No workers running — top ${dispatchable.priority} ready to dispatch`,
-        detail: `${dispatchable.id}: ${this.#truncate(dispatchable.title || '', 75)}`,
-        actions: [
-          { label: `Dispatch ${dispatchable.id}`, view: 'dispatch-gap', gapId: dispatchable.id, primary: true },
-          { label: 'see gap', view: 'gap', gapId: dispatchable.id },
-        ],
-      });
-    }
-
-    // Card 2b: Fleet-health pattern (only if a meaningful anomaly exists)
-    const anomalyKinds = {};
-    for (const e of events) {
-      const k = (e.kind || '').toLowerCase();
-      // Anti-patterns the operator should know about, weighted by severity
-      if (k === 'fleet_state_lock_timeout' || k === 'fleet_wedge'
-          || k === 'silent_agent' || k === 'pr_stuck'
-          || k === 'cache_drift' || k === 'slo_breach') {
-        anomalyKinds[k] = (anomalyKinds[k] || 0) + 1;
-      }
-    }
-    const topAnomaly = Object.entries(anomalyKinds).sort((a, b) => b[1] - a[1])[0];
-    if (topAnomaly && topAnomaly[1] >= 3) {
-      const [kind, count] = topAnomaly;
-      const friendly = {
-        fleet_state_lock_timeout: 'Lock contention spike',
-        fleet_wedge: 'Fleet wedge detected',
-        silent_agent: 'Silent agent(s)',
-        pr_stuck: 'PR stuck cluster',
-        cache_drift: 'Cache thrashing',
-        slo_breach: 'SLO breach',
-      }[kind] || kind;
-      // PRODUCT-129: kinds that map to a one-click remediation get a primary
-      // action button. Others fall back to "show events" (drillable evidence).
-      const actions = [];
-      if (kind === 'fleet_state_lock_timeout' || kind === 'silent_agent') {
-        actions.push({
-          label: 'Release expired leases',
-          view: 'release-expired-leases',
-          primary: true,
-        });
-      }
-      actions.push({ label: 'show events', view: 'noise' });
-      cards.push({
-        id: `anomaly-${kind}`,
-        icon: '⚠️',
-        title: `${friendly} — ${count} events in window`,
-        detail: `Pattern detected via kind=${kind}. May indicate fleet plumbing needs attention.`,
-        actions,
-      });
-    }
-
-    // Card 3: Counter-evidence (REQUIRED — always present)
-    // PRODUCT-131: action_kind-specific actions (Draft outreach / Bump priority)
-    // instead of just navigating to GitHub. The principle: counter-evidence
-    // points at a problem; the action button proposes the fix.
-    cards.push({
-      id: 'counter-evidence',
-      icon: '🟡',
-      title: 'Counter-evidence — 0 external dogfooders',
-      detail: 'Phase 1 ships don\'t matter if no operator outside Jeff opens the cockpit. PRODUCT-119 is the recruitment gap; today it sits at P2.',
-      counter: true,
-      actions: [
-        { label: 'Draft outreach', view: 'draft-outreach', primary: true },
-        { label: 'Bump P2→P1', view: 'bump-priority', gapId: 'PRODUCT-119' },
-        { label: 'see gap', view: 'gap', gapId: 'PRODUCT-119' },
-      ],
-    });
-
-    // Card 4: Next decision (only if a clear candidate exists)
+    // Card 3: Next candidate decision
     if (nextDec) {
       cards.push({
         id: 'next-decision',
-        icon: '⏭',
-        title: `Next decision — ${nextDec.id} (${nextDec.priority})`,
-        detail: this.#truncate(nextDec.title || '', 90),
+        tag: 'NEXT',
+        title: `Top unclaimed — ${nextDec.id} (${nextDec.priority}/${nextDec.effort || 'm'})`,
+        detail: this.#truncate(nextDec.title || '', 96),
         actions: [
-          { label: 'see gap', href: '#', view: 'gap', gapId: nextDec.id },
-          { label: 'pick it', href: '#', view: 'pick', gapId: nextDec.id, primary: true },
+          { label: `Dispatch ${nextDec.id}`, view: 'dispatch-gap', gapId: nextDec.id, primary: true },
+          { label: 'Focus queue', view: 'focus-queue' },
         ],
       });
     }
+
+    // Card 4: Counter-check / Sovereignty & Cascade receipt
+    cards.push({
+      id: 'sovereignty-posture',
+      tag: 'VERIFY',
+      counter: true,
+      title: `Cascade & audit receipt — ${slots.length} provider slot${slots.length === 1 ? '' : 's'} wired`,
+      detail: slots.length > 0
+        ? ` Bandits and fallback slots route locally via ProviderCascade. Audit network egress or tune cost ceilings before overnight runs.`
+        : `No provider slots detected yet. Add local Ollama or API credentials in Settings before waking workers.`,
+      actions: [
+        { label: 'Network audit', view: 'open-network', primary: slots.length === 0 },
+        { label: 'Cost ceilings', view: 'open-settings' },
+      ],
+    });
 
     return { read, confidence, cards, evidenceCount: events.length };
   }
@@ -922,15 +1948,14 @@ class ChumpViewCockpit extends HTMLElement {
     if (t) t.textContent = text;
     if (m) {
       const dot = confidence === 'high' ? 'high' : confidence === 'medium' ? 'medium' : 'low';
-      const conf = confidence === 'high' ? 'High confidence' : confidence === 'medium' ? 'Medium confidence' : 'Low confidence — limited data';
+      const conf = confidence === 'high' ? 'High confidence' : confidence === 'medium' ? 'Medium confidence' : 'Baseline read';
       m.innerHTML = `
         <span class="intel-confidence">
           <span class="intel-confidence-dot ${dot}"></span>
           ${conf}
         </span>
-        <span>· ${evidenceCount} events in window</span>
-        <span>·</span>
-        <button class="intel-read-evidence" type="button" id="intel-read-evidence">show evidence ↓</button>
+        <span>· ${evidenceCount} events</span>
+        <button class="intel-read-evidence" type="button" id="intel-read-evidence">evidence ↓</button>
       `;
       m.querySelector('#intel-read-evidence')?.addEventListener('click', () => {
         const body = this.#shadow.getElementById('intel-noise-body');
@@ -938,7 +1963,6 @@ class ChumpViewCockpit extends HTMLElement {
         body?.classList.add('open');
         toggle?.setAttribute('aria-expanded', 'true');
         if (toggle?.firstChild) toggle.firstChild.textContent = '▼ ';
-        body?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
     }
   }
@@ -947,7 +1971,7 @@ class ChumpViewCockpit extends HTMLElement {
     const slot = this.#shadow.getElementById('intel-cards');
     if (!slot) return;
     if (cards.length === 0) {
-      slot.innerHTML = '<div class="brief-empty">No signal extracted — too little data.</div>';
+      slot.innerHTML = '<div class="empty-box">No signal cards generated.</div>';
       return;
     }
     slot.innerHTML = cards.map((c) => {
@@ -960,16 +1984,18 @@ class ChumpViewCockpit extends HTMLElement {
         </button>`).join('');
       return `
         <div class="intel-card ${c.counter ? 'counter' : ''}" data-card-id="${this.#escape(c.id)}">
-          <div class="intel-card-icon">${c.icon || ''}</div>
+          <div class="intel-card-top">
+            <span class="intel-tag ${c.counter ? 'bronze' : ''}">${this.#escape(c.tag || 'SIGNAL')}</span>
+          </div>
           <div class="intel-card-title">${this.#escape(c.title)}</div>
+          <div class="intel-card-detail">${this.#escape(c.detail)}</div>
           <div class="intel-card-actions">
             ${actionsHtml}
             <button class="intel-card-btn wrong" type="button"
                     data-card-id="${this.#escape(c.id)}"
                     data-action-view="wrong"
-                    title="Wrong card? Tell the synthesis.">🚩</button>
+                    title="Demote noisy signal card">Dismiss</button>
           </div>
-          <div class="intel-card-detail">${this.#escape(c.detail)}</div>
         </div>
       `;
     }).join('');
@@ -980,14 +2006,18 @@ class ChumpViewCockpit extends HTMLElement {
 
   #renderNoise(events) {
     const count = this.#shadow.getElementById('intel-noise-count');
-    const body  = this.#shadow.getElementById('intel-noise-body');
+    const body = this.#shadow.getElementById('intel-noise-body');
     if (count) count.textContent = String(events.length);
     if (body) {
+      if (events.length === 0) {
+        body.innerHTML = '<div class="intel-noise-event">No recent events in ambient.jsonl.</div>';
+        return;
+      }
       body.innerHTML = events.slice(0, 50).map((e) => `
         <div class="intel-noise-event">
-          [${this.#escape(e.ts || '')}] ${this.#escape(e.kind || '?')}
-          ${e.pr_number ? `pr=#${e.pr_number}` : ''}
-          ${e.subject ? `subj="${this.#escape(this.#truncate(e.subject, 50))}"` : ''}
+          [${this.#escape(String(e.ts || '').slice(11, 19) || '—')}] ${this.#escape(e.kind || 'event')}
+          ${e.pr_number ? `pull/${this.#escape(String(e.pr_number))}` : ''}
+          ${e.gap_id || e.gap ? `gap=${this.#escape(String(e.gap_id || e.gap))}` : ''}
         </div>`).join('');
     }
   }
@@ -998,7 +2028,6 @@ class ChumpViewCockpit extends HTMLElement {
     const gapId = btn.dataset.actionGap;
 
     if (view === 'wrong') {
-      // 🚩 — emit FEEDBACK so tomorrow's synthesis demotes this card
       try {
         await fetch('/api/broadcast', {
           method: 'POST',
@@ -1008,16 +2037,15 @@ class ChumpViewCockpit extends HTMLElement {
             kind: 'preference',
             subject: `cockpit_card_${cardId}`,
             vote: '-1',
-            rationale: 'operator flagged cockpit synthesis card as wrong',
+            rationale: 'operator dismissed cockpit signal card',
           }),
         });
-        btn.textContent = '✓';
+        btn.textContent = 'Noted';
         btn.disabled = true;
-      } catch (e) {
-        console.warn('flag-card feedback failed', e);
-      }
+      } catch {}
       return;
     }
+
     if (view === 'noise') {
       const body = this.#shadow.getElementById('intel-noise-body');
       const toggle = this.#shadow.getElementById('intel-noise-toggle');
@@ -1026,44 +2054,26 @@ class ChumpViewCockpit extends HTMLElement {
       if (toggle?.firstChild) toggle.firstChild.textContent = '▼ ';
       return;
     }
-    if (view === 'gap' && gapId) {
-      // Best-effort: open gap details in a new window via GH search.
-      window.open(`https://github.com/repairman29/chump/issues?q=${gapId}`, '_blank', 'noopener');
-      return;
-    }
-    if (view === 'pick' && gapId) {
-      // Trigger picker via existing API; on success show toast via console.
-      try {
-        const r = await fetch(`/api/gap/work/${encodeURIComponent(gapId)}`, { method: 'POST' });
-        const d = await r.json();
-        console.info('[cockpit] picked', gapId, d);
-        btn.textContent = '✓ picked';
-        btn.disabled = true;
-      } catch (e) {
-        console.warn('pick failed', e);
-      }
-      return;
-    }
-    if (view === 'fleet') {
-      // Scroll the right zone (fleet sidebar) into focus.
-      this.#shadow.querySelector('.zone-right')?.scrollIntoView({ behavior: 'smooth' });
+
+    if (view === 'focus-queue') {
+      this.#shadow.getElementById('wb-tab-queue')?.click();
+      this.#shadow.getElementById('wb-queue-search')?.focus();
       return;
     }
 
-    // PRODUCT-133 — Copy ambient tail command to clipboard.
-    if (view === 'copy-tail') {
-      const cmd = 'tail -f .chump-locks/ambient.jsonl | jq -c .';
-      try {
-        await navigator.clipboard.writeText(cmd);
-        btn.textContent = '✓ Copied — paste in terminal';
-      } catch {
-        btn.textContent = `Run: ${cmd}`;
-      }
-      btn.disabled = true;
-      setTimeout(() => {
-        btn.textContent = 'Copy tail command';
-        btn.disabled = false;
-      }, 5000);
+    if (view === 'open-network') {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'network' }));
+      return;
+    }
+
+    if (view === 'open-settings') {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+      return;
+    }
+
+    if (view === 'fleet') {
+      this.#shadow.querySelector('[data-telem-tab="fleet"]')?.click();
+      this.#shadow.getElementById('telem-pane-fleet')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       return;
     }
 
@@ -1075,7 +2085,6 @@ class ChumpViewCockpit extends HTMLElement {
         const r = await fetch('/api/autopilot/start', { method: 'POST' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         btn.textContent = '✓ Autopilot starting';
-        // Re-synthesize after 2s to refresh the cockpit read
         setTimeout(() => this.#synthesize(), 2500);
       } catch (e) {
         btn.textContent = `✗ ${e.message || 'failed'}`;
@@ -1102,62 +2111,30 @@ class ChumpViewCockpit extends HTMLElement {
       return;
     }
 
-    // PRODUCT-127 — Real /api/gap/dep-clean wire (one-click fix)
-    if (view === 'copy-repair' || view === 'repair-drift') {
+    if (view === 'repair-drift') {
       btn.disabled = true;
       btn.textContent = 'Repairing…';
       try {
         const r = await fetch('/api/gap/dep-clean', { method: 'POST' });
-        if (r.status === 404) {
-          // Endpoint not in running binary yet — clipboard fallback
-          await navigator.clipboard.writeText('chump gap dep-clean --apply');
-          btn.textContent = '✓ Copied (endpoint pending rebuild — paste in terminal)';
-        } else if (!r.ok) {
-          throw new Error(`HTTP ${r.status}`);
-        } else {
-          const d = await r.json();
-          const n = d.result?.cleaned_count ?? d.result?.count ?? 'some';
-          btn.textContent = `✓ Repaired ${n} drift rows`;
-          setTimeout(() => this.#synthesize(), 1500);
-        }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json().catch(() => ({}));
+        const n = d.result?.cleaned_count ?? d.result?.count ?? 0;
+        btn.textContent = `✓ Repaired ${n}`;
+        setTimeout(() => this.#synthesize(), 1500);
       } catch (e) {
         btn.textContent = `✗ ${e.message || 'failed'}`;
       }
-      setTimeout(() => { btn.disabled = false; }, 5000);
+      setTimeout(() => { btn.disabled = false; }, 4000);
       return;
     }
 
-    // PRODUCT-129 — Release expired leases (real endpoint)
-    if (view === 'release-expired-leases') {
-      btn.disabled = true;
-      btn.textContent = 'Scanning leases…';
-      try {
-        const r = await fetch('/api/lease/release-expired', { method: 'POST' });
-        if (r.status === 404) {
-          await navigator.clipboard.writeText(
-            'find .chump-locks -name "*.json" -mtime +1h -delete  # rough fallback');
-          btn.textContent = '✓ Endpoint pending rebuild — fallback copied';
-        } else if (!r.ok) {
-          throw new Error(`HTTP ${r.status}`);
-        } else {
-          const d = await r.json();
-          btn.textContent = `✓ Released ${d.released_count ?? 0}/${d.scanned ?? 0}`;
-          setTimeout(() => this.#synthesize(), 1500);
-        }
-      } catch (e) {
-        btn.textContent = `✗ ${e.message || 'failed'}`;
-      }
-      setTimeout(() => { btn.disabled = false; }, 5000);
-      return;
-    }
-
-    // PRODUCT-130 — Dispatch top-priority gap
     if (view === 'dispatch-gap' && gapId) {
       btn.disabled = true;
       btn.textContent = 'Dispatching…';
       try {
         const r = await fetch(`/api/gap/work/${encodeURIComponent(gapId)}`, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         btn.textContent = `✓ Dispatched ${gapId}`;
@@ -1165,221 +2142,43 @@ class ChumpViewCockpit extends HTMLElement {
       } catch (e) {
         btn.textContent = `✗ ${e.message || 'failed'}`;
       }
-      setTimeout(() => { btn.disabled = false; }, 5000);
-      return;
+      setTimeout(() => { btn.disabled = false; }, 4000);
     }
+  }
 
-    // PRODUCT-131 — Counter-evidence actions
-    if (view === 'draft-outreach') {
-      const template =
-        'Hi {{NAME}} — \n\n' +
-        'I\'m running an experimental coordination platform called Chump that ' +
-        'lets autonomous AI agents work as a fleet on your repo. It runs ' +
-        '100% locally (or via your own API keys) and the cockpit gives you ' +
-        'one-click control over the agents.\n\n' +
-        'I\'m looking for 5 dev teams to dogfood it for 30 days. No cost, no ' +
-        'lock-in, the data stays on your machine. I just want operator ' +
-        'feedback (good and bad). Interested?\n\n' +
-        'Quick demo: <link to chump-demo>\nSetup: <link to install guide>\n\n' +
-        '— {{YOUR_NAME}}';
-      try {
-        await navigator.clipboard.writeText(template);
-        btn.textContent = '✓ Template copied — paste into Slack/email';
-      } catch {
-        // Fallback: open mailto with template as body
-        const subj = encodeURIComponent('Try Chump — fleet coordination for solo devs');
-        const body = encodeURIComponent(template);
-        window.open(`mailto:?subject=${subj}&body=${body}`, '_blank');
-        btn.textContent = '✓ Opened mail composer';
-      }
-      btn.disabled = true;
-      setTimeout(() => { btn.disabled = false; btn.textContent = 'Draft outreach'; }, 6000);
-      return;
-    }
-    if (view === 'bump-priority' && gapId) {
-      // No /api/gap/set endpoint yet — clipboard fallback with the CLI command
-      const cmd = `chump gap set ${gapId} --priority P1`;
-      try {
-        await navigator.clipboard.writeText(cmd);
-        btn.textContent = `✓ Command copied — paste to bump ${gapId}`;
-      } catch {
-        btn.textContent = `Run: ${cmd}`;
-      }
-      btn.disabled = true;
-      setTimeout(() => { btn.disabled = false; btn.textContent = 'Bump P2→P1'; }, 6000);
-      return;
-    }
+  #ago(date) {
+    const s = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+    if (s < 60) return `${s}s ago`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.round(m / 60);
+    if (h < 48) return `${h}h ago`;
+    return `${Math.round(h / 24)}d ago`;
+  }
+
+  #until(date) {
+    const s = Math.round((date.getTime() - Date.now()) / 1000);
+    if (Number.isNaN(s)) return 'active';
+    if (s <= 0) return 'expired';
+    if (s < 60) return `${s}s left`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m}m left`;
+    return `${Math.floor(m / 60)}h ${m % 60}m left`;
   }
 
   #truncate(s, n) {
-    s = String(s || '');
-    return s.length > n ? s.slice(0, n - 1) + '…' : s;
-  }
-
-  // ── Legacy methods retained for compat (no longer wired) ─────────────────
-  async #loadReleaseNotes_LEGACY() {
-    const slot = this.#shadow.getElementById('slot-release-notes');
-    if (!slot) return;
-    try {
-      const r = await fetch('/api/ambient/recent?limit=200');
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
-      const events = (d.events || []).filter((e) => {
-        const k = (e.kind || '').toLowerCase();
-        return k === 'pr_merged'
-            || k === 'gap_shipped'
-            || k === 'gap_done'
-            || k === 'pr_closed_merged';
-      });
-      const merges = events.slice(0, 8);
-      if (merges.length === 0) {
-        slot.innerHTML = `
-          <div class="brief-empty">
-            No ships in recent ambient. As PRs merge they'll surface here.
-            <br><br>
-            <em>Want a different signal? Tell me what "release notes" means
-            to you — last 7 days? merged PRs by domain? a curated weekly
-            summary? Tell me the shape and we'll wire it.</em>
-          </div>`;
-        return;
-      }
-      slot.innerHTML = merges.map((e) => {
-        const ts = e.ts ? new Date(e.ts) : null;
-        const pr = e.pr_number ? `#${e.pr_number}` : '';
-        const title = this.#escape(e.title || e.subject || e.gap || e.kind || 'ship');
-        const ago = this.#ago(ts);
-        const href = e.pr_number
-          ? `https://github.com/repairman29/chump/pull/${e.pr_number}`
-          : '#';
-        return `
-          <div class="brief-item">
-            <span class="brief-pill ship-pr">SHIPPED</span>
-            <div class="brief-body">
-              <div class="brief-title">${title}</div>
-              <div class="brief-meta">
-                ${pr ? `<a href="${href}" target="_blank" rel="noopener">${pr}</a> · ` : ''}${ago}
-              </div>
-            </div>
-          </div>`;
-      }).join('');
-    } catch (e) {
-      slot.innerHTML = `
-        <div class="brief-empty">
-          Couldn't load release notes (${this.#escape(String(e.message || e))}).
-        </div>`;
-    }
-  }
-
-  // ── Where we're headed — top-priority pickable gaps from the queue ────────
-  async #loadRoadmap() {
-    const slot = this.#shadow.getElementById('slot-roadmap');
-    if (!slot) return;
-    try {
-      const r = await fetch('/api/gap-queue');
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
-      const gaps = (d.gaps || [])
-        .filter((g) => (g.status || 'open') === 'open')
-        .sort((a, b) => {
-          const order = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
-          return (order[a.priority] ?? 9) - (order[b.priority] ?? 9);
-        })
-        .slice(0, 6);
-      if (gaps.length === 0) {
-        slot.innerHTML = `
-          <div class="brief-empty">
-            No pickable gaps in this fleet's queue right now.
-            <br><br>
-            <em>"Where we're headed" can also mean roadmap milestones, not
-            just the next 6 gaps. Want me to surface
-            <code>docs/product/PWA_ROADMAP.md</code> phases here instead?
-            Or both — gaps as "this week" and milestones as "this quarter"?</em>
-          </div>`;
-        return;
-      }
-      slot.innerHTML = gaps.map((g) => {
-        const pri = g.priority || 'P?';
-        const id = this.#escape(g.id || '?');
-        const title = this.#escape(g.title || '');
-        const effort = g.effort ? `· ${this.#escape(g.effort)}` : '';
-        return `
-          <div class="brief-item">
-            <span class="brief-pill priority-${pri}">${pri}</span>
-            <div class="brief-body">
-              <div class="brief-title">${title}</div>
-              <div class="brief-meta">${id} ${effort}</div>
-            </div>
-          </div>`;
-      }).join('');
-    } catch (e) {
-      slot.innerHTML = `
-        <div class="brief-empty">
-          Couldn't load priority queue (${this.#escape(String(e.message || e))}).
-        </div>`;
-    }
+    return s.length <= n ? s : `${s.slice(0, n - 1)}…`;
   }
 
   #escape(s) {
-    return String(s || '').replace(/[&<>"']/g, (c) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c]));
-  }
-
-  #ago(ts) {
-    if (!ts) return '';
-    const ms = Date.now() - ts.getTime();
-    if (ms < 60_000) return 'just now';
-    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
-    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
-    return `${Math.floor(ms / 86_400_000)}d ago`;
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 }
 
-customElements.define('chump-view-cockpit', ChumpViewCockpit);
-
-// ── URL bootstrap ──────────────────────────────────────────────────────────
-// The chump-nav cadence router (app.js CHUMP_CADENCES) rewrites ?view=<x>
-// to the cadence's default_view when <x> isn't in any cadence's subtabs.
-// Since we don't promote cockpit into a cadence here (avoid colliding with
-// 5 live leases on app.js), the router would otherwise redirect
-// /v2/?view=cockpit → /v2/?view=chat&cadence=now.
-//
-// Workaround that doesn't touch app.js: read the *original* navigation URL
-// from PerformanceNavigationTiming (which survives history.replaceState),
-// and if it asked for view=cockpit OR the page is loaded with #cockpit,
-// force-render the cockpit view into #main-content after the router has run.
-function getOriginalUrl() {
-  try {
-    const nav = performance.getEntriesByType?.('navigation')?.[0];
-    if (nav?.name) return new URL(nav.name);
-  } catch {}
-  return new URL(location.href);
+if (!customElements.get('chump-view-cockpit')) {
+  customElements.define('chump-view-cockpit', ChumpViewCockpit);
 }
-
-function maybeRenderCockpit() {
-  const origView   = getOriginalUrl().searchParams.get('view');
-  const curView    = new URLSearchParams(location.search).get('view');
-  const hashView   = location.hash === '#cockpit';
-  if (origView !== 'cockpit' && curView !== 'cockpit' && !hashView) return;
-  const main = document.getElementById('main-content');
-  if (!main) return;
-  if (main.querySelector('chump-view-cockpit')) return; // idempotent
-  main.innerHTML = '';
-  main.appendChild(document.createElement('chump-view-cockpit'));
-  // Re-stamp the URL so a copy-paste / bookmark reflects what's on screen,
-  // and the cadence router doesn't keep rewriting it on subsequent hops.
-  try {
-    const url = new URL(location.href);
-    url.searchParams.set('view', 'cockpit');
-    history.replaceState(null, '', url.toString());
-  } catch {}
-}
-
-if (document.readyState === 'loading') {
-  // Wait until DOMContentLoaded + a microtask so chump-nav's connectedCallback
-  // (which rewrites the URL) has run first, then we steal the view back.
-  document.addEventListener('DOMContentLoaded', () => setTimeout(maybeRenderCockpit, 50));
-} else {
-  setTimeout(maybeRenderCockpit, 50);
-}
-window.addEventListener('hashchange', maybeRenderCockpit);

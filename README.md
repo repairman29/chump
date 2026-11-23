@@ -17,11 +17,44 @@ Chump has two co-equal lanes:
 
 Together these form Chump's **two-surface architecture**: the coordinator surface (any agent, any tool) and the built-in agent surface (Chump's own governed agent). You can use either surface independently, or both together.
 
-**License:** AGPLv3 (apps) + Apache-2.0 (libraries) — see [NOTICE](NOTICE) · **Platform:** macOS, Linux, Windows (WSL2) · **Docs:** [repairman29.github.io/chump](https://repairman29.github.io/chump/) · **For collaborators / external reviewers:** [docs/PITCH.md](docs/PITCH.md)
+**License:** AGPLv3 (apps) + Apache-2.0 (libraries) — see [NOTICE](NOTICE) · **Platform:** macOS, Linux, Windows (native) · **Docs:** [repairman29.github.io/chump](https://repairman29.github.io/chump/) · **For collaborators / external reviewers:** [docs/PITCH.md](docs/PITCH.md)
 
 > **No Anthropic key? No Claude Code?** Chump works with any agent that can commit code. See [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) for Ollama, or use the coordinator with your existing tool.
 >
 > **Using a local LLM?** → [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) — 5-step guide for solo devs on Ollama.
+
+---
+
+## Universal v1.0 Quickstart (macOS, Windows, Linux)
+
+Chump v1.0 runs natively across **macOS**, **Windows**, and **Linux** without requiring `bash`, `tmux`, or WSL2. Configure your preferred LLM lane once in `~/.chump/config.toml` (or `%USERPROFILE%\.chump\config.toml` on Windows) and install the native Rust git hooks and user service:
+
+```bash
+# 1. Scaffold & validate ~/.chump/config.toml (works identically in zsh, bash, or PowerShell)
+chump config init
+chump config validate
+
+# 2. Install the native Rust pre-commit & pre-push firewall in your repo
+chump hook install
+chump hook status
+
+# 3. Register and start the background chumpd supervisor
+#    - macOS:   ~/Library/LaunchAgents/com.chump.chumpd.plist (launchctl)
+#    - Linux:   ~/.config/systemd/user/chumpd.service (systemd --user)
+#    - Windows: Scheduled Task "ChumpDaemon" (schtasks)
+chump service install
+chump up
+chump service status
+```
+
+### Bring Your Own Adventure / Bring Your Own LLM (4 Lanes)
+
+Chump supports four mix-and-match inference and agent lanes out of the box:
+
+1. **Connected Subscriptions / OAuth (`[auth] mode = "auto"`):** Automatically discovers `CLAUDE_CODE_OAUTH_TOKEN`, `~/.chump/oauth-token.json`, macOS Keychain `"Claude Code-credentials"`, or cross-platform `~/.claude/.credentials.json` (`%USERPROFILE%\.claude\.credentials.json` on Windows), with `chumpd` refreshing tokens automatically every 5 minutes.
+2. **Up to 40 Cascading API-Key Slots (`[[providers]]` / `CHUMP_PROVIDER_{1..40}_*`):** Configure free-tier and paid OpenAI-compatible providers (Groq, Cerebras, Together, Gemini, OpenRouter, Mistral, DeepSeek, Fireworks, etc.) in `~/.chump/config.toml` with automatic RPD caps, circuit breakers, and Thompson-sampling routing.
+3. **BYO Coding Harnesses (`[worker] harness`):** Coordinate Claude Code (`claude`), OpenCode (`opencode`), Codex CLI (`codex`), Aider (`aider`), goose, or manual commits over shared `.chump-locks` leases and `chump ship`.
+4. **Zero-Key Local Endpoints:** Point `[api] openai_api_base` at local `Ollama` (`http://127.0.0.1:11434/v1`), `LM Studio` (`:1234/v1`), `llama.cpp` (`:8080/v1`), or `vLLM` (`:8000/v1`) — zero API keys required.
 
 ---
 
@@ -237,8 +270,8 @@ Running one agent is straightforward. Running ten — on the same repo, against 
 | **`chump gap` SQLite registry** | Authoritative gap store at `.chump/state.db` with `reserve` / `claim` / `preflight` / `ship` subcommands. Concurrent reservations don't race; `docs/gaps.yaml` is a regenerated mirror for diff review. |
 | **`chump skill` CLI** | Operator-facing skill management: `list`, `view`, `health` (Wilson CI ranking), `record-outcome`, `tap-add`. Skills are reusable task procedures in `chump-brain/skills/<name>/SKILL.md`. See [`docs/process/CLAUDE_GOTCHAS.md#skill-management`](docs/process/CLAUDE_GOTCHAS.md) for the full reference. |
 | **Linked worktrees** | Every gap gets its own isolated git worktree + branch. Clean isolation, no branch-switching cost, hourly reaper sweeps stale ones. |
-| **`scripts/coord/bot-merge.sh` ship pipeline** | Rebases on `main`, runs fmt/clippy/tests, opens the PR, and arms `gh pr merge --auto --squash` against the GitHub merge queue. The queue rebases each PR on top of `main` and re-runs CI before the atomic squash — no lost commits, no stale-base merges. |
-| **Pre-commit guards** | Every commit checks for lease collisions, stomp warnings, duplicate / hijacked / recycled gap IDs, gaps.yaml discipline, cargo-fmt, cargo-check, docs-delta, and credential patterns. Each guard fails loud with a documented bypass. |
+| **`chump ship` (`crates/chump-ship`)** | Native Rust ship pipeline (`chump ship --gap <ID> --auto-merge`, plus `scripts/coord/bot-merge.sh` compatibility shim): rebases on `main`, guards gate files (`CREDIBLE-1576`), opens the PR, records `gap_prs`, and arms `gh pr merge --auto --squash`. |
+| **`chump hook` (`crates/chump-git-hooks`)** | Native Rust `pre-commit` & `pre-push` firewall (`chump hook install` / `status`): enforces lease collisions, secret patterns, submodule sanity, book sync, `cargo fmt`, protected branches, and bot-merge discipline across macOS, Windows, and Linux. |
 
 **What your agent provides:**
 
@@ -278,8 +311,10 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | `./scripts/setup/setup-local.sh` | Guided first-time setup |
 | `./scripts/ci/verify-external-golden-path.sh` | Smoke test (build + required files) |
 | `./scripts/ci/chump-preflight.sh` | Full health check (inference + API + tools) |
-| `./scripts/coord/bot-merge.sh --gap <ID> --auto-merge` | Dispatcher: ship a gap through the merge queue |
-| `bash scripts/setup/chump-fleet-bootstrap.sh` | Installs every required launchd daemon/git hook on this host (idempotent). An hourly `com.chump.bootstrap-auto-install` LaunchAgent re-runs this automatically once you've run it manually the first time (INFRA-1808) — but a fresh machine still needs that one manual run to bootstrap the bootstrapper. |
+| `chump ship --gap <ID> --auto-merge` | Native Rust ship pipeline (with `./scripts/coord/bot-merge.sh` compatibility shim) |
+| `chump hook install` | Install native cross-platform Rust `pre-commit` & `pre-push` hooks |
+| `chump service install` / `chump up` | Register & start the `chumpd` supervisor natively on macOS, Linux, or Windows |
+| `bash scripts/setup/chump-fleet-bootstrap.sh` | Legacy macOS fleet bootstrap helper (idempotent) |
 
 ---
 

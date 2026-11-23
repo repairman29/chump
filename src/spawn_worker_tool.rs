@@ -92,11 +92,9 @@ pub struct SpawnWorkerTool;
 
 impl SpawnWorkerTool {
     async fn execute_headless_test(&self) -> Result<String> {
-        let output = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg("setsid true")
-            .output()
-            .await;
+        let mut std_cmd = chump_pal::shell_command("echo ok");
+        chump_pal::configure_isolated_child(&mut std_cmd);
+        let output = tokio::process::Command::from(std_cmd).output().await;
 
         match output {
             Ok(status) => {

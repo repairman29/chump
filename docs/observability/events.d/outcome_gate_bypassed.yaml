@@ -1,0 +1,11 @@
+  - kind: outcome_gate_bypassed
+    effect_metric: effective
+    emitter: src/cli_dispatch/mod.rs (MISSION-045)
+    trigger: >-
+      Emitted when `chump gap reserve` or `chump gap ship` bypasses the P0/P1
+      outcome linkage gate via `--no-outcome-required` or
+      `CHUMP_GAP_RESERVE_NO_OUTCOME=1`.
+    consumers: [scripts/ci/test-outcome-gate.sh, fleet-brief]
+    fields_required: [ts, kind]
+    expected_volume: "0 in normal operation; >0 only on explicit operator bypass"
+    status: stable
