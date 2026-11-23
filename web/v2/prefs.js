@@ -94,6 +94,13 @@ class ChumpPrefs {
   }
 
   /**
+   * Alias used by cost-ceiling and gap-queue filter reset buttons.
+   */
+  del(key) {
+    return this.remove(key);
+  }
+
+  /**
    * Return all stored preference keys (bare, without namespace prefix).
    */
   keys() {

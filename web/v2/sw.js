@@ -1,51 +1,60 @@
-// Chump v2 service worker — offline-first shell cache.
-const CACHE = 'chump-v2-shell-3';
+// Chump v2 service worker — network-first with cache:'no-cache' HTTP disk-cache bypass (PRODUCT-372).
+const CACHE = 'chump-v2-shell-6';
 const SHELL = [
   '/v2/',
   '/v2/index.html',
   '/v2/manifest.json',
-  '/v2/app.js',
-  '/v2/chat.js',
-  '/v2/inference-profile.js',
   '/icon.svg',
-  '/icon-192.png',
-  '/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
-  );
+  e.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await Promise.all(SHELL.map(async (u) => {
+      try {
+        const res = await fetch(new Request(u, { cache: 'reload' }));
+        if (res && res.ok) await cache.put(u, res);
+      } catch {}
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((names) => Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n))))
-      .then(() => self.clients.claim())
-  );
+  e.waitUntil((async () => {
+    const names = await caches.keys();
+    const stale = names.filter((n) => n !== CACHE);
+    await Promise.all(stale.map((n) => caches.delete(n)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  // API calls: network first, no cache.
   if (url.pathname.startsWith('/api/')) return;
-  // Shell assets: cache first, network fallback.
+  if (url.origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    fetch(new Request(e.request, { cache: 'no-cache' }))
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
 
 // INFRA-1301: Web Push notification handler.
-// Receives encrypted pushes from chump server (when delivery layer ships
-// as a follow-up) and surfaces them as native notifications.
 self.addEventListener('push', (event) => {
   let data = { title: 'Chump', body: '', urgency: 'now', operator_id: '' };
   if (event.data) {
     try {
       const parsed = event.data.json();
       data = { ...data, ...parsed };
-    } catch (_e) {
+    } catch {
       data.body = event.data.text();
     }
   }

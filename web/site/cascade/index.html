@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chump Cascade — 40-Slot Model Router, BYO-Auth &amp; 3-OS chumpd Supervisor</title>
+  <meta name="description" content="Route agent completions across Claude subscription OAuth, 40 cascading API slots, coding harnesses, and $0 local Ollama/vLLM with Thompson-sampling bandit failover." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Chump" />
+  <meta property="og:title" content="Chump Cascade — Sovereign Model Routing &amp; 3-OS Supervisor" />
+  <meta property="og:description" content="Subscription OAuth, cascading API keys, BYO coding harnesses, and local Ollama in one fail-safe Rust router." />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/site/assets/site.css" />
+</head>
+<body>
+  <chump-site-header pillar="cascade" page="cascade" base="/site"></chump-site-header>
+
+  <main>
+    <!-- ── 1. Hero + 4-Lane Auth Matrix ──────────────────────────────────── -->
+    <section class="arch-band">
+      <div class="arch-grid-frame section-pad">
+        <div style="max-width:72ch; margin-bottom:34px;">
+          <div class="eyebrow"><span class="eyebrow-dot"></span>02 · Chump Cascade &amp; chumpd Supervisor</div>
+          <h1 class="display-h1">
+            Route every turn to the cheapest slot <span class="muted-tail">that passes the test.</span>
+          </h1>
+          <p class="lede">
+            Single-provider coding agents stall the instant a rate limit trips or a credit card ceiling hits. Chump unifies subscription OAuth, up to 40 API provider slots, external coding CLIs, and local Ollama/vLLM behind one Thompson-sampled cascade with zero proxy middlemen.
+          </p>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <a class="btn btn-dark" href="#bandit-lab">Run Live 429 Failover Lab</a>
+            <a class="btn btn-stone" href="#daemon-builder">Generate config.toml &amp; OS Service →</a>
+          </div>
+        </div>
+
+        <div class="bento-2" id="byo-harnesses">
+          <div class="bento-card">
+            <div>
+              <span class="pill pill-sage" style="margin-bottom:10px;">LANE 1 &amp; 2 · SUBSCRIPTION OAUTH + 40-SLOT API</span>
+              <h3 class="display-h3">Use Flat-Rate Subscriptions First, Metered Keys Second</h3>
+              <p style="color:var(--stone-muted); font-size:14.5px; margin:0;">
+                <code>chumpd</code> syncs OAuth credentials from macOS Keychain or <code>~/.claude/.credentials.json</code> (and <code>%USERPROFILE%\.claude\.credentials.json</code> on Windows), escalating to Gemini, Mistral Codestral, Groq, or Anthropic/OpenAI keys only when needed.
+              </p>
+            </div>
+          </div>
+
+          <div class="bento-card">
+            <div>
+              <span class="pill pill-bronze" style="margin-bottom:10px;">LANE 3 &amp; 4 · BYO HARNESSES + LOCAL $0 FLOOR</span>
+              <h3 class="display-h3">Any CLI Harness Above, Local Ollama Underneath</h3>
+              <p style="color:var(--stone-muted); font-size:14.5px; margin:0;">
+                Dispatch workers through <code>claude</code>, <code>opencode</code>, <code>codex</code>, <code>aider</code>, or <code>goose</code>—or run <code>chump agent-run --slim</code> directly against <code>127.0.0.1:11434</code> (Ollama / LM Studio / llama.cpp / vLLM) with zero network dependency.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 2. Interactive Thompson-Sampling Bandit & 429 Failover Lab ────── -->
+    <section class="arch-band" id="bandit-lab">
+      <div class="arch-grid-frame section-pad">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:24px;">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span>Interactive ProviderCascade Simulator (src/provider_cascade.rs)</div>
+            <h2 class="display-h2">
+              Trip an upstream 429. <span class="muted-tail">Watch the cascade self-heal.</span>
+            </h2>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-dark btn-sm" id="dispatch-turn-btn">Dispatch 10 Agent Turns →</button>
+            <button type="button" class="btn btn-stone btn-sm" id="reset-bandit-btn">Reset Lab</button>
+          </div>
+        </div>
+
+        <div class="app-window">
+          <div class="app-window-bar">
+            <span>ProviderCascade · RPM Headroom=80% · Thompson Bandit Beta(α, β)</span>
+            <span id="bandit-summary" class="mono">0 turns dispatched · $0.00 cumulative spend · 0 aborted sessions</span>
+          </div>
+
+          <div class="data-table-wrap" style="border:0; border-radius:0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Slot &amp; Priority</th>
+                  <th>Model Class</th>
+                  <th>Cost / Turn</th>
+                  <th>Bandit Beta(α, β) Win Est.</th>
+                  <th class="num">Routed Hits</th>
+                  <th>Simulated Upstream Health</th>
+                </tr>
+              </thead>
+              <tbody id="slot-rows"></tbody>
+            </table>
+          </div>
+
+          <div style="padding:16px 20px; background:var(--stone-elevated); border-top:1px solid var(--stone-rule);">
+            <div class="mono" style="font-size:11px; color:var(--stone-muted); margin-bottom:6px;">Live Failover Telemetry Log:</div>
+            <pre id="bandit-log" style="margin:0; font-size:11.5px; line-height:1.55; max-height:110px; overflow-y:auto; color:var(--stone-ink);"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 3. Interactive config.toml & 3-OS Service Builder ─────────────── -->
+    <section class="arch-band" id="daemon-builder">
+      <div class="arch-grid-frame section-pad">
+        <div style="max-width:68ch; margin-bottom:26px;">
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Zero-Tmux Supervisor (crates/chumpd + src/service_cmd.rs)</div>
+          <h2 class="display-h2">
+            Configure once. <span class="muted-tail">Supervise natively on macOS, Linux, or Windows.</span>
+          </h2>
+          <p class="lede" style="margin-bottom:0;">
+            Pick your host OS, authentication strategy, coding harness, and machine RAM below to generate a ready-to-save <code>~/.chump/config.toml</code> and native supervisor manifest.
+          </p>
+        </div>
+
+        <div class="sandstone-surface">
+          <div class="frosted-inner">
+            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; margin-bottom:20px;" class="bento-2">
+              <div>
+                <label for="cfg-os" class="mono" style="font-size:11px; color:var(--stone-muted); display:block; margin-bottom:6px;">Host OS Supervisor</label>
+                <select id="cfg-os" style="width:100%; padding:9px 10px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-card);">
+                  <option value="macos">macOS (launchd LaunchAgent)</option>
+                  <option value="linux">Linux (systemd --user)</option>
+                  <option value="windows">Windows (Task Scheduler)</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="cfg-auth" class="mono" style="font-size:11px; color:var(--stone-muted); display:block; margin-bottom:6px;">Primary Auth Mode</label>
+                <select id="cfg-auth" style="width:100%; padding:9px 10px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-card);">
+                  <option value="auto">auto (OAuth + Cascade)</option>
+                  <option value="oauth">oauth (Subscription)</option>
+                  <option value="api_key">api_key (API Slots)</option>
+                  <option value="none">none (Local Ollama)</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="cfg-harness" class="mono" style="font-size:11px; color:var(--stone-muted); display:block; margin-bottom:6px;">Worker Harness</label>
+                <select id="cfg-harness" style="width:100%; padding:9px 10px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-card);">
+                  <option value="claude">claude</option>
+                  <option value="opencode">opencode</option>
+                  <option value="codex">codex</option>
+                  <option value="aider">aider</option>
+                  <option value="goose">goose</option>
+                  <option value="chump-local">chump-local</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="cfg-ram" class="mono" style="font-size:11px; color:var(--stone-muted); display:block; margin-bottom:6px;">Machine RAM (Build Guard)</label>
+                <select id="cfg-ram" style="width:100%; padding:9px 10px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-card);">
+                  <option value="16" selected>16 GB (JOBS=2)</option>
+                  <option value="8">8 GB (JOBS=1)</option>
+                  <option value="32">32 GB (JOBS=4)</option>
+                  <option value="64">64+ GB (JOBS=8)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="bento-2">
+              <div class="trace-card" style="margin:0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong class="mono" style="font-size:11.5px;" id="out-toml-label">~/.chump/config.toml</strong>
+                  <button type="button" class="copy-chip" id="copy-toml-btn">Copy TOML</button>
+                </div>
+                <pre id="out-toml" style="margin:0; padding:12px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:11.5px; line-height:1.58; overflow-x:auto;"></pre>
+              </div>
+
+              <div class="trace-card" style="margin:0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong class="mono" style="font-size:11.5px;" id="out-service-label">~/Library/LaunchAgents/com.chump.chumpd.plist</strong>
+                  <button type="button" class="copy-chip" id="copy-svc-btn">Copy Service</button>
+                </div>
+                <pre id="out-svc" style="margin:0; padding:12px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:11.5px; line-height:1.58; overflow-x:auto;"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <chump-site-footer base="/site"></chump-site-footer>
+  <chump-install-modal></chump-install-modal>
+
+  <script src="/site/assets/site.js"></script>
+  <script>
+    (function () {
+      /* Thompson Bandit & 429 Failover Simulator */
+      const initialSlots = () => [
+        { name: "Slot #1 · Claude Subscription OAuth", prio: 5, cls: "opus", cost: 0.0, alpha: 24, beta: 2, hits: 0, state: "healthy" },
+        { name: "Slot #2 · Gemini 2.5 Flash", prio: 12, cls: "sonnet", cost: 0.004, alpha: 30, beta: 3, hits: 0, state: "healthy" },
+        { name: "Slot #3 · Mistral Codestral", prio: 14, cls: "opus", cost: 0.009, alpha: 18, beta: 2, hits: 0, state: "healthy" },
+        { name: "Slot #4 · Groq Llama 3.3 70B", prio: 15, cls: "sonnet", cost: 0.002, alpha: 15, beta: 3, hits: 0, state: "healthy" },
+        { name: "Slot #5 · Local Ollama (Qwen-14B)", prio: 20, cls: "haiku/s", cost: 0.0, alpha: 20, beta: 2, hits: 0, state: "healthy" },
+      ];
+
+      let slots = initialSlots();
+      let totalTurns = 0;
+      let totalSpend = 0;
+      let logs = [
+        "[init] ProviderCascade online: 5 slots armed, circuit-breakers CLOSED.",
+      ];
+
+      function renderSlots() {
+        const tbody = document.getElementById("slot-rows");
+        tbody.innerHTML = slots
+          .map((s, idx) => {
+            const winPct = ((s.alpha / (s.alpha + s.beta)) * 100).toFixed(1);
+            const pillCls =
+              s.state === "healthy" ? "pill-sage" : s.state === "429" ? "pill-amber" : "pill-coral";
+            return `
+              <tr>
+                <td class="mono"><strong>${s.name}</strong> <span style="color:var(--stone-faint);">(p=${s.prio})</span></td>
+                <td class="mono">${s.cls}</td>
+                <td class="mono">${s.cost === 0 ? "$0.00" : "$" + s.cost.toFixed(3)}</td>
+                <td>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="flex:1; max-width:110px; height:7px; border-radius:99px; background:var(--stone-inset); overflow:hidden;">
+                      <div style="width:${winPct}%; height:100%; background:var(--stone-bronze);"></div>
+                    </div>
+                    <span class="mono" style="font-size:11.5px;">${winPct}% (α=${s.alpha}, β=${s.beta})</span>
+                  </div>
+                </td>
+                <td class="num">${s.hits}</td>
+                <td>
+                  <select data-slot-state="${idx}" aria-label="Health state for ${s.name}" style="padding:4px 8px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-card); font-family:var(--font-mono); font-size:11.5px;">
+                    <option value="healthy" ${s.state === "healthy" ? "selected" : ""}>● Healthy (200 OK)</option>
+                    <option value="429" ${s.state === "429" ? "selected" : ""}>⚡ HTTP 429 Rate Limit</option>
+                    <option value="timeout" ${s.state === "timeout" ? "selected" : ""}>✕ Timeout / Offline</option>
+                  </select>
+                </td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        tbody.querySelectorAll("[data-slot-state]").forEach((sel) => {
+          sel.addEventListener("change", () => {
+            const i = Number(sel.getAttribute("data-slot-state"));
+            slots[i].state = sel.value;
+            logs.unshift(
+              `[operator] ${slots[i].name} set to ${sel.value.toUpperCase()}`
+            );
+            renderSlots();
+          });
+        });
+
+        document.getElementById("bandit-summary").textContent =
+          `${totalTurns} turns dispatched · $${totalSpend.toFixed(3)} cumulative spend · 0 aborted sessions`;
+        document.getElementById("bandit-log").textContent = logs.slice(0, 8).join("\n");
+      }
+
+      document.getElementById("dispatch-turn-btn").addEventListener("click", () => {
+        for (let t = 0; t < 10; t++) {
+          totalTurns += 1;
+          let served = false;
+          /* Rank healthy candidates by bandit score + priority bias */
+          const ordered = slots
+            .map((s, idx) => ({
+              idx,
+              score: s.alpha / (s.alpha + s.beta) - s.prio * 0.004 + (Math.random() * 0.06 - 0.03),
+            }))
+            .sort((a, b) => b.score - a.score);
+
+          for (const cand of ordered) {
+            const sl = slots[cand.idx];
+            if (sl.state === "healthy") {
+              sl.hits += 1;
+              sl.alpha += 1;
+              totalSpend += sl.cost;
+              if (t === 9) {
+                logs.unshift(
+                  `[turn #${totalTurns}] Routed → ${sl.name} (cost $${sl.cost.toFixed(3)}, circuit CLOSED)`
+                );
+              }
+              served = true;
+              break;
+            } else {
+              sl.beta += 1;
+              if (t === 0) {
+                logs.unshift(
+                  `[failover] ${sl.name} returned ${sl.state.toUpperCase()} → cascading to next healthy slot`
+                );
+              }
+            }
+          }
+          if (!served && t === 9) {
+            logs.unshift(
+              `[warn] All 5 slots marked unhealthy! Enable at least one slot (e.g. Local Ollama) to serve offline.`
+            );
+          }
+        }
+        renderSlots();
+      });
+
+      document.getElementById("reset-bandit-btn").addEventListener("click", () => {
+        slots = initialSlots();
+        totalTurns = 0;
+        totalSpend = 0;
+        logs = ["[reset] Counters restored to clean baseline."];
+        renderSlots();
+      });
+
+      renderSlots();
+
+      /* Config & 3-OS Service Builder */
+      const osEl = document.getElementById("cfg-os");
+      const authEl = document.getElementById("cfg-auth");
+      const harEl = document.getElementById("cfg-harness");
+      const ramEl = document.getElementById("cfg-ram");
+
+      function renderBuilder() {
+        const os = osEl.value;
+        const auth = authEl.value;
+        const harness = harEl.value;
+        const ram = Number(ramEl.value);
+        const jobs = ram <= 8 ? 1 : ram <= 16 ? 2 : ram <= 32 ? 4 : 8;
+
+        const providerBlock =
+          auth === "none"
+            ? `\n[[providers]]\nname = "local-ollama"\nbase_url = "http://127.0.0.1:11434/v1"\nmodel = "qwen2.5-coder:14b"\npriority = 1\ntier = "local"\nenabled = true`
+            : `\n[[providers]]\nname = "gemini-flash"\nbase_url = "https://generativelanguage.googleapis.com/v1beta/openai"\napi_key_env = "GEMINI_API_KEY"\nmodel = "gemini-2.5-flash"\npriority = 10\ntier = "cloud"\nenabled = true\n\n[[providers]]\nname = "local-ollama-floor"\nbase_url = "http://127.0.0.1:11434/v1"\nmodel = "qwen2.5-coder:14b"\npriority = 20\ntier = "local"\nenabled = true`;
+
+        const toml = `# Generated by Chump Cascade Builder\nauth_mode = "${auth}"\nfleet_mode = "grind"\ndesired_workers = ${jobs}\nagent_harness = "${harness}"\ncargo_build_jobs = ${jobs}\n${providerBlock}`;
+        document.getElementById("out-toml").textContent = toml;
+        document.getElementById("out-toml-label").textContent =
+          os === "windows" ? "%USERPROFILE%\\.chump\\config.toml" : "~/.chump/config.toml";
+
+        let svcLabel = "";
+        let svcBody = "";
+        if (os === "macos") {
+          svcLabel = "~/Library/LaunchAgents/com.chump.chumpd.plist";
+          svcBody = `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n  <key>Label</key><string>com.chump.chumpd</string>\n  <key>ProgramArguments</key>\n  <array><string>/opt/homebrew/bin/chumpd</string></array>\n  <key>EnvironmentVariables</key>\n  <dict><key>CARGO_BUILD_JOBS</key><string>${jobs}</string></dict>\n  <key>KeepAlive</key><true/>\n</dict>\n</plist>\n\n# Install & start:\n$ chump service install && chump service start`;
+        } else if (os === "linux") {
+          svcLabel = "~/.config/systemd/user/chumpd.service";
+          svcBody = `[Unit]\nDescription=Universal Chump Supervisor Daemon (chumpd)\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment="CARGO_BUILD_JOBS=${jobs}"\nExecStart=%h/.cargo/bin/chumpd\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n\n# Install & start:\n$ chump service install && systemctl --user status chumpd`;
+        } else {
+          svcLabel = "Windows Scheduled Task (PowerShell)";
+          svcBody = `# Register background supervisor under %USERPROFILE%\nPS> chump.exe config init\nPS> chump.exe service install\nPS> schtasks /Query /TN "ChumpSupervisor"\n\n# Derived compile cap for ${ram} GB host:\n$env:CARGO_BUILD_JOBS = "${jobs}"\n# Kill-switch path: $env:USERPROFILE\\.chump\\AUTONOMY_LEVEL`;
+        }
+        document.getElementById("out-service-label").textContent = svcLabel;
+        document.getElementById("out-svc").textContent = svcBody;
+      }
+
+      [osEl, authEl, harEl, ramEl].forEach((el) =>
+        el.addEventListener("change", renderBuilder)
+      );
+      document.getElementById("copy-toml-btn").addEventListener("click", (e) =>
+        window.ChumpSite.copyText(document.getElementById("out-toml").textContent, e.currentTarget)
+      );
+      document.getElementById("copy-svc-btn").addEventListener("click", (e) =>
+        window.ChumpSite.copyText(document.getElementById("out-svc").textContent, e.currentTarget)
+      );
+
+      renderBuilder();
+    })();
+  </script>
+</body>
+</html>

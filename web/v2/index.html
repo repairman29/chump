@@ -1,51 +1,51 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="stone">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <title>Chump</title>
+  <title>Chump — Sovereign Operator Cockpit</title>
   <style>
     /* ── Design tokens ──────────────────────────────────────────────────── */
     :root {
-      --bg:            #0a0a0a;
-      --bg-surface:    #141414;
-      --bg-elevated:   #1e1e1e;
-      --text:          #f0f0f0;
-      --text-secondary:#8a8a8e;
-      --accent:        #0a84ff;
-      --accent-dim:    rgba(10, 132, 255, 0.15);
-      --border:        rgba(255,255,255,0.08);
-      --success:       #30d158;
-      --warn:          #ff9f0a;
-      --error:         #ff453a;
+      --bg:            #141412;
+      --bg-surface:    #1c1c19;
+      --bg-elevated:   #252420;
+      --text:          #f2f0ea;
+      --text-secondary:#9c988e;
+      --accent:        #4ca372;
+      --accent-dim:    rgba(76, 163, 114, 0.15);
+      --border:        rgba(242, 240, 234, 0.11);
+      --success:       #3fb96d;
+      --warn:          #e09b36;
+      --error:         #e5534b;
       --radius:        10px;
       --radius-sm:     6px;
       --nav-width:     64px;
-      --header-h:      48px;
+      --header-h:      52px;
       --safe-top:      env(safe-area-inset-top, 0px);
       --safe-bottom:   env(safe-area-inset-bottom, 0px);
       --safe-left:     env(safe-area-inset-left, 0px);
     }
 
-    /* INFRA-1280 Sub-gap 4: light theme override via [data-theme="light"] on <html>. */
+    /* INFRA-1280 Sub-gap 4: Warm-Stone & Sovereign Forest light theme (PRODUCT-372). */
     html[data-theme="light"] {
-      --bg:            #fafafa;
+      --bg:            #f5f4f0;
       --bg-surface:    #ffffff;
-      --bg-elevated:   #f0f0f0;
-      --text:          #1a1a1a;
-      --text-secondary:#4a4a4f;
-      --accent:        #0a84ff;
-      --accent-dim:    rgba(10, 132, 255, 0.10);
-      --border:        rgba(0,0,0,0.10);
-      --success:       #1f8a3a;
-      --warn:          #c87a00;
-      --error:         #c8281c;
+      --bg-elevated:   #eceae3;
+      --text:          #161816;
+      --text-secondary:#595d57;
+      --accent:        #22402f;
+      --accent-dim:    rgba(34, 64, 47, 0.10);
+      --border:        #e2dfd7;
+      --success:       #246b42;
+      --warn:          #b26b15;
+      --error:         #b83227;
     }
 
     /* INFRA-1280 Sub-gap 4: WCAG-AAA high-contrast variant. */
@@ -63,1747 +63,229 @@
       --error:         #ff8a80;
     }
 
-    /* INFRA-1280 Sub-gap 2: gap-queue Clear button. */
-    .gap-filter-clear {
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text-secondary);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: 11px;
+    /* PRODUCT-372: Extended semantic palette for Warm-Obsidian & Warm-Stone parity with /site/. */
+    :root {
+      --font-display:    "Host Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-sans:       "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --font-mono:       "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
+      --on-accent:       #ffffff;
+      --on-dark:         #111110;
+      --bronze:          #d1a75c;
+      --bronze-dim:      rgba(209, 167, 92, 0.16);
+      --border-strong:   rgba(242, 240, 234, 0.20);
+      --tone-ok-bg:      rgba(63, 185, 109, 0.14);
+      --tone-ok-border:  rgba(63, 185, 109, 0.32);
+      --tone-warn-bg:    rgba(224, 155, 54, 0.14);
+      --tone-warn-border:rgba(224, 155, 54, 0.34);
+      --tone-err-bg:     rgba(229, 83, 75, 0.14);
+      --tone-err-border: rgba(229, 83, 75, 0.34);
+      --tone-info-bg:    rgba(92, 156, 229, 0.14);
+      --tone-info-fg:    #7cb7ff;
+      --tone-purple-bg:  rgba(176, 114, 245, 0.15);
+      --tone-purple-fg:  #c99eff;
+      --shadow-card:     0 1px 2px rgba(0, 0, 0, 0.28);
+      --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.45);
+      --overlay-scrim:   rgba(10, 10, 9, 0.62);
     }
-    .gap-filter-clear:hover { color: var(--text); border-color: var(--text-secondary); }
 
-    /* ── Reset ──────────────────────────────────────────────────────────── */
+    html[data-theme="light"] {
+      --on-accent:       #ffffff;
+      --on-dark:         #ffffff;
+      --bronze:          #966f2f;
+      --bronze-dim:      rgba(150, 111, 47, 0.12);
+      --border-strong:   #cfcac0;
+      --tone-ok-bg:      rgba(36, 107, 66, 0.09);
+      --tone-ok-border:  rgba(36, 107, 66, 0.26);
+      --tone-warn-bg:    rgba(178, 107, 21, 0.10);
+      --tone-warn-border:rgba(178, 107, 21, 0.28);
+      --tone-err-bg:     rgba(184, 50, 39, 0.09);
+      --tone-err-border: rgba(184, 50, 39, 0.26);
+      --tone-info-bg:    rgba(34, 64, 47, 0.08);
+      --tone-info-fg:    #22402f;
+      --tone-purple-bg:  rgba(108, 68, 156, 0.10);
+      --tone-purple-fg:  #5b3787;
+      --shadow-card:     0 1px 2px rgba(22, 24, 22, 0.04);
+      --shadow-elevated: 0 14px 36px rgba(22, 24, 22, 0.12);
+      --overlay-scrim:   rgba(22, 24, 22, 0.42);
+    }
+
+    html[data-theme="high-contrast"] {
+      --on-accent:       #000000;
+      --on-dark:         #000000;
+      --bronze:          #ffd166;
+      --bronze-dim:      rgba(255, 209, 102, 0.25);
+      --border-strong:   #ffffff;
+      --tone-ok-bg:      rgba(110, 240, 122, 0.22);
+      --tone-ok-border:  #6ef07a;
+      --tone-warn-bg:    rgba(255, 209, 102, 0.22);
+      --tone-warn-border:#ffd166;
+      --tone-err-bg:     rgba(255, 138, 128, 0.24);
+      --tone-err-border: #ff8a80;
+      --tone-info-bg:    rgba(102, 194, 255, 0.24);
+      --tone-info-fg:    #66c2ff;
+      --tone-purple-bg:  rgba(255, 255, 255, 0.18);
+      --tone-purple-fg:  #ffffff;
+      --shadow-card:     none;
+      --shadow-elevated: none;
+      --overlay-scrim:   rgba(0, 0, 0, 0.82);
+    }
+
+    /* ── Reset & Shell Typography ───────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      font-family: var(--font-sans);
       background: var(--bg);
       color: var(--text);
-      font-size: 14px;
+      font-size: 13.5px;
       line-height: 1.5;
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* ── App header ─────────────────────────────────────────────────────── */
+    button, input, select, textarea {
+      font-family: inherit;
+    }
+
+    /* ── Top Command Header (#app-header <= 4 direct children) ──────────── */
     #app-header {
-      height: var(--header-h);
-      padding-top: var(--safe-top);
-      height: calc(var(--header-h) + var(--safe-top));
+      min-height: calc(var(--header-h) + var(--safe-top));
+      padding: var(--safe-top) 20px 0 20px;
       border-bottom: 1px solid var(--border);
       display: flex;
-      align-items: flex-end;
-      padding-bottom: 0;
-      padding-left: calc(var(--nav-width) + var(--safe-left) + 12px);
-      padding-right: 16px;
-      gap: 8px;
-      background: var(--bg);
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-surface);
       position: relative;
-      z-index: 10;
+      z-index: 20;
       flex-shrink: 0;
     }
     #app-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-display);
       font-size: 15px;
       font-weight: 600;
-      letter-spacing: -0.2px;
-      padding-bottom: 10px;
-      flex: 1;
-    }
-    chump-heartbeat {
-      padding-bottom: 9px;
-      font-size: 11px;
-      color: var(--text-secondary);
-    }
-
-    /* PRODUCT-108: <chump-first-run-wizard> golden-path checklist.
-       Renders above the cadence nav for new operators; self-hides when all
-       5 steps are done OR dismissed. Persists via chumpPrefs (INFRA-1280).
-       See docs/design/OPERATOR_CONSOLE_V2.md §first-run. */
-    chump-first-run-wizard { display: block; }
-    chump-first-run-wizard[hidden] { display: none; }
-    chump-first-run-wizard .frw-shell {
-      background: var(--bg-surface);
-      border-bottom: 1px solid var(--border);
-      border-left: 3px solid var(--accent);
-      padding: 16px 20px;
-      position: relative;
-      z-index: 8;
-    }
-    chump-first-run-wizard .frw-header {
-      display: flex; align-items: baseline; gap: 12px;
-      margin-bottom: 12px;
-    }
-    chump-first-run-wizard .frw-title {
-      font-size: 16px; font-weight: 700; color: var(--text-primary, var(--text));
-      flex: 1;
-    }
-    chump-first-run-wizard .frw-subtitle {
-      font-size: 11px; color: var(--text-secondary);
-      flex: 1; text-align: right;
-    }
-    chump-first-run-wizard .frw-dismiss {
-    /* PRODUCT-111: <chump-view-audit> decision-chain panel for archetype 4
-       (enterprise auditor). Consolidates tool-approval-audit + cos/decisions
-       into one chronological feed with filters + export. */
-    chump-view-audit { display: block; padding: 16px 20px; max-width: 1400px; }
-    chump-view-audit .audit-toolbar {
-      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-      padding: 8px 0; margin-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-    chump-view-audit .audit-chips { display: inline-flex; gap: 4px; }
-    chump-view-audit .audit-chip {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-secondary);
-      padding: 4px 10px; border-radius: var(--radius-sm);
-      cursor: pointer; font-size: 11px;
-    }
-    chump-first-run-wizard .frw-dismiss:hover { color: var(--text); border-color: var(--text-secondary); }
-    chump-first-run-wizard .frw-steps {
-      list-style: none; padding: 0; margin: 0;
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    chump-first-run-wizard .frw-step {
-      display: grid;
-      grid-template-columns: 32px 1fr auto;
-      gap: 12px; align-items: start;
-      padding: 8px 6px;
-      border-radius: var(--radius-sm);
-      transition: background 0.12s;
-    }
-    chump-first-run-wizard .frw-step:hover { background: var(--bg-elevated); }
-    chump-first-run-wizard .frw-step-current { background: var(--accent-dim); }
-    chump-first-run-wizard .frw-step-icon {
-      font-size: 18px; line-height: 24px; text-align: center;
-      font-weight: 700;
-    }
-    chump-first-run-wizard .frw-step-done   .frw-step-icon { color: var(--success); }
-    chump-first-run-wizard .frw-step-skipped .frw-step-icon { color: var(--text-secondary); }
-    chump-first-run-wizard .frw-step-current .frw-step-icon { color: var(--accent); }
-    chump-first-run-wizard .frw-step-pending .frw-step-icon { color: var(--text-secondary); }
-    chump-first-run-wizard .frw-step-body { min-width: 0; }
-    chump-first-run-wizard .frw-step-title {
-      font-size: 13px; color: var(--text-primary, var(--text));
-      line-height: 1.4;
-    }
-    chump-first-run-wizard .frw-step-label {
-      color: var(--accent); font-family: "SF Mono", ui-monospace, monospace;
-      font-size: 12px;
-    }
-    chump-first-run-wizard .frw-step-hint {
-      font-size: 11px; color: var(--text-secondary);
-      margin-top: 4px; line-height: 1.4;
-    }
-    chump-first-run-wizard .frw-step-actions {
-      display: flex; gap: 6px; align-items: center;
-    }
-    chump-first-run-wizard .frw-cta {
-      background: var(--accent); color: #fff;
-      padding: 5px 12px; border-radius: var(--radius-sm);
-      border: none; cursor: pointer; font-size: 12px; font-weight: 500;
-      text-decoration: none;
-      transition: filter 0.12s;
-    }
-    chump-first-run-wizard .frw-cta:hover { filter: brightness(1.15); }
-    chump-first-run-wizard .frw-skip {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-secondary);
-      padding: 4px 10px; border-radius: var(--radius-sm);
-      cursor: pointer; font-size: 11px;
-    }
-    chump-first-run-wizard .frw-skip:hover { color: var(--text); border-color: var(--text-secondary); }
-    /* Mobile (≤640px): condense layout */
-    @media (max-width: 640px) {
-      chump-first-run-wizard .frw-shell { padding: 12px 14px; }
-      chump-first-run-wizard .frw-step {
-        grid-template-columns: 28px 1fr;
-        grid-template-rows: auto auto;
-      }
-      chump-first-run-wizard .frw-step-actions {
-        grid-column: 1 / -1;
-        justify-content: flex-end;
-      }
-      chump-first-run-wizard .frw-cta, chump-first-run-wizard .frw-skip { min-height: 36px; }
-    }
-
-    /* PRODUCT-107: <chump-status-footer> CSS moved into web/v2/app.js
-       (ChumpStatusFooter shadow DOM) — INFRA-5260. */
-    chump-view-audit .audit-chip:hover { color: var(--text); border-color: var(--text-secondary); }
-    chump-view-audit .audit-chip[aria-pressed="true"] {
-      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
-    }
-    chump-view-audit .audit-search {
-      flex: 1; min-width: 180px;
-      padding: 5px 10px; background: var(--bg-elevated);
-      border: 1px solid var(--border); color: var(--text-primary, var(--text));
-      border-radius: var(--radius-sm); font-size: 12px;
-    }
-    chump-view-audit .audit-export,
-    chump-view-audit .audit-clear {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-secondary);
-      padding: 5px 12px; border-radius: var(--radius-sm);
-      cursor: pointer; font-size: 11px;
-    }
-    chump-view-audit .audit-export:hover,
-    chump-view-audit .audit-clear:hover { color: var(--text); border-color: var(--text-secondary); }
-    chump-view-audit .audit-stats {
-      padding: 6px 0; font-size: 11px;
-      color: var(--text-secondary);
-      font-variant-numeric: tabular-nums;
-    }
-    chump-view-audit .audit-stat { color: var(--text-primary, var(--text)); font-weight: 600; }
-    chump-view-audit .audit-stat-sep { margin: 0 8px; opacity: 0.4; }
-    chump-view-audit .audit-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    chump-view-audit .audit-table thead th {
-      position: sticky; top: 0; z-index: 1;
-      background: var(--bg-surface);
-      text-align: left; padding: 6px 8px;
-      border-bottom: 2px solid var(--border);
-      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
-      color: var(--text-secondary);
-    }
-    chump-view-audit .audit-row { cursor: pointer; transition: background 0.1s; }
-    chump-view-audit .audit-row:hover { background: var(--bg-elevated); }
-    chump-view-audit .audit-row td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    chump-view-audit .audit-cell-ts { font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
-    chump-view-audit .audit-kind { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 3px; }
-    chump-view-audit .audit-kind-tool_approval { background: rgba(10,132,255,0.18); color: #4aa3ff; }
-    chump-view-audit .audit-kind-cos { background: rgba(176,86,255,0.18); color: #c08fff; }
-    chump-view-audit .audit-pill {
-      background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
-      padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 11px;
-      font-family: "SF Mono", ui-monospace, monospace;
-    }
-    chump-view-audit .audit-pill:hover { color: var(--accent); border-color: var(--accent); }
-    chump-view-audit .audit-cell-summary { max-width: 480px; overflow: hidden; text-overflow: ellipsis; }
-    chump-view-audit .audit-outcome { font-size: 10px; padding: 1px 6px; border-radius: 3px; }
-    chump-view-audit .audit-outcome-ok   { background: rgba(48,209,88,0.18); color: var(--success); }
-    chump-view-audit .audit-outcome-bad  { background: rgba(255,69,58,0.22); color: var(--error); }
-    chump-view-audit .audit-outcome-info { background: var(--bg-elevated); color: var(--text-secondary); }
-    chump-view-audit .audit-row-expansion td { background: var(--bg-elevated); padding: 12px; }
-    chump-view-audit .audit-row-expansion pre {
-      margin: 0; font-size: 11px; color: var(--text-secondary);
-      max-height: 320px; overflow: auto; font-family: "SF Mono", ui-monospace, monospace;
-    }
-    @media (max-width: 640px) {
-      chump-view-audit { padding: 12px 14px; }
-      chump-view-audit .audit-table thead { display: none; }
-      chump-view-audit .audit-row {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 4px 8px; padding: 8px 4px; border-bottom: 1px solid var(--border);
-      }
-      chump-view-audit .audit-row td { border-bottom: none; padding: 0; }
-      chump-view-audit .audit-cell-summary { grid-column: 1 / -1; max-width: 100%; white-space: normal; }
-    }
-
-    /* PRODUCT-113: cost ceiling inputs in CONFIG + kill-switch modal.
-       Defends archetype 4 (enterprise auditor) "what if the AI runs $1000
-       overnight" concern. See docs/design/OPERATOR_CONSOLE_V2.md. */
-    .cost-threshold {
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    .cost-threshold-label {
-      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
-      color: var(--text-secondary);
-    }
-    .cost-threshold input[type="number"] {
-      padding: 6px 8px; background: var(--bg-elevated);
-      border: 1px solid var(--border); color: var(--text-primary, var(--text));
-      border-radius: var(--radius-sm); font-size: 13px;
-      font-variant-numeric: tabular-nums;
-    }
-    .cost-threshold input[type="number"]:focus {
-      outline: 2px solid var(--accent); outline-offset: 1px;
-    }
-
-    /* Kill-switch modal — alertdialog overlay when /api/* returns 402. */
-    .cost-kill-modal {
-      position: fixed; inset: 0; z-index: 9999;
-      background: rgba(0,0,0,0.55);
-      display: flex; align-items: center; justify-content: center;
-      padding: 20px;
-    }
-    .cost-kill-modal-shell {
-      background: var(--bg-surface); color: var(--text-primary, var(--text));
-      border: 2px solid var(--error, #ff453a);
-      border-radius: var(--radius);
-      padding: 20px 24px;
-      max-width: 480px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-    }
-    .cost-kill-title {
-      font-size: 18px; font-weight: 700;
-      color: var(--error, #ff453a);
-      margin-bottom: 12px;
-    }
-    .cost-kill-msg { font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
-    .cost-kill-msg strong { color: var(--error, #ff453a); }
-    .cost-kill-actions {
-      display: flex; gap: 8px; margin-bottom: 8px;
-    }
-    .cost-kill-config {
-      background: var(--accent); color: #fff;
-      padding: 6px 14px; border: none; border-radius: var(--radius-sm);
-      cursor: pointer; font-size: 12px; font-weight: 500;
-    }
-    .cost-kill-config:hover { filter: brightness(1.15); }
-    .cost-kill-dismiss {
-      background: transparent; color: var(--text-secondary);
-      border: 1px solid var(--border);
-      padding: 6px 14px; border-radius: var(--radius-sm);
-      cursor: pointer; font-size: 12px;
-    }
-    .cost-kill-dismiss:hover { color: var(--text); border-color: var(--text-secondary); }
-    .cost-kill-hint { font-size: 11px; color: var(--text-secondary); }
-    .cost-kill-hint code { font-family: "SF Mono", ui-monospace, monospace; }
-
-    /* PRODUCT-112: <chump-view-network-audit> air-gap trust page.
-       Archetype 1 (offline solo dev) clicks the footer air-gap badge →
-       drills here → sees proof of compliance OR a violation banner. */
-    chump-view-network-audit { display: block; padding: 16px 20px; max-width: 1280px; }
-    chump-view-network-audit .netaudit-banner {
-      padding: 10px 14px; border-radius: var(--radius-sm);
-      margin-bottom: 12px; font-size: 13px;
-    }
-    chump-view-network-audit .netaudit-banner-ok {
-      background: rgba(48,209,88,0.18); color: var(--success);
-      border: 1px solid var(--success);
-    }
-    chump-view-network-audit .netaudit-banner-violation {
-      background: rgba(255,69,58,0.22); color: var(--error);
-      border: 2px solid var(--error); font-weight: 500;
-    }
-    chump-view-network-audit .netaudit-banner-info {
-      background: var(--bg-elevated); color: var(--text-secondary);
-      border: 1px solid var(--border);
-    }
-    chump-view-network-audit .netaudit-toolbar {
-      display: flex; gap: 12px; align-items: center;
-      padding: 6px 0; border-bottom: 1px solid var(--border);
-      margin-bottom: 8px;
-    }
-    chump-view-network-audit .netaudit-chips { display: inline-flex; gap: 4px; }
-    chump-view-network-audit .netaudit-chip {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-secondary);
-      padding: 4px 10px; border-radius: var(--radius-sm);
-      cursor: pointer; font-size: 11px;
-    }
-    chump-view-network-audit .netaudit-chip[aria-pressed="true"] {
-      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
-    }
-    chump-view-network-audit .netaudit-export {
-      margin-left: auto;
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-secondary);
-      padding: 4px 12px; border-radius: var(--radius-sm);
-      cursor: pointer; font-size: 11px;
-    }
-    chump-view-network-audit .netaudit-export:hover { color: var(--text); border-color: var(--text-secondary); }
-    chump-view-network-audit .netaudit-stats {
-      font-size: 11px; color: var(--text-secondary); padding: 6px 0;
-    }
-    chump-view-network-audit .netaudit-stat { color: var(--text-primary, var(--text)); font-weight: 600; }
-    chump-view-network-audit .netaudit-stat-violation { color: var(--error); }
-    chump-view-network-audit .netaudit-stat-sep { margin: 0 8px; opacity: 0.4; }
-    chump-view-network-audit .netaudit-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    chump-view-network-audit .netaudit-table thead th {
-      position: sticky; top: 0; background: var(--bg-surface);
-      text-align: left; padding: 6px 8px;
-      border-bottom: 2px solid var(--border);
-      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
-      color: var(--text-secondary);
-    }
-    chump-view-network-audit .netaudit-row td {
-      padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top;
-    }
-    chump-view-network-audit .netaudit-row-nongithub { background: rgba(255,69,58,0.06); }
-    chump-view-network-audit .netaudit-cell-ts {
-      color: var(--text-secondary); white-space: nowrap;
-      font-variant-numeric: tabular-nums;
-    }
-    chump-view-network-audit .netaudit-cell-host { font-family: "SF Mono", ui-monospace, monospace; }
-    chump-view-network-audit .netaudit-cell-path {
-      color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace;
-      max-width: 480px; overflow: hidden; text-overflow: ellipsis;
-    }
-    chump-view-network-audit .netaudit-pill {
-      font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
-      padding: 1px 6px; border-radius: 3px; margin-left: 6px;
-    }
-    chump-view-network-audit .netaudit-pill-ok {
-      background: rgba(48,209,88,0.18); color: var(--success);
-    }
-    chump-view-network-audit .netaudit-footnote {
-      margin-top: 12px; font-size: 11px; color: var(--text-secondary);
-      padding: 8px 0; border-top: 1px solid var(--border);
-    }
-    chump-view-network-audit .netaudit-footnote code {
-      font-family: "SF Mono", ui-monospace, monospace;
-    }
-    @media (max-width: 640px) {
-      chump-view-network-audit { padding: 12px 14px; }
-      chump-view-network-audit .netaudit-table thead { display: none; }
-      chump-view-network-audit .netaudit-row {
-        display: grid; grid-template-columns: auto 1fr; gap: 2px 8px;
-        padding: 8px 4px; border-bottom: 1px solid var(--border);
-      }
-      chump-view-network-audit .netaudit-row td { border-bottom: none; padding: 0; }
-      chump-view-network-audit .netaudit-cell-path { max-width: 100%; }
-    /* INFRA-1207: <chump-view-roadmap> milestone tracker (LIBRARY cadence).
-       Apex situational-awareness for archetype 2 — "where does today's gap
-       fit in the long arc?" */
-    chump-view-roadmap { display: block; padding: 16px 20px; max-width: 1200px; }
-    chump-view-roadmap .roadmap-toolbar {
-      padding: 6px 0; border-bottom: 1px solid var(--border);
-      margin-bottom: 12px;
-    }
-    chump-view-roadmap .roadmap-filter {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 12px; color: var(--text-secondary);
-    }
-    chump-view-roadmap .roadmap-list {
-      display: flex; flex-direction: column; gap: 12px;
-    }
-    chump-view-roadmap .roadmap-milestone {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--text-secondary);
-      border-radius: var(--radius);
-      padding: 12px 16px;
-      transition: border-color 0.12s;
-    }
-    chump-view-roadmap .roadmap-milestone-active {
-      border-left-color: var(--accent);
-      background: var(--accent-dim);
-    }
-    chump-view-roadmap .roadmap-milestone-next    { border-left-color: var(--text-secondary); }
-    chump-view-roadmap .roadmap-milestone-done    {
-      border-left-color: var(--success); opacity: 0.7;
-    }
-    chump-view-roadmap .roadmap-milestone-blocked { border-left-color: var(--error); }
-    chump-view-roadmap .roadmap-milestone-header {
-      display: flex; align-items: baseline; gap: 10px;
-      margin-bottom: 8px;
-    }
-    chump-view-roadmap .roadmap-milestone-icon {
-      font-size: 18px; line-height: 1; width: 20px; text-align: center;
-    }
-    chump-view-roadmap .roadmap-milestone-active .roadmap-milestone-icon { color: var(--accent); }
-    chump-view-roadmap .roadmap-milestone-done   .roadmap-milestone-icon { color: var(--success); }
-    chump-view-roadmap .roadmap-milestone-blocked .roadmap-milestone-icon { color: var(--error); }
-    chump-view-roadmap .roadmap-milestone-title {
-      font-size: 14px; font-weight: 600; flex: 1; margin: 0;
-      color: var(--text-primary, var(--text));
-    }
-    chump-view-roadmap .roadmap-milestone-done .roadmap-milestone-title {
-      text-decoration: line-through; text-decoration-thickness: 1px;
-    }
-    chump-view-roadmap .roadmap-target {
-      font-size: 11px; color: var(--text-secondary);
-      font-family: "SF Mono", ui-monospace, monospace;
-    }
-    chump-view-roadmap .roadmap-pct {
-      font-size: 12px; font-weight: 600;
-      color: var(--accent);
-      padding: 2px 8px; border-radius: 10px;
-      background: var(--bg-elevated);
-    }
-    chump-view-roadmap .roadmap-gaps {
-      display: flex; flex-wrap: wrap; gap: 6px;
-      margin-top: 8px;
-    }
-    chump-view-roadmap .roadmap-gap-chip {
-      font-size: 11px; font-family: "SF Mono", ui-monospace, monospace;
-      padding: 2px 8px; border-radius: 4px;
-      background: var(--bg-elevated); color: var(--text-secondary);
-      text-decoration: none;
-      transition: color 0.12s, background 0.12s;
-    }
-    chump-view-roadmap .roadmap-gap-chip:hover {
-      color: var(--accent); background: var(--accent-dim);
-    }
-    chump-view-roadmap .roadmap-blockers {
-      margin-top: 8px; padding: 6px 10px;
-      background: rgba(255,69,58,0.16);
-      color: var(--error);
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-    }
-    @media (max-width: 640px) {
-      chump-view-roadmap { padding: 12px 14px; }
-      chump-view-roadmap .roadmap-milestone-header { flex-wrap: wrap; }
-    /* INFRA-1203: <chump-view-fleet-health> operator-vitals drill-in. */
-    chump-view-fleet-health { display: block; padding: 16px 20px; max-width: 1400px; }
-    chump-view-fleet-health .fh-grid {
-      display: grid; gap: 14px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    chump-view-fleet-health .fh-panel {
-    /* INFRA-1204: <chump-view-coord> a2a coordination panel.
-       Three stacked sub-panels: inbox / INTENT / PR-nudge log. */
-    chump-view-coord { display: block; padding: 16px 20px; max-width: 1280px; }
-    chump-view-coord .coord-panels {
-      display: flex; flex-direction: column; gap: 16px;
-    }
-    chump-view-coord .coord-panel {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 16px;
-    }
-    chump-view-fleet-health .fh-panel-header h3 {
-      font-size: 14px; font-weight: 600;
-      color: var(--text-primary, var(--text));
-      margin: 0 0 8px 0;
-    }
-    chump-view-fleet-health .fh-panel-footnote {
-      margin-top: 8px; padding-top: 8px;
-      border-top: 1px solid var(--border);
-      font-size: 11px; color: var(--text-secondary); line-height: 1.4;
-    }
-    chump-view-fleet-health .fh-panel-footnote code,
-    chump-view-fleet-health .fh-panel-footnote a {
-      font-family: "SF Mono", ui-monospace, monospace;
-      color: var(--accent);
-    }
-    chump-view-fleet-health .fh-pillar-quadrant {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-    }
-    chump-view-fleet-health .fh-pillar-cell {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 12px;
-      border-radius: var(--radius-sm);
-      background: var(--bg-elevated);
-    }
-    chump-view-fleet-health .fh-pillar-label {
-      font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--text-secondary);
-    }
-    chump-view-fleet-health .fh-pillar-grade {
-      font-size: 32px; font-weight: 700;
-      font-family: "SF Mono", ui-monospace, monospace;
-      color: var(--text-primary, var(--text));
-      margin: 4px 0;
-    }
-    chump-view-fleet-health .fh-pillar-grade-a { color: var(--success); }
-    chump-view-fleet-health .fh-pillar-grade-b { color: var(--accent); }
-    chump-view-fleet-health .fh-pillar-grade-c { color: var(--warn); }
-    chump-view-fleet-health .fh-pillar-grade-d,
-    chump-view-fleet-health .fh-pillar-grade-f { color: var(--error); }
-    chump-view-fleet-health .fh-pillar-trend {
-      font-size: 11px; color: var(--text-secondary);
-    }
-    chump-view-fleet-health .fh-kpis-grid {
-      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-    }
-    chump-view-fleet-health .fh-kpi {
-      display: flex; flex-direction: column;
-      padding: 10px; background: var(--bg-elevated);
-      border-radius: var(--radius-sm);
-    }
-    chump-view-fleet-health .fh-kpi-value {
-      font-size: 22px; font-weight: 700;
-      color: var(--text-primary, var(--text));
-      font-variant-numeric: tabular-nums;
-    }
-    chump-view-fleet-health .fh-kpi-value.fh-kpi-warn { color: var(--warn); }
-    chump-view-fleet-health .fh-kpi-value.fh-kpi-red  { color: var(--error); }
-    chump-view-fleet-health .fh-kpi-label {
-      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
-      color: var(--text-secondary); margin-top: 2px;
-    }
-    chump-view-fleet-health .fh-slo-list {
-      list-style: none; padding: 0; margin: 0;
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    chump-view-fleet-health .fh-slo-row {
-      display: grid; grid-template-columns: 1fr auto 2fr;
-      gap: 8px; align-items: baseline;
-      padding: 6px 8px;
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-    }
-    chump-view-fleet-health .fh-slo-ok   { background: rgba(48,209,88,0.12); }
-    chump-view-fleet-health .fh-slo-warn { background: rgba(255,159,10,0.12); }
-    chump-view-fleet-health .fh-slo-bad  { background: rgba(255,69,58,0.16); }
-    chump-view-fleet-health .fh-slo-name { font-weight: 500; }
-    chump-view-fleet-health .fh-slo-status {
-      font-size: 11px; padding: 1px 6px; border-radius: 3px;
-      background: var(--bg-elevated);
-    }
-    chump-view-fleet-health .fh-slo-reason { color: var(--text-secondary); font-size: 11px; }
-    chump-view-fleet-health .fh-budget-gauge {
-      display: flex; align-items: center; gap: 12px;
-    }
-    chump-view-fleet-health .fh-budget-bar {
-      flex: 1; height: 12px;
-      background: var(--bg-elevated);
-      border-radius: 6px; overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    chump-view-fleet-health .fh-budget-fill {
-      height: 100%; background: var(--success); transition: width 0.3s ease;
-    }
-    chump-view-fleet-health .fh-budget-fill.fh-bar-warn { background: var(--warn); }
-    chump-view-fleet-health .fh-budget-fill.fh-bar-red  { background: var(--error); }
-    chump-view-fleet-health .fh-budget-pct {
-      font-size: 16px; font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      color: var(--text-primary, var(--text));
-      min-width: 50px; text-align: right;
-    }
-    @media (max-width: 640px) {
-      chump-view-fleet-health { padding: 12px 14px; }
-      chump-view-fleet-health .fh-grid { grid-template-columns: 1fr; }
-    chump-view-coord .coord-panel-header {
-      display: flex; align-items: center; gap: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 8px;
-    }
-    chump-view-coord .coord-panel-header h3 {
-      font-size: 14px; font-weight: 600;
-      color: var(--text-primary, var(--text));
-      flex: 1; margin: 0;
-    }
-    chump-view-coord .coord-stat {
-      font-size: 11px; color: var(--text-secondary);
-      font-variant-numeric: tabular-nums;
-      background: var(--bg-elevated);
-      padding: 2px 8px; border-radius: 10px;
-    }
-    chump-view-coord .coord-session-picker {
-      font-size: 11px; color: var(--text-secondary);
-      display: inline-flex; align-items: center; gap: 6px;
-    }
-    chump-view-coord .coord-session-picker select {
-      background: var(--bg-elevated); color: var(--text-primary, var(--text));
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      padding: 3px 8px; font-size: 11px;
-      font-family: "SF Mono", ui-monospace, monospace;
-    }
-    chump-view-coord .coord-list {
-      list-style: none; padding: 0; margin: 0;
-      display: flex; flex-direction: column; gap: 2px;
-      max-height: 320px; overflow-y: auto;
-    }
-    chump-view-coord .coord-list .placeholder {
-      padding: 12px 4px; color: var(--text-secondary);
-      font-size: 12px; font-style: italic;
-    }
-    chump-view-coord .coord-row {
-      display: grid;
-      grid-template-columns: 56px 100px auto 1fr;
-      gap: 8px; align-items: baseline;
-      padding: 5px 4px;
-      font-size: 12px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-    }
-    chump-view-coord .coord-row:hover { background: var(--bg-elevated); }
-    chump-view-coord .coord-row-ts {
-      font-variant-numeric: tabular-nums; color: var(--text-secondary);
-      white-space: nowrap;
-    }
-    chump-view-coord .coord-row-from,
-    chump-view-coord .coord-row-gap {
-      font-family: "SF Mono", ui-monospace, monospace;
-      font-size: 11px; color: var(--text-secondary);
-    }
-    chump-view-coord .coord-row-kind {
-      font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
-      padding: 1px 6px; border-radius: 3px;
-      background: var(--bg-elevated); color: var(--text-secondary);
-    }
-    chump-view-coord .coord-row-body {
-      color: var(--text-primary, var(--text));
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    chump-view-coord .coord-row-pr a { color: var(--accent); text-decoration: none; }
-    chump-view-coord .coord-row-pr a:hover { text-decoration: underline; }
-    chump-view-coord .coord-row-class {
-      font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em;
-      padding: 1px 6px; border-radius: 3px;
-    }
-    chump-view-coord .coord-row-class-dirty            { background: rgba(255,69,58,0.22); color: var(--error); }
-    chump-view-coord .coord-row-class-blocked-ci       { background: rgba(255,159,10,0.18); color: var(--warn); }
-    chump-view-coord .coord-row-class-orphan-disarmed  { background: rgba(176,86,255,0.18); color: #c08fff; }
-    chump-view-coord .coord-row-class-base-modified    { background: rgba(10,132,255,0.18); color: #4aa3ff; }
-    chump-view-coord .coord-row-class-clean-not-merged { background: rgba(48,209,88,0.18); color: var(--success); }
-    chump-view-coord .coord-panel-footnote {
-      margin-top: 6px; padding-top: 6px;
-      border-top: 1px solid var(--border);
-      font-size: 11px; color: var(--text-secondary); line-height: 1.4;
-    }
-    chump-view-coord .coord-panel-footnote code {
-      font-family: "SF Mono", ui-monospace, monospace;
-    }
-    @media (max-width: 640px) {
-      chump-view-coord { padding: 12px 14px; }
-      chump-view-coord .coord-row {
-        grid-template-columns: 1fr;
-        gap: 2px;
-        padding: 8px 4px;
-      }
-    }
-
-    /* INFRA-1365: <chump-view-orchestrator-sessions> — Phase 3+4 demo panel.
-       Surfaces orchestrate_session_summary ambient events with sparklines. */
-    chump-view-orchestrator-sessions { display: block; padding: 16px 20px; max-width: 1200px; }
-    chump-view-orchestrator-sessions .orch-sparklines {
-      display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
-    }
-    chump-view-orchestrator-sessions .orch-sparkline-fig {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 14px;
-      flex: 1 1 150px; min-width: 140px; max-width: 240px;
-    }
-    chump-view-orchestrator-sessions .orch-spark-label {
-      display: block; font-size: 11px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.05em;
-      color: var(--text-secondary); margin-bottom: 6px;
-    }
-    chump-view-orchestrator-sessions .orch-spark-svg {
-      display: block; width: 100%; height: 40px;
-    }
-    chump-view-orchestrator-sessions .orch-table-wrap {
-      overflow-x: auto;
-    }
-    chump-view-orchestrator-sessions .orch-table {
-      width: 100%; border-collapse: collapse; font-size: 12px;
-    }
-    chump-view-orchestrator-sessions .orch-table thead th {
-      text-align: left; padding: 6px 8px;
-      border-bottom: 1px solid var(--border);
-      font-size: 11px; text-transform: uppercase;
-      letter-spacing: 0.04em; color: var(--text-secondary);
-      font-weight: 600;
-    }
-    chump-view-orchestrator-sessions .orch-row { cursor: default; }
-    chump-view-orchestrator-sessions .orch-row:hover { background: var(--bg-elevated); }
-    chump-view-orchestrator-sessions .orch-row td {
-      padding: 6px 8px; border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
-    chump-view-orchestrator-sessions .orch-cell-ts {
-      white-space: nowrap; color: var(--text-secondary);
-      font-variant-numeric: tabular-nums; font-size: 11px;
-    }
-    chump-view-orchestrator-sessions .orch-cell-sid { max-width: 220px; }
-    chump-view-orchestrator-sessions .orch-sid-btn {
-      background: none; border: none; padding: 0;
-      color: var(--accent); cursor: pointer;
-      font-family: var(--font-mono, monospace); font-size: 11px;
-      overflow: hidden; text-overflow: ellipsis;
-      white-space: nowrap; max-width: 200px; display: block;
-      text-align: left;
-    }
-    chump-view-orchestrator-sessions .orch-sid-btn:hover { text-decoration: underline; }
-    chump-view-orchestrator-sessions .orch-cell-num {
-      font-variant-numeric: tabular-nums; text-align: right;
-    }
-    chump-view-orchestrator-sessions .orch-exit {
-      font-size: 10px; padding: 2px 6px; border-radius: 3px;
-      text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
-    }
-    chump-view-orchestrator-sessions .orch-exit-clean { background: rgba(48,209,88,0.18); color: var(--success, #30d158); }
-    chump-view-orchestrator-sessions .orch-exit-bad   { background: rgba(255,69,58,0.22); color: var(--error, #ff453a); }
-    chump-view-orchestrator-sessions .orch-exit-gray  { background: var(--bg-elevated); color: var(--text-secondary); }
-    chump-view-orchestrator-sessions .orch-placeholder {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 8px; padding: 48px 16px;
-      text-align: center; color: var(--text-secondary); font-size: 14px;
-    }
-    chump-view-orchestrator-sessions .orch-empty-icon { font-size: 32px; }
-    chump-view-orchestrator-sessions .orch-empty-link {
-      color: var(--accent); font-size: 12px; text-decoration: none;
-    }
-    chump-view-orchestrator-sessions .orch-empty-link:hover { text-decoration: underline; }
-    @media (max-width: 640px) {
-      chump-view-orchestrator-sessions { padding: 12px 14px; }
-      chump-view-orchestrator-sessions .orch-sparklines { gap: 10px; }
-      chump-view-orchestrator-sessions .orch-sparkline-fig { max-width: 100%; }
-    }
-
-    /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
-       content when approvals are pending. Hidden by default; visible + sticky
-       when shell is unhidden. See docs/design/OPERATOR_CONSOLE_V2.md
-       (archetype 3) for rationale. */
-    chump-tool-approval-tray { display: block; }
-    chump-tool-approval-tray .tat-shell[hidden] { display: none; }
-    chump-tool-approval-tray .tat-shell {
-      background: var(--bg-elevated);
-      border-bottom: 1px solid var(--border);
-      border-left: 3px solid var(--warn, #ff9f0a);
-      padding: 10px 14px;
-      max-height: 40vh;
-      overflow-y: auto;
-      position: relative;
-      z-index: 9;
-    }
-    chump-tool-approval-tray .tat-header {
-      display: flex; align-items: center; gap: 10px;
-      margin-bottom: 8px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-    chump-tool-approval-tray .tat-count {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-width: 22px; height: 22px; padding: 0 8px;
-      background: var(--warn, #ff9f0a); color: #000;
-      border-radius: 11px;
-      font-size: 11px; font-weight: 700;
-    }
-    chump-tool-approval-tray .tat-title { flex: 1; text-transform: uppercase; letter-spacing: 0.04em; }
-    chump-tool-approval-tray .tat-batch { display: flex; gap: 6px; }
-    chump-tool-approval-tray .tat-batch-btn {
-      background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
-      padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px;
-    }
-    chump-tool-approval-tray .tat-batch-btn:hover { color: var(--text); border-color: var(--text-secondary); }
-    chump-tool-approval-tray .tat-list {
-      list-style: none; padding: 0; margin: 0;
-      display: flex; flex-direction: column; gap: 6px;
-    }
-    chump-tool-approval-tray .tat-row {
-      background: var(--bg-surface, var(--bg));
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 8px 12px;
-      display: flex; flex-direction: column; gap: 4px;
-      transition: opacity 0.15s, background 0.15s;
-    }
-    chump-tool-approval-tray .tat-row:focus {
-      outline: 2px solid var(--accent); outline-offset: 1px;
-    }
-    chump-tool-approval-tray .tat-row-main {
-      display: flex; align-items: baseline; gap: 8px;
-      font-variant-numeric: tabular-nums;
-    }
-    chump-tool-approval-tray .tat-tool { font-weight: 600; color: var(--text-primary, var(--text)); }
-    chump-tool-approval-tray .tat-risk {
-      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
-      padding: 1px 6px; border-radius: 3px;
-    }
-    chump-tool-approval-tray .tat-risk-low    { background: rgba(48,209,88,0.18); color: var(--success); }
-    chump-tool-approval-tray .tat-risk-medium { background: rgba(255,159,10,0.18); color: var(--warn); }
-    chump-tool-approval-tray .tat-risk-high   { background: rgba(255,69,58,0.22); color: var(--error); }
-    chump-tool-approval-tray .tat-risk-unknown { background: var(--bg-elevated); color: var(--text-secondary); }
-    chump-tool-approval-tray .tat-countdown {
-      margin-left: auto; font-size: 11px; color: var(--text-secondary);
-    }
-    chump-tool-approval-tray .tat-reason {
-      font-size: 12px; color: var(--text-secondary); line-height: 1.4;
-    }
-    chump-tool-approval-tray .tat-args {
-      font-size: 11px; color: var(--text-secondary);
-      overflow-x: auto; white-space: nowrap;
-    }
-    chump-tool-approval-tray .tat-args code {
-      font-family: "SF Mono", ui-monospace, monospace;
-    }
-    chump-tool-approval-tray .tat-actions { display: flex; gap: 6px; }
-    chump-tool-approval-tray .tat-btn {
-      padding: 5px 12px; border-radius: var(--radius-sm);
-      border: 1px solid transparent; cursor: pointer; font-size: 12px; font-weight: 500;
-    }
-    chump-tool-approval-tray .tat-approve {
-      background: var(--success, #30d158); color: #000;
-    }
-    chump-tool-approval-tray .tat-approve:hover { filter: brightness(1.1); }
-    chump-tool-approval-tray .tat-deny {
-      background: transparent; border-color: var(--border); color: var(--text-secondary);
-    }
-    chump-tool-approval-tray .tat-deny:hover { color: var(--error); border-color: var(--error); }
-    chump-tool-approval-tray .tat-row-pending { opacity: 0.5; pointer-events: none; }
-    chump-tool-approval-tray .tat-row-expired {
-      opacity: 0.45;
-      border-color: var(--text-secondary);
-      background: var(--bg-elevated);
-    }
-    chump-tool-approval-tray .tat-row-error {
-      border-color: var(--error);
-    }
-    chump-tool-approval-tray .tat-error-banner {
-      font-size: 11px; color: var(--error);
-      padding: 4px 0;
-    }
-    /* Mobile: stack tat-row-main fields */
-    @media (max-width: 640px) {
-      chump-tool-approval-tray .tat-shell { max-height: 50vh; }
-      chump-tool-approval-tray .tat-row-main {
-        flex-direction: column; align-items: flex-start; gap: 2px;
-      }
-      chump-tool-approval-tray .tat-countdown { margin-left: 0; }
-      chump-tool-approval-tray .tat-actions { flex-direction: row; }
-      chump-tool-approval-tray .tat-btn { flex: 1; min-height: 36px; }
-    }
-
-    /* INFRA-1012 + INFRA-1011 widget CSS moved into web/v2/cost-meter.js
-       and web/v2/pr-card.js (shadow DOM) — INFRA-5260. The global
-       .pr-action-modal* rules below stay here: the action modal is
-       appended to document.body, not shadow DOM. */
-
-    /* PRODUCT-086: Action modal — appears when user clicks approve/request-changes/comment. */
-    .pr-action-modal {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      z-index: 1000; display: flex; align-items: center; justify-content: center;
-    }
-    .pr-action-modal-overlay {
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.6);
-    }
-    .pr-action-modal-content {
-      position: relative; background: var(--surface, #1a1a1e);
-      border: 1px solid var(--border, #2a2a2e);
-      border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-      width: 90%; max-width: 500px; max-height: 80vh;
-      overflow-y: auto;
-    }
-    .pr-action-modal-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 16px; border-bottom: 1px solid var(--border, #2a2a2e);
-    }
-    .pr-action-modal-header h2 {
-      margin: 0; font-size: 18px; font-weight: 600;
-    }
-    .pr-action-modal-close {
-      background: transparent; border: none; font-size: 24px;
-      cursor: pointer; color: var(--text, #ddd);
-      padding: 0; width: 30px; height: 30px;
-    }
-    .pr-action-modal-close:hover { color: var(--accent, #4a7abb); }
-    .pr-action-modal-body {
-      padding: 16px;
-    }
-    .pr-action-modal-textarea {
-      width: 100%; padding: 10px; font-size: 13px;
-      border: 1px solid var(--border, #2a2a2e);
-      background: var(--input-bg, #0a0a0e);
-      color: var(--text, #ddd);
-      border-radius: 4px; font-family: ui-monospace, monospace;
-      min-height: 100px; resize: vertical;
-    }
-    .pr-action-modal-textarea:focus { outline: none; border-color: var(--accent, #4a7abb); }
-    .pr-action-modal-footer {
-      display: flex; gap: 8px; justify-content: flex-end;
-      padding: 16px; border-top: 1px solid var(--border, #2a2a2e);
-    }
-    .pr-action-modal-cancel, .pr-action-modal-submit {
-      padding: 8px 16px; font-size: 12px;
-      border: 1px solid var(--border, #2a2a2e);
-      background: var(--surface, #1a1a1e);
-      color: var(--text, #ddd);
-      border-radius: 4px; cursor: pointer;
-    }
-    .pr-action-modal-submit {
-      background: var(--accent, #2a4a7a);
-      border-color: var(--accent, #4a7abb);
-      color: #fff;
-    }
-    .pr-action-modal-submit:hover { background: var(--accent-hover, #3a5a8a); }
-    .pr-action-modal-cancel:hover { background: var(--border, #2a2a2e); }
-
-    /* ── Layout ─────────────────────────────────────────────────────────── */
-    #app-body {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-    }
-
-    /* ── Sidebar nav (PRODUCT-106 cadence rework) ──────────────────────── */
-    /* Side rail = 4 cadence buttons (NOW / AMBIENT / LIBRARY / CONFIG).
-       Sub-tab strip lives below or to the right of the cadence rail
-       depending on viewport. See docs/design/OPERATOR_CONSOLE_V2.md §canvas. */
-    chump-nav {
-      width: var(--nav-width);
-      padding-left: var(--safe-left);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      padding-top: 8px;
-      gap: 4px;
-      flex-shrink: 0;
-      overflow-y: auto;
-    }
-    chump-nav .nav-cadences {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 0 8px;
-    }
-    chump-nav .nav-cadence {
-      width: 48px;
-      height: 48px;
-      border: none;
-      background: transparent;
-      border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-right: auto;
+    }
+    .brand-glyph {
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 2px;
-      transition: background 0.15s, color 0.15s, border-left-color 0.15s;
-      touch-action: manipulation;
-      border-left: 3px solid transparent;
-      font-weight: 600;
-    }
-    chump-nav .nav-cadence:hover {
-      background: var(--bg-elevated);
-      color: var(--text);
-    }
-    chump-nav .nav-cadence[aria-current="page"] {
-      background: var(--accent-dim);
-      color: var(--accent);
-      border-left-color: var(--accent);
-    }
-    /* Sub-tab strip — sits directly below the cadence buttons. */
-    chump-nav .nav-subtabs {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      padding: 8px;
-      border-top: 1px solid var(--border);
-      margin-top: 8px;
-    }
-    chump-nav .nav-subtabs:empty { display: none; }
-    chump-nav .nav-item {
-      width: 48px;
-      height: 40px;
-      border: none;
-      background: transparent;
+      width: 24px;
+      height: 24px;
       border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1px;
-      transition: background 0.15s, color 0.15s;
-      touch-action: manipulation;
-      opacity: 0.85;
-    }
-    chump-nav .nav-item:hover {
-      background: var(--bg-elevated);
-      color: var(--text);
-      opacity: 1;
-    }
-    chump-nav .nav-item[aria-current="page"] {
-      background: var(--bg-elevated);
-      color: var(--accent);
-      opacity: 1;
-    }
-    chump-nav .nav-icon { font-size: 16px; line-height: 1; position: relative; }
-    chump-nav .nav-cadence .nav-icon { font-size: 20px; }
-    chump-nav .nav-label { font-size: 9px; letter-spacing: 0.3px; text-transform: uppercase; }
-
-    /* Mobile: ≤640px → cadences become a horizontal top strip + sub-tabs below it. */
-    @media (max-width: 640px) {
-      chump-nav {
-        width: 100%;
-        height: auto;
-        flex-direction: column;
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-        padding: 4px 0;
-      }
-      chump-nav .nav-cadences {
-        flex-direction: row;
-        justify-content: space-around;
-        padding: 0 4px;
-      }
-      chump-nav .nav-cadence { flex: 1; max-width: 80px; height: 44px; border-left: none; border-bottom: 3px solid transparent; }
-      chump-nav .nav-cadence[aria-current="page"] { border-left-color: transparent; border-bottom-color: var(--accent); }
-      chump-nav .nav-subtabs {
-        flex-direction: row;
-        justify-content: space-around;
-        border-top: 1px solid var(--border);
-        margin-top: 4px;
-        padding: 4px;
-      }
-      chump-nav .nav-item { flex: 1; max-width: 80px; height: 36px; }
-    }
-
-    /* PRODUCT-094: notification badge on the nav bell icon */
-    .notif-badge {
-      position: absolute; top: -5px; right: -8px;
-      background: #ff3b30; color: #fff;
-      font-size: 9px; font-weight: 700; line-height: 1;
-      padding: 2px 4px; border-radius: 8px;
-      min-width: 14px; text-align: center;
-      pointer-events: none;
-    }
-    /* ── PRODUCT-100: status pill + toast + offline banner ─────────────── */
-    .chump-status-pill {
-      position: fixed; top: 8px; right: 12px; z-index: 9000;
-      font-size: 11px; padding: 2px 8px; border-radius: 10px;
-      background: rgba(30,30,30,0.85); backdrop-filter: blur(4px);
-      color: #ccc; pointer-events: none; user-select: none;
-      transition: color 0.3s;
-    }
-    .pill-live    { color: #6bcb77; }
-    .pill-stale   { color: #ffd93d; }
-    .pill-offline { color: #ff6b6b; }
-    .pill-paused  { color: #aaa; }
-    .pill-init    { display: none; }
-
-    #chump-toast-container {
-      position: fixed; bottom: 24px; right: 16px; z-index: 9100;
-      display: flex; flex-direction: column; gap: 8px; max-width: 360px;
-    }
-    .chump-error-toast {
-      display: flex; align-items: center; gap: 8px;
-      padding: 10px 12px; border-radius: 8px;
-      background: #2a1a1a; border: 1px solid #5a2020;
-      color: #f0b0b0; font-size: 13px;
-      animation: toast-in 0.2s ease;
-    }
-    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-    .toast-msg code { font-size: 11px; color: #f08080; }
-    .toast-retry, .toast-dismiss {
-      background: none; border: 1px solid #5a2020; border-radius: 4px;
-      color: #f0b0b0; cursor: pointer; padding: 2px 8px; font-size: 12px;
-      flex-shrink: 0;
-    }
-    .toast-retry:hover  { background: rgba(255,100,100,0.1); }
-    .toast-dismiss      { border: none; font-size: 16px; padding: 0 4px; }
-
-    #chump-offline-banner {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 9200;
-      background: #3a0000; color: #ffaaaa; text-align: center;
-      padding: 8px 16px; font-size: 13px; display: flex;
-      align-items: center; justify-content: center; gap: 12px;
-    }
-    #chump-offline-retry {
-      background: #5a0000; border: 1px solid #ff6b6b; border-radius: 4px;
-      color: #ffaaaa; cursor: pointer; padding: 2px 10px; font-size: 12px;
-    }
-    #chump-offline-retry:hover { background: #7a0000; }
-
-    /* ── Main content ───────────────────────────────────────────────────── */
-    #main-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* ── View: shared ───────────────────────────────────────────────────── */
-    .view-header {
-      padding: 20px 24px 16px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    .view-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
-    .view-subtitle { color: var(--text-secondary); font-size: 13px; }
-    .placeholder {
-      color: var(--text-secondary);
-      font-size: 13px;
-      padding: 32px 24px;
-      text-align: center;
-    }
-
-    /* ── View: tasks ────────────────────────────────────────────────────── */
-    .task-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
-    .task-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 14px;
-    }
-    .task-card-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .task-status {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-    }
-    .task-status.running { background: rgba(48,209,88,0.15); color: var(--success); }
-    .task-status.done    { background: rgba(10,132,255,0.12); color: var(--accent); }
-    .task-status.error   { background: rgba(255,69,58,0.12); color: var(--error); }
-    .task-id { font-size: 11px; color: var(--text-secondary); font-family: "SF Mono", monospace; }
-    .task-desc { font-size: 13px; color: var(--text); line-height: 1.45; }
-
-    /* ── View: memory ───────────────────────────────────────────────────── */
-    .memory-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
-    .memory-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 14px;
-    }
-    .memory-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
-
-    /* ── View: agent/gap-queue ──────────────────────────────────────────── */
-    .gap-search-bar {
-      display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px;
-      border-bottom: 1px solid var(--border); align-items: center;
-    }
-    .gap-search-bar input[type=search] {
-      flex: 1 1 160px; min-width: 120px; padding: 6px 10px; border-radius: var(--radius);
-      border: 1px solid var(--border); background: var(--bg-input,var(--bg-surface));
-      color: var(--text); font-size: 13px;
-    }
-    .gap-search-bar select {
-      padding: 5px 8px; border-radius: var(--radius); border: 1px solid var(--border);
-      background: var(--bg-surface); color: var(--text); font-size: 12px; cursor: pointer;
-    }
-    .gap-filter-ac { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-secondary); }
-    .gap-queue-stats {
-      display: flex;
-      gap: 16px;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-    }
-    .stat-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-    }
-    .stat-value {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--accent);
-    }
-    .stat-label {
-      font-size: 11px;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    .gap-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-    .gap-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 14px;
-    }
-    .gap-card-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .gap-id {
-      font-size: 12px;
-      font-weight: 600;
-      font-family: "SF Mono", monospace;
-      color: var(--text);
-    }
-    .gap-badge {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-    }
-    .badge-success { background: rgba(48,209,88,0.15); color: var(--success); }
-    .badge-warn   { background: rgba(255,159,10,0.15); color: var(--warn); }
-    .badge-error  { background: rgba(255,69,58,0.15); color: var(--error); }
-    .gap-priority {
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin-left: auto;
-      font-family: "SF Mono", monospace;
-    }
-
-    /* INFRA-1196: queue-row pillar / domain / AC / deps badges + per-row embed slots. */
-    .gap-pillar {
-      font-size: 9px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-    .gap-pillar-effective   { background: rgba(10,132,255,0.18);  color: #4aa3ff; }
-    .gap-pillar-credible    { background: rgba(204,136,0,0.18);   color: #e0aa30; }
-    .gap-pillar-resilient   { background: rgba(176,86,255,0.18);  color: #c08fff; }
-    .gap-pillar-zero-waste  { background: rgba(48,209,88,0.15);   color: var(--success); }
-    .gap-pillar-mission     { background: rgba(255,69,58,0.15);   color: var(--error); }
-    .gap-domain {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      font-family: "SF Mono", monospace;
-    }
-    .gap-ac, .gap-deps {
-      font-size: 10px;
-      color: var(--text-secondary);
-      padding: 2px 4px;
-    }
-    .gap-deps { color: #d99a23; }
-    .gap-lease {
-      font-size: 11px;
-      color: var(--text-secondary);
-      font-style: italic;
-      margin-top: 2px;
-    }
-    .gap-embed {
-      margin-top: 8px;
-      min-height: 0;
-    }
-    .gap-embed:empty { display: none; }
-
-    /* PRODUCT-110: ACP deeplink row on every gap card.
-       Competitive-differentiation surface vs Claude Code (CC structurally
-       can't ship this). chump://acp/open?gap=X opens in the registered
-       editor; Copy button always works for sharing. */
-    .gap-acp-row {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 6px;
-      font-size: 11px;
-    }
-    .gap-acp-link {
-      color: var(--accent);
-      text-decoration: none;
-      padding: 3px 8px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: transparent;
-      transition: background 0.12s, color 0.12s, border-color 0.12s;
-    }
-    .gap-acp-link:hover {
-      background: var(--accent-dim);
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-    .gap-acp-copy {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      padding: 3px 8px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: 11px;
-      transition: color 0.12s, border-color 0.12s, background 0.12s;
-    }
-    .gap-acp-copy:hover { color: var(--text); border-color: var(--text-secondary); }
-    .gap-acp-copy-success {
-      background: rgba(48,209,88,0.18);
-      color: var(--success);
-      border-color: var(--success);
-    }
-    .gap-title {
-      font-size: 13px;
-      color: var(--text);
-      line-height: 1.4;
-      margin-bottom: 6px;
-    }
-    .gap-error {
-      font-size: 12px;
-      color: var(--warn);
-      background: rgba(255,159,10,0.1);
-      padding: 6px 8px;
-      border-radius: var(--radius-sm);
-      margin-bottom: 8px;
-    }
-    .gap-claim-btn {
-      font-size: 12px;
-      font-weight: 600;
-      padding: 6px 12px;
-      border-radius: var(--radius-sm);
-      border: none;
       background: var(--accent);
-      color: var(--bg);
-      cursor: pointer;
-    }
-    .gap-claim-btn:hover { opacity: 0.9; }
-    .gap-claim-btn:active { opacity: 0.8; }
-
-    /* ── View: agents (PRODUCT-059) ────────────────────────────────────── */
-    .agents-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
-    .agent-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 14px;
-    }
-    .agent-card-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
-    }
-    .agent-gap-id {
-      font-size: 13px;
+      color: var(--on-accent);
+      font-family: var(--font-mono);
+      font-size: 12px;
       font-weight: 700;
-      font-family: "SF Mono", monospace;
-      color: var(--text);
+      letter-spacing: 0;
+      flex-shrink: 0;
     }
-    .agent-ci-badge {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding: 2px 6px;
-      border-radius: 4px;
+    .brand-divider {
+      color: var(--border-strong);
+      font-weight: 400;
+    }
+    .brand-sub {
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      padding: 2px 8px;
+      border-radius: 999px;
       background: var(--bg-elevated);
-      color: var(--text-secondary);
-    }
-    .ci-success { background: rgba(48,209,88,0.15); color: var(--success); }
-    .ci-failure { background: rgba(255,69,58,0.15); color: var(--error); }
-    .ci-pending { background: rgba(255,159,10,0.15); color: var(--warn); }
-    .agent-pr-link {
-      font-size: 11px;
-      font-family: "SF Mono", monospace;
-      color: var(--accent);
-      text-decoration: none;
-      margin-left: auto;
-    }
-    .agent-pr-link:hover { text-decoration: underline; }
-    .agent-gap-title {
-      font-size: 13px;
-      color: var(--text);
-      line-height: 1.4;
-      margin-bottom: 6px;
-    }
-    .agent-meta {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      font-size: 11px;
-      color: var(--text-secondary);
-      font-family: "SF Mono", monospace;
-    }
-    .agent-worktree {
-      font-size: 11px;
-      color: var(--text-secondary);
-      font-family: "SF Mono", monospace;
-      margin-top: 4px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .agents-refresh-note {
-      font-size: 11px;
-      color: var(--text-secondary);
-      text-align: center;
-      padding: 8px 0 4px;
+      border: 1px solid var(--border);
     }
 
-    /* ── Cascade slot toggles (PRODUCT-054) ────────────────────────────── */
-    .cascade-slot-row {
-      display: flex;
+    chump-heartbeat {
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 8px 10px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      margin-bottom: 4px;
-      transition: opacity 0.15s;
-    }
-    .cascade-slot-disabled { opacity: 0.45; }
-    .cascade-slot-info { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-    .cascade-slot-name {
-      font-size: 12px;
-      font-family: "SF Mono", monospace;
-      font-weight: 600;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 140px;
-    }
-    .cascade-slot-stats { font-size: 10px; color: var(--text-secondary); }
-    .cascade-badge {
-      font-size: 9px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      padding: 2px 5px;
-      border-radius: 3px;
-    }
-    .cascade-badge-err  { background: rgba(255,69,58,0.15); color: var(--error-color,#ff453a); }
-    .cascade-badge-warn { background: rgba(255,159,10,0.15); color: var(--warn-color,#ff9f0a); }
-    .cascade-empty { font-size: 12px; color: var(--text-secondary); margin: 0; }
-    /* Toggle switch */
-    .cascade-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
-    .cascade-toggle-input { opacity: 0; width: 0; height: 0; position: absolute; }
-    .cascade-toggle-track {
-      width: 34px;
-      height: 18px;
-      background: var(--border);
-      border-radius: 9px;
-      transition: background 0.2s;
-      position: relative;
-    }
-    .cascade-toggle-track::after {
-      content: '';
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: #fff;
-      transition: transform 0.2s;
-    }
-    .cascade-toggle-input:checked + .cascade-toggle-track { background: var(--accent,#0a84ff); }
-    .cascade-toggle-input:checked + .cascade-toggle-track::after { transform: translateX(16px); }
-    .cascade-toggle-input:disabled + .cascade-toggle-track { opacity: 0.4; cursor: not-allowed; }
-
-    /* ── Slot metrics cards (PRODUCT-055) ──────────────────────────────── */
-    .slot-metric-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 12px;
-      display: flex;
-      flex-direction: column;
       gap: 6px;
-    }
-    .slot-metric-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .slot-metric-name {
-      font-family: "SF Mono", monospace;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .slot-metric-last {
-      font-size: 10px;
-      color: var(--text-secondary);
-    }
-    .slot-metric-stats {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      align-items: flex-end;
-    }
-    .slot-metric-stat {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-width: 60px;
-    }
-    .slot-metric-val {
-      font-size: 16px;
-      font-weight: 700;
-      font-family: "SF Mono", monospace;
-      color: var(--text);
-      line-height: 1.2;
-    }
-    .slot-metric-val.accent { color: var(--accent); }
-    .slot-metric-val.success { color: var(--success); }
-    .slot-metric-label {
-      font-size: 9px;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      white-space: nowrap;
-    }
-    .slot-sparkline-wrap { flex: 1; min-width: 80px; }
-    .slot-sparkline-caption {
-      font-size: 9px;
-      color: var(--text-secondary);
-      text-align: center;
-      margin-top: 2px;
-    }
-
-    /* ── View: settings ─────────────────────────────────────────────────── */
-    .settings-grid { padding: 16px; display: flex; flex-direction: column; gap: 1px; }
-    .setting-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 16px;
-      background: var(--bg-surface);
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--bg-elevated);
       border: 1px solid var(--border);
-      font-size: 13px;
-    }
-    .setting-row:first-child { border-radius: var(--radius) var(--radius) 0 0; }
-    .setting-row:last-child  { border-radius: 0 0 var(--radius) var(--radius); }
-    .setting-label { color: var(--text); }
-    .setting-value { color: var(--text-secondary); font-family: "SF Mono", monospace; font-size: 11px; }
-
-    /* ── Model chip ─────────────────────────────────────────────────────── */
-    .model-chip {
+      font-family: var(--font-mono);
       font-size: 11px;
-      font-family: "SF Mono", monospace;
-      padding: 3px 8px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
       color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
       white-space: nowrap;
-      max-width: 160px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: inline-block;
     }
-
-    /* ── Heartbeat ──────────────────────────────────────────────────────── */
     .hb-dot {
       display: inline-block;
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      margin-right: 5px;
-      vertical-align: middle;
+      flex-shrink: 0;
     }
     .hb-dot.online  { background: var(--success); }
     .hb-dot.offline { background: var(--error); }
     .hb-text { vertical-align: middle; }
 
-    /* ── Mobile: bottom nav ─────────────────────────────────────────────── */
-    @media (max-width: 600px) {
-      #app-header { padding-left: 16px; }
-      chump-nav {
-        width: 100%;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        padding-bottom: var(--safe-bottom);
-        padding-top: 4px;
-        padding-left: 0;
-        height: calc(56px + var(--safe-bottom));
-        flex-direction: row;
-        justify-content: space-around;
-        align-items: flex-start;
-        border-right: none;
-        border-top: 1px solid var(--border);
-        background: var(--bg);
-        z-index: 20;
-      }
-      #main-content { padding-bottom: calc(56px + var(--safe-bottom)); }
-      chump-nav .nav-item { width: 60px; height: 48px; }
-      chump-nav .nav-label { display: none; }
+    .header-utilities {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
     }
-
-    /* ── Offline banner ─────────────────────────────────────────────────── */
-    #offline-banner {
-      display: none;
-      background: var(--warn);
-      color: #000;
+    .hdr-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
       font-size: 12px;
-      font-weight: 600;
-      text-align: center;
-      padding: 5px;
-    }
-    body.offline #offline-banner { display: block; }
-
-    /* ── Doctor banner (INFRA-990) ───────────────────────────────────────── */
-    chump-doctor-banner {
-      display: none;
-      background: #2a1a1a;
-      color: #f8d7da;
-      border-bottom: 2px solid #d9534f;
-      font-size: 13px;
-      padding: 10px 16px;
-    }
-    chump-doctor-banner .doctor-banner-head { font-size: 14px; margin-bottom: 6px; }
-    chump-doctor-banner .doctor-banner-list { margin: 4px 0 8px 18px; padding: 0; }
-    chump-doctor-banner .doctor-banner-list li { margin: 2px 0; line-height: 1.4; }
-    chump-doctor-banner .fix-hint { color: #ffd6a5; font-style: italic; }
-    chump-doctor-banner .doctor-banner-actions { margin-top: 4px; }
-    chump-doctor-banner .doctor-configure {
-      background: #d9534f;
-      color: #fff;
-      border: 0;
-      border-radius: 4px;
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
+      text-decoration: none;
+      transition: background 0.14s, color 0.14s, border-color 0.14s;
+      white-space: nowrap;
     }
-    chump-doctor-banner .doctor-configure:hover { background: #c9302c; }
-    chump-doctor-banner .doctor-configure:focus-visible {
-      outline: 2px solid #fff;
-      outline-offset: 2px;
+    .hdr-btn:hover {
+      background: var(--bg-elevated);
+      color: var(--text);
+      border-color: var(--border-strong);
     }
-    chump-doctor-banner .doctor-banner-toast {
-      background: #1f3a1f;
-      color: #c8f7c5;
-      border-bottom-color: #5cb85c;
-      text-align: center;
+    .hdr-btn-site {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: var(--accent-dim);
       font-weight: 600;
     }
+    .hdr-btn-site:hover {
+      background: var(--accent);
+      color: var(--on-accent);
+      border-color: var(--accent);
+    }
 
-    /* ── Auth-fallback toast (INFRA-991) ─────────────────────────────────── */
-    chump-auth-toast {
-      display: none;
-      position: fixed;
-      top: 16px;
-      right: 16px;
-      max-width: 360px;
-      background: #2a1a0e;
-      color: #ffd6a5;
-      border: 1px solid #d97706;
-      border-radius: 6px;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-      padding: 12px 14px;
-      font-size: 13px;
-      z-index: 9999;
-    }
-    chump-auth-toast .auth-toast-head { font-size: 14px; margin-bottom: 6px; }
-    chump-auth-toast .auth-toast-counter {
-      font-size: 11px;
-      font-weight: normal;
-      margin-left: 8px;
-      opacity: 0.8;
-    }
-    chump-auth-toast .auth-toast-body { margin: 4px 0 10px 0; line-height: 1.4; }
-    chump-auth-toast .auth-toast-actions { display: flex; gap: 8px; }
-    chump-auth-toast .auth-toast-reenter {
-      background: #d97706;
-      color: #fff;
     /* ── Repo switcher (INFRA-992) ────────────────────────────────────────── */
     chump-repo-switcher {
-      display: none; /* shown only when multi_repo_enabled=true */
+      display: inline-flex;
       align-items: center;
       gap: 6px;
       position: relative;
     }
+    chump-repo-switcher:empty { display: none; }
     chump-repo-switcher .repo-chip {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 12px;
-      font-size: 12px;
-      color: #c8d4e0;
+      gap: 5px;
+      padding: 4px 10px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text);
       max-width: 220px;
     }
     chump-repo-switcher .repo-chip-name {
@@ -1812,61 +294,58 @@
       white-space: nowrap;
     }
     chump-repo-switcher .repo-switch-btn {
-      background: #2a3a4a;
-      color: #fff;
-      border: 1px solid #3a5a7a;
-      border-radius: 4px;
-      padding: 3px 10px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 3px 9px;
       font-size: 11px;
+      font-weight: 500;
       cursor: pointer;
     }
-    chump-repo-switcher .repo-switch-btn:hover { background: #3a4a5a; }
-    chump-repo-switcher .repo-switch-btn:focus-visible {
-      outline: 2px solid #fff;
-      outline-offset: 2px;
+    chump-repo-switcher .repo-switch-btn:hover {
+      background: var(--bg-elevated);
+      color: var(--text);
     }
     chump-repo-switcher .repo-dialog {
       position: absolute;
-      top: 34px;
+      top: 36px;
       right: 0;
       width: 360px;
-      background: #181818;
-      border: 1px solid #444;
-      border-radius: 6px;
-      padding: 12px;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow-elevated);
       z-index: 1000;
       font-size: 12px;
-      color: #e0e0e0;
+      color: var(--text);
     }
     chump-repo-switcher .repo-dialog-head { font-size: 13px; margin-bottom: 8px; }
-    chump-repo-switcher .repo-dialog-label {
-      display: block;
-      margin: 4px 0 8px 0;
-    }
+    chump-repo-switcher .repo-dialog-label { display: block; margin: 4px 0 8px 0; color: var(--text-secondary); }
     chump-repo-switcher .repo-dialog-path {
       width: 100%;
       margin-top: 4px;
-      padding: 6px 8px;
-      background: #0a0a0a;
-      border: 1px solid #333;
-      border-radius: 4px;
-      color: #fff;
-      font-family: monospace;
+      padding: 7px 9px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font-mono);
     }
     chump-repo-switcher .repo-dialog-warn {
-      background: #2a2410;
-      color: #ffd6a5;
-      border-left: 3px solid #d97706;
+      background: var(--tone-warn-bg);
+      color: var(--warn);
+      border-left: 3px solid var(--warn);
       padding: 6px 8px;
       margin: 8px 0;
       font-size: 11px;
       line-height: 1.4;
     }
     chump-repo-switcher .repo-dialog-error {
-      background: #2a1414;
-      color: #f8d7da;
-      border-left: 3px solid #d9534f;
+      background: var(--tone-err-bg);
+      color: var(--error);
+      border-left: 3px solid var(--error);
       padding: 6px 8px;
       margin: 8px 0;
       font-size: 11px;
@@ -1876,320 +355,1383 @@
       display: flex;
       gap: 8px;
       justify-content: flex-end;
-      margin-top: 8px;
+      margin-top: 10px;
     }
     chump-repo-switcher .repo-dialog-save,
     chump-repo-switcher .repo-dialog-cancel {
-      border: 0;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 6px 12px;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
     }
-    chump-auth-toast .auth-toast-reenter:hover { background: #b45309; }
-    chump-auth-toast .auth-toast-dismiss {
-      background: transparent;
-      color: #ffd6a5;
-      border: 1px solid #ffd6a5;
-      border-radius: 4px;
-      padding: 6px 12px;
-      font-size: 12px;
-      cursor: pointer;
+    chump-repo-switcher .repo-dialog-save {
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      color: var(--on-accent);
     }
-    chump-auth-toast .auth-toast-dismiss:hover { background: rgba(255, 255, 255, 0.06); }
-    chump-auth-toast .auth-toast-reenter:focus-visible,
-    chump-auth-toast .auth-toast-dismiss:focus-visible {
-      cursor: pointer;
-    }
-    chump-repo-switcher .repo-dialog-save { background: #2a7a4a; color: #fff; }
-    chump-repo-switcher .repo-dialog-save:hover { background: #1f5a35; }
-    chump-repo-switcher .repo-dialog-save:disabled { background: #555; cursor: not-allowed; }
     chump-repo-switcher .repo-dialog-cancel {
       background: transparent;
-      border: 1px solid #555;
-      color: #ccc;
-    }
-    chump-repo-switcher .repo-dialog-cancel:hover { background: #222; }
-    chump-repo-switcher .repo-dialog-save:focus-visible,
-    chump-repo-switcher .repo-dialog-cancel:focus-visible {
-      outline: 2px solid #fff;
-      outline-offset: 2px;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
     }
 
-    /* ── Ambient viewer (INFRA-1198) ──────────────────────────────────────── */
-    chump-ambient-viewer {
-      display: block;
+    /* ── Offline banner (hidden unless body.offline) ────────────────────── */
+    #offline-banner {
+      display: none;
+      background: var(--tone-warn-bg);
+      color: var(--warn);
+      border-bottom: 1px solid var(--tone-warn-border);
       font-size: 12px;
-      color: var(--text);
-      position: relative;
+      font-weight: 600;
+      text-align: center;
+      padding: 6px 16px;
+      flex-shrink: 0;
     }
-    chump-ambient-viewer .amb-toolbar {
+    body.offline #offline-banner { display: block; }
+
+    /* ── Doctor banner — compact collapsible advisory bar (INFRA-990) ──── */
+    chump-doctor-banner {
+      display: none;
+      background: var(--tone-warn-bg);
+      color: var(--text);
+      border-bottom: 1px solid var(--tone-warn-border);
+      font-size: 12px;
+      padding: 6px 20px;
+      flex-shrink: 0;
+    }
+    chump-doctor-banner .doctor-banner-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    chump-doctor-banner .doctor-banner-bar {
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 8px;
-      padding: 6px 8px;
+      flex-wrap: wrap;
+    }
+    chump-doctor-banner .doctor-banner-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
       background: var(--bg-surface);
+      border: 1px solid var(--tone-warn-border);
+      color: var(--warn);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    chump-doctor-banner .doctor-banner-head {
+      font-size: 12px;
+      color: var(--text);
+      flex: 1;
+      min-width: 180px;
+    }
+    chump-doctor-banner .doctor-banner-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    chump-doctor-banner .doctor-details-toggle {
+      background: transparent;
+      color: var(--text-secondary);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
-    }
-    chump-ambient-viewer .amb-filter-label {
-      display: flex; align-items: center; gap: 6px;
+      padding: 3px 9px;
       font-size: 11px;
-      color: var(--text-secondary);
+      cursor: pointer;
     }
-    chump-ambient-viewer .amb-filter {
-      background: var(--bg);
+    chump-doctor-banner .doctor-details-toggle:hover {
+      background: var(--bg-surface);
       color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 12px;
-      font-family: monospace;
-      min-width: 200px;
     }
-    chump-ambient-viewer .amb-state { margin-left: auto; font-size: 14px; line-height: 1; }
-    chump-ambient-viewer .amb-state-live         { color: #30d158; }
-    chump-ambient-viewer .amb-state-reconnecting { color: #ff9f0a; }
-    chump-ambient-viewer .amb-state-error        { color: #ff453a; }
-    chump-ambient-viewer .amb-state-connecting   { color: #8a8a8e; }
-
-    chump-ambient-viewer .amb-pill {
-      position: absolute;
-      top: 60px;
-      right: 16px;
+    chump-doctor-banner .doctor-configure {
       background: var(--accent);
-      color: #fff;
-      padding: 4px 10px;
-      border-radius: 12px;
+      color: var(--on-accent);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-sm);
+      padding: 3px 10px;
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-      z-index: 5;
     }
-    chump-ambient-viewer .amb-pill:hover { background: #1296ff; }
-
-    chump-ambient-viewer .amb-list {
+    chump-doctor-banner .doctor-banner-list {
+      margin: 2px 0 4px 0;
+      padding: 8px 12px;
       list-style: none;
-      margin: 0;
-      padding: 0;
-      max-height: calc(100vh - 220px);
-      overflow-y: auto;
-      background: var(--bg);
+      background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
-      font-family: ui-monospace, SFMono-Regular, monospace;
-    }
-    chump-ambient-viewer .amb-list:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 1px;
-    }
-    chump-ambient-viewer .amb-row {
-      display: grid;
-      grid-template-columns: 70px 200px 1fr;
-      gap: 8px;
-      align-items: baseline;
-      padding: 4px 8px;
-      border-bottom: 1px solid var(--border);
-      cursor: pointer;
-    }
-    chump-ambient-viewer .amb-row:hover { background: var(--bg-surface); }
-    chump-ambient-viewer .amb-ts { color: var(--text-secondary); font-size: 11px; }
-    chump-ambient-viewer .amb-kind {
-      background: rgba(10, 132, 255, 0.15);
-      color: #6aa5ff;
-      padding: 1px 6px;
-      border-radius: 3px;
+      font-family: var(--font-mono);
       font-size: 11px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      max-height: 130px;
+      overflow-y: auto;
     }
-    chump-ambient-viewer .amb-summary {
-      color: var(--text);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    chump-ambient-viewer .amb-detail {
-      grid-column: 1 / -1;
-      margin-top: 4px;
-      padding: 6px 8px;
-      background: var(--bg-elevated);
-      border-radius: 4px;
-      color: var(--text-secondary);
-      font-size: 11px;
-      max-height: 300px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
+    chump-doctor-banner .doctor-banner-list[hidden] { display: none; }
+    chump-doctor-banner .doctor-banner-list li { margin: 3px 0; line-height: 1.45; word-break: break-word; }
+    chump-doctor-banner .fix-hint { color: var(--text-secondary); }
+    chump-doctor-banner .doctor-banner-toast {
+      color: var(--success);
+      text-align: center;
+      font-weight: 600;
     }
 
-    /* ── Filter pills + saved presets (INFRA-1559) ─────────────────────────── */
-    chump-ambient-viewer .amb-gap-filter {
-      background: var(--bg);
+    /* ── Auth-fallback toast (INFRA-991) ─────────────────────────────────── */
+    chump-auth-toast {
+      display: none;
+      position: fixed;
+      top: 62px;
+      right: 20px;
+      max-width: 380px;
+      background: var(--bg-surface);
       color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 12px;
-      font-family: monospace;
-      width: 120px;
+      border: 1px solid var(--tone-warn-border);
+      border-left: 3px solid var(--warn);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-elevated);
+      padding: 12px 14px;
+      font-size: 12.5px;
+      z-index: 9999;
     }
-    chump-ambient-viewer .amb-severity-filter {
-      background: var(--bg);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 12px;
-      font-family: monospace;
+    chump-auth-toast .auth-toast-head { font-size: 13px; margin-bottom: 4px; }
+    chump-auth-toast .auth-toast-counter {
+      font-size: 11px;
+      font-weight: normal;
+      margin-left: 6px;
+      color: var(--text-secondary);
     }
-    chump-ambient-viewer .amb-pillbar {
+    chump-auth-toast .auth-toast-body { margin: 4px 0 10px 0; line-height: 1.4; color: var(--text-secondary); }
+    chump-auth-toast .auth-toast-actions { display: flex; gap: 8px; }
+    chump-auth-toast .auth-toast-reenter {
+      background: var(--accent);
+      color: var(--on-accent);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-sm);
+      padding: 5px 11px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    chump-auth-toast .auth-toast-dismiss {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 5px 11px;
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+
+    /* ── First-run wizard — compact collapsible readiness strip (PRODUCT-108) */
+    chump-first-run-wizard { display: block; flex-shrink: 0; }
+    chump-first-run-wizard[hidden] { display: none; }
+    chump-first-run-wizard .frw-shell {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      position: relative;
+      z-index: 12;
+    }
+    chump-first-run-wizard .frw-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
       flex-wrap: wrap;
+    }
+    chump-first-run-wizard .frw-title {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
       gap: 8px;
-      margin-bottom: 8px;
     }
-    chump-ambient-viewer .amb-active-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
+    chump-first-run-wizard .frw-pill {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent-dim);
+      color: var(--accent);
     }
-    chump-ambient-viewer .amb-pill-chip-empty {
+    chump-first-run-wizard .frw-subtitle {
+      font-size: 12px;
       color: var(--text-secondary);
+      flex: 1;
+      min-width: 180px;
+    }
+    chump-first-run-wizard .frw-header-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    chump-first-run-wizard .frw-expand,
+    chump-first-run-wizard .frw-dismiss {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    chump-first-run-wizard .frw-expand:hover,
+    chump-first-run-wizard .frw-dismiss:hover {
+      color: var(--text);
+      background: var(--bg-elevated);
+    }
+    chump-first-run-wizard .frw-steps {
+      list-style: none;
+      padding: 10px 0 4px 0;
+      margin: 8px 0 0 0;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 8px;
+    }
+    chump-first-run-wizard .frw-steps[hidden] { display: none; }
+    chump-first-run-wizard .frw-step {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    chump-first-run-wizard .frw-step-current {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    chump-first-run-wizard .frw-step-icon {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 20px;
+      text-align: center;
+      font-weight: 700;
+    }
+    chump-first-run-wizard .frw-step-done    .frw-step-icon { color: var(--success); }
+    chump-first-run-wizard .frw-step-skipped .frw-step-icon { color: var(--text-secondary); }
+    chump-first-run-wizard .frw-step-current .frw-step-icon { color: var(--accent); }
+    chump-first-run-wizard .frw-step-pending .frw-step-icon { color: var(--text-secondary); }
+    chump-first-run-wizard .frw-step-body { min-width: 0; }
+    chump-first-run-wizard .frw-step-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.35;
+    }
+    chump-first-run-wizard .frw-step-label {
+      color: var(--accent);
+      font-family: var(--font-mono);
       font-size: 11px;
     }
-    chump-ambient-viewer .amb-pill-chip {
+    chump-first-run-wizard .frw-step-hint {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      line-height: 1.35;
+    }
+    chump-first-run-wizard .frw-step-actions {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    chump-first-run-wizard .frw-cta {
+      background: var(--accent);
+      color: var(--on-accent);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    chump-first-run-wizard .frw-skip {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    /* ── Workspace Body & Architectural Command Rail (<chump-nav>) ──────── */
+    #app-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    chump-nav {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 6px 20px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+    chump-nav .nav-cadences {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    chump-nav .nav-cadence {
+      border: none;
+      background: transparent;
+      border-radius: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.14s, color 0.14s, box-shadow 0.14s;
+      white-space: nowrap;
+    }
+    chump-nav .nav-cadence:hover {
+      color: var(--text);
+    }
+    chump-nav .nav-cadence[aria-current="page"] {
+      background: var(--bg-surface);
+      color: var(--accent);
+      box-shadow: var(--shadow-card);
+    }
+    chump-nav .nav-kbd {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 500;
+      padding: 0 4px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+    chump-nav .nav-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    chump-nav .nav-subtabs {
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      flex: 1;
+      min-width: 0;
+    }
+    chump-nav .nav-subtabs:empty { display: none; }
+    chump-nav .nav-item {
+      border: 1px solid transparent;
+      background: transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 5px 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      transition: background 0.14s, color 0.14s, border-color 0.14s;
+      white-space: nowrap;
+      position: relative;
+    }
+    chump-nav .nav-item:hover {
+      background: var(--bg-elevated);
+      color: var(--text);
+    }
+    chump-nav .nav-item[aria-current="page"] {
       background: var(--accent-dim);
       color: var(--accent);
-      border-radius: 10px;
-      padding: 2px 4px 2px 8px;
-      font-size: 11px;
-      font-family: monospace;
+      border-color: var(--accent-dim);
+      font-weight: 600;
     }
-    chump-ambient-viewer .amb-pill-chip-x {
-      background: transparent;
-      border: none;
-      color: inherit;
-      cursor: pointer;
+    chump-nav .nav-icon {
       font-size: 12px;
       line-height: 1;
-      padding: 0 4px;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
     }
-    chump-ambient-viewer .amb-preset-bar {
+    chump-nav .nav-label {
+      letter-spacing: -0.01em;
+    }
+
+    @media (max-width: 720px) {
+      #app-header { padding: var(--safe-top) 12px 0 12px; gap: 8px; }
+      .brand-sub, .brand-divider { display: none; }
+      chump-nav {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+        padding: 6px 12px;
+      }
+      chump-nav .nav-divider { display: none; }
+      chump-nav .nav-cadences { justify-content: space-between; }
+      chump-nav .nav-cadence { flex: 1; justify-content: center; }
+      chump-nav .nav-subtabs { overflow-x: auto; padding-bottom: 2px; }
+    }
+
+    /* PRODUCT-094: notification badge */
+    .notif-badge {
+      background: var(--error);
+      color: var(--on-accent);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 2px 5px;
+      border-radius: 999px;
+      min-width: 15px;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    /* ── PRODUCT-100: status pill + toast + offline retry ───────────────── */
+    .chump-status-pill {
+      display: none;
+    }
+    #chump-toast-container {
+      position: fixed;
+      bottom: 44px;
+      right: 16px;
+      z-index: 9100;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 380px;
+    }
+    .chump-error-toast {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      background: var(--bg-surface);
+      border: 1px solid var(--tone-err-border);
+      border-left: 3px solid var(--error);
+      box-shadow: var(--shadow-elevated);
+      color: var(--text);
+      font-size: 12.5px;
     }
-    chump-ambient-viewer .amb-preset-select,
-    chump-ambient-viewer .amb-preset-name {
+    .toast-msg code { font-family: var(--font-mono); font-size: 11px; color: var(--error); }
+    .toast-retry, .toast-dismiss {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      cursor: pointer;
+      padding: 3px 8px;
+      font-size: 11.5px;
+      flex-shrink: 0;
+    }
+    .toast-dismiss { border: none; background: transparent; color: var(--text-secondary); font-size: 15px; padding: 0 4px; }
+
+    #chump-offline-banner {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 9200;
+      background: var(--tone-err-bg);
+      color: var(--error);
+      border-bottom: 1px solid var(--tone-err-border);
+      text-align: center;
+      padding: 8px 16px;
+      font-size: 12.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    #chump-offline-retry {
+      background: var(--bg-surface);
+      border: 1px solid var(--tone-err-border);
+      border-radius: var(--radius-sm);
+      color: var(--error);
+      cursor: pointer;
+      padding: 3px 10px;
+      font-size: 11.5px;
+    }
+
+    /* ── Main content ───────────────────────────────────────────────────── */
+    #main-content {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    /* ── Shared View Chrome ─────────────────────────────────────────────── */
+    .view-panel {
+      padding: 20px 24px;
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .view-title {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .view-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-surface);
+      flex-shrink: 0;
+    }
+    .view-header h2 {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 2px;
+    }
+    .view-subtitle { color: var(--text-secondary); font-size: 12.5px; }
+    .placeholder {
+      color: var(--text-secondary);
+      font-size: 13px;
+      padding: 32px 24px;
+      text-align: center;
+    }
+
+    /* ── Gap Queue & Filter Controls ────────────────────────────────────── */
+    .gap-filter-clear {
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 11.5px;
+    }
+    .gap-filter-clear:hover { color: var(--text); background: var(--bg-elevated); }
+    .gap-search-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 24px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+    }
+    .gap-search-bar input[type=search] {
+      flex: 1 1 200px;
+      min-width: 140px;
+      padding: 7px 11px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
       background: var(--bg);
       color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 11px;
-      font-family: monospace;
+      font-size: 13px;
     }
-    chump-ambient-viewer .amb-preset-name { width: 110px; }
-    chump-ambient-viewer .amb-preset-save {
-      background: var(--bg-surface);
-      color: var(--text);
+    .gap-search-bar select {
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 3px 8px;
-      font-size: 11px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12px;
       cursor: pointer;
+    }
+    .gap-filter-ac {
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+    .gap-queue-stats {
+      display: flex;
+      gap: 20px;
+      padding: 12px 24px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-item {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .gap-list {
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 1440px;
+    }
+    .gap-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-card);
+    }
+    .gap-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .gap-id {
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--text);
+    }
+    .gap-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+    .badge-success { background: var(--tone-ok-bg); color: var(--success); }
+    .badge-warn    { background: var(--tone-warn-bg); color: var(--warn); }
+    .badge-error   { background: var(--tone-err-bg); color: var(--error); }
+    .gap-priority {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-left: auto;
+      font-family: var(--font-mono);
+    }
+    .gap-pillar {
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+    .gap-pillar-effective  { background: var(--tone-info-bg); color: var(--tone-info-fg); }
+    .gap-pillar-credible   { background: var(--bronze-dim); color: var(--bronze); }
+    .gap-pillar-resilient  { background: var(--tone-purple-bg); color: var(--tone-purple-fg); }
+    .gap-pillar-zero-waste { background: var(--tone-ok-bg); color: var(--success); }
+    .gap-pillar-mission    { background: var(--tone-err-bg); color: var(--error); }
+    .gap-domain {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+    .gap-ac, .gap-deps {
+      font-size: 10.5px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      padding: 2px 4px;
+    }
+    .gap-deps { color: var(--bronze); }
+    .gap-lease {
+      font-size: 11.5px;
+      color: var(--bronze);
+      font-family: var(--font-mono);
+      margin-top: 2px;
+    }
+    .gap-embed { margin-top: 8px; min-height: 0; }
+    .gap-embed:empty { display: none; }
+    .gap-acp-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+    .gap-acp-link,
+    .gap-acp-copy {
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 3px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      cursor: pointer;
+      font-size: 11px;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .gap-acp-link:hover,
+    .gap-acp-copy:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .gap-acp-copy-success {
+      background: var(--tone-ok-bg);
+      color: var(--success);
+      border-color: var(--tone-ok-border);
+    }
+    .gap-title {
+      font-size: 13.5px;
+      color: var(--text);
+      line-height: 1.45;
+      margin-bottom: 6px;
+    }
+    .gap-error {
+      font-size: 12px;
+      color: var(--warn);
+      background: var(--tone-warn-bg);
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+    }
+    .gap-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .gap-claim-btn,
+    .gap-work-btn,
+    .gap-retry-btn,
+    .gap-status-btn {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .gap-claim-btn,
+    .gap-work-btn {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+
+    /* ── View: Tasks, Memory, Agents ────────────────────────────────────── */
+    .task-list, .memory-list, .agents-list {
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 1440px;
+    }
+    .task-card, .memory-card, .agent-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-card);
+    }
+    .task-card-header, .agent-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .task-status, .agent-ci-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+    .task-status.running, .ci-success { background: var(--tone-ok-bg); color: var(--success); }
+    .task-status.done                 { background: var(--accent-dim); color: var(--accent); }
+    .task-status.error, .ci-failure   { background: var(--tone-err-bg); color: var(--error); }
+    .ci-pending                       { background: var(--tone-warn-bg); color: var(--warn); }
+    .task-id, .agent-gap-id {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      font-family: var(--font-mono);
+    }
+    .task-desc, .agent-gap-title { font-size: 13.5px; color: var(--text); line-height: 1.45; }
+    .memory-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+    .agent-pr-link {
+      font-size: 11.5px;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      text-decoration: none;
+      margin-left: auto;
+    }
+    .agent-meta, .agent-worktree {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      margin-top: 4px;
+    }
+    .agents-refresh-note {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-align: center;
+      padding: 8px 0 4px;
+    }
+
+    /* ── View: Audit (PRODUCT-111) ──────────────────────────────────────── */
+    chump-view-audit { display: block; padding: 20px 24px; max-width: 1440px; }
+    chump-view-audit .audit-toolbar {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      padding: 8px 0 12px; margin-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    chump-view-audit .audit-chips { display: inline-flex; gap: 5px; }
+    chump-view-audit .audit-chip {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 10px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 11.5px;
+    }
+    chump-view-audit .audit-chip:hover { color: var(--text); background: var(--bg-elevated); }
+    chump-view-audit .audit-chip[aria-pressed="true"] {
+      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+    }
+    chump-view-audit .audit-search {
+      flex: 1; min-width: 180px;
+      padding: 6px 10px; background: var(--bg-surface);
+      border: 1px solid var(--border); color: var(--text);
+      border-radius: var(--radius-sm); font-size: 12.5px;
+    }
+    chump-view-audit .audit-export,
+    chump-view-audit .audit-clear {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 5px 12px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 11.5px;
+    }
+    chump-view-audit .audit-stats {
+      padding: 6px 0; font-size: 11.5px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    chump-view-audit .audit-stat { color: var(--text); font-weight: 600; }
+    chump-view-audit .audit-stat-sep { margin: 0 8px; opacity: 0.4; }
+    chump-view-audit .audit-table {
+      width: 100%; border-collapse: collapse; font-size: 12.5px;
+      background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius);
+    }
+    chump-view-audit .audit-table thead th {
+      position: sticky; top: 0; z-index: 1;
+      background: var(--bg-elevated);
+      text-align: left; padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+    chump-view-audit .audit-row { cursor: pointer; }
+    chump-view-audit .audit-row:hover { background: var(--bg-elevated); }
+    chump-view-audit .audit-row td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    chump-view-audit .audit-cell-ts { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+    chump-view-audit .audit-kind { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px; }
+    chump-view-audit .audit-kind-tool_approval { background: var(--tone-info-bg); color: var(--tone-info-fg); }
+    chump-view-audit .audit-kind-cos           { background: var(--tone-purple-bg); color: var(--tone-purple-fg); }
+    chump-view-audit .audit-pill {
+      background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+      padding: 1px 6px; border-radius: 4px; cursor: pointer; font-size: 11px;
+      font-family: var(--font-mono);
+    }
+    chump-view-audit .audit-cell-summary { max-width: 480px; overflow: hidden; text-overflow: ellipsis; }
+    chump-view-audit .audit-outcome { font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+    chump-view-audit .audit-outcome-ok   { background: var(--tone-ok-bg); color: var(--success); }
+    chump-view-audit .audit-outcome-bad  { background: var(--tone-err-bg); color: var(--error); }
+    chump-view-audit .audit-outcome-info { background: var(--bg-elevated); color: var(--text-secondary); }
+    chump-view-audit .audit-row-expansion td { background: var(--bg-elevated); padding: 12px; }
+    chump-view-audit .audit-row-expansion pre {
+      margin: 0; font-size: 11px; color: var(--text-secondary);
+      max-height: 320px; overflow: auto; font-family: var(--font-mono);
+    }
+
+    /* ── Cost ceiling inputs + 402 kill-switch modal (PRODUCT-113) ──────── */
+    .cost-threshold {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .cost-threshold-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+    .cost-threshold input[type="number"] {
+      padding: 6px 8px; background: var(--bg);
+      border: 1px solid var(--border); color: var(--text);
+      border-radius: var(--radius-sm); font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+    .cost-threshold input[type="number"]:focus {
+      outline: 2px solid var(--accent); outline-offset: 1px;
+    }
+    .cost-kill-modal {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--overlay-scrim);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .cost-kill-modal-shell {
+      background: var(--bg-surface); color: var(--text);
+      border: 2px solid var(--error);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      max-width: 480px;
+      box-shadow: var(--shadow-elevated);
+    }
+    .cost-kill-title {
+      font-family: var(--font-display);
+      font-size: 18px; font-weight: 700;
+      color: var(--error);
+      margin-bottom: 10px;
+    }
+    .cost-kill-msg { font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+    .cost-kill-msg strong { color: var(--error); }
+    .cost-kill-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+    .cost-kill-config {
+      background: var(--accent); color: var(--on-accent);
+      padding: 7px 14px; border: none; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 12px; font-weight: 600;
+    }
+    .cost-kill-dismiss {
+      background: transparent; color: var(--text-secondary);
+      border: 1px solid var(--border);
+      padding: 7px 14px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 12px;
+    }
+    .cost-kill-hint { font-size: 11px; color: var(--text-secondary); }
+    .cost-kill-hint code { font-family: var(--font-mono); }
+
+    /* ── Network audit, Roadmap, Fleet health, Coord, Orchestrator ──────── */
+    chump-view-network-audit,
+    chump-view-roadmap,
+    chump-view-fleet-health,
+    chump-view-coord,
+    chump-view-orchestrator-sessions {
+      display: block;
+      padding: 20px 24px;
+      max-width: 1440px;
+    }
+    chump-view-network-audit .netaudit-banner {
+      padding: 10px 14px; border-radius: var(--radius-sm);
+      margin-bottom: 12px; font-size: 13px;
+    }
+    chump-view-network-audit .netaudit-banner-ok {
+      background: var(--tone-ok-bg); color: var(--success);
+      border: 1px solid var(--tone-ok-border);
+    }
+    chump-view-network-audit .netaudit-banner-violation {
+      background: var(--tone-err-bg); color: var(--error);
+      border: 1px solid var(--tone-err-border); font-weight: 500;
+    }
+    chump-view-network-audit .netaudit-pill-ok {
+      background: var(--tone-ok-bg); color: var(--success);
+    }
+    chump-view-network-audit .netaudit-footnote {
+      margin-top: 12px; font-size: 11px; color: var(--text-secondary);
+      padding: 8px 0; border-top: 1px solid var(--border);
+    }
+
+    chump-view-roadmap .roadmap-toolbar {
+      padding: 6px 0; border-bottom: 1px solid var(--border); margin-bottom: 12px;
+    }
+    chump-view-roadmap .roadmap-filter {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--text-secondary);
+    }
+    chump-view-roadmap .roadmap-list { display: flex; flex-direction: column; gap: 12px; }
+    chump-view-roadmap .roadmap-milestone {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--text-secondary);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    chump-view-roadmap .roadmap-milestone-active  { border-left-color: var(--accent); background: var(--accent-dim); }
+    chump-view-roadmap .roadmap-milestone-done    { border-left-color: var(--success); opacity: 0.78; }
+    chump-view-roadmap .roadmap-milestone-blocked { border-left-color: var(--error); }
+    chump-view-roadmap .roadmap-milestone-header  { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    chump-view-roadmap .roadmap-milestone-title   { font-size: 14px; font-weight: 600; flex: 1; color: var(--text); }
+    chump-view-roadmap .roadmap-target            { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
+    chump-view-roadmap .roadmap-pct               { font-size: 12px; font-weight: 600; color: var(--accent); padding: 2px 8px; border-radius: 999px; background: var(--bg-elevated); }
+    chump-view-roadmap .roadmap-gaps              { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    chump-view-roadmap .roadmap-gap-chip          { font-size: 11px; font-family: var(--font-mono); padding: 2px 8px; border-radius: 4px; background: var(--bg-elevated); color: var(--text-secondary); text-decoration: none; }
+    chump-view-roadmap .roadmap-blockers          { margin-top: 8px; padding: 6px 10px; background: var(--tone-err-bg); color: var(--error); border-radius: var(--radius-sm); font-size: 12px; }
+
+    chump-view-fleet-health .fh-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    chump-view-fleet-health .fh-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-card);
+    }
+    chump-view-fleet-health .fh-panel-header h3 { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+    chump-view-fleet-health .fh-panel-footnote { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-secondary); }
+    chump-view-fleet-health .fh-pillar-quadrant { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    chump-view-fleet-health .fh-pillar-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; border-radius: var(--radius-sm); background: var(--bg-elevated); }
+    chump-view-fleet-health .fh-pillar-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+    chump-view-fleet-health .fh-pillar-grade { font-size: 28px; font-weight: 700; font-family: var(--font-mono); color: var(--text); margin: 4px 0; }
+    chump-view-fleet-health .fh-pillar-grade-a { color: var(--success); }
+    chump-view-fleet-health .fh-pillar-grade-b { color: var(--accent); }
+    chump-view-fleet-health .fh-pillar-grade-c { color: var(--warn); }
+    chump-view-fleet-health .fh-pillar-grade-d,
+    chump-view-fleet-health .fh-pillar-grade-f { color: var(--error); }
+    chump-view-fleet-health .fh-kpis-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    chump-view-fleet-health .fh-kpi { display: flex; flex-direction: column; padding: 10px; background: var(--bg-elevated); border-radius: var(--radius-sm); }
+    chump-view-fleet-health .fh-kpi-value { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+    chump-view-fleet-health .fh-kpi-value.fh-kpi-warn { color: var(--warn); }
+    chump-view-fleet-health .fh-kpi-value.fh-kpi-red  { color: var(--error); }
+    chump-view-fleet-health .fh-kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-top: 2px; }
+    chump-view-fleet-health .fh-slo-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+    chump-view-fleet-health .fh-slo-row { display: grid; grid-template-columns: 1fr auto 2fr; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: var(--radius-sm); font-size: 12px; }
+    chump-view-fleet-health .fh-slo-ok   { background: var(--tone-ok-bg); }
+    chump-view-fleet-health .fh-slo-warn { background: var(--tone-warn-bg); }
+    chump-view-fleet-health .fh-slo-bad  { background: var(--tone-err-bg); }
+    chump-view-fleet-health .fh-budget-gauge { display: flex; align-items: center; gap: 12px; }
+    chump-view-fleet-health .fh-budget-bar { flex: 1; height: 12px; background: var(--bg-elevated); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+    chump-view-fleet-health .fh-budget-fill { height: 100%; background: var(--success); transition: width 0.3s ease; }
+    chump-view-fleet-health .fh-budget-fill.fh-bar-warn { background: var(--warn); }
+    chump-view-fleet-health .fh-budget-fill.fh-bar-red  { background: var(--error); }
+    chump-view-fleet-health .fh-budget-pct { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); min-width: 50px; text-align: right; }
+    @media (max-width: 720px) {
+      chump-view-fleet-health .fh-grid { grid-template-columns: 1fr; }
+    }
+
+    chump-view-coord .coord-panels { display: flex; flex-direction: column; gap: 16px; }
+    chump-view-coord .coord-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+    chump-view-coord .coord-panel-header { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    chump-view-coord .coord-panel-header h3 { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
+    chump-view-coord .coord-stat { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; background: var(--bg-elevated); padding: 2px 8px; border-radius: 999px; }
+    chump-view-coord .coord-session-picker { font-size: 11px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; }
+    chump-view-coord .coord-session-picker select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px 8px; font-size: 11px; font-family: var(--font-mono); }
+    chump-view-coord .coord-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+    chump-view-coord .coord-row { display: grid; grid-template-columns: 56px 100px auto 1fr; gap: 8px; align-items: baseline; padding: 5px 4px; font-size: 12px; border-bottom: 1px solid var(--border); }
+    chump-view-coord .coord-row:hover { background: var(--bg-elevated); }
+    chump-view-coord .coord-row-ts,
+    chump-view-coord .coord-row-from,
+    chump-view-coord .coord-row-gap { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+    chump-view-coord .coord-row-kind { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; background: var(--bg-elevated); color: var(--text-secondary); }
+    chump-view-coord .coord-row-body { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    chump-view-coord .coord-row-class-dirty            { background: var(--tone-err-bg); color: var(--error); }
+    chump-view-coord .coord-row-class-blocked-ci       { background: var(--tone-warn-bg); color: var(--warn); }
+    chump-view-coord .coord-row-class-orphan-disarmed  { background: var(--tone-purple-bg); color: var(--tone-purple-fg); }
+    chump-view-coord .coord-row-class-base-modified    { background: var(--tone-info-bg); color: var(--tone-info-fg); }
+    chump-view-coord .coord-row-class-clean-not-merged { background: var(--tone-ok-bg); color: var(--success); }
+
+    chump-view-orchestrator-sessions .orch-sparklines { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+    chump-view-orchestrator-sessions .orch-sparkline-fig { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; flex: 1 1 150px; min-width: 140px; max-width: 240px; }
+    chump-view-orchestrator-sessions .orch-spark-label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px; }
+    chump-view-orchestrator-sessions .orch-spark-svg { display: block; width: 100%; height: 40px; }
+    chump-view-orchestrator-sessions .orch-table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--bg-surface); border: 1px solid var(--border); }
+    chump-view-orchestrator-sessions .orch-table thead th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; color: var(--text-secondary); }
+    chump-view-orchestrator-sessions .orch-row td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+    chump-view-orchestrator-sessions .orch-sid-btn { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font-family: var(--font-mono); font-size: 11px; }
+    chump-view-orchestrator-sessions .orch-exit-clean { background: var(--tone-ok-bg); color: var(--success); }
+    chump-view-orchestrator-sessions .orch-exit-bad   { background: var(--tone-err-bg); color: var(--error); }
+    chump-view-orchestrator-sessions .orch-exit-gray  { background: var(--bg-elevated); color: var(--text-secondary); }
+    chump-view-orchestrator-sessions .orch-placeholder { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px 16px; color: var(--text-secondary); }
+
+    /* ── Tool approval tray & PR modal ──────────────────────────────────── */
+    chump-tool-approval-tray { display: block; flex-shrink: 0; }
+    chump-tool-approval-tray .tat-shell[hidden] { display: none; }
+    chump-tool-approval-tray .tat-shell {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      border-left: 3px solid var(--warn);
+      padding: 10px 20px;
+      max-height: 36vh;
+      overflow-y: auto;
+    }
+    chump-tool-approval-tray .tat-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary); }
+    chump-tool-approval-tray .tat-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 8px; background: var(--warn); color: var(--on-accent); border-radius: 999px; font-size: 11px; font-weight: 700; }
+    chump-tool-approval-tray .tat-title { flex: 1; text-transform: uppercase; letter-spacing: 0.04em; }
+    chump-tool-approval-tray .tat-batch { display: flex; gap: 6px; }
+    chump-tool-approval-tray .tat-batch-btn { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; }
+    chump-tool-approval-tray .tat-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+    chump-tool-approval-tray .tat-row { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+    chump-tool-approval-tray .tat-row-main { display: flex; align-items: baseline; gap: 8px; }
+    chump-tool-approval-tray .tat-tool { font-weight: 600; color: var(--text); font-family: var(--font-mono); }
+    chump-tool-approval-tray .tat-risk { font-size: 10px; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; }
+    chump-tool-approval-tray .tat-risk-low    { background: var(--tone-ok-bg); color: var(--success); }
+    chump-tool-approval-tray .tat-risk-medium { background: var(--tone-warn-bg); color: var(--warn); }
+    chump-tool-approval-tray .tat-risk-high   { background: var(--tone-err-bg); color: var(--error); }
+    chump-tool-approval-tray .tat-actions { display: flex; gap: 6px; }
+    chump-tool-approval-tray .tat-btn { padding: 5px 12px; border-radius: var(--radius-sm); border: 1px solid transparent; cursor: pointer; font-size: 12px; font-weight: 600; }
+    chump-tool-approval-tray .tat-approve { background: var(--accent); color: var(--on-accent); }
+    chump-tool-approval-tray .tat-deny { background: transparent; border-color: var(--border); color: var(--text-secondary); }
+
+    .pr-action-modal {
+      position: fixed; inset: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pr-action-modal-overlay { position: absolute; inset: 0; background: var(--overlay-scrim); }
+    .pr-action-modal-content {
+      position: relative; background: var(--bg-surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow-elevated);
+      width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto;
+    }
+    .pr-action-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--border); }
+    .pr-action-modal-close { background: transparent; border: none; font-size: 22px; cursor: pointer; color: var(--text-secondary); }
+    .pr-action-modal-body { padding: 16px; }
+    .pr-action-modal-textarea {
+      width: 100%; padding: 10px; font-size: 13px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      border-radius: var(--radius-sm); font-family: var(--font-mono); min-height: 100px;
+    }
+    .pr-action-modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 16px; border-top: 1px solid var(--border); }
+    .pr-action-modal-cancel, .pr-action-modal-submit { padding: 7px 14px; font-size: 12px; border-radius: var(--radius-sm); cursor: pointer; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); }
+    .pr-action-modal-submit { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+
+    /* ── Settings & Cascade Slot Controls ───────────────────────────────── */
+    .cascade-slot-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 12px; background: var(--bg-surface);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 5px;
+    }
+    .cascade-slot-disabled { opacity: 0.45; }
+    .cascade-slot-info { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    .cascade-slot-name { font-size: 12px; font-family: var(--font-mono); font-weight: 600; color: var(--text); }
+    .cascade-slot-stats { font-size: 10.5px; color: var(--text-secondary); font-family: var(--font-mono); }
+    .cascade-badge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
+    .cascade-badge-err  { background: var(--tone-err-bg); color: var(--error); }
+    .cascade-badge-warn { background: var(--tone-warn-bg); color: var(--warn); }
+    .cascade-empty { font-size: 12.5px; color: var(--text-secondary); }
+    .cascade-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+    .cascade-toggle-input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .cascade-toggle-track {
+      width: 34px; height: 18px; background: var(--border-strong);
+      border-radius: 9px; transition: background 0.2s; position: relative;
+    }
+    .cascade-toggle-track::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--bg-surface); transition: transform 0.2s;
+    }
+    .cascade-toggle-input:checked + .cascade-toggle-track { background: var(--accent); }
+    .cascade-toggle-input:checked + .cascade-toggle-track::after { transform: translateX(16px); }
+
+    .slot-metric-card {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .slot-metric-header { display: flex; justify-content: space-between; align-items: center; }
+    .slot-metric-name { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text); }
+    .slot-metric-last { font-size: 10.5px; color: var(--text-secondary); }
+    .slot-metric-stats { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+    .slot-metric-stat { display: flex; flex-direction: column; align-items: center; min-width: 60px; }
+    .slot-metric-val { font-size: 16px; font-weight: 700; font-family: var(--font-mono); color: var(--text); }
+    .slot-metric-val.accent { color: var(--accent); }
+    .slot-metric-val.success { color: var(--success); }
+    .slot-metric-label { font-size: 9.5px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+
+    .settings-grid { padding: 20px 24px; display: flex; flex-direction: column; gap: 1px; max-width: 980px; }
+    .setting-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 13px 16px; background: var(--bg-surface);
+      border: 1px solid var(--border); font-size: 13px;
+    }
+    .setting-row:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+    .setting-row:last-child  { border-radius: 0 0 var(--radius) var(--radius); }
+    .setting-label { color: var(--text); font-weight: 500; }
+    .setting-value { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11.5px; }
+    .model-chip {
+      font-size: 11px; font-family: var(--font-mono);
+      padding: 3px 8px; background: var(--bg-surface);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+    }
+
+    /* ── Ambient viewer & Bandit regret (INFRA-1198 / INFRA-1559) ───────── */
+    chump-ambient-viewer { display: block; font-size: 12px; color: var(--text); position: relative; }
+    chump-ambient-viewer .amb-toolbar {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+      padding: 7px 10px; background: var(--bg-surface);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+    }
+    chump-ambient-viewer .amb-filter-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+    chump-ambient-viewer .amb-filter,
+    chump-ambient-viewer .amb-gap-filter,
+    chump-ambient-viewer .amb-severity-filter,
+    chump-ambient-viewer .amb-preset-select,
+    chump-ambient-viewer .amb-preset-name {
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 7px; font-size: 11.5px; font-family: var(--font-mono);
+    }
+    chump-ambient-viewer .amb-filter { min-width: 190px; }
+    chump-ambient-viewer .amb-gap-filter { width: 120px; }
+    chump-ambient-viewer .amb-preset-name { width: 110px; }
+    chump-ambient-viewer .amb-state { margin-left: auto; font-size: 14px; line-height: 1; }
+    chump-ambient-viewer .amb-state-live         { color: var(--success); }
+    chump-ambient-viewer .amb-state-reconnecting { color: var(--warn); }
+    chump-ambient-viewer .amb-state-error        { color: var(--error); }
+    chump-ambient-viewer .amb-state-connecting   { color: var(--text-secondary); }
+    chump-ambient-viewer .amb-pill {
+      position: absolute; top: 56px; right: 16px;
+      background: var(--accent); color: var(--on-accent);
+      padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+      cursor: pointer; box-shadow: var(--shadow-card); z-index: 5;
+    }
+    chump-ambient-viewer .amb-list {
+      list-style: none; margin: 0; padding: 0;
+      max-height: calc(100vh - 250px); overflow-y: auto;
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-family: var(--font-mono);
+    }
+    chump-ambient-viewer .amb-row {
+      display: grid; grid-template-columns: 74px 190px 1fr;
+      gap: 8px; align-items: baseline; padding: 5px 10px;
+      border-bottom: 1px solid var(--border); cursor: pointer;
+    }
+    chump-ambient-viewer .amb-row:hover { background: var(--bg-elevated); }
+    chump-ambient-viewer .amb-ts { color: var(--text-secondary); font-size: 11px; }
+    chump-ambient-viewer .amb-kind {
+      background: var(--accent-dim); color: var(--accent);
+      padding: 1px 6px; border-radius: 4px; font-size: 10.5px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    chump-ambient-viewer .amb-summary { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    chump-ambient-viewer .amb-detail {
+      grid-column: 1 / -1; margin-top: 4px; padding: 8px 10px;
+      background: var(--bg-elevated); border-radius: 4px;
+      color: var(--text-secondary); font-size: 11px;
+      max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+    }
+    chump-ambient-viewer .amb-pillbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    chump-ambient-viewer .amb-active-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    chump-ambient-viewer .amb-pill-chip-empty { color: var(--text-secondary); font-size: 11px; }
+    chump-ambient-viewer .amb-pill-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--accent-dim); color: var(--accent);
+      border-radius: 999px; padding: 2px 6px 2px 9px; font-size: 11px; font-family: var(--font-mono);
+    }
+    chump-ambient-viewer .amb-pill-chip-x { background: transparent; border: none; color: inherit; cursor: pointer; font-size: 12px; padding: 0 4px; }
+    chump-ambient-viewer .amb-preset-bar { display: flex; align-items: center; gap: 4px; }
+    chump-ambient-viewer .amb-preset-save {
+      background: var(--bg-surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 9px; font-size: 11px; cursor: pointer;
     }
     chump-ambient-viewer .amb-preset-save:hover { background: var(--accent-dim); color: var(--accent); }
 
-    /* ── Bandit regret panel (INFRA-1559) ──────────────────────────────────── */
-    chump-bandit-regret-panel {
-      display: block;
-      font-size: 12px;
-      color: var(--text);
-    }
+    chump-bandit-regret-panel { display: block; font-size: 12px; color: var(--text); }
     chump-bandit-regret-panel .regret-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-      padding: 6px 8px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+      padding: 7px 10px; background: var(--bg-surface);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
     }
     chump-bandit-regret-panel .regret-title { font-weight: 600; }
-    chump-bandit-regret-panel .regret-state { margin-left: auto; font-size: 14px; line-height: 1; }
+    chump-bandit-regret-panel .regret-state { margin-left: auto; font-size: 14px; }
     chump-bandit-regret-panel .regret-state-live         { color: var(--success); }
     chump-bandit-regret-panel .regret-state-reconnecting { color: var(--warn); }
     chump-bandit-regret-panel .regret-state-error        { color: var(--error); }
     chump-bandit-regret-panel .regret-state-connecting   { color: var(--text-secondary); }
     chump-bandit-regret-panel .regret-empty {
-      padding: 16px;
-      color: var(--text-secondary);
-      font-size: 12px;
-      text-align: center;
-      border: 1px dashed var(--border);
-      border-radius: var(--radius-sm);
+      padding: 18px; color: var(--text-secondary); font-size: 12px;
+      text-align: center; border: 1px dashed var(--border); border-radius: var(--radius-sm);
     }
     chump-bandit-regret-panel .regret-chart {
-      width: 100%;
-      height: 200px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
+      width: 100%; height: 200px; background: var(--bg-surface);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
     }
     chump-bandit-regret-panel .regret-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-      font-size: 11px;
-      color: var(--text-secondary);
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;
+      font-size: 11px; color: var(--text-secondary);
     }
-    chump-bandit-regret-panel .regret-legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    chump-bandit-regret-panel .regret-swatch {
-      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
-    }
-    chump-bandit-regret-panel .regret-swatch-optimal {
-      background: var(--text-secondary);
-    }
+    chump-bandit-regret-panel .regret-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+    chump-bandit-regret-panel .regret-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    chump-bandit-regret-panel .regret-swatch-optimal { background: var(--text-secondary); }
     .regret-panel-title { margin-top: 20px; }
+
+    /* Hide duplicate global quick-actions bar when Cockpit view is mounted */
+    body[data-active-view="cockpit"] > chump-quick-actions {
+      display: none;
+    }
   </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    (function applyInitialChumpTheme() {
+      try {
+        var raw = localStorage.getItem('chump.prefs.theme') || localStorage.getItem('chump.theme');
+        var theme = raw ? JSON.parse(raw) : 'light';
+        if (theme !== 'dark' && theme !== 'light' && theme !== 'high-contrast') {
+          theme = 'light';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (_e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
 </head>
 <body>
   <chump-doctor-banner></chump-doctor-banner>
   <chump-auth-toast></chump-auth-toast>
   <div id="offline-banner">Offline — cached shell active</div>
 
+  <!-- INFRA-1586: #app-header keeps <= 4 direct children (#app-title, chump-repo-switcher, chump-heartbeat, .header-utilities) -->
   <header id="app-header">
-    <span id="app-title">Chump</span>
+    <span id="app-title">
+      <span class="brand-glyph" aria-hidden="true">C</span>
+      <span>Chump</span>
+      <span class="brand-divider" aria-hidden="true">/</span>
+      <span class="brand-sub">Operator Console</span>
+    </span>
     <chump-repo-switcher></chump-repo-switcher>
     <chump-heartbeat></chump-heartbeat>
+    <div class="header-utilities">
+      <button type="button" class="hdr-btn" id="header-theme-toggle" title="Switch Warm-Stone / Obsidian theme" aria-label="Toggle color theme">Theme: Stone</button>
+      <button type="button" class="hdr-btn" id="settings-btn" data-view="settings" title="Settings &amp; Cascade" aria-label="Settings">Settings</button>
+      <a class="hdr-btn hdr-btn-site" href="/site/" title="Open Chump Product Suite &amp; Interactive Engineering Tools">Product &amp; Tools ↗</a>
+    </div>
   </header>
 
-  <!-- PRODUCT-083: verb-shaped quick-actions panel — primary CTA above noun nav -->
   <chump-quick-actions></chump-quick-actions>
-
-  <!-- PRODUCT-109: persistent tool-approval tray. Hidden when list is empty;
-       sticky-banner above main-content when approvals are pending. -->
   <chump-tool-approval-tray></chump-tool-approval-tray>
-
-  <!-- PRODUCT-108: first-run golden-path wizard. Renders when brain/repo/
-       autopilot trio is empty; self-hides + dismissable. -->
   <chump-first-run-wizard></chump-first-run-wizard>
 
   <div id="app-body">
@@ -2197,139 +1739,118 @@
     <main id="main-content" role="main" aria-label="Main content"></main>
   </div>
 
-  <!-- PRODUCT-107: persistent operator HUD — always visible across every cadence.
-       6 slots: model / cost / air-gap / pillar grades / fleet / GH budget. -->
+  <!-- PRODUCT-107 / INFRA-1012: persistent operator HUD (integrates chump-cost-meter telemetry + sf-pillar-grades) -->
   <chump-status-footer></chump-status-footer>
 
-  <!-- INFRA-1919: hidden chump-pillar-health backing widget removed.
-       INFRA-1916 added it as a hack so test-pillar-dashboard §4 would pass
-       after INFRA-1585 consolidated pillar grades into chump-status-footer's
-       pillars slot (rendered from web/v2/app.js sf-pillar-grades). INFRA-1919
-       updates the test to check the new surface directly; the legacy element
-       is no longer needed. -->
-
-  <!-- INFRA-1585: <chump-ootb-wizard> retained for Tauri OOTB setup only;
-       Tauri-specific steps (system-tray, native-notif) have been folded into
-       <chump-first-run-wizard> via window.__TAURI__ detection (see app.js).
-       <chump-welcome> removed — canonical first-run surface is <chump-first-run-wizard>. -->
   <chump-ootb-wizard></chump-ootb-wizard>
-  <!-- PRODUCT-094: notification center — invisible singleton; manages SSE + badge -->
   <chump-notification-center></chump-notification-center>
-  <!-- PRODUCT-100: status pill + error toasts + offline banner -->
   <chump-status-pill></chump-status-pill>
 
-  <!-- INFRA-250: relative paths so the same index works in both contexts:
-       (a) browser via axum sidecar at http://host/v2/ (after the / -> /v2/
-           redirect from INFRA-254) where /v2/chat.js resolves correctly
-           against the page URL, and (b) Tauri webview where frontendDist
-           is web/v2 itself, so absolute /v2/* paths would 404. -->
-  <!-- PRODUCT-098: prefs.js must load first so window.chumpPrefs is available to other modules -->
-  <script src="prefs.js" type="module"></script>
-  <script src="chat.js" type="module"></script>
-  <script src="app.js" type="module"></script>
-  <script src="cost-meter.js" type="module"></script>
-  <script src="pr-card.js" type="module"></script>
-  <script src="pr-list.js" type="module"></script>
-  <script src="workflow-timeline.js" type="module"></script>
-  <script src="ootb-wizard.js" type="module"></script>
-  <!-- INFRA-1585: welcome.js removed as a functional script; legacy localStorage
-       migration runs from the stub module imported indirectly via prefs.js
-       startup if needed. No chump-welcome element registered. -->
-  <script src="inference-profile.js" type="module"></script>
-  <!-- ambient-viewer.js removed: ChumpAmbientViewer class now lives in app.js (INFRA-1198); INFRA-1332 dedup fix -->
-  <script src="fleet-sidebar.js" type="module"></script>
-  <script src="quick-actions.js" type="module"></script>
-  <!-- PRODUCT-105: A2A in-app toast + nav badge for inbox notifications -->
-  <script src="inbox-notifications.js" type="module"></script>
-  <!-- PRODUCT-103: A2A operator compose form -->
-  <script src="fleet-message.js" type="module"></script>
-  <!-- PRODUCT-104: A2A operator inbox view -->
-  <script src="inbox.js" type="module"></script>
-  <!-- INFRA-1301: Web Push subscription / re-register -->
-  <script src="push-subscribe.js" type="module"></script>
-  <!-- PRODUCT-122: Cockpit-MVP landing shell (Phase 1 of PRODUCT-121).
-       Reach via /v2/?view=cockpit until promoted into chump-nav cadences. -->
-  <script src="cockpit.js" type="module"></script>
-  <!-- INFRA-2215: 3-tile dashboard summary strip (ships-today / ci-qa-score / active-leases) -->
-  <script src="dashboard-tiles.js" type="module"></script>
-  <script src="pillar-health.js" type="module"></script>
-  <script src="notification-center.js" type="module"></script>
-  <script src="error-ux.js" type="module"></script>
-  <script src="operator-attention.js" type="module"></script>
-  <!-- PRODUCT-080: stuck items alerter with one-click rescue -->
-  <script src="stuck-items.js" type="module"></script>
-  <script src="autopilot-toggle.js" type="module"></script>
-  <!-- EFFECTIVE-026: daemon-set health panel -->
-  <script src="daemon-set-panel.js" type="module"></script>
-  <!-- EFFECTIVE-027: wedge-watch live-tail panel -->
-  <script src="wedge-watch.js" type="module"></script>
-  <script src="config-dials.js" type="module"></script>
-  <!-- PRODUCT-085: PR diff renderer + AC-fit panel -->
-  <script src="pr-diff.js" type="module"></script>
-  <script src="daily-brief.js" type="module"></script>
-  <script src="impact.js" type="module"></script>
-  <script src="gap-list.js" type="module"></script>
-  <!-- INFRA-1340: per-tool policy dropdown (15min / 1h / session) augments the
-       <chump-tool-approval-tray> defined in app.js. Order matters: app.js must
-       have registered the tray before this script runs. -->
-  <script src="approval.js" type="module"></script>
-  <!-- INFRA-1711: content-bots toggle view; depends on window.ChumpViewSettings
-       (app.js) for the shared error-toast utility, so load order matters. -->
-  <script src="content-bots.js" type="module"></script>
-  <!-- INFRA-1558: brain graph renderer. Vendored (not CDN) per air-gap-capable
-       PWA design — classic (non-module) scripts so each UMD bundle's
-       `root["name"] = factory()` fallback attaches to `window`. Order matters:
-       layout-base -> cose-base -> cytoscape-fcose -> cytoscape, then brain.js. -->
+  <script src="sse-hub.js?v=373" type="module"></script>
+  <script src="prefs.js?v=373" type="module"></script>
+  <script src="chat.js?v=373" type="module"></script>
+  <script src="app.js?v=373" type="module"></script>
+  <script src="cost-meter.js?v=373" type="module"></script>
+  <script src="pr-card.js?v=373" type="module"></script>
+  <script src="pr-list.js?v=373" type="module"></script>
+  <script src="workflow-timeline.js?v=373" type="module"></script>
+  <script src="ootb-wizard.js?v=373" type="module"></script>
+  <script src="inference-profile.js?v=373" type="module"></script>
+  <script src="fleet-sidebar.js?v=373" type="module"></script>
+  <script src="quick-actions.js?v=373" type="module"></script>
+  <script src="inbox-notifications.js?v=373" type="module"></script>
+  <script src="fleet-message.js?v=373" type="module"></script>
+  <script src="inbox.js?v=373" type="module"></script>
+  <script src="push-subscribe.js?v=373" type="module"></script>
+  <script src="cockpit.js?v=373" type="module"></script>
+  <script src="dashboard-tiles.js?v=373" type="module"></script>
+  <script src="pillar-health.js?v=373" type="module"></script>
+  <script src="notification-center.js?v=373" type="module"></script>
+  <script src="error-ux.js?v=373" type="module"></script>
+  <script src="operator-attention.js?v=373" type="module"></script>
+  <script src="stuck-items.js?v=373" type="module"></script>
+  <script src="autopilot-toggle.js?v=373" type="module"></script>
+  <script src="daemon-set-panel.js?v=373" type="module"></script>
+  <script src="wedge-watch.js?v=373" type="module"></script>
+  <script src="config-dials.js?v=373" type="module"></script>
+  <script src="pr-diff.js?v=373" type="module"></script>
+  <script src="daily-brief.js?v=373" type="module"></script>
+  <script src="impact.js?v=373" type="module"></script>
+  <script src="gap-list.js?v=373" type="module"></script>
+  <script src="approval.js?v=373" type="module"></script>
+  <script src="content-bots.js?v=373" type="module"></script>
   <script src="lib/vendor/layout-base.js"></script>
   <script src="lib/vendor/cose-base.js"></script>
   <script src="lib/vendor/cytoscape-fcose.js"></script>
   <script src="lib/vendor/cytoscape.min.js"></script>
-  <script src="brain.js" type="module"></script>
+  <script src="brain.js?v=373" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
     if (!navigator.onLine) document.body.classList.add('offline');
 
+    // Header theme switcher + Settings button wiring.
+    (function wireHeaderControls() {
+      function syncThemeBtn() {
+        const btn = document.getElementById('header-theme-toggle');
+        if (!btn) return;
+        const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+        btn.textContent = cur === 'light' ? 'Theme: Stone' : cur === 'high-contrast' ? 'Theme: Contrast' : 'Theme: Obsidian';
+      }
+      syncThemeBtn();
+
+      if (typeof MutationObserver === 'function') {
+        new MutationObserver(syncThemeBtn).observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['data-theme'],
+        });
+      }
+
+      document.getElementById('header-theme-toggle')?.addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+        const next = cur === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        if (window.chumpPrefs) {
+          window.chumpPrefs.set('theme', next);
+        } else {
+          try { localStorage.setItem('chump.prefs.theme', JSON.stringify(next)); } catch (_e) {}
+        }
+        syncThemeBtn();
+      });
+
+      document.addEventListener('chump:pref-changed', (e) => {
+        if (e.detail && e.detail.key === 'theme') syncThemeBtn();
+      });
+
+      document.getElementById('settings-btn')?.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+      });
+    })();
+
     // V1->V2 backward-compat aliases for e2e tests.
-    // INFRA-1018 fix: chump-view-chat uses light DOM (innerHTML), NOT a shadow
-    // root.  The previous code used viewChat.shadowRoot?.querySelector which
-    // always returned undefined/null — #msg-input was never aliased, causing
-    // all PWA shell e2e tests to time out waiting for the locator.
     function createTestAliases() {
       let aliased = false;
-
-      // #msg-input <- chump-chat's #input.
-      // <chump-view-chat> sets this.innerHTML = '<chump-chat …>' → light DOM.
-      // <chump-chat> attaches a shadow root → getElementById works there.
       const viewChat = document.querySelector('chump-view-chat');
       if (viewChat) {
-        const chumpChat = viewChat.querySelector('chump-chat'); // light DOM, NOT shadowRoot
+        const chumpChat = viewChat.querySelector('chump-chat');
         if (chumpChat) {
-          const input = chumpChat.shadowRoot?.getElementById('input');
+          const input = chumpChat.shadowRoot?.getElementById('input') || chumpChat.shadowRoot?.getElementById('msg-input');
           if (input) {
             if (input.id !== 'msg-input') input.id = 'msg-input';
             aliased = true;
           }
         }
       }
-
-      // #sessions-toggle <- nav chat button (light DOM, no shadow root)
       const chatNav = document.querySelector('[data-view="chat"]');
       if (chatNav && !chatNav.id) chatNav.id = 'sessions-toggle';
-
-      // #settings-btn <- nav settings button (light DOM)
       const settingsNav = document.querySelector('[data-view="settings"]');
       if (settingsNav && !settingsNav.id) settingsNav.id = 'settings-btn';
-
       return aliased;
     }
 
-    // Retry until #msg-input alias is established.  Module scripts are deferred
-    // and custom-element upgrades happen asynchronously; a single DOMContentLoaded
-    // callback may fire before connectedCallback() populates the shadow root.
     function scheduleTestAliases() {
-      if (createTestAliases()) return; // done — alias is live
-      setTimeout(scheduleTestAliases, 100); // retry every 100 ms
+      if (createTestAliases()) return;
+      setTimeout(scheduleTestAliases, 250);
     }
 
     if (document.readyState === 'loading') {

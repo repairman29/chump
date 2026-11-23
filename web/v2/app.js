@@ -72,7 +72,7 @@ window.chumpPrefs = window.chumpPrefs || (() => {
 
 // ── Theme: apply persisted theme BEFORE first paint (avoid flash) ───────────
 (() => {
-  const t = window.chumpPrefs.get('theme', 'system');
+  const t = window.chumpPrefs.get('theme', 'light');
   function effectiveTheme(pref) {
     if (pref === 'light' || pref === 'dark' || pref === 'high-contrast') return pref;
     // 'system' → follow OS
@@ -81,7 +81,7 @@ window.chumpPrefs = window.chumpPrefs || (() => {
   document.documentElement.setAttribute('data-theme', effectiveTheme(t));
   // React to OS theme changes when in system mode.
   window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (window.chumpPrefs.get('theme', 'system') === 'system') {
+    if (window.chumpPrefs.get('theme', 'light') === 'system') {
       document.documentElement.setAttribute('data-theme', effectiveTheme('system'));
     }
   });
@@ -373,70 +373,60 @@ const CHUMP_CADENCES = [
   {
     id: 'now',
     label: 'Now',
-    icon: '⚡',
+    icon: '',
     shortcut: 'n',
     default_view: 'cockpit',
     subtabs: [
-      { id: 'cockpit',       label: 'Cockpit',        icon: '🎯' }, // PRODUCT-122
-      { id: 'impact',        label: 'Impact',         icon: '📊' }, // PRODUCT-081
-      { id: 'brief',         label: 'Brief',          icon: '📋' }, // PRODUCT-078
-      { id: 'chat',          label: 'Chat',           icon: '💬' },
-      { id: 'agent',         label: 'My queue',       icon: '🔄' },
-      { id: 'notifications', label: 'Alerts',         icon: '🔔', badge: true },
-      { id: 'tasks',         label: 'Tasks',          icon: '✅' },
+      { id: 'cockpit',       label: 'Cockpit',        icon: '' }, // PRODUCT-122
+      { id: 'impact',        label: 'Impact',         icon: '' }, // PRODUCT-081
+      { id: 'brief',         label: 'Brief',          icon: '' }, // PRODUCT-078
+      { id: 'chat',          label: 'Chat',           icon: '' },
+      { id: 'agent',         label: 'Queue',          icon: '' },
+      { id: 'notifications', label: 'Alerts',         icon: '', badge: true },
+      { id: 'tasks',         label: 'Tasks',          icon: '' },
     ],
   },
   {
     id: 'ambient',
     label: 'Ambient',
-    icon: '📡',
+    icon: '',
     shortcut: 'a',
     default_view: 'ambient',
     subtabs: [
-      { id: 'ambient', label: 'Events',  icon: '📡' },
-      { id: 'agents',  label: 'Fleet',   icon: '🤝' },
-      { id: 'results', label: 'Ships',   icon: '📊' },
-      { id: 'health',  label: 'Health',  icon: '🩺' }, // INFRA-1203
-      { id: 'prs',     label: 'PRs',     icon: '🔀' }, // PRODUCT-084
-
-      // INFRA-1204: a2a coordination view (inbox / INTENT / nudge).
-      { id: 'coord',        label: 'Coord',        icon: '✉️' },
-      // INFRA-1365: orchestrator session history panel.
-      { id: 'orchestrator', label: 'Orchestrator', icon: '🎛' },
+      { id: 'ambient',      label: 'Events',       icon: '' },
+      { id: 'agents',       label: 'Fleet',        icon: '' },
+      { id: 'results',      label: 'Ships',        icon: '' },
+      { id: 'health',       label: 'Health',       icon: '' }, // INFRA-1203
+      { id: 'prs',          label: 'PRs',          icon: '' }, // PRODUCT-084
+      { id: 'coord',        label: 'Coord',        icon: '' }, // INFRA-1204
+      { id: 'orchestrator', label: 'Orchestrator', icon: '' }, // INFRA-1365
     ],
   },
   {
     id: 'library',
     label: 'Library',
-    icon: '📚',
+    icon: '',
     shortcut: 'l',
     default_view: 'audit',
     subtabs: [
-      // PRODUCT-111: dedicated Audit view consolidating tool-approval-audit +
-      // cos-decisions for the enterprise-auditor archetype. Judgment kept as
-      // a separate sub-tab for the operator-pending-decisions surface.
-      { id: 'audit',     label: 'Audit',     icon: '📋' },
-      { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
-      { id: 'decisions', label: 'Decisions', icon: '🎯' },
-      { id: 'memory',    label: 'Memory',    icon: '🧠' },
-      { id: 'brain',     label: 'Brain',     icon: '🕸' }, // INFRA-1558
-
-      { id: 'judgment',  label: 'Audit',     icon: '⚖️' },
-      { id: 'roadmap',   label: 'Roadmap',   icon: '🗺' }, // INFRA-1207
+      { id: 'audit',     label: 'Audit',     icon: '' }, // PRODUCT-111
+      { id: 'judgment',  label: 'Judgment',  icon: '' },
+      { id: 'decisions', label: 'Decisions', icon: '' },
+      { id: 'memory',    label: 'Memory',    icon: '' },
+      { id: 'brain',     label: 'Brain',     icon: '' }, // INFRA-1558
+      { id: 'roadmap',   label: 'Roadmap',   icon: '' }, // INFRA-1207
     ],
   },
   {
     id: 'config',
     label: 'Config',
-    icon: '⚙',
+    icon: '',
     shortcut: 'c',
     default_view: 'settings',
     subtabs: [
-      { id: 'settings', label: 'Settings', icon: '⚙' },
-      { id: 'models',   label: 'Models',   icon: '🤖' },
-      // PRODUCT-112: archetype-1 (offline solo dev) trust signal —
-      // air-gap badge in the footer click-drills here.
-      { id: 'network',  label: 'Network',  icon: '🌐' },
+      { id: 'settings', label: 'Settings', icon: '' },
+      { id: 'models',   label: 'Models',   icon: '' },
+      { id: 'network',  label: 'Network',  icon: '' }, // PRODUCT-112
     ],
   },
 ];
@@ -453,6 +443,8 @@ const CHUMP_VIEW_TO_CADENCE = (() => {
 class ChumpNav extends HTMLElement {
   #lastCadenceAt = 0;
   #activeCadence = null;
+  #activeView = null;
+  #internalDispatch = false;
 
   connectedCallback() {
     // Resolve initial cadence: URL ?cadence > URL ?view→cadence map > chumpPrefs > 'now'.
@@ -469,6 +461,24 @@ class ChumpNav extends HTMLElement {
     this.#activateCadence(initial, viewFromUrl);
     this.#wireClicks();
     this.#wireShortcuts();
+
+    // Sync nav highlight when external buttons (header Settings, footer slots, Cockpit actions) navigate.
+    document.addEventListener('chump:navigate', (e) => {
+      if (this.#internalDispatch) return;
+      const viewId = e.detail;
+      const targetCad = CHUMP_VIEW_TO_CADENCE[viewId];
+      if (!targetCad) return;
+      if (targetCad !== this.#activeCadence) {
+        this.#activeCadence = targetCad;
+        this.#lastCadenceAt = Date.now();
+        this.querySelectorAll('[data-cadence]').forEach((b) => b.removeAttribute('aria-current'));
+        this.querySelector(`[data-cadence="${targetCad}"]`)?.setAttribute('aria-current', 'page');
+        this.#renderSubtabs(targetCad);
+      }
+      this.#activeView = viewId;
+      this.querySelectorAll('#chump-nav-subtabs [data-view]').forEach((b) => b.removeAttribute('aria-current'));
+      this.querySelector(`#chump-nav-subtabs [data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
+    });
   }
 
   #renderShell() {
@@ -479,11 +489,12 @@ class ChumpNav extends HTMLElement {
                   data-cadence="${c.id}"
                   aria-label="${c.label} (${c.shortcut.toUpperCase()})"
                   title="${c.label} — press ${c.shortcut.toUpperCase()}">
-            <span class="nav-icon">${c.icon}</span>
             <span class="nav-label">${c.label}</span>
+            <kbd class="nav-kbd">${c.shortcut.toUpperCase()}</kbd>
           </button>
         `).join('')}
       </div>
+      <div class="nav-divider" aria-hidden="true"></div>
       <div class="nav-subtabs" role="tablist" aria-label="Sub-view" id="chump-nav-subtabs"></div>
     `;
   }
@@ -497,8 +508,8 @@ class ChumpNav extends HTMLElement {
               data-view="${t.id}"
               aria-label="${t.label}"
               title="${t.label}">
-        <span class="nav-icon">${t.icon}${t.badge ? '<span class="notif-badge" id="notif-nav-badge" hidden>0</span>' : ''}</span>
         <span class="nav-label">${t.label}</span>
+        ${t.badge ? '<span class="notif-badge" id="notif-nav-badge" hidden>0</span>' : ''}
       </button>
     `).join('');
   }
@@ -564,12 +575,18 @@ class ChumpNav extends HTMLElement {
   }
 
   #activateView(viewId, skipUrlPush = false) {
+    this.#activeView = viewId;
     // Update sub-tab visual state.
     this.querySelectorAll('#chump-nav-subtabs [data-view]').forEach((b) => b.removeAttribute('aria-current'));
     this.querySelector(`#chump-nav-subtabs [data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
 
     // Dispatch the legacy chump:navigate event the router has always consumed.
-    document.dispatchEvent(new CustomEvent('chump:navigate', { detail: viewId }));
+    this.#internalDispatch = true;
+    try {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: viewId }));
+    } finally {
+      this.#internalDispatch = false;
+    }
 
     if (!skipUrlPush) {
       try {
@@ -1000,36 +1017,35 @@ const FIRSTRUN_STEPS = [
 class ChumpFirstRunWizard extends HTMLElement {
   #pollTimer = null;
   #state = {};
+  #expanded = false;
 
   connectedCallback() {
-    // INFRA-1585: migrate legacy chump_first_visit keys from the old <chump-welcome>
-    // component so users who completed that flow are not shown the new wizard.
     this.#migrateLegacyWelcomeKeys();
 
-    // ?welcome=force overrides the dismissed flag for QA / demos.
     const forceShow = new URLSearchParams(location.search).get('welcome') === 'force';
+    if (forceShow) {
+      this.#expanded = true;
+    }
 
-    // Hide-permanently flag — if dismissed, never render until chumpPrefs is reset.
     if (!forceShow && window.chumpPrefs?.get('firstrun.dismissed', false) === true) {
       this.hidden = true;
       return;
     }
 
-    // INFRA-1585: filter out Tauri-only steps when not running in Tauri.
     const isTauri = !!window.__TAURI__;
     const activeSteps = FIRSTRUN_STEPS.filter((s) => !s.tauriOnly || isTauri);
 
     this.#state = {
       steps: activeSteps.map((s) => ({
         id: s.id,
-        status: window.chumpPrefs?.get(`firstrun.step.${s.id}`, null) || 'pending', // 'pending' | 'detected' | 'skipped' | 'completed'
+        status: window.chumpPrefs?.get(`firstrun.step.${s.id}`, null) || 'pending',
         result: null,
       })),
       activeSteps,
     };
     this.#render();
     this.#detectAll();
-    this.#pollTimer = setInterval(() => this.#detectAll(), 5000);
+    this.#pollTimer = setInterval(() => this.#detectAll(), 12_000);
   }
 
   // INFRA-1585: one-way migration — if the old chump-welcome localStorage keys exist,
@@ -1063,18 +1079,33 @@ class ChumpFirstRunWizard extends HTMLElement {
     this.hidden = false;
     const total = this.#state.steps.length;
     const done = this.#state.steps.filter((s) => s.status === 'detected' || s.status === 'skipped' || s.status === 'completed').length;
+    const nextIdx = this.#state.steps.findIndex((s) => s.status === 'pending');
+    const nextDef = nextIdx >= 0 ? this.#state.activeSteps[nextIdx] : null;
+    const summaryText = nextDef
+      ? `Next check: ${nextDef.title} — auto-detecting workspace readiness.`
+      : `${done} of ${total} checks complete.`;
     this.innerHTML = `
       <section class="frw-shell" data-onboarding="first-run-wizard" role="region" aria-label="First-run setup">
         <header class="frw-header">
-          <h2 class="frw-title">Welcome — let's get Chump ready.</h2>
-          <p class="frw-subtitle">${done} of ${total} steps complete. Each row auto-checks every 5 seconds.</p>
-          <button type="button" class="frw-dismiss" aria-label="Dismiss the setup wizard (re-open from Config → Setup)">Dismiss</button>
+          <h2 class="frw-title">
+            <span>Setup Readiness</span>
+            <span class="frw-pill">${done}/${total} verified</span>
+          </h2>
+          <p class="frw-subtitle">${summaryText}</p>
+          <div class="frw-header-actions">
+            <button type="button" class="frw-expand" aria-expanded="${this.#expanded}">${this.#expanded ? 'Hide checklist ▴' : 'Checklist ▾'}</button>
+            <button type="button" class="frw-dismiss" aria-label="Dismiss the setup wizard (re-open from Config → Setup)">Dismiss</button>
+          </div>
         </header>
-        <ol class="frw-steps">
+        <ol class="frw-steps" ${this.#expanded ? '' : 'hidden'}>
           ${this.#state.steps.map((s, i) => this.#renderStep(s, this.#state.activeSteps[i])).join('')}
         </ol>
       </section>
     `;
+    this.querySelector('.frw-expand')?.addEventListener('click', () => {
+      this.#expanded = !this.#expanded;
+      this.#render();
+    });
     this.querySelector('.frw-dismiss')?.addEventListener('click', () => this.#dismiss());
     this.querySelectorAll('[data-step-skip]').forEach((b) => {
       b.addEventListener('click', () => this.#skipStep(b.dataset.stepSkip));
@@ -1291,72 +1322,74 @@ const FOOTER_CSS = `
   .sf-shell {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
-    padding-bottom: calc(6px + var(--safe-bottom));
+    gap: 4px;
+    padding: 4px 20px;
+    padding-bottom: calc(4px + var(--safe-bottom));
     background: var(--bg-surface);
     border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
     position: relative;
-    z-index: 8;
+    z-index: 15;
     flex-shrink: 0;
   }
   .sf-slot {
     display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-    padding: 4px 8px;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
     border: none;
+    border-right: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
-    min-height: 28px;
+    min-height: 26px;
     transition: background 0.12s, color 0.12s;
   }
+  .sf-slot:last-child { border-right: none; margin-left: auto; }
   .sf-slot:hover {
     background: var(--bg-elevated);
-    color: var(--text-primary, var(--text));
+    color: var(--text);
   }
   .sf-slot:focus {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
   .sf-dot {
-    font-size: 14px; line-height: 1;
+    font-size: 10px; line-height: 1;
   }
   .sf-label {
-    font-size: 9px;
+    font-size: 9.5px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--text-secondary);
   }
   .sf-value {
-    color: var(--text-primary, var(--text));
+    color: var(--text);
     font-weight: 500;
   }
   .sf-value.sf-stale {
     opacity: 0.5;
   }
   .sf-value.sf-warn {
-    color: var(--warn, #ff9f0a);
+    color: var(--warn);
   }
   .sf-value.sf-red {
-    color: var(--error, #ff453a);
+    color: var(--error);
     font-weight: 600;
   }
-  .sf-pillars { padding: 4px 10px; }
+  .sf-pillars { padding: 3px 10px; }
   .sf-pillar-grades {
-    font-family: "SF Mono", ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.02em;
-    color: var(--text-primary, var(--text));
+    color: var(--text);
   }
-  /* Mobile (≤640px): wrap to 2 rows, tap targets ≥36px */
   @media (max-width: 640px) {
     .sf-shell {
       flex-wrap: wrap;
@@ -1367,9 +1400,11 @@ const FOOTER_CSS = `
     .sf-slot {
       flex: 1 1 auto;
       min-width: 90px;
-      min-height: 36px;
+      min-height: 32px;
       justify-content: center;
+      border-right: none;
     }
+    .sf-slot:last-child { margin-left: 0; }
     .sf-pillars { flex-basis: 100%; }
   }
 `;
@@ -1424,11 +1459,13 @@ class ChumpStatusFooter extends HTMLElement {
     this.#startPoller(60_000, () => this.#pollStackStatus());
     this.#startPoller(30_000, () => this.#pollCost());
     this.#startPoller(15_000, () => this.#pollFleet());
+    this.#startPoller(45_000, () => this.#pollPillars());
 
     // First paint immediately.
     this.#pollStackStatus();
     this.#pollCost();
     this.#pollFleet();
+    this.#pollPillars();
   }
 
   disconnectedCallback() {
@@ -1514,6 +1551,20 @@ class ChumpStatusFooter extends HTMLElement {
     }).catch(() => this.#markStale('fleet'));
   }
 
+  #pollPillars() {
+    fetch('/api/health/pillars').then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d || !Array.isArray(d.pillars)) return;
+      const byKey = {};
+      for (const p of d.pillars) {
+        if (p && p.pillar) byKey[String(p.pillar).toUpperCase()] = p.grade || d.fleet_grade || '—';
+      }
+      const el = this.#shadow.querySelector('#sf-pillar-grades');
+      if (el) {
+        el.textContent = `E:${byKey.EFFECTIVE || '—'} C:${byKey.CREDIBLE || '—'} R:${byKey.RESILIENT || '—'} Z:${byKey['ZERO-WASTE'] || '—'}`;
+      }
+    }).catch(() => {});
+  }
+
   #markStale(slot) {
     const v = this.#shadow.querySelector(`#sf-${slot}-value`);
     if (v && this.#lastValues[slot] !== undefined) v.classList.add('sf-stale');
@@ -1583,34 +1634,27 @@ class ChumpHeartbeat extends HTMLElement {
       .then((r) => r.json())
       .then((d) => {
         const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const sessions = d.active_sessions ?? '—';
-        this.innerHTML = `<span class="hb-dot online" title="Agent online"></span><span class="hb-text">online · ${sessions} sessions · ${ts}</span>`;
+        const sessions = d.active_sessions ?? 0;
+        this.innerHTML = `<span class="hb-dot online" title="chumpd online"></span><span class="hb-text">chumpd live · ${sessions} active · ${ts}</span>`;
       })
       .catch(() => {
-        this.innerHTML = `<span class="hb-dot offline" title="Agent offline"></span><span class="hb-text">offline</span>`;
+        this.innerHTML = `<span class="hb-dot offline" title="chumpd offline"></span><span class="hb-text">offline</span>`;
       });
   }
 }
 customElements.define('chump-heartbeat', ChumpHeartbeat);
 
 // ── <chump-doctor-banner> (INFRA-990) ───────────────────────────────────────
-//
-// Persistent banner that surfaces config-health failures from
-// GET /api/health/doctor. Renders nothing while ok=true. While ok=false,
-// renders a sticky strip listing each failure with a "Configure" button
-// linking to the settings view. Re-polls every 30s; on transition to ok=true
-// shows a one-shot "✓ Configuration green" toast and self-hides.
-//
-// Accessibility: focusable Configure button, ARIA region label. ESC does NOT
-// dismiss (AC #4) — banner is persistent until doctor goes green.
 class ChumpDoctorBanner extends HTMLElement {
   #timer = null;
-  #lastOk = null; // null | true | false — used to detect ok=false → ok=true transition
+  #lastOk = null;
+  #expanded = false;
+  #lastFailures = [];
 
   connectedCallback() {
     this.setAttribute('role', 'region');
     this.setAttribute('aria-label', 'Configuration health');
-    this.style.display = 'none'; // hidden until first poll resolves to ok=false
+    this.style.display = 'none';
     this.#poll();
     this.#timer = setInterval(() => this.#poll(), 30_000);
   }
@@ -1627,16 +1671,12 @@ class ChumpDoctorBanner extends HTMLElement {
     try {
       const r = await fetch('/api/health/doctor', { headers: { 'Accept': 'application/json' } });
       data = await r.json();
-    } catch (err) {
-      // Network down or endpoint missing — don't render anything; the
-      // existing offline-banner already covers the "PWA can't reach itself"
-      // case. Keep this widget silent.
+    } catch (_err) {
       return;
     }
 
     if (data.ok === true) {
       if (this.#lastOk === false) {
-        // We just transitioned from failing → green. One-shot toast.
         this.#renderToast();
         setTimeout(() => { this.style.display = 'none'; this.innerHTML = ''; }, 3000);
       } else {
@@ -1648,29 +1688,40 @@ class ChumpDoctorBanner extends HTMLElement {
     }
 
     this.#lastOk = false;
+    this.#lastFailures = Array.isArray(data.failures) ? data.failures : [];
+    this.#paintFailures();
+  }
+
+  #paintFailures() {
+    const failures = this.#lastFailures;
     this.style.display = 'block';
-    const failures = Array.isArray(data.failures) ? data.failures : [];
+    const checkNames = failures.map((f) => f.check || 'check').slice(0, 3).join(', ');
     const items = failures.map((f) => {
       const fix = f.fix_hint ? ` — <span class="fix-hint">${this.#esc(f.fix_hint)}</span>` : '';
       return `<li><strong>${this.#esc(f.check)}</strong>: ${this.#esc(f.message)}${fix}</li>`;
     }).join('');
     this.innerHTML = `
       <div class="doctor-banner-inner">
-        <div class="doctor-banner-head">
-          <strong>Configuration needed before fleet can run</strong>
+        <div class="doctor-banner-bar">
+          <span class="doctor-banner-badge">Advisory</span>
+          <div class="doctor-banner-head">
+            <strong>${failures.length} workspace check${failures.length === 1 ? '' : 's'} flagged</strong> (${this.#esc(checkNames)})
+          </div>
+          <div class="doctor-banner-actions">
+            <button type="button" class="doctor-details-toggle" aria-expanded="${this.#expanded}">${this.#expanded ? 'Hide details ▴' : 'Details ▾'}</button>
+            <button type="button" class="doctor-configure" aria-label="Open settings to configure">Configure</button>
+          </div>
         </div>
-        <ul class="doctor-banner-list">${items}</ul>
-        <div class="doctor-banner-actions">
-          <button type="button" class="doctor-configure" aria-label="Open settings to configure">Configure</button>
-        </div>
+        <ul class="doctor-banner-list" ${this.#expanded ? '' : 'hidden'}>${items}</ul>
       </div>
     `;
-    const btn = this.querySelector('.doctor-configure');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
-      });
-    }
+    this.querySelector('.doctor-details-toggle')?.addEventListener('click', () => {
+      this.#expanded = !this.#expanded;
+      this.#paintFailures();
+    });
+    this.querySelector('.doctor-configure')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+    });
   }
 
   #renderToast() {
@@ -1865,19 +1916,18 @@ class ChumpRepoSwitcher extends HTMLElement {
   }
 
   #renderChip() {
-    if (!this.#enabled) {
+    if (!this.#current && !this.#enabled) {
       this.style.display = 'none';
       this.innerHTML = '';
       return;
     }
     this.style.display = 'inline-flex';
-    const last = this.#current.split('/').filter(Boolean).pop() || this.#current || '(none)';
+    const last = this.#current.split('/').filter(Boolean).pop() || this.#current || 'repo';
     this.innerHTML = `
       <span class="repo-chip" title="${this.#esc(this.#current)}">
-        <span class="repo-chip-icon" aria-hidden="true">📁</span>
-        <span class="repo-chip-name">${this.#esc(last)}</span>
+        <span class="repo-chip-name">repo: ${this.#esc(last)}</span>
       </span>
-      <button type="button" class="repo-switch-btn" aria-label="Switch working repo">Switch</button>
+      ${this.#enabled ? '<button type="button" class="repo-switch-btn" aria-label="Switch working repo">Switch</button>' : ''}
     `;
     const btn = this.querySelector('.repo-switch-btn');
     if (btn) {
@@ -3455,7 +3505,7 @@ class ChumpViewSettings extends HTMLElement {
                      aria-label="Cost kill-switch threshold in dollars (session refused above this)">
             </label>
           </div>
-          <p id="cost-threshold-error" style="color: var(--accent-error,#cc3344); font-size: 0.8em; margin-top: 6px; display:none;"></p>
+          <p id="cost-threshold-error" style="color: var(--error); font-size: 0.8em; margin-top: 6px; display:none;"></p>
           <div style="display:flex;gap:12px;align-items:center;margin-top:10px;">
             <label style="display:inline-flex;align-items:center;gap:6px;">
               <input type="checkbox" id="cost-fleet-kill">
@@ -3468,14 +3518,14 @@ class ChumpViewSettings extends HTMLElement {
             Reset to defaults
           </button>
         </div>
-        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+        <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;">
           <p class="setting-label" style="margin-bottom: 12px;">PWA Preferences (INFRA-1280)</p>
-          <p style="color: var(--text-muted); font-size: 0.85em; margin-bottom: 8px;">
+          <p style="color: var(--text-secondary); font-size: 0.85em; margin-bottom: 8px;">
             Theme + queue filters + cost thresholds + (future) sidecar / stream pause are persisted
             under the <code>chump.*</code> localStorage namespace. Schema:
             <code>docs/api/PWA_STATE_SCHEMA.md</code>.
           </p>
-          <button type="button" id="chump-prefs-reset" class="chump-prefs-reset" aria-label="Reset all PWA preferences" style="padding:6px 12px;border:1px solid var(--accent-error,#cc3344);background:transparent;color:var(--accent-error,#cc3344);border-radius:6px;cursor:pointer;font-size:0.9em;">
+          <button type="button" id="chump-prefs-reset" class="chump-prefs-reset" aria-label="Reset all PWA preferences" style="padding:6px 12px;border:1px solid var(--error);background:transparent;color:var(--error);border-radius:6px;cursor:pointer;font-size:0.9em;">
             Reset all preferences
           </button>
           <p style="color: var(--text-muted); font-size: 0.75em; margin-top: 6px;">
@@ -3577,7 +3627,7 @@ class ChumpViewSettings extends HTMLElement {
   // INFRA-1280 Sub-gap 4: theme toggle (System/Light/Dark/High-contrast).
   // Reads stored pref, checks the right radio, persists changes, repaints.
   #wireThemeToggle() {
-    const current = window.chumpPrefs.get('theme', 'system');
+    const current = window.chumpPrefs.get('theme', 'light');
     const radios = this.querySelectorAll('input[name="chump-theme"]');
     radios.forEach(r => {
       if (r.value === current) r.checked = true;
@@ -3851,9 +3901,9 @@ class ChumpViewSettings extends HTMLElement {
       const y = H - barH;
       // Color: green if below p50-ish (< half max), amber if mid, red if high.
       const ratio = v / maxVal;
-      const fill = ratio < 0.4 ? 'var(--success, #30d158)'
-                 : ratio < 0.75 ? 'var(--warn, #ff9f0a)'
-                 : 'var(--error, #ff453a)';
+      const fill = ratio < 0.4 ? 'var(--success)'
+                 : ratio < 0.75 ? 'var(--warn)'
+                 : 'var(--error)';
       return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${fill}" rx="1"/>`;
     }).join('');
     return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:${H}px;" aria-hidden="true">${bars}</svg>`;
@@ -3946,8 +3996,8 @@ class ChumpViewSettings extends HTMLElement {
       document.body.appendChild(host);
     }
     const toast = document.createElement('div');
-    const color = kind === 'error' ? '#ff453a' : '#3182ce';
-    toast.style.cssText = `background:${color};color:#fff;padding:8px 16px;border-radius:6px;font:13px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.3);`;
+    const color = kind === 'error' ? 'var(--error)' : 'var(--accent)';
+    toast.style.cssText = `background:${color};color:var(--on-accent);padding:8px 16px;border-radius:6px;font-size:13px;box-shadow:var(--shadow-elevated);`;
     toast.textContent = message;
     host.appendChild(toast);
     setTimeout(() => toast.remove(), 5_000);
@@ -4085,23 +4135,18 @@ class ChumpViewResults extends HTMLElement {
     this.innerHTML = `
       <section class="view-header">
         <h2>Results</h2>
-        <p class="view-subtitle">Live status and job results <span id="stream-pill" class="stream-pill" style="font-size:11px;margin-left:8px;padding:2px 8px;border-radius:10px;background:var(--bg-muted, #2a2a2a);color:var(--text-secondary, #aaa);">— stream: init</span></p>
+        <p class="view-subtitle">Live status and job results <span id="stream-pill" class="stream-pill" style="font-size:11px;margin-left:8px;padding:2px 8px;border-radius:10px;background:var(--bg-elevated);color:var(--text-secondary);">— stream: init</span></p>
       </section>
       <section class="results-list" id="results-container">
         <p class="placeholder">Loading results…</p>
       </section>
     `;
-    // Initial fetch in parallel with SSE so the page isn't empty for 30s.
     this.#load();
-    // PRODUCT-099: subscribe to the SSE bus instead of polling.
     if (window.chumpStream) {
       this.#unsubscribe = window.chumpStream.subscribe((msg) => {
         if (msg.type === 'dashboard') this.#renderFromStream(msg.data);
       });
-      // Reflect connection status as a small live pill.
       document.addEventListener('chump:stream-status', this.#onStatus);
-      // Late mount: paint pill from current bus status (don't wait for the
-      // next status-change event, which may never come if we're already live).
       this.#onStatus({ detail: window.chumpStream.status() });
     }
   }
@@ -4115,12 +4160,12 @@ class ChumpViewResults extends HTMLElement {
     const pill = this.querySelector('#stream-pill');
     if (!pill) return;
     const colors = {
-      live: ['#1f4d2a', '#9be3a9', '● live'],
-      connecting: ['#3a3a1a', '#e3d29b', '◌ connecting'],
-      reconnecting: ['#4d3a1a', '#e3c19b', '↻ reconnecting'],
-      paused: ['#1a2a3a', '#9bb8e3', '⏸ paused'],
-      offline: ['#4d1f1f', '#e39b9b', '⚠ offline'],
-      init: ['#2a2a2a', '#aaa', '— stream: init'],
+      live: ['var(--tone-ok-bg)', 'var(--success)', '● live'],
+      connecting: ['var(--tone-warn-bg)', 'var(--warn)', '◌ connecting'],
+      reconnecting: ['var(--tone-warn-bg)', 'var(--warn)', '↻ reconnecting'],
+      paused: ['var(--bg-elevated)', 'var(--text-secondary)', '⏸ paused'],
+      offline: ['var(--tone-err-bg)', 'var(--error)', '⚠ offline'],
+      init: ['var(--bg-elevated)', 'var(--text-secondary)', '— stream: init'],
     };
     const [bg, fg, label] = colors[e.detail] || colors.init;
     pill.style.background = bg;
@@ -5605,9 +5650,9 @@ class ChumpViewOrchestratorSessions extends HTMLElement {
       const routed = Number(s.intents_routed ?? 0);
       return total > 0 ? routed / total : 0;
     });
-    this.#drawSparkline('#orch-spark-cost',   cost,   '#30d158');
-    this.#drawSparkline('#orch-spark-wall',   wall,   '#0a84ff');
-    this.#drawSparkline('#orch-spark-intent', intent, '#ff9f0a');
+    this.#drawSparkline('#orch-spark-cost',   cost,   'var(--success)');
+    this.#drawSparkline('#orch-spark-wall',   wall,   'var(--accent)');
+    this.#drawSparkline('#orch-spark-intent', intent, 'var(--warn)');
   }
 
   #drawSparkline(selector, values, stroke) {
@@ -5770,36 +5815,26 @@ const VIEWS = {
 document.addEventListener('chump:navigate', (e) => {
   const main = document.getElementById('main-content');
   if (!main) return;
-  const factory = VIEWS[e.detail] ?? VIEWS.tasks;
+  const viewId = VIEWS[e.detail] ? e.detail : 'tasks';
+  const factory = VIEWS[viewId] ?? VIEWS.tasks;
+  document.body.dataset.activeView = viewId;
   main.innerHTML = '';
   main.appendChild(factory());
-  // PRODUCT-098: persist current view so refresh restores it.
-  window.chumpPrefs?.set('last-view', e.detail);
+  window.chumpPrefs?.set('last-view', viewId);
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  // INFRA-250: relative URL + relative scope so the SW registers correctly
-  // in both axum-sidecar context (resolves to /v2/sw.js with /v2/ scope)
-  // and Tauri context (where frontendDist = web/v2, so root-relative paths
-  // would 404).
   navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
 }
 
-// Initial view.
+// Initial view fallback (only if <chump-nav> has not already mounted a view).
 window.addEventListener('DOMContentLoaded', () => {
   const main = document.getElementById('main-content');
-  // PRODUCT-098: restore last view from prefs; default to 'chat'.
-  const lastView = window.chumpPrefs?.get('last-view', 'chat') ?? 'chat';
-  const factory = VIEWS[lastView] ?? VIEWS.chat;
-  if (main) {
-    main.appendChild(factory());
-    // Sync nav highlight: clear default chat highlight, then set the restored view.
-    // Guard: only remove chat highlight if we're restoring a different view.
-    if (lastView !== 'chat') {
-      document.querySelector('[data-view="chat"]')?.removeAttribute('aria-current');
-      document.querySelector(`[data-view="${lastView}"]`)?.setAttribute('aria-current', 'page');
-    }
-    // If lastView === 'chat', the HTML's default aria-current on chat is already correct.
+  if (main && main.children.length === 0) {
+    const lastView = window.chumpPrefs?.get('last-view', 'cockpit') ?? 'cockpit';
+    const viewId = VIEWS[lastView] ? lastView : 'cockpit';
+    document.body.dataset.activeView = viewId;
+    main.appendChild((VIEWS[viewId] ?? VIEWS.cockpit)());
   }
 });
