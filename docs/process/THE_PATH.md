@@ -1,6 +1,6 @@
 # THE PATH — the 5-track ranked program
 
-**Author:** Oracle (orchestrator-opus session). **Updated:** 2026-11-24 09:22Z.
+**Author:** Oracle (orchestrator-opus session). **Updated:** 2026-11-24 13:22Z.
 **Refresh cadence:** every 3-4 hours by the Oracle role, or on major-track shift.
 
 This document is the **single ranked source-of-truth** for what the fleet should be shipping. It exists because `chump gap list --status open` returns a 192-gap firehose — fine for raw inventory, useless for direction. A curator or JIT scheduler picking from the firehose has no way to know what *paves the road* versus what is noise.
@@ -30,12 +30,13 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 **Why #1:** the firewall is the substrate. Without it, every PR is a CI roulette and the queue clogs. This track has shipped the most today (INFRA-1831, 1833, 1834, 1836, 1838, 1860, 1879, 1852) and is one ship-cluster from "done." Close it out, then it stops needing attention.
 
 **Next actions (claim from top down):**
-1. **INFRA-1788** — preflight docs-delta-trailer gate (Tier C #2, unclaimed)
-2. **INFRA-1790** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — original PR closed for fresh restart)
-3. **INFRA-1792** — preflight pr-scope sanity gate (Tier C #6, unclaimed)
-4. **INFRA-1793** — preflight no-claude-leak gate (Tier C #7, unclaimed)
+1. **INFRA-1790** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — original PR closed for fresh restart)
+2. **INFRA-1792** — preflight pr-scope sanity gate (Tier C #6, unclaimed)
+3. **INFRA-1793** — preflight no-claude-leak gate (Tier C #7, unclaimed)
 
-**Done when:** all 4 above shipped. Then this track moves into maintenance.
+**Done when:** all 3 above shipped. Then this track moves into maintenance.
+
+---
 
 ## Track 2 — Oracle/JIT self-improvement
 
@@ -50,6 +51,8 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 
 **Done when:** orchestrator-opus stops manually broadcasting next-gap assignments. Operator says "I haven't seen you dispatch in 2 hours."
 
+---
+
 ## Track 3 — META-073 Initiative #2 (forward-looking coordination)
 
 **Theme:** predict collision, route by skill, propagate lessons.
@@ -59,26 +62,36 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 **Next actions:**
 1. **INFRA-1892** — curator-jit-scheduler daemon (in-flight, verify in main)
 2. **CREDIBLE-004** — add tests for 4 critical untested files (P2, unclaimed — main.rs, web_server.rs, repo_tools.rs, discord.rs)
-3. **INFRA-1860** — preflight no-claude-leak gate (Tier C #7, unclaimed)
+3. **INFRA-1860** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — already in Track 1)
 
-## Track 4 — A2A coordination (META-073 Initiative #1)
+**Done when:** JIT daemon is in main and auto-assigning gaps without Opus intervention.
 
-**Theme:** every gap has a "pillar" (domain + skill + effort) and the fleet ships in a balanced cascade.
+---
 
-**Why #4:** the fleet is a coordination game. Without this track, gaps ship in a random order that creates bottlenecks (e.g., all the Rust gaps ship at once, then the fleet starves for Rust skills).
+## Track 4 — A2A coordination (agent-to-agent)
 
-**Next actions:**
-1. **CREDIBLE-279** — watchdog for empty-PR gaps (P1, unclaimed — 79 gaps closed without code)
-2. **INFRA-1852** — preflight no-claude-leak gate (Tier C #7, unclaimed)
-3. **CREDIBLE-146** — fleet self-report calibration (P2, unclaimed — counters off by 100x)
+**Theme:** the fleet's ability to self-organize beyond the cascade-drain loop.
 
-## Track 5 — Demo (META-073 Initiative #3)
-
-**Theme:** every gap has a demo. The fleet ships only what can be demoed.
-
-**Why #5:** the fleet is a demo. Without this track, gaps ship in a vacuum with no way to verify they're actually useful.
+**Why #4:** without this, the fleet is just a queue. This track enables the fleet to predict collisions, route by skill, and propagate lessons.
 
 **Next actions:**
-1. **MISSION-010** — finish Universal Chump v1.0 (P1, shipped in #5889)
-2. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — fleet self-report calibration)
-3. **INFRA-1879** — preflight no-claude-leak gate (Tier C #7, unclaimed)
+1. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
+2. **INFRA-1880** — auto-export `CHUMP_SESSION_ID` at curator launch (filed P1, unclaimed)
+3. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — fleet self-report calibration)
+
+**Done when:** the fleet can auto-assign gaps without Opus intervention.
+
+---
+
+## Track 5 — Demo (low-leverage)
+
+**Theme:** gaps that are nice to have but don't impact the road.
+
+**Why #5:** these are the "nice to haves" that don't impact the road. Work these only when higher tracks are empty.
+
+**Next actions:**
+1. **EFFECTIVE-1936** — cross-repo secret, leak-vector & hygiene auditor (shipped today, verify in main)
+2. **RESILIENT-2228** — resolve 7 ChumpOS dogfood runtime bugs (shipped today, verify in main)
+3. **INFRA-1852** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — already in Track 1)
+
+**Done when:** all 3 above verified in main.
