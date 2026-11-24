@@ -86,6 +86,17 @@ pub mod worker;
 #[cfg(feature = "mesh-bridge")]
 pub mod mesh_bridge;
 
+/// Canonical coordination mesh bridge handle (consolidated from `crates/coord-mesh`, INFRA-8653).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MeshBridge;
+
+impl MeshBridge {
+    /// Construct a new coordination mesh bridge handle.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 use anyhow::{anyhow, Result};
 use async_nats::jetstream::{self, kv};
 use bytes::Bytes;

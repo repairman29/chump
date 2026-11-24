@@ -80,7 +80,7 @@ pass "override_env_recognized (src/version.rs unit test)"
 # CREDIBLE-237 / CREDIBLE-274: after INFRA-1965 moved gap commands to
 # src/commands/gap.rs, Test 2 was grepping only src/main.rs and became a
 # vacuous pass. Now scan both files so the gate cannot silently rot.
-GAP_GUARD_FILES=("$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch/mod.rs" "$REPO_ROOT/src/commands/gap.rs")
+GAP_GUARD_FILES=("$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch/mod.rs" "$REPO_ROOT/src/cli_dispatch/gap_modes.rs" "$REPO_ROOT/src/cli_dispatch/gap_audit_modes.rs" "$REPO_ROOT/src/commands/gap.rs")
 found_guard=false
 for f in "${GAP_GUARD_FILES[@]}"; do
     if [[ -f "$f" ]] && grep -q "fail_if_stale_for_destructive" "$f"; then

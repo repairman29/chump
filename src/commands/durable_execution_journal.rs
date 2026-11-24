@@ -55,12 +55,8 @@ pub fn state_db_path() -> PathBuf {
 
 /// Open a raw rusqlite connection to the state DB with WAL + busy-timeout.
 fn open_conn(path: &std::path::Path) -> Result<Connection> {
-    let conn =
-        Connection::open(path).with_context(|| format!("open state DB at {}", path.display()))?;
-    conn.execute_batch(
-        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
-    )?;
-    Ok(conn)
+    crate::db_pool::open_sqlite_wal(path)
+        .with_context(|| format!("open state DB at {}", path.display()))
 }
 
 // ── Schema migration ─────────────────────────────────────────────────────────

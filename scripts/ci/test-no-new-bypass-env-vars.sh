@@ -33,8 +33,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ALLOWLIST="$REPO_ROOT/scripts/ci/bypass-env-var-allowlist.txt"
 
 # ── Self-test mode ─────────────────────────────────────────────────────────────
-if [[ "${TEST_SELF_TEST:-0}" == "1" ]]; then
-  bash "$REPO_ROOT/scripts/ci/test-no-new-bypass-env-vars.sh" --self-test
+if [[ "${TEST_SELF_TEST:-0}" == "1" && "${1:-}" != "--self-test" ]]; then
+  TEST_SELF_TEST=0 bash "$REPO_ROOT/scripts/ci/test-no-new-bypass-env-vars.sh" --self-test
   exit $?
 fi
 
@@ -459,10 +459,20 @@ extract_bypass_varnames() {
   ' "$tmpfile" > "$filtered_file"
   rm -f "$tmpfile"
 
-  # Only look at added lines (+ prefix, not ++ which is the diff header).
+  # Only look at added lines (+ prefix, not ++ which is the diff header),
+  # while also collecting vars removed on non-comment `-` lines in the same diff
+  # so pure file splits / code moves do not self-flag as net-new introductions.
   # Use grep -E; avoid pipe-to-grep-q (INFRA-1658).
-  local added_lines
+  local added_lines removed_vars
   added_lines="$(grep -E '^\+[^+]' "$filtered_file" 2>/dev/null)" || added_lines=""
+  removed_vars="$(awk '
+    /^-[^-]/ {
+      line = substr($0, 2)
+      sub(/^[ \t]+/, "", line)
+      if (line ~ /^(#|\/\/|\*|>)/) next
+      print line
+    }
+  ' "$filtered_file" | grep -oE 'CHUMP_[A-Z0-9_]+' 2>/dev/null | sort -u || true)"
   rm -f "$filtered_file"
 
   local added_file
@@ -524,6 +534,9 @@ extract_bypass_varnames() {
   local name
   while IFS= read -r name; do
     [[ -z "$name" ]] && continue
+    if [[ -n "$removed_vars" ]] && printf '%s\n' "$removed_vars" | grep -Fx "$name" >/dev/null 2>&1; then
+      continue
+    fi
     printf '%s\n' "$name"
   done <<< "$combined_hits" | sort -u
 }

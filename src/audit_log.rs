@@ -134,7 +134,7 @@ pub fn open(repo_root: &Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).context("creating .chump dir for audit_log db")?;
     }
-    let conn = Connection::open(&path).context("opening audit_log state.db")?;
+    let conn = crate::db_pool::open_sqlite_wal(&path).context("opening audit_log state.db")?;
     ensure_schema(&conn)?;
     Ok(conn)
 }

@@ -306,6 +306,40 @@ async fn gap_security_headers_middleware(
     response
 }
 
+/// Resolve the bind IP for `chump --web` (INFRA-8653).
+///
+/// Defaults to loopback (`127.0.0.1`) so developer laptops never expose unauthenticated
+/// `/api/*` endpoints to LAN/Wi-Fi. Non-loopback binds (e.g. `CHUMP_WEB_HOST=0.0.0.0`)
+/// are refused unless a non-empty `CHUMP_WEB_TOKEN` is configured.
+pub(crate) fn resolve_web_bind_ip(
+    host_env: Option<&str>,
+    web_token_env: Option<&str>,
+) -> anyhow::Result<std::net::IpAddr> {
+    let raw = host_env
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("127.0.0.1");
+    let ip: std::net::IpAddr = if raw.eq_ignore_ascii_case("localhost") {
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+    } else {
+        raw.parse().map_err(|e| {
+            anyhow::anyhow!(
+                "[web] invalid CHUMP_WEB_HOST {:?}: {} (expected IP or 'localhost')",
+                raw,
+                e
+            )
+        })?
+    };
+    let has_token = web_token_env.is_some_and(|t| !t.trim().is_empty());
+    if !ip.is_loopback() && !has_token {
+        anyhow::bail!(
+            "[web] refusing to bind non-loopback host {} without CHUMP_WEB_TOKEN set; use default 127.0.0.1 or set CHUMP_WEB_TOKEN",
+            ip
+        );
+    }
+    Ok(ip)
+}
+
 fn check_auth(headers: &HeaderMap) -> bool {
     let required = match std::env::var("CHUMP_WEB_TOKEN") {
         Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
@@ -2917,7 +2951,7 @@ async fn handle_repo_init(
 /// Seed 3 lightweight template gaps into a freshly initialized repo's state.db.
 fn seed_starter_gaps(repo_root: &std::path::Path) -> Vec<String> {
     let db_path = repo_root.join(".chump").join("state.db");
-    let conn = match rusqlite::Connection::open(&db_path) {
+    let conn = match crate::db_pool::open_sqlite_wal(&db_path) {
         Ok(c) => c,
         Err(_) => return vec![],
     };
@@ -3914,7 +3948,7 @@ async fn handle_needs_judgment(headers: HeaderMap) -> Result<Json<serde_json::Va
     let mut last_decision_ago: Option<String> = None;
 
     // Source 1 — gaps whose notes or AC mention operator input needed.
-    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+    if let Ok(conn) = crate::db_pool::open_sqlite_wal(&db_path) {
         let query = "SELECT id, title, notes, priority FROM gaps \
                      WHERE status='open' AND (notes LIKE '%operator%' OR notes LIKE '%judgment%' \
                            OR acceptance_criteria LIKE '%operator decides%') \
@@ -4037,7 +4071,7 @@ async fn handle_needs_judgment_ack(
 
     // Persist ack to state.db so we can show "last decision N ago".
     let db_path = chump_gap_store::store_path::state_db_path(&repo_root); // INFRA-8190
-    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+    if let Ok(conn) = crate::db_pool::open_sqlite_wal(&db_path) {
         let _ = conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS operator_acks \
              (ts TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL);",
@@ -10448,6 +10482,10 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
         .layer(cors);
 
+    let bind_ip = resolve_web_bind_ip(
+        std::env::var("CHUMP_WEB_HOST").ok().as_deref(),
+        std::env::var("CHUMP_WEB_TOKEN").ok().as_deref(),
+    )?;
     let requested_port = port;
     let mut listener: Option<tokio::net::TcpListener> = None;
     let mut bound_port: u16 = port;
@@ -10457,7 +10495,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
             break;
         }
         let try_port = try_u32 as u16;
-        let addr = std::net::SocketAddr::from(([0, 0, 0, 0], try_port));
+        let addr = std::net::SocketAddr::new(bind_ip, try_port);
         match tokio::net::TcpListener::bind(addr).await {
             Ok(l) => {
                 bound_port = try_port;
@@ -10482,7 +10520,10 @@ pub async fn start_web_server(port: u16) -> Result<()> {
             requested_port, bound_port, bound_port
         );
     }
-    eprintln!("[web] Chump Web listening on http://0.0.0.0:{}", bound_port);
+    eprintln!(
+        "[web] Chump Web listening on http://{}:{}",
+        bind_ip, bound_port
+    );
     eprintln!("[web] serving Chump PWA from {:?}", static_dir);
 
     // INFRA-167: pre-warm the configured Ollama model on startup so the
@@ -12333,6 +12374,27 @@ mod repo_init_tests {
         assert!(
             under_allowed,
             "/Users/jeffadkins/Projects/MyRepo should be inside /Users/jeffadkins"
+        );
+    }
+
+    #[test]
+    fn infra8653_web_bind_defaults_to_loopback_and_blocks_unauthenticated_lan_bind() {
+        use super::resolve_web_bind_ip;
+        assert_eq!(
+            resolve_web_bind_ip(None, None).unwrap(),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+        );
+        assert_eq!(
+            resolve_web_bind_ip(Some("localhost"), None).unwrap(),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+        );
+        // Non-loopback without token MUST fail closed.
+        assert!(resolve_web_bind_ip(Some("0.0.0.0"), None).is_err());
+        assert!(resolve_web_bind_ip(Some("0.0.0.0"), Some("   ")).is_err());
+        // Non-loopback WITH token is permitted.
+        assert_eq!(
+            resolve_web_bind_ip(Some("0.0.0.0"), Some("secret-token")).unwrap(),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
         );
     }
 }

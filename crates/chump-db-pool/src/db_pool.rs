@@ -747,7 +747,25 @@ fn build_connection_init_pragmas(c: &mut rusqlite::Connection) -> rusqlite::Resu
         let escaped = key.replace('\'', "''");
         c.execute_batch(&format!("PRAGMA key = '{}';", escaped))?;
     }
-    c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;")
+    c.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+    )
+}
+
+/// Open a file-backed SQLite connection configured with standard Universal Chump
+/// concurrency & integrity pragmas (`WAL`, `busy_timeout = 5000ms`, `synchronous = NORMAL`,
+/// `foreign_keys = ON`) so callers outside the `chump_memory.db` r2d2 pool (such as
+/// `state.db` and `settings.db` accessors) never hit immediate `SQLITE_BUSY` failures
+/// across macOS, Linux, and Windows (INFRA-8653).
+pub fn open_sqlite_wal(
+    path: impl AsRef<std::path::Path>,
+) -> rusqlite::Result<rusqlite::Connection> {
+    let conn = rusqlite::Connection::open(path)?;
+    let _ = conn.busy_timeout(std::time::Duration::from_millis(5000));
+    let _ = conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+    );
+    Ok(conn)
 }
 
 /// Return a connection from the shared pool. Initializes the pool (and schema) on first use.
@@ -914,5 +932,27 @@ mod tests {
 
         assert!(tables.iter().any(|t| t.contains("memory_fts")));
         assert!(tables.iter().any(|t| t.contains("web_messages_fts")));
+    }
+
+    #[test]
+    fn infra8653_open_sqlite_wal_configures_wal_busy_timeout_and_foreign_keys() {
+        let dir = std::env::temp_dir().join(format!("chump_db_pool_wal_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let db_file = dir.join("test_wal.db");
+        let conn = open_sqlite_wal(&db_file).unwrap();
+        let mode: String = conn
+            .query_row("PRAGMA journal_mode;", [], |r| r.get(0))
+            .unwrap();
+        let fk: i64 = conn
+            .query_row("PRAGMA foreign_keys;", [], |r| r.get(0))
+            .unwrap();
+        let timeout_ms: i64 = conn
+            .query_row("PRAGMA busy_timeout;", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode.to_ascii_lowercase(), "wal");
+        assert_eq!(fk, 1);
+        assert_eq!(timeout_ms, 5000);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

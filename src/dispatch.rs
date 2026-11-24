@@ -1220,10 +1220,9 @@ fn create_dispatch_worktree_from(
     gap_id: &str,
     repair_branch: Option<&str>,
 ) -> Result<PathBuf> {
-    use coord_mesh::MeshBridge;
-    // INFRA-2264: activates the `coord-mesh` crate dependency; the bridge
-    // itself is not yet wired into the worktree-creation flow (that's
-    // follow-on work once the real mesh-bridge substrate lands).
+    use chump_coord::MeshBridge;
+    // INFRA-2264 / INFRA-8653: activates the consolidated `chump_coord::MeshBridge`
+    // surface directly without requiring a separate stub crate hop.
     let _bridge = MeshBridge::new();
 
     let (worktree_path, default_branch) = dispatch_paths(repo_root, gap_id);

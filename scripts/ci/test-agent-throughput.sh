@@ -25,7 +25,7 @@ TRACKER="$REPO_ROOT/scripts/ops/agent-throughput-tracker.sh"
 # layout-agnostically so this test survives the extraction.
 source "$SCRIPT_DIR/lib/source-grep.sh"
 KPI_RS="$(find_rust_module kpi_report)"
-MAIN_RS="$REPO_ROOT/src/cli_dispatch/mod.rs"
+MAIN_RS="$REPO_ROOT/src/cli_dispatch/runtime_modes.rs"
 
 # 1. tracker script exists and is executable
 if [[ -x "$TRACKER" ]]; then
