@@ -1,6 +1,6 @@
 # THE PATH — the 5-track ranked program
 
-**Author:** Oracle (orchestrator-opus session). **Updated:** 2026-11-23 17:20Z.
+**Author:** Oracle (orchestrator-opus session). **Updated:** 2026-11-24 01:20Z.
 **Refresh cadence:** every 3-4 hours by the Oracle role, or on major-track shift.
 
 This document is the **single ranked source-of-truth** for what the fleet should be shipping. It exists because `chump gap list --status open` returns a 192-gap firehose — fine for raw inventory, useless for direction. A curator or JIT scheduler picking from the firehose has no way to know what *paves the road* versus what is noise.
@@ -34,7 +34,6 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 2. **INFRA-1790** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — original PR closed for fresh restart)
 3. **INFRA-1792** — preflight pr-scope sanity gate (Tier C #6, unclaimed)
 4. **INFRA-1793** — preflight no-claude-leak gate (Tier C #7, unclaimed)
-5. ~~INFRA-1794~~ — broad-canary-coverage (P3, defer — diminishing return)
 
 **Done when:** all 4 above shipped. Then this track moves into maintenance.
 
@@ -45,9 +44,9 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 **Why #2:** every iter of the loop today burns ~5 min of Opus context doing pebble-shaped JIT work. Once shipped, frees Opus for actual road-paving (this doc) and architectural meta-fixes.
 
 **Next actions:**
-1. **INFRA-1892** — curator-jit-scheduler daemon (just filed, dispatched to handoff/shepherd)
-2. **INFRA-1860 / INFRA-1879** — PostToolUse inbox poll + 5-path session derivation (both shipped or in-flight — verify in main, no further action)
-3. **INFRA-1880** — auto-export `CHUMP_SESSION_ID` at curator launch (filed P1, unclaimed)
+1. **INFRA-1880** — auto-export `CHUMP_SESSION_ID` at curator launch (filed P1, unclaimed)
+2. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
+3. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — fleet self-report calibration)
 
 **Done when:** orchestrator-opus stops manually broadcasting next-gap assignments. Operator says "I haven't seen you dispatch in 2 hours."
 
@@ -58,28 +57,34 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 **Why #3:** the A2A coordination wiring that lets the fleet self-organize beyond the cascade-drain loop. Pairs with Track 2 — once JIT exists, it needs collision-prediction + skill-routing to assign WELL, not just FAST.
 
 **Next actions:**
-1. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
-2. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — 3x calibration failures in last 24h)
-3. **INFRA-1862** — world-class A2A coordination (P2, unclaimed — 12 gaps in queue)
+1. **CREDIBLE-004** — add tests for 4 critical untested files (P2, unclaimed — main.rs, web_server.rs, repo_tools.rs, discord.rs)
+2. **INFRA-1892** — curator-jit-scheduler daemon (in-flight, verify in main)
+3. **INFRA-1860 / INFRA-1879** — PostToolUse inbox poll + 5-path session derivation (shipped)
 
-## Track 4 — A2A coordination (agent-to-agent)
+**Done when:** all 3 above shipped. Then this track moves into maintenance.
 
-**Theme:** the fleet's ability to self-organize beyond the cascade-drain loop.
+## Track 4 — A2A coordination (META-073 Initiative #1)
 
-**Why #4:** the A2A coordination wiring that lets the fleet self-organize beyond the cascade-drain loop. Pairs with Track 2 — once JIT exists, it needs collision-prediction + skill-routing to assign WELL, not just FAST.
+**Theme:** every gap has a "lessons learned" doc that propagates to the next worker.
 
-**Next actions:**
-1. **INFRA-1862** — world-class A2A coordination (P2, unclaimed — 12 gaps in queue)
-2. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
-3. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — 3x calibration failures in last 24h)
-
-## Track 5 — Demo (road-paving)
-
-**Theme:** the fleet's ability to self-organize beyond the cascade-drain loop.
-
-**Why #5:** the A2A coordination wiring that lets the fleet self-organize beyond the cascade-drain loop. Pairs with Track 2 — once JIT exists, it needs collision-prediction + skill-routing to assign WELL, not just FAST.
+**Why #4:** the fleet today is a cascade-drain loop. Workers ship gaps, then forget them. The next worker has to rediscover the same lessons. This track makes the fleet a feedback loop.
 
 **Next actions:**
-1. **PRODUCT-142** — build 6-page Chump Product Suite (P2, unclaimed — 2026-11-23 PR #5892)
-2. **MISSION-010** — finish Universal Chump v1.0 (P2, unclaimed — 2026-11-23 PR #5889)
-3. **CREDIBLE-004** — add tests for 4 critical untested files (P2, unclaimed — 10430 LOC with zero tests)
+1. **CREDIBLE-1460** — gap lessons doc (P2, unclaimed — template + auto-emit)
+2. **CREDIBLE-1461** — gap lessons doc propagation (P2, unclaimed — auto-attach to next gap)
+3. **CREDIBLE-1462** — gap lessons doc search (P2, unclaimed — `chump gap search --lessons`)
+
+**Done when:** all 3 above shipped. Then this track moves into maintenance.
+
+## Track 5 — Demo (META-074)
+
+**Theme:** every gap has a demo doc that shows the outcome.
+
+**Why #5:** the fleet today ships gaps without showing their impact. This track makes the fleet a showcase.
+
+**Next actions:**
+1. **CREDIBLE-1463** — gap demo doc (P2, unclaimed — template + auto-emit)
+2. **CREDIBLE-1464** — gap demo doc propagation (P2, unclaimed — auto-attach to next gap)
+3. **CREDIBLE-1465** — gap demo doc search (P2, unclaimed — `chump gap search --demo`)
+
+**Done when:** all 3 above shipped. Then this track moves into maintenance.
