@@ -323,7 +323,7 @@ _chump_complete() {{
         --paths)  COMPREPLY=($(compgen -f -- "$cur")); return ;;
         --session) return ;;
       esac
-      COMPREPLY=($(compgen -W "--paths --session --skip-doctor --skip-import --resume" -- "$cur"))
+      COMPREPLY=($(compgen -W "--paths --session --skip-doctor --no-doctor --skip-import --no-import --force-overlap --resume" -- "$cur"))
       ;;
     completion)
       COMPREPLY=($(compgen -W "zsh bash fish" -- "$cur"))

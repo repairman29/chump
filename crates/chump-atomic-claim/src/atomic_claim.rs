@@ -132,7 +132,7 @@ impl ClaimArgs {
         for a in args.iter().skip(1) {
             if a == "--help" || a == "-h" {
                 println!(
-                    "Usage: chump claim <GAP-ID> --role ROLE [--scope SCOPE] [--paths CSV] [--session ID] [--no-doctor] [--no-import] [--force-recover]\n\n\
+                    "Usage: chump claim <GAP-ID> --role ROLE [--scope SCOPE] [--paths CSV] [--session ID] [--skip-doctor|--no-doctor] [--skip-import|--no-import] [--force-recover]\n\n\
                      Atomic claim: fetch + verify + (doctor) + worktree + lease for <GAP-ID>.\n\n\
                      Options:\n  \
                        --role ROLE      (mandatory) Role hint for the claiming session (e.g. shepherd, target)\n  \
@@ -144,8 +144,8 @@ impl ClaimArgs {
                        --broad          Allow --paths to span >1 top-level directory (requires --reason)\n  \
                        --reason TEXT    Justification for --broad (mandatory when --broad is set)\n  \
                        --session ID     Explicit session ID (default derived from env / pid)\n  \
-                       --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
-                       --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
+                       --skip-doctor, --no-doctor  Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
+                       --skip-import, --no-import  Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
                        --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
                        --discard-wip    With --force-recover: bypass WIP-loss guard and wipe uncommitted changes\n  \
                        --rename         If the claim branch is orphaned (remote branch exists, its PR is closed),\n                        \
@@ -227,11 +227,11 @@ impl ClaimArgs {
                     );
                     i += 2;
                 }
-                "--skip-doctor" => {
+                "--skip-doctor" | "--no-doctor" => {
                     skip_doctor = true;
                     i += 1;
                 }
-                "--skip-import" => {
+                "--skip-import" | "--no-import" => {
                     skip_import = true;
                     i += 1;
                 }
@@ -1143,7 +1143,8 @@ pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
         if let Some((pr_num, other_gap, overlap_paths)) =
             check_paths_overlap_open_prs(&args.repo_root, paths_csv)
         {
-            match overlap_outcome(claim_mode_from_env(), pr_num, &other_gap, &overlap_paths) {
+            let mode = effective_claim_mode(args.force_overlap, claim_mode_from_env());
+            match overlap_outcome(mode, pr_num, &other_gap, &overlap_paths) {
                 OverlapOutcome::Block(msg) => bail!(msg),
                 OverlapOutcome::Warn(msg) => {
                     eprintln!("[claim] WARN: {msg}");
@@ -2963,6 +2964,17 @@ pub fn claim_mode_from_env() -> ClaimMode {
     match std::env::var("CHUMP_CLAIM_MODE") {
         Ok(v) if v.trim().eq_ignore_ascii_case("advisory") => ClaimMode::Advisory,
         _ => ClaimMode::Blocking,
+    }
+}
+
+/// RESILIENT-2228: Honor `--force-overlap` (`args.force_overlap`) when evaluating
+/// open-PR path collisions so the flag degrades `Blocking` to `Advisory` (emitting
+/// warning + `claim_overlap_advisory` ambient event) as documented in `--help`.
+pub fn effective_claim_mode(force_overlap: bool, env_mode: ClaimMode) -> ClaimMode {
+    if force_overlap {
+        ClaimMode::Advisory
+    } else {
+        env_mode
     }
 }
 
@@ -7609,6 +7621,31 @@ mod tests {
         assert_eq!(args.session_id.as_deref(), Some("test-session"));
         assert!(args.skip_doctor);
         assert!(!args.resume);
+    }
+
+    #[test]
+    fn resilient2228_from_argv_accepts_no_doctor_no_import_and_force_overlap_mode() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-201".into(),
+            "--no-doctor".into(),
+            "--no-import".into(),
+            "--force-overlap".into(),
+            "--role".into(),
+            "factory".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.skip_doctor);
+        assert!(args.skip_import);
+        assert!(args.force_overlap);
+        assert_eq!(
+            effective_claim_mode(args.force_overlap, ClaimMode::Blocking),
+            ClaimMode::Advisory
+        );
+        assert_eq!(
+            effective_claim_mode(false, ClaimMode::Blocking),
+            ClaimMode::Blocking
+        );
     }
 
     // INFRA-5486 (INFRA-1863 slice): --role is mandatory (AC1/AC2) — omitting
