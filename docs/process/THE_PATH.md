@@ -1,6 +1,6 @@
 # THE PATH — the 5-track ranked program
 
-**Author:** Oracle (orchestrator-opus session). **Updated:** 2026-11-24 01:20Z.
+**Author:** Oracle (orchestrator-opus session). **Updated:** 2026-11-24 09:22Z.
 **Refresh cadence:** every 3-4 hours by the Oracle role, or on major-track shift.
 
 This document is the **single ranked source-of-truth** for what the fleet should be shipping. It exists because `chump gap list --status open` returns a 192-gap firehose — fine for raw inventory, useless for direction. A curator or JIT scheduler picking from the firehose has no way to know what *paves the road* versus what is noise.
@@ -44,8 +44,8 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 **Why #2:** every iter of the loop today burns ~5 min of Opus context doing pebble-shaped JIT work. Once shipped, frees Opus for actual road-paving (this doc) and architectural meta-fixes.
 
 **Next actions:**
-1. **INFRA-1880** — auto-export `CHUMP_SESSION_ID` at curator launch (filed P1, unclaimed)
-2. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
+1. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
+2. **INFRA-1880** — auto-export `CHUMP_SESSION_ID` at curator launch (filed P1, unclaimed)
 3. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — fleet self-report calibration)
 
 **Done when:** orchestrator-opus stops manually broadcasting next-gap assignments. Operator says "I haven't seen you dispatch in 2 hours."
@@ -57,34 +57,28 @@ Without this doc, JIT would just pick "next open P0/P1" — which doesn't corres
 **Why #3:** the A2A coordination wiring that lets the fleet self-organize beyond the cascade-drain loop. Pairs with Track 2 — once JIT exists, it needs collision-prediction + skill-routing to assign WELL, not just FAST.
 
 **Next actions:**
-1. **CREDIBLE-004** — add tests for 4 critical untested files (P2, unclaimed — main.rs, web_server.rs, repo_tools.rs, discord.rs)
-2. **INFRA-1892** — curator-jit-scheduler daemon (in-flight, verify in main)
-3. **INFRA-1860 / INFRA-1879** — PostToolUse inbox poll + 5-path session derivation (shipped)
-
-**Done when:** all 3 above shipped. Then this track moves into maintenance.
+1. **INFRA-1892** — curator-jit-scheduler daemon (in-flight, verify in main)
+2. **CREDIBLE-004** — add tests for 4 critical untested files (P2, unclaimed — main.rs, web_server.rs, repo_tools.rs, discord.rs)
+3. **INFRA-1860** — preflight no-claude-leak gate (Tier C #7, unclaimed)
 
 ## Track 4 — A2A coordination (META-073 Initiative #1)
 
-**Theme:** every gap has a "lessons learned" doc that propagates to the next worker.
+**Theme:** every gap has a "pillar" (domain + skill + effort) and the fleet ships in a balanced cascade.
 
-**Why #4:** the fleet today is a cascade-drain loop. Workers ship gaps, then forget them. The next worker has to rediscover the same lessons. This track makes the fleet a feedback loop.
-
-**Next actions:**
-1. **CREDIBLE-1460** — gap lessons doc (P2, unclaimed — template + auto-emit)
-2. **CREDIBLE-1461** — gap lessons doc propagation (P2, unclaimed — auto-attach to next gap)
-3. **CREDIBLE-1462** — gap lessons doc search (P2, unclaimed — `chump gap search --lessons`)
-
-**Done when:** all 3 above shipped. Then this track moves into maintenance.
-
-## Track 5 — Demo (META-074)
-
-**Theme:** every gap has a demo doc that shows the outcome.
-
-**Why #5:** the fleet today ships gaps without showing their impact. This track makes the fleet a showcase.
+**Why #4:** the fleet is a coordination game. Without this track, gaps ship in a random order that creates bottlenecks (e.g., all the Rust gaps ship at once, then the fleet starves for Rust skills).
 
 **Next actions:**
-1. **CREDIBLE-1463** — gap demo doc (P2, unclaimed — template + auto-emit)
-2. **CREDIBLE-1464** — gap demo doc propagation (P2, unclaimed — auto-attach to next gap)
-3. **CREDIBLE-1465** — gap demo doc search (P2, unclaimed — `chump gap search --demo`)
+1. **CREDIBLE-279** — watchdog for empty-PR gaps (P1, unclaimed — 79 gaps closed without code)
+2. **INFRA-1852** — preflight no-claude-leak gate (Tier C #7, unclaimed)
+3. **CREDIBLE-146** — fleet self-report calibration (P2, unclaimed — counters off by 100x)
 
-**Done when:** all 3 above shipped. Then this track moves into maintenance.
+## Track 5 — Demo (META-073 Initiative #3)
+
+**Theme:** every gap has a demo. The fleet ships only what can be demoed.
+
+**Why #5:** the fleet is a demo. Without this track, gaps ship in a vacuum with no way to verify they're actually useful.
+
+**Next actions:**
+1. **MISSION-010** — finish Universal Chump v1.0 (P1, shipped in #5889)
+2. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — fleet self-report calibration)
+3. **INFRA-1879** — preflight no-claude-leak gate (Tier C #7, unclaimed)
