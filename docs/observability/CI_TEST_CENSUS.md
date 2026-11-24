@@ -1,6 +1,6 @@
 ---
 doc_tag: log
-last_audited: 2026-11-23
+last_audited: 2026-11-24
 ---
 
 # scripts/ci test census
@@ -13,29 +13,27 @@ Rule: a new scripts/ci test is wired or it is deleted. The shrink-only gate
 (`scripts/ci/test-census-shrink-only.sh`) fails any PR that adds an unwired
 test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 
-- Run date: 2026-11-23 (generated 2026-11-23T15:23:33Z)
+- Run date: 2026-11-24 (generated 2026-11-24T15:20:39Z)
 - Mode: full on linux; tests run this time: 482
 - Per-test timeout: 120s; jobs: 6
 
 | total | wired | unwired | red | pass | fail | timeout | skip | not run |
 |---|---|---|---|---|---|---|---|---|
-| 482 | 472 | 10 | 85 | 397 | 51 | 30 | 4 | 0 |
+| 482 | 472 | 10 | 83 | 399 | 50 | 29 | 4 | 0 |
 
 | | green | red |
 |---|---|---|
-| wired | 388 | 84 |
+| wired | 390 | 82 |
 | unwired | 9 | 1 |
 
-## wired-red (84)
+## wired-red (82)
 
 - `test-a2a-rpc-observability.sh` (fail, exit 1, run:linux)
 - `test-acp-real-clients.sh` (fail, exit 1, run:linux)
 - `test-advisory-merge.sh` (fail, exit 1, run:linux)
 - `test-almanac-liveness-reindex.sh` (fail, exit 1, run:linux)
-- `test-api-gap-queue-shape.sh` (fail, exit 1, run:linux)
 - `test-architect-tick.sh` (fail, exit 1, run:linux)
 - `test-arm-policy.sh` (fail, exit 1, run:linux)
-- `test-auto-arm-sweeper.sh` (timeout, exit 124, run:linux)
 - `test-auto-merge-armer-red-head.sh` (timeout, exit 124, run:linux)
 - `test-bot-merge-arm-ship-order.sh` (timeout, exit 124, run:linux)
 - `test-bot-merge-conflict-integration.sh` (fail, exit 1, run:linux)
@@ -117,7 +115,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 
 - `test-half-impl-detector.sh` (fail, exit 1, run:linux)
 
-## wired-green (388)
+## wired-green (390)
 
 - `test-acp-smoke.sh`
 - `test-admin-merge-consensus-gate.sh`
@@ -131,6 +129,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-ambient-schema.sh`
 - `test-api-chat-cost-kill.sh`
 - `test-api-cost-leaderboard.sh`
+- `test-api-gap-queue-shape.sh`
 - `test-arm-policy-native.sh`
 - `test-attribution-portable.sh`
 - `test-audit-lanes-green.sh`
@@ -138,6 +137,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-audit-step-isolation.sh`
 - `test-audit-workflow-not-cancellable.sh`
 - `test-auth-status.sh`
+- `test-auto-arm-sweeper.sh`
 - `test-auto-merge-armer.sh`
 - `test-autonomous-ship-rate.sh`
 - `test-autoscale-decisions.sh`
