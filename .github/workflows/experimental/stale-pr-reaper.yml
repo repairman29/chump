@@ -28,4 +28,8 @@ jobs:
           DRY_RUN_FLAG: ${{ inputs.dry_run == true && '--dry-run' || '' }}
         run: |
           chmod +x scripts/ops/stale-pr-reaper.sh
-          scripts/ops/stale-pr-reaper.sh $DRY_RUN_FLAG
+          if [[ -n "${DRY_RUN_FLAG:-}" ]]; then
+            scripts/ops/stale-pr-reaper.sh "$DRY_RUN_FLAG"
+          else
+            scripts/ops/stale-pr-reaper.sh
+          fi

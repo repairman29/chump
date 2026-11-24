@@ -1294,6 +1294,36 @@ mod tests {
     #[test]
     #[serial_test::serial(admit_env)]
     fn resilient1640_gate_cargo_before_ship_emits_deferred_once_and_does_not_fail_open() {
+        struct AdmitEnvReset {
+            prev_count: Option<String>,
+            prev_ceiling: Option<String>,
+        }
+        impl Drop for AdmitEnvReset {
+            fn drop(&mut self) {
+                // SAFETY: serialized via `#[serial_test::serial(admit_env)]`.
+                unsafe {
+                    match &self.prev_count {
+                        Some(v) => std::env::set_var(Resource::Cargo.test_count_env_key(), v),
+                        None => std::env::remove_var(Resource::Cargo.test_count_env_key()),
+                    }
+                    match &self.prev_ceiling {
+                        Some(v) => std::env::set_var(Resource::Cargo.ceiling_env_key(), v),
+                        None => std::env::remove_var(Resource::Cargo.ceiling_env_key()),
+                    }
+                }
+            }
+        }
+        let _env_reset = AdmitEnvReset {
+            prev_count: std::env::var(Resource::Cargo.test_count_env_key()).ok(),
+            prev_ceiling: std::env::var(Resource::Cargo.ceiling_env_key()).ok(),
+        };
+        // Isolate from live `cargo nextest` processes on the host during pre-push / CI.
+        // SAFETY: serialized via `#[serial_test::serial(admit_env)]` before spawning `releaser`.
+        unsafe {
+            std::env::set_var(Resource::Cargo.test_count_env_key(), "0");
+            std::env::remove_var(Resource::Cargo.ceiling_env_key());
+        }
+
         let dir = tempfile::tempdir().unwrap();
         let node_env = dir.path().join("node.env");
         std::fs::write(&node_env, "CHUMP_MAX_CONCURRENT_CARGO_JOBS=1\n").unwrap();

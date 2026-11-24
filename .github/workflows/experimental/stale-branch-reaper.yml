@@ -28,4 +28,8 @@ jobs:
           EXECUTE_FLAG: ${{ inputs.execute == true && '--execute' || '' }}
         run: |
           chmod +x scripts/ops/stale-branch-reaper.sh
-          scripts/ops/stale-branch-reaper.sh $EXECUTE_FLAG
+          if [[ -n "${EXECUTE_FLAG:-}" ]]; then
+            scripts/ops/stale-branch-reaper.sh "$EXECUTE_FLAG"
+          else
+            scripts/ops/stale-branch-reaper.sh
+          fi
