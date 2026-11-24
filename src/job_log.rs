@@ -4,15 +4,15 @@ use anyhow::Result;
 use rusqlite::params;
 use serde_json::{json, Value};
 
-/// Insert one job row (id is a new UUID).
-pub fn insert_job(
+/// Insert one job row and return its generated UUID.
+pub fn insert_job_with_id(
     job_type: &str,
     status: &str,
     task_id: Option<i64>,
     session_id: Option<&str>,
     detail: Option<&str>,
     last_error: Option<&str>,
-) -> Result<()> {
+) -> Result<String> {
     let conn = crate::db_pool::get()?;
     let id = uuid::Uuid::new_v4().to_string();
     conn.execute(
@@ -28,7 +28,19 @@ pub fn insert_job(
             detail.unwrap_or(""),
         ],
     )?;
-    Ok(())
+    Ok(id)
+}
+
+/// Insert one job row (id is a new UUID).
+pub fn insert_job(
+    job_type: &str,
+    status: &str,
+    task_id: Option<i64>,
+    session_id: Option<&str>,
+    detail: Option<&str>,
+    last_error: Option<&str>,
+) -> Result<()> {
+    insert_job_with_id(job_type, status, task_id, session_id, detail, last_error).map(|_| ())
 }
 
 /// Recent jobs, newest first.
@@ -91,6 +103,39 @@ pub fn mark_failed(job_type: &str, error: &str) -> Result<()> {
          WHERE job_type = ?1 AND (status = 'pending' OR status = 'running')
          ORDER BY rowid DESC LIMIT 1",
         params![job_type, error],
+    )?;
+    Ok(())
+}
+
+/// Mark a specific job row as running by UUID (RESILIENT-2228).
+pub fn mark_running_by_id(id: &str) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    conn.execute(
+        "UPDATE chump_async_jobs SET status = 'running', updated_at = datetime('now')
+         WHERE id = ?1 AND status = 'pending'",
+        params![id],
+    )?;
+    Ok(())
+}
+
+/// Mark a specific job row as completed by UUID (RESILIENT-2228).
+pub fn mark_completed_by_id(id: &str) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    conn.execute(
+        "UPDATE chump_async_jobs SET status = 'completed', updated_at = datetime('now')
+         WHERE id = ?1 AND status IN ('pending', 'running')",
+        params![id],
+    )?;
+    Ok(())
+}
+
+/// Mark a specific job row as failed by UUID (RESILIENT-2228).
+pub fn mark_failed_by_id(id: &str, error: &str) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    conn.execute(
+        "UPDATE chump_async_jobs SET status = 'failed', last_error = ?2, updated_at = datetime('now')
+         WHERE id = ?1 AND status IN ('pending', 'running')",
+        params![id, error],
     )?;
     Ok(())
 }

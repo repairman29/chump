@@ -850,6 +850,163 @@ pub(crate) fn sliding_window_trim_messages(
     (messages, None)
 }
 
+/// Parse an assistant transcript message produced by `agent_loop::format_tool_use`
+/// (`Using tool '<name>' with input: <json>` per line) into `(tool_name, compact_json)` pairs.
+/// Returns `None` if the message contains any non-tool prose or malformed JSON.
+fn parse_serialized_tool_use(content: &str) -> Option<Vec<(String, String)>> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut calls = Vec::new();
+    for line in trimmed.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let rest = line.strip_prefix("Using tool '")?;
+        let end_quote = rest.find('\'')?;
+        let name = &rest[..end_quote];
+        if name.is_empty() {
+            return None;
+        }
+        let after_name = rest[end_quote + 1..].trim_start();
+        let json_str = after_name.strip_prefix("with input:")?.trim();
+        let parsed: Value = serde_json::from_str(json_str).ok()?;
+        let normalized = serde_json::to_string(&parsed).ok()?;
+        calls.push((name.to_string(), normalized));
+    }
+    if calls.is_empty() {
+        None
+    } else {
+        Some(calls)
+    }
+}
+
+/// Parse the paired user transcript message produced by `agent_loop::format_tool_results`
+/// (`Tool '<name>' returned: <output>`) matching `expected_names` 1:1 in order.
+/// Preserves any trailing `\n\n[VERIFY] ...` notice on the final tool output.
+fn parse_serialized_tool_results(content: &str, expected_names: &[&str]) -> Option<Vec<String>> {
+    if expected_names.is_empty() {
+        return None;
+    }
+    let (body, verify_suffix) = match content.rfind("\n\n[VERIFY] ") {
+        Some(idx) => (&content[..idx], Some(&content[idx..])),
+        None => (content, None),
+    };
+    let first_prefix = format!("Tool '{}' returned: ", expected_names[0]);
+    if !body.starts_with(&first_prefix) {
+        return None;
+    }
+    let mut value_starts = Vec::with_capacity(expected_names.len());
+    let mut header_starts = Vec::with_capacity(expected_names.len());
+    header_starts.push(0usize);
+    value_starts.push(first_prefix.len());
+    let mut search_from = first_prefix.len();
+
+    for name in expected_names.iter().skip(1) {
+        let needle = format!("\nTool '{}' returned: ", name);
+        let rel = body.get(search_from..)?.find(&needle)?;
+        let hdr_pos = search_from + rel;
+        let val_pos = hdr_pos + needle.len();
+        header_starts.push(hdr_pos);
+        value_starts.push(val_pos);
+        search_from = val_pos;
+    }
+
+    let mut outputs = Vec::with_capacity(expected_names.len());
+    for idx in 0..expected_names.len() {
+        let start = value_starts[idx];
+        let end = if idx + 1 < header_starts.len() {
+            header_starts[idx + 1]
+        } else {
+            body.len()
+        };
+        outputs.push(body.get(start..end)?.to_string());
+    }
+    if let (Some(suffix), Some(last)) = (verify_suffix, outputs.last_mut()) {
+        last.push_str(suffix);
+    }
+    Some(outputs)
+}
+
+/// Convert `Message` history into OpenAI Chat Completions JSON messages (RESILIENT-2228).
+///
+/// When `promote_tool_history` is true (`tools` present in request), paired
+/// `format_tool_use` + `format_tool_results` transcript turns are promoted back into
+/// native OpenAI `assistant.tool_calls` + `role: "tool"` messages so multi-turn code
+/// models (e.g. Codestral, GPT, Qwen) do not imitate plain-text `"Using tool ..."`
+/// strings on Turn 3+. Uses 9-char alphanumeric `tool_call_id`s (`chmp00001`) to satisfy
+/// strict validators (including Mistral/Codestral `[a-zA-Z0-9]{9}`). Falls back losslessly
+/// to plain role/content messages whenever a turn does not match 1:1.
+pub(crate) fn build_openai_chat_messages(
+    messages: &[Message],
+    promote_tool_history: bool,
+) -> Vec<Value> {
+    let mut out = Vec::with_capacity(messages.len());
+    let mut call_seq: u32 = 1;
+    let mut i = 0;
+    while i < messages.len() {
+        let m = &messages[i];
+        if promote_tool_history && m.role == "assistant" {
+            if let (Some(calls), Some(next_msg)) =
+                (parse_serialized_tool_use(&m.content), messages.get(i + 1))
+            {
+                if next_msg.role == "user" {
+                    let expected: Vec<&str> = calls.iter().map(|(n, _)| n.as_str()).collect();
+                    if let Some(results) =
+                        parse_serialized_tool_results(&next_msg.content, &expected)
+                    {
+                        let mut tc_json = Vec::with_capacity(calls.len());
+                        let mut tool_msgs = Vec::with_capacity(calls.len());
+                        for ((name, args_json), result_text) in calls.into_iter().zip(results) {
+                            let call_id = format!("chmp{:05}", call_seq % 100_000);
+                            call_seq = call_seq.wrapping_add(1);
+                            tc_json.push(json!({
+                                "id": call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "arguments": args_json,
+                                }
+                            }));
+                            tool_msgs.push(json!({
+                                "role": "tool",
+                                "tool_call_id": call_id,
+                                "content": result_text,
+                            }));
+                        }
+                        out.push(json!({
+                            "role": "assistant",
+                            "content": Value::Null,
+                            "tool_calls": tc_json,
+                        }));
+                        out.extend(tool_msgs);
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Vision passthrough (ACP-002): when content is a JSON array (multipart
+        // content encoded by flatten_prompt_blocks_vision), deserialize it so the
+        // provider receives `content: [{"type":"text",...},{"type":"image_url",...}]`
+        // instead of a plain string. Text-only content paths are unaffected.
+        let content_value: Value = if m.content.starts_with('[') {
+            serde_json::from_str(&m.content).unwrap_or_else(|_| json!(m.content))
+        } else {
+            json!(m.content)
+        };
+        out.push(json!({
+            "role": m.role,
+            "content": content_value
+        }));
+        i += 1;
+    }
+    out
+}
+
 fn inject_sliding_window_sync(messages: &mut Vec<Message>, ctx: &SlidingInjectCtx) {
     let limit = crate::context_window::context_memory_snippet_limit();
     let mut retrieval = session_fts_block(&ctx.query_hint);
@@ -1017,21 +1174,8 @@ impl Provider for LocalOpenAIProvider {
             }
         }
 
-        for m in &messages {
-            // Vision passthrough (ACP-002): when content is a JSON array (multipart
-            // content encoded by flatten_prompt_blocks_vision), deserialize it so the
-            // provider receives `content: [{"type":"text",...},{"type":"image_url",...}]`
-            // instead of a plain string. Text-only content paths are unaffected.
-            let content_value: Value = if m.content.starts_with('[') {
-                serde_json::from_str(&m.content).unwrap_or_else(|_| json!(m.content))
-            } else {
-                json!(m.content)
-            };
-            complete_message.push(json!({
-                "role": m.role,
-                "content": content_value
-            }));
-        }
+        let promote_tool_history = tools.as_ref().is_some_and(|t| !t.is_empty());
+        complete_message.extend(build_openai_chat_messages(&messages, promote_tool_history));
 
         let mut body = json!({
             "model": self.model,
@@ -2875,5 +3019,67 @@ mod tests {
             msg["content"].is_string(),
             "cache disabled: content must be a plain string"
         );
+    }
+
+    #[test]
+    fn resilient2228_promotes_paired_tool_transcript_to_native_openai_tool_calls() {
+        let msgs = vec![
+            Message {
+                role: "user".to_string(),
+                content: "Create lib.rs and run tests".to_string(),
+            },
+            Message {
+                role: "assistant".to_string(),
+                content: "Using tool 'write_file' with input: {\"content\":\"pub fn add() -> i32 { 2 }\\n\",\"path\":\"src/lib.rs\"}\nUsing tool 'run_cli' with input: {\"command\":\"cargo test\"}".to_string(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: "Tool 'write_file' returned: Wrote 26 bytes to src/lib.rs\nTool 'run_cli' returned: running 1 test\ntest ok\n\n[VERIFY] 1 of 2 tool call(s) had errors. Review the results above and retry with corrected parameters if needed.".to_string(),
+            },
+        ];
+
+        let promoted = build_openai_chat_messages(&msgs, true);
+        assert_eq!(promoted.len(), 4);
+        assert_eq!(promoted[0]["role"], "user");
+        assert_eq!(promoted[1]["role"], "assistant");
+        assert!(promoted[1]["content"].is_null());
+        let tcs = promoted[1]["tool_calls"].as_array().unwrap();
+        assert_eq!(tcs.len(), 2);
+        let id0 = tcs[0]["id"].as_str().unwrap();
+        let id1 = tcs[1]["id"].as_str().unwrap();
+        // Mistral/Codestral requires 9 alphanumeric chars [a-zA-Z0-9]{9}
+        assert_eq!(id0.len(), 9);
+        assert!(id0.chars().all(|c| c.is_ascii_alphanumeric()));
+        assert_eq!(tcs[0]["function"]["name"], "write_file");
+        assert_eq!(tcs[1]["function"]["name"], "run_cli");
+
+        assert_eq!(promoted[2]["role"], "tool");
+        assert_eq!(promoted[2]["tool_call_id"], id0);
+        assert_eq!(promoted[2]["content"], "Wrote 26 bytes to src/lib.rs");
+
+        assert_eq!(promoted[3]["role"], "tool");
+        assert_eq!(promoted[3]["tool_call_id"], id1);
+        assert!(promoted[3]["content"]
+            .as_str()
+            .unwrap()
+            .contains("[VERIFY] 1 of 2 tool call(s)"));
+    }
+
+    #[test]
+    fn resilient2228_falls_back_cleanly_when_tools_absent_or_unpaired() {
+        let msgs = vec![Message {
+            role: "assistant".to_string(),
+            content: "Using tool 'read_file' with input: {\"path\":\"Cargo.toml\"}".to_string(),
+        }];
+        // Unpaired assistant message (no following user tool-result turn) stays plain text.
+        let out = build_openai_chat_messages(&msgs, true);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["role"], "assistant");
+        assert!(out[0]["content"].is_string());
+
+        // When tools are not active (promote_tool_history=false), stays plain text.
+        let out_no_tools = build_openai_chat_messages(&msgs, false);
+        assert_eq!(out_no_tools.len(), 1);
+        assert!(out_no_tools[0]["content"].is_string());
     }
 }

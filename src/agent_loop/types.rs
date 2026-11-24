@@ -442,10 +442,147 @@ pub fn parse_text_tool_calls(text: &str, tools: &[Tool]) -> Option<Vec<ToolCall>
         }
     }
     if calls.is_empty() {
+        calls = parse_multiline_text_tool_calls(text, &known);
+    }
+    if calls.is_empty() {
         None
     } else {
         Some(calls)
     }
+}
+
+/// RESILIENT-2228: Fallback parser for text tool calls whose JSON payload spans
+/// multiple lines (pretty-printed `{ ... }` or raw unescaped newlines inside string values).
+fn parse_multiline_text_tool_calls(
+    text: &str,
+    known: &std::collections::HashSet<&str>,
+) -> Vec<ToolCall> {
+    let mut calls = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < text.len() {
+        let Some(slice) = text.get(cursor..) else {
+            break;
+        };
+        let line_end = slice.find('\n').unwrap_or(slice.len());
+        let raw_line = &slice[..line_end];
+        let trimmed = raw_line.trim_start();
+        let trim_offset = raw_line.len() - trimmed.len();
+
+        let header_pos = cursor + trim_offset;
+        if let Some(after_header) = text.get(header_pos..) {
+            let extracted = strip_prefix_caseless(after_header, "using tool ")
+                .or_else(|| strip_prefix_caseless(after_header, "calling tool "))
+                .or_else(|| strip_prefix_caseless(after_header, "call tool "))
+                .or_else(|| strip_prefix_caseless(after_header, "tool: "))
+                .and_then(|rest| {
+                    let (name, tail) = extract_tool_name_and_tail(rest);
+                    name.map(|n| (n, tail))
+                });
+
+            if let Some((name, tail_in_text)) = extracted {
+                if known.contains(name) {
+                    let tail_trimmed = tail_in_text.trim_start();
+                    let json_region = strip_prefix_caseless(tail_trimmed, "with input:")
+                        .or_else(|| strip_prefix_caseless(tail_trimmed, "with:"))
+                        .or_else(|| strip_prefix_caseless(tail_trimmed, "input:"));
+                    if let Some(region) = json_region {
+                        let region_trimmed = region.trim_start();
+                        if let Some((obj_str, consumed)) =
+                            extract_balanced_json_object(region_trimmed)
+                        {
+                            let parsed = serde_json::from_str::<serde_json::Value>(obj_str)
+                                .or_else(|_| {
+                                    let repaired = escape_raw_controls_in_json_strings(obj_str);
+                                    serde_json::from_str::<serde_json::Value>(&repaired)
+                                });
+                            if let Ok(input) = parsed {
+                                calls.push(ToolCall {
+                                    id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                                    name: name.to_string(),
+                                    input,
+                                });
+                                let region_start_in_text =
+                                    text.len().saturating_sub(region_trimmed.len());
+                                cursor = (region_start_in_text + consumed).max(cursor + 1);
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        cursor += line_end.saturating_add(1);
+    }
+    calls
+}
+
+fn extract_balanced_json_object(s: &str) -> Option<(&str, usize)> {
+    if !s.starts_with('{') {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut in_str = false;
+    let mut escaped = false;
+    for (idx, ch) in s.char_indices() {
+        if in_str {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_str = true,
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let end = idx + ch.len_utf8();
+                    return Some((&s[..end], end));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn escape_raw_controls_in_json_strings(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 16);
+    let mut in_str = false;
+    let mut escaped = false;
+    for ch in s.chars() {
+        if in_str {
+            if escaped {
+                escaped = false;
+                out.push(ch);
+                continue;
+            }
+            match ch {
+                '\\' => {
+                    escaped = true;
+                    out.push(ch);
+                }
+                '"' => {
+                    in_str = false;
+                    out.push(ch);
+                }
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                _ => out.push(ch),
+            }
+        } else {
+            if ch == '"' {
+                in_str = true;
+            }
+            out.push(ch);
+        }
+    }
+    out
 }
 
 fn strip_prefix_caseless<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
@@ -716,6 +853,26 @@ mod parse_text_tool_call_tests {
             calls.is_none(),
             "garbled multibyte line should not parse a call"
         );
+    }
+
+    #[test]
+    fn parses_multiline_pretty_and_raw_newline_text_tool_calls() {
+        let tools = vec![axonerai::provider::Tool {
+            name: "write_file".to_string(),
+            description: String::new(),
+            input_schema: serde_json::json!({"type": "object"}),
+        }];
+        let pretty = "Using tool 'write_file' with input: {\n  \"path\": \"src/demo.rs\",\n  \"content\": \"pub fn ok() -> bool {\\n    true\\n}\\n\"\n}";
+        let calls = parse_text_tool_calls(pretty, &tools).expect("multiline pretty JSON parsed");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "write_file");
+        assert_eq!(calls[0].input["path"], "src/demo.rs");
+
+        let unescaped = "Using tool 'write_file' with input: {\"path\": \"src/raw.rs\", \"content\": \"line1\nline2\n\"}";
+        let raw_calls =
+            parse_text_tool_calls(unescaped, &tools).expect("raw newline inside string repaired");
+        assert_eq!(raw_calls.len(), 1);
+        assert_eq!(raw_calls[0].input["content"], "line1\nline2\n");
     }
 }
 

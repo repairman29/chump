@@ -1007,11 +1007,39 @@ fn detect_ssrf(input: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Default timeout for a single tool execution (seconds).
+/// Default timeout for a single fast in-process tool execution (seconds).
 /// INFRA-321: reduced from 30s → 8s so a wedged tool (e.g. memory_brain
 /// trying a missing path) fails fast instead of blocking a turn for 60s.
-/// Override via CHUMP_TOOL_TIMEOUT_SECS env var.
+/// Override via CHUMP_TOOL_TIMEOUT_SECS (or CHUMP_TOOL_TIMEOUT_SEC) env var.
 pub const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 8;
+
+/// Default timeout for subprocess / git-hook / cargo tools (`run_cli`, `run_test`,
+/// `git_commit`, `git_push`, `diff_review`, etc.) when no explicit env override is set
+/// (RESILIENT-2228: matches `CliTool`'s inner 60s default so multi-repo scans, tests,
+/// and git hooks are not killed prematurely at 8s).
+pub const DEFAULT_SUBPROCESS_TOOL_TIMEOUT_SECS: u64 = 60;
+
+/// Resolve the effective timeout (seconds) for `tool_name`.
+/// Honors `CHUMP_TOOL_TIMEOUT_SECS` and `CHUMP_TOOL_TIMEOUT_SEC` when set; otherwise
+/// uses 60s for subprocess/git/test tools and 8s for fast in-process tools.
+pub fn default_timeout_secs_for_tool(tool_name: &str) -> u64 {
+    if let Some(explicit) = std::env::var("CHUMP_TOOL_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .or_else(|| {
+            std::env::var("CHUMP_TOOL_TIMEOUT_SEC")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+        })
+    {
+        return explicit;
+    }
+    match tool_name {
+        "run_cli" | "cargo" | "git" | "run_test" | "git_commit" | "git_push" | "git_stash"
+        | "diff_review" | "gh_pr_checks" | "sandbox_run" => DEFAULT_SUBPROCESS_TOOL_TIMEOUT_SECS,
+        _ => DEFAULT_TOOL_TIMEOUT_SECS,
+    }
+}
 
 /// Wraps a `Tool` so that every `execute()` call is bounded by a timeout.
 /// Delegates `name()`, `description()`, and `input_schema()` to the inner tool.
@@ -1021,12 +1049,9 @@ pub struct ToolTimeoutWrapper {
 }
 
 impl ToolTimeoutWrapper {
-    /// Wrap `inner` with the default timeout (8s, or CHUMP_TOOL_TIMEOUT_SECS).
+    /// Wrap `inner` with its class-appropriate timeout (or CHUMP_TOOL_TIMEOUT_SECS).
     pub fn new(inner: Box<dyn Tool + Send + Sync>) -> Self {
-        let secs = std::env::var("CHUMP_TOOL_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_TOOL_TIMEOUT_SECS);
+        let secs = default_timeout_secs_for_tool(&inner.name());
         Self {
             inner: Arc::from(inner),
             timeout_duration: Duration::from_secs(secs),
@@ -2354,5 +2379,21 @@ mod tests {
         let sorted = sort_sweep_targets_by_leverage_tier(targets);
         let order: Vec<&str> = sorted.iter().map(|(r, _)| r.as_str()).collect();
         assert_eq!(order, vec!["owner/highest", "owner/high", "owner/low"]);
+    }
+
+    #[test]
+    #[serial]
+    fn resilient2228_subprocess_tools_default_to_60s_while_fast_tools_stay_8s() {
+        std::env::remove_var("CHUMP_TOOL_TIMEOUT_SECS");
+        std::env::remove_var("CHUMP_TOOL_TIMEOUT_SEC");
+        assert_eq!(default_timeout_secs_for_tool("read_file"), 8);
+        assert_eq!(default_timeout_secs_for_tool("memory_brain"), 8);
+        assert_eq!(default_timeout_secs_for_tool("run_cli"), 60);
+        assert_eq!(default_timeout_secs_for_tool("git_commit"), 60);
+        assert_eq!(default_timeout_secs_for_tool("run_test"), 60);
+
+        std::env::set_var("CHUMP_TOOL_TIMEOUT_SEC", "22");
+        assert_eq!(default_timeout_secs_for_tool("run_cli"), 22);
+        std::env::remove_var("CHUMP_TOOL_TIMEOUT_SEC");
     }
 }

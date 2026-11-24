@@ -322,24 +322,27 @@ impl CliTool {
             }
         }
 
-        // RESILIENT-1427: Check admission for cargo build-related commands (agent builds).
-        // Inspect the command to see if it's a cargo build/check/test/install and enforce
-        // the concurrency ceiling if so.
+        // RESILIENT-1427 / RESILIENT-2228: Check admission for cargo commands and bind
+        // an RAII guard to the exact inserted UUID so completion/timeout/error paths all
+        // transition the row out of 'running' instead of leaking 'pending' rows.
         let is_cargo_build = cmd.starts_with("cargo ")
             && (cmd.contains("build")
                 || cmd.contains("check")
                 || cmd.contains("test")
+                || cmd.contains("clippy")
+                || cmd.contains("fix")
                 || cmd.contains("install"));
-        if is_cargo_build {
+        let mut cargo_job_guard = if is_cargo_build {
             let max_concurrent = crate::admission_check::get_max_concurrent_cargo_jobs();
             if let Err(e) = crate::admission_check::check_admission(max_concurrent) {
                 return Err(anyhow!("cargo job admission check failed: {}", e));
             }
-            // Insert job entry to track this cargo job (status: pending initially).
-            let _ = crate::admission_check::insert_cargo_job("pending", Some(&cmd));
-            // Mark as running immediately before execution.
-            let _ = crate::job_log::mark_running("cargo_job");
-        }
+            Some(crate::admission_check::ActiveCargoJobGuard::start(Some(
+                &cmd,
+            )))
+        } else {
+            None
+        };
 
         let (timeout_secs, max_output) = if executive {
             (executive_timeout_secs(), executive_max_output_chars())
@@ -398,6 +401,9 @@ impl CliTool {
         {
             return acp_result.map(|r| {
                 let exit_code = r.exit_code;
+                if let Some(ref mut g) = cargo_job_guard {
+                    g.finish(exit_code);
+                }
                 chump_log::log_cli_with_executive(&cmd, &[], exit_code, r.output.len(), executive);
                 if exit_code == Some(127) && tool_health_db::tool_health_available() {
                     let tool_name = cmd.split_whitespace().next().unwrap_or("run_cli");
@@ -456,14 +462,9 @@ impl CliTool {
         let exit_code = output.status.code();
         chump_log::log_cli_with_executive(&cmd, &[], exit_code, out.len(), executive);
 
-        // RESILIENT-1427: Mark cargo job as completed or failed based on exit code.
-        if is_cargo_build {
-            if exit_code == Some(0) {
-                let _ = crate::job_log::mark_completed("cargo_job");
-            } else {
-                let error_msg = format!("exit code: {:?}", exit_code);
-                let _ = crate::job_log::mark_failed("cargo_job", &error_msg);
-            }
+        // RESILIENT-1427 / RESILIENT-2228: Mark tracked cargo job completed/failed by UUID.
+        if let Some(ref mut g) = cargo_job_guard {
+            g.finish(exit_code);
         }
 
         // Exit 127 = command not found; record so assemble_context can warn

@@ -141,14 +141,10 @@ impl TaskExecutor for SwarmExecutor {
     }
 }
 
-/// Read `CHUMP_TOOL_TIMEOUT_SEC` once from the environment.
-/// INFRA-321: default reduced from 30s → 8s (outer guard; inner ToolTimeoutWrapper
-/// in tool_middleware.rs uses DEFAULT_TOOL_TIMEOUT_SECS, also 8s).
-fn tool_timeout_secs() -> u64 {
-    std::env::var("CHUMP_TOOL_TIMEOUT_SEC")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(8u64)
+/// Resolve outer per-tool timeout (RESILIENT-2228: unifies `CHUMP_TOOL_TIMEOUT_SEC`
+/// and `CHUMP_TOOL_TIMEOUT_SECS` and grants subprocess tools 60s when unset).
+fn tool_timeout_secs_for(tool_name: &str) -> u64 {
+    crate::tool_middleware::default_timeout_secs_for_tool(tool_name)
 }
 
 /// Core implementation shared by local and swarm strategies (approval + one tool at a time).
@@ -163,7 +159,6 @@ pub async fn execute_tool_calls_sequential<'a>(
 ) -> Result<Vec<ToolResult>> {
     let mut results = Vec::with_capacity(tool_calls.len());
     let timeout_secs = approval_timeout_secs();
-    let tool_timeout = std::time::Duration::from_secs(tool_timeout_secs());
     let auto_tools = tool_policy::auto_approve_tools_set();
     for tc in tool_calls {
         if !tool_input_validate::skip_tool_input_validate() {
@@ -397,6 +392,7 @@ pub async fn execute_tool_calls_sequential<'a>(
             chump_log::log_patch_file(path, diff_len, "pre_execute");
         }
         let batch = vec![tc.clone()];
+        let tool_timeout = std::time::Duration::from_secs(tool_timeout_secs_for(&tc.name));
         let exec_future = tool_executor.execute_all(&batch);
         match tokio::time::timeout(tool_timeout, exec_future).await {
             Ok(Ok(batch_results)) => {

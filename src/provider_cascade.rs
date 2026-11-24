@@ -689,6 +689,17 @@ pub struct ProviderCascade {
     bandit: std::sync::OnceLock<crate::provider_bandit::BanditRouter>,
 }
 
+fn should_auto_synthesize_byok_endpoint(
+    api_key: &str,
+    already_active: bool,
+    disabled_bases: &[String],
+    endpoint_needle: &str,
+) -> bool {
+    !api_key.trim().is_empty()
+        && !already_active
+        && !disabled_bases.iter().any(|b| b.contains(endpoint_needle))
+}
+
 impl ProviderCascade {
     /// Load slots from env. Slot 0 from OPENAI_*; slots 1..=MAX_SLOTS from CHUMP_PROVIDER_{N}_*.
     pub fn from_env() -> Self {
@@ -730,10 +741,20 @@ impl ProviderCascade {
             }
         }
 
+        let mut disabled_bases: Vec<String> = Vec::new();
         for n in 1..=MAX_SLOTS {
             let enabled =
                 std::env::var(format!("CHUMP_PROVIDER_{}_ENABLED", n)).unwrap_or_default();
             if enabled != "1" {
+                let trimmed = enabled.trim();
+                if trimmed == "0" || trimmed.eq_ignore_ascii_case("false") {
+                    if let Ok(b) = std::env::var(format!("CHUMP_PROVIDER_{}_BASE", n)) {
+                        let b = b.trim().trim_end_matches('/').to_string();
+                        if !b.is_empty() {
+                            disabled_bases.push(b);
+                        }
+                    }
+                }
                 continue;
             }
             let base = match std::env::var(format!("CHUMP_PROVIDER_{}_BASE", n)) {
@@ -851,7 +872,14 @@ impl ProviderCascade {
             chump_config::ChumpConfig::load_from_path(&chump_config::default_config_path())
         {
             for (idx, cfg_slot) in file_cfg.providers.iter().enumerate() {
-                if !cfg_slot.enabled || slots.len() >= MAX_SLOTS as usize {
+                if !cfg_slot.enabled {
+                    let b = cfg_slot.base_url.trim().trim_end_matches('/').to_string();
+                    if !b.is_empty() {
+                        disabled_bases.push(b);
+                    }
+                    continue;
+                }
+                if slots.len() >= MAX_SLOTS as usize {
                     continue;
                 }
                 let base = cfg_slot.base_url.trim().trim_end_matches('/').to_string();
@@ -909,17 +937,23 @@ impl ProviderCascade {
             }
         }
 
-        // EFFECTIVE-1933: When CHUMP_AUTO_BYOK_SLOTS=1, auto-register Google AI
-        // (GEMINI_API_KEY / GOOGLE_API_KEY) and Mistral (MISTRAL_API_KEY) frontier
-        // coding slots if no explicit slot for that endpoint was declared.
+        // EFFECTIVE-1933 / RESILIENT-2228: When CHUMP_AUTO_BYOK_SLOTS=1, auto-register
+        // Google AI (GEMINI_API_KEY / GOOGLE_API_KEY) and Mistral (MISTRAL_API_KEY)
+        // frontier coding slots ONLY if no active OR explicitly disabled slot for that
+        // endpoint was declared (preventing _ENABLED=0 slots from being resurrected).
         if std::env::var("CHUMP_AUTO_BYOK_SLOTS").as_deref() == Ok("1") {
             let gemini_key = std::env::var("GEMINI_API_KEY")
                 .or_else(|_| std::env::var("GOOGLE_API_KEY"))
                 .unwrap_or_default();
-            let has_gemini_slot = slots
+            let active_gemini = slots
                 .iter()
                 .any(|s| s.base_url.contains("generativelanguage.googleapis.com"));
-            if !gemini_key.trim().is_empty() && !has_gemini_slot {
+            if should_auto_synthesize_byok_endpoint(
+                &gemini_key,
+                active_gemini,
+                &disabled_bases,
+                "generativelanguage.googleapis.com",
+            ) {
                 let base = "https://generativelanguage.googleapis.com/v1beta/openai".to_string();
                 let auto_gemini = [
                     (
@@ -976,8 +1010,13 @@ impl ProviderCascade {
             }
 
             let mistral_key = std::env::var("MISTRAL_API_KEY").unwrap_or_default();
-            let has_mistral_slot = slots.iter().any(|s| s.base_url.contains("api.mistral.ai"));
-            if !mistral_key.trim().is_empty() && !has_mistral_slot {
+            let active_mistral = slots.iter().any(|s| s.base_url.contains("api.mistral.ai"));
+            if should_auto_synthesize_byok_endpoint(
+                &mistral_key,
+                active_mistral,
+                &disabled_bases,
+                "api.mistral.ai",
+            ) {
                 let base = "https://api.mistral.ai/v1".to_string();
                 let provider = LocalOpenAIProvider::with_fallback(
                     base.clone(),
@@ -4372,5 +4411,31 @@ enabled = true
 
         let v1: serde_json::Value = serde_json::from_str(lines[1]).expect("valid json line 1");
         assert_eq!(v1["backoff_s"], 42);
+    }
+
+    #[test]
+    fn resilient2228_auto_byok_respects_explicitly_disabled_endpoints() {
+        let disabled = vec!["https://generativelanguage.googleapis.com/v1beta/openai".to_string()];
+        // Disabled Gemini slot must NOT be re-synthesized even when GEMINI_API_KEY is present.
+        assert!(!should_auto_synthesize_byok_endpoint(
+            "AIza_test_key",
+            false,
+            &disabled,
+            "generativelanguage.googleapis.com",
+        ));
+        // Undeclared Mistral endpoint with valid key SHOULD be synthesized.
+        assert!(should_auto_synthesize_byok_endpoint(
+            "mistral_key",
+            false,
+            &disabled,
+            "api.mistral.ai",
+        ));
+        // Already active Mistral endpoint must not duplicate.
+        assert!(!should_auto_synthesize_byok_endpoint(
+            "mistral_key",
+            true,
+            &disabled,
+            "api.mistral.ai",
+        ));
     }
 }

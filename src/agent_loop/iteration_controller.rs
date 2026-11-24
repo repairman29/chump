@@ -126,6 +126,21 @@ fn restrict_to_edit_tools(tools: &[Tool]) -> Vec<Tool> {
 /// so the unit test can assert the exact wording is what gets injected.
 pub(crate) const EDIT_NUDGE_MESSAGE: &str = "You have investigated enough. You have NOT written any file yet — you only described the change. STOP investigating and APPLY the change NOW. To EDIT an existing file, use `str_replace`: copy the EXACT existing snippet into `old_string` (enough surrounding lines to be unique) and the replacement into `new_string`. If the target file DOES NOT EXIST YET (a new file), use `write_file` to CREATE it with the full contents. Make the smallest change that satisfies the task, then stop. If — and only if — no change is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
 
+/// RESILIENT-2228: Slim-mode variant (`CHUMP_WEB_SLIM_TOOLS=1`) used when `write_file`
+/// is registered without `str_replace`, so the force-edit controller never tells the
+/// model to invoke an unregistered tool.
+pub(crate) const EDIT_NUDGE_MESSAGE_WRITE_FILE_ONLY: &str = "You have investigated enough. You have NOT written any file yet — you only described the change. STOP investigating and APPLY the change NOW using `write_file` (include the complete updated file contents so existing code is preserved). Make the smallest change that satisfies the task, then stop. If — and only if — no change is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
+
+pub(crate) fn edit_nudge_for_tools(tools: &[Tool]) -> &'static str {
+    let has_str_replace = tools.iter().any(|t| t.name == "str_replace");
+    let has_write_file = tools.iter().any(|t| t.name == "write_file");
+    if has_write_file && !has_str_replace {
+        EDIT_NUDGE_MESSAGE_WRITE_FILE_ONLY
+    } else {
+        EDIT_NUDGE_MESSAGE
+    }
+}
+
 /// Decide whether a tool batch outcome should trip the fail-storm breaker.
 ///
 /// Returns `Some(error_msg)` when `counter` has reached `max_consecutive_fails`
@@ -396,7 +411,7 @@ impl<'a> IterationController<'a> {
                 );
                 ctx.session.add_message(axonerai::provider::Message {
                     role: "user".to_string(),
-                    content: EDIT_NUDGE_MESSAGE.to_string(),
+                    content: edit_nudge_for_tools(&tools).to_string(),
                 });
             }
 
@@ -586,7 +601,7 @@ impl<'a> IterationController<'a> {
                         });
                         ctx.session.add_message(axonerai::provider::Message {
                             role: "user".to_string(),
-                            content: EDIT_NUDGE_MESSAGE.to_string(),
+                            content: edit_nudge_for_tools(&tools).to_string(),
                         });
                         continue;
                     }
@@ -1987,5 +2002,34 @@ mod cancellation_tests {
         std::env::remove_var("CHUMP_INVESTIGATE_BUDGET");
         std::env::remove_var("CHUMP_INVESTIGATE_NUDGE_SPACING");
         std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
+    #[test]
+    fn resilient2228_edit_nudge_adapts_when_slim_tools_omit_str_replace() {
+        let slim_tools = vec![Tool {
+            name: "write_file".to_string(),
+            description: String::new(),
+            input_schema: serde_json::json!({}),
+        }];
+        assert_eq!(
+            edit_nudge_for_tools(&slim_tools),
+            EDIT_NUDGE_MESSAGE_WRITE_FILE_ONLY
+        );
+        assert!(!edit_nudge_for_tools(&slim_tools).contains("str_replace"));
+
+        let full_tools = vec![
+            Tool {
+                name: "write_file".to_string(),
+                description: String::new(),
+                input_schema: serde_json::json!({}),
+            },
+            Tool {
+                name: "str_replace".to_string(),
+                description: String::new(),
+                input_schema: serde_json::json!({}),
+            },
+        ];
+        assert_eq!(edit_nudge_for_tools(&full_tools), EDIT_NUDGE_MESSAGE);
+        assert_eq!(edit_nudge_for_tools(&[]), EDIT_NUDGE_MESSAGE);
     }
 }

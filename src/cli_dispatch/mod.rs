@@ -979,7 +979,7 @@ pub async fn run() -> Result<()> {
                 }
                 eprintln!();
                 eprintln!("Usage: chump claim <GAP-ID> --role ROLE [--paths CSV] [--session ID]");
-                eprintln!("                          [--skip-doctor] [--skip-import]");
+                eprintln!("                          [--skip-doctor|--no-doctor] [--skip-import|--no-import]");
                 eprintln!("                          [--scope SCOPE]");
                 eprintln!();
                 eprintln!("Atomically: fetch origin/main, verify the gap, run chump-doctor,");
