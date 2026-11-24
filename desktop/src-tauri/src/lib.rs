@@ -86,7 +86,8 @@ fn sibling_chump_binary() -> Option<std::path::PathBuf> {
     }
 }
 
-/// `chump` next to `chump-desktop`, or **`CHUMP_BINARY`** (absolute path) from Info.plist / shell.
+/// `chump` next to `chump-desktop`, **`CHUMP_BINARY`**, or standard cross-platform
+/// install locations (`~/.cargo/bin`, `~/.local/bin`, `/opt/homebrew/bin`) (INFRA-8653).
 fn sidecar_chump_binary() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("CHUMP_BINARY") {
         let pb = PathBuf::from(p.trim());
@@ -94,17 +95,64 @@ fn sidecar_chump_binary() -> Option<PathBuf> {
             return Some(pb);
         }
     }
-    sibling_chump_binary()
+    if let Some(sib) = sibling_chump_binary() {
+        return Some(sib);
+    }
+    let bin_name = if cfg!(target_os = "windows") {
+        "chump.exe"
+    } else {
+        "chump"
+    };
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            std::env::var("USERPROFILE")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
+        .map(PathBuf::from);
+    if let Some(ref h) = home {
+        for rel in [".cargo/bin", ".local/bin"] {
+            let candidate = h.join(rel).join(bin_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    #[cfg(unix)]
+    for sys_dir in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let candidate = PathBuf::from(sys_dir).join(bin_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
-/// Working directory for the spawned `chump --web` so `load_dotenv()` finds repo `.env` (MLX on 8001, etc.).
+/// Working directory for the spawned `chump --web` so `load_dotenv()` / `~/.chump/config.toml`
+/// resolve cleanly across macOS, Windows, and Linux (INFRA-8653).
 fn sidecar_repo_cwd() -> Option<PathBuf> {
     for key in ["CHUMP_REPO", "CHUMP_HOME"] {
         if let Ok(p) = std::env::var(key) {
             let pb = PathBuf::from(p.trim());
-            if pb.is_dir() && pb.join(".env").is_file() {
+            if pb.is_dir() && (pb.join(".env").is_file() || pb.join("config.toml").is_file()) {
                 return Some(pb);
             }
+        }
+    }
+    if let Some(home) = std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            std::env::var("USERPROFILE")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
+    {
+        let chump_home = PathBuf::from(&home).join(".chump");
+        if chump_home.join("config.toml").is_file() {
+            return Some(chump_home);
         }
     }
     // Dev: `chump-desktop` lives in `target/debug/` — walk up to the repo root that has `.env` + `Cargo.toml`.

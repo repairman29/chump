@@ -7,7 +7,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MAIN="$REPO_ROOT/src/cli_dispatch/mod.rs"
+MAIN="$(mktemp)"
+trap 'rm -f "$MAIN"' EXIT
+cat "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/cli_dispatch/"*.rs > "$MAIN"
 COMPLETION="$REPO_ROOT/src/completion.rs"
 
 PASS=0; FAIL=0

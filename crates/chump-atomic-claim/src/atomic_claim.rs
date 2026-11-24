@@ -2403,6 +2403,15 @@ fn gh_owner_repo(repo_root: &Path) -> Option<String> {
     Some(stripped.trim_end_matches(".git").to_string())
 }
 
+pub(crate) fn open_state_db_wal(path: &Path) -> rusqlite::Result<rusqlite::Connection> {
+    let conn = rusqlite::Connection::open(path)?;
+    let _ = conn.busy_timeout(std::time::Duration::from_millis(5000));
+    let _ = conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+    );
+    Ok(conn)
+}
+
 /// INFRA-1025: write the leases row to state.db. Mirrors GapStore::claim()
 /// but without requiring a GapStore reference in this module.
 /// Best-effort when DB absent (fresh clone has no state.db yet).
@@ -2417,7 +2426,7 @@ fn write_db_claim(
     if !db_path.exists() {
         return Ok(());
     }
-    let conn = rusqlite::Connection::open(&db_path)
+    let conn = crate::atomic_claim::open_state_db_wal(&db_path)
         .with_context(|| format!("opening {} for lease write", db_path.display()))?;
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2449,7 +2458,7 @@ pub fn release_db_lease(repo_root: &Path, session_id: &str, gap_id: &str) -> Res
     if !db_path.exists() {
         return Ok(0);
     }
-    let conn = rusqlite::Connection::open(&db_path)
+    let conn = crate::atomic_claim::open_state_db_wal(&db_path)
         .with_context(|| format!("opening {} for lease release", db_path.display()))?;
     let mut deleted = 0usize;
     if !session_id.is_empty() {
@@ -3624,7 +3633,7 @@ fn verify_or_seed_gap(repo_root: &Path, gap_id: &str) -> Result<()> {
         return run_chump_gap_import(repo_root);
     }
 
-    let conn = rusqlite::Connection::open(&db_path)
+    let conn = crate::atomic_claim::open_state_db_wal(&db_path)
         .with_context(|| format!("opening {}", db_path.display()))?;
     // CREDIBLE-159: under fleet load the un-timed read hit SQLITE_BUSY and
     // .unwrap_or(0) turned that into "gap not found" — every bot-merge claim
@@ -4888,7 +4897,7 @@ fn read_gap_ac_from_db(repo_root: &Path, gap_id: &str) -> String {
     if !db_path.exists() {
         return String::new();
     }
-    let Ok(conn) = rusqlite::Connection::open(&db_path) else {
+    let Ok(conn) = crate::atomic_claim::open_state_db_wal(&db_path) else {
         return String::new();
     };
     conn.query_row(
@@ -6049,7 +6058,7 @@ pub mod nugget_prefetch {
         if !db_path.exists() {
             return (String::new(), String::new());
         }
-        let Ok(conn) = rusqlite::Connection::open(&db_path) else {
+        let Ok(conn) = crate::atomic_claim::open_state_db_wal(&db_path) else {
             return (String::new(), String::new());
         };
         // Some installations of state.db don't have the `description` column
@@ -6747,7 +6756,7 @@ pub fn run_flake_import(repo_root: &Path, input_path: &Path) -> Result<usize> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
     }
-    let conn = rusqlite::Connection::open(&db_path)
+    let conn = crate::atomic_claim::open_state_db_wal(&db_path)
         .with_context(|| format!("opening {} for flake import", db_path.display()))?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS flake_outcomes (
@@ -6812,7 +6821,7 @@ mod flake_import_tests {
         assert_eq!(inserted, 2);
 
         let db_path = repo_root.join(".chump/flake_tracker.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let conn = crate::atomic_claim::open_state_db_wal(&db_path).unwrap();
         let mut stmt = conn
             .prepare(
                 "SELECT test_name, outcome, run_timestamp FROM flake_outcomes ORDER BY test_name",

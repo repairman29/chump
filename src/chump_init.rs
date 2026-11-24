@@ -338,7 +338,7 @@ fn prompt(label: &str) -> Result<String> {
 
 fn write_state_db_scaffold(path: &Path) -> Result<()> {
     // Minimal SQLite scaffold so `chump gap list` works immediately on a clean machine.
-    let conn = rusqlite::Connection::open(path)
+    let conn = crate::db_pool::open_sqlite_wal(path)
         .map_err(|e| anyhow!("cannot create {}: {e}", path.display()))?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS gaps (

@@ -18,7 +18,42 @@ enum ChumpChatAPIError: LocalizedError {
     }
 }
 
-private let defaultRepoPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Projects/Chump"
+/// Resolve default Chump workspace path via `CHUMP_REPO` env, `~/.chump/config.toml`
+/// (`repo_root = "..."`), or `~/Projects/Chump` fallback (Universal Chump v1.0, INFRA-8653).
+private func resolveDefaultRepoPath() -> String {
+    let env = ProcessInfo.processInfo.environment
+    if let repoEnv = env["CHUMP_REPO"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !repoEnv.isEmpty,
+       FileManager.default.fileExists(atPath: repoEnv) {
+        return repoEnv
+    }
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let configPath = (env["CHUMP_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { !$0.isEmpty ? "\($0)/config.toml" : nil }
+        ?? "\(home)/.chump/config.toml"
+    if let contents = try? String(contentsOfFile: configPath, encoding: .utf8) {
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("repo_root") || line.hasPrefix("workspace") {
+                if let eq = line.firstIndex(of: "=") {
+                    var val = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+                    if let hash = val.firstIndex(of: "#") {
+                        val = String(val[..<hash]).trimmingCharacters(in: .whitespaces)
+                    }
+                    val = val.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                    if val.hasPrefix("~/") {
+                        val = home + String(val.dropFirst(1))
+                    }
+                    if !val.isEmpty && FileManager.default.fileExists(atPath: val) {
+                        return val
+                    }
+                }
+            }
+        }
+    }
+    return home + "/Projects/Chump"
+}
+
+private let defaultRepoPath = resolveDefaultRepoPath()
 private let ChumpRepoPathKey = "ChumpRepoPath"
 
 @main
@@ -836,6 +871,8 @@ final class ChumpState: @unchecked Sendable {
         // Prefer pgrep, but `run-web.sh` may fall through to `cargo run -- --web` (no `/chump` in argv); also treat a live `/api/health` as online.
         chumpWebRunning =
             pgrepMatch(pattern: "[/]chump.*--web")
+            || pgrepMatch(pattern: "[/]chump up")
+            || pgrepMatch(pattern: "[/]chumpd")
             || pgrepMatch(pattern: "[/]rust-agent.*--web")
             || pgrepMatch(pattern: "cargo run.*-- --web")
             || checkChumpWebListening()

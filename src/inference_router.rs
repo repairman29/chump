@@ -99,6 +99,36 @@ pub fn route(ctx: &CallContext) -> Tier {
     tier
 }
 
+/// Map a bicameral [`Tier`] onto the canonical `ProviderCascade` model class
+/// (`"haiku"` for fast/local Reflexive calls, `"opus"` for escalated Neocortex calls).
+pub fn cascade_model_class_for_tier(tier: Tier) -> &'static str {
+    match tier {
+        Tier::Reflexive => "haiku",
+        Tier::Neocortex => "opus",
+    }
+}
+
+/// Execute a single prompt completion routed through the canonical shared
+/// `ProviderCascade` service (INFRA-3463 / INFRA-8653), recording the tier routing
+/// decision via [`route`].
+pub async fn complete_via_cascade(
+    ctx: &CallContext,
+    system_prompt: Option<String>,
+    prompt: &str,
+    max_tokens: Option<u32>,
+) -> anyhow::Result<(Tier, String)> {
+    let tier = route(ctx);
+    let provider = crate::provider_cascade::build_provider();
+    let messages = vec![axonerai::provider::Message {
+        role: "user".to_string(),
+        content: prompt.to_string(),
+    }];
+    let resp = provider
+        .complete(messages, None, max_tokens, system_prompt)
+        .await?;
+    Ok((tier, resp.text.unwrap_or_default()))
+}
+
 /// Append `kind=inference_routed` to `ambient.jsonl` so routing decisions are
 /// observable fleet-wide, mirroring the established per-module
 /// `emit_ambient_event` pattern (see `src/ci_lesson.rs`).
@@ -197,5 +227,11 @@ mod tests {
             let b = route(&ctx);
             assert_eq!(a, b);
         });
+    }
+
+    #[test]
+    fn cascade_model_class_maps_tiers_cleanly() {
+        assert_eq!(cascade_model_class_for_tier(Tier::Reflexive), "haiku");
+        assert_eq!(cascade_model_class_for_tier(Tier::Neocortex), "opus");
     }
 }

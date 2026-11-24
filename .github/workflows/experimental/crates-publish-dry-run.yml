@@ -30,9 +30,11 @@ jobs:
             echo "Workspace-level change detected; publishing all crates"
             changed=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.publish == null or (.publish | length > 0)) | .name' | grep '^chump-' | sort)
           fi
-          echo "changed<<EOF" >> $GITHUB_OUTPUT
-          echo "$changed" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "changed<<EOF"
+            echo "$changed"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Dry-run publish (changed crates only)
         run: |
@@ -43,5 +45,5 @@ jobs:
           fi
           for crate in $crates; do
             echo "Publishing $crate..."
-            cargo publish -p $crate --dry-run || exit 1
+            cargo publish -p "$crate" --dry-run || exit 1
           done

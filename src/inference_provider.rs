@@ -209,6 +209,34 @@ impl ProviderChain {
             }
         }
         if providers.is_empty() {
+            // INFRA-8653: Seed from canonical `~/.chump/config.toml` `[[providers]]`
+            // when `CHUMP_PROVIDER_CHAIN` is unset, falling back to `[anthropic, openai, ollama]`.
+            if let Ok(cfg) =
+                chump_config::ChumpConfig::load_from_path(&chump_config::default_config_path())
+            {
+                for slot in cfg.providers.iter().filter(|s| s.enabled) {
+                    let candidate = if slot.base_url.contains("anthropic") {
+                        Some("anthropic")
+                    } else if slot.base_url.contains("mistral.ai") {
+                        Some("mistral")
+                    } else if slot.base_url.contains("together") {
+                        Some("together")
+                    } else if slot.base_url.contains("openai.com") {
+                        Some("openai")
+                    } else if slot.base_url.contains("11434") {
+                        Some("ollama")
+                    } else {
+                        Provider::from_name(&slot.name).map(|p| p.name())
+                    };
+                    if let Some(p) = candidate.and_then(Provider::from_name) {
+                        if !providers.iter().any(|existing| existing.name() == p.name()) {
+                            providers.push(p);
+                        }
+                    }
+                }
+            }
+        }
+        if providers.is_empty() {
             providers = vec![
                 Provider::from_name("anthropic").unwrap(),
                 Provider::from_name("openai").unwrap(),

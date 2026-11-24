@@ -63,4 +63,9 @@ jobs:
           MAX_FLAG: ${{ inputs.max && format('--max {0}', inputs.max) || '--max 5' }}
         run: |
           chmod +x scripts/coord/queue-driver.sh
-          scripts/coord/queue-driver.sh $DRY_RUN_FLAG $MAX_FLAG
+          read -r -a max_args <<< "$MAX_FLAG"
+          if [[ -n "${DRY_RUN_FLAG:-}" ]]; then
+            scripts/coord/queue-driver.sh "$DRY_RUN_FLAG" "${max_args[@]}"
+          else
+            scripts/coord/queue-driver.sh "${max_args[@]}"
+          fi

@@ -576,9 +576,18 @@ fn the_guard_and_the_watchdog_are_reachable_from_the_repo() {
 
     // main.rs + cli_dispatch — without it the subcommand does not exist.
     let mut main_rs = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
-    if let Ok(disp) = std::fs::read_to_string(root.join("src/cli_dispatch/mod.rs")) {
-        main_rs.push('\n');
-        main_rs.push_str(&disp);
+    if let Ok(entries) = std::fs::read_dir(root.join("src/cli_dispatch")) {
+        let mut paths: Vec<std::path::PathBuf> = entries
+            .filter_map(|e| e.ok().map(|d| d.path()))
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("rs"))
+            .collect();
+        paths.sort();
+        for p in paths {
+            if let Ok(disp) = std::fs::read_to_string(&p) {
+                main_rs.push('\n');
+                main_rs.push_str(&disp);
+            }
+        }
     }
     assert!(
         main_rs.contains("git_safety::run_cli"),

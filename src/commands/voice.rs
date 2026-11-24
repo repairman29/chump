@@ -274,7 +274,7 @@ fn write_gap_entry(
 
     {
         let db_path = crate::gap_store::GapStore::db_path(repo_root);
-        let conn = rusqlite::Connection::open(db_path)?;
+        let conn = crate::db_pool::open_sqlite_wal(db_path)?;
         conn.execute(
             "INSERT INTO gaps(id, domain, title, priority, effort, status, created_at, opened_date)
              VALUES(?1, 'VOA', ?2, 'P1', 'xs', 'open', ?3, ?4)",

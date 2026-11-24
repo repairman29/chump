@@ -20,6 +20,9 @@ impl SqliteBackend {
         let conn = Connection::open(path)
             .with_context(|| format!("opening sqlite backend at {}", path.display()))?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        let _ = conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+        );
         let backend = Self {
             conn: Mutex::new(conn),
         };

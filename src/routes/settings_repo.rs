@@ -32,7 +32,7 @@ fn db_path() -> PathBuf {
 }
 
 fn get_connection() -> Result<Connection, rusqlite::Error> {
-    Connection::open(db_path())
+    crate::db_pool::open_sqlite_wal(db_path())
 }
 
 fn ensure_table(conn: &Connection) -> Result<(), rusqlite::Error> {

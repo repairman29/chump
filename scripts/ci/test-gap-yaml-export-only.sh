@@ -43,6 +43,9 @@ EXPORT_PATH_FILES="crates/chump-gap-store/src/lib.rs
 crates/chump-gap-store/src/sync.rs
 src/main.rs
 src/cli_dispatch/mod.rs
+src/cli_dispatch/gap_modes.rs
+src/cli_dispatch/gap_audit_modes.rs
+src/cli_dispatch/gap_admin_modes.rs
 src/cli_dispatch/store_modes.rs"
 
 # Line filter: comment lines are not writes.

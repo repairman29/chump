@@ -12,17 +12,17 @@ fn main_rs() -> String {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut combined = std::fs::read_to_string(manifest.join("src/main.rs"))
         .unwrap_or_else(|e| panic!("cannot read src/main.rs: {e}"));
-    for sub in [
-        "mod.rs",
-        "helpers.rs",
-        "eval_modes.rs",
-        "ship_modes.rs",
-        "store_modes.rs",
-    ] {
-        let p = manifest.join("src/cli_dispatch").join(sub);
-        if let Ok(s) = std::fs::read_to_string(&p) {
-            combined.push('\n');
-            combined.push_str(&s);
+    if let Ok(entries) = std::fs::read_dir(manifest.join("src/cli_dispatch")) {
+        let mut paths: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok().map(|d| d.path()))
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("rs"))
+            .collect();
+        paths.sort();
+        for p in paths {
+            if let Ok(s) = std::fs::read_to_string(&p) {
+                combined.push('\n');
+                combined.push_str(&s);
+            }
         }
     }
     combined

@@ -65,8 +65,10 @@ jobs:
             }}
         run: |
           chmod +x scripts/ops/ci-summary-rerun.sh
+          extra_args=()
+          [[ -n "${DRY_RUN:-}" ]] && extra_args+=("$DRY_RUN")
           if [[ -n "${TRIGGER_RUN_ID// /}" ]]; then
-            scripts/ops/ci-summary-rerun.sh --run-id "$TRIGGER_RUN_ID" $DRY_RUN
+            scripts/ops/ci-summary-rerun.sh --run-id "$TRIGGER_RUN_ID" "${extra_args[@]}"
           else
-            scripts/ops/ci-summary-rerun.sh $DRY_RUN
+            scripts/ops/ci-summary-rerun.sh "${extra_args[@]}"
           fi
