@@ -459,41 +459,58 @@ fn service_status(user_home: &Path, dry_run: bool) -> i32 {
     }
 }
 
-/// Entry point for `chump up [--foreground] [--mode grind|travel|off] [--workers N] [--dry-run]`.
+/// Entry point for `chump up [--foreground|--status|--stop] [--mode grind|travel|off] [--workers N] [--dry-run]`.
 pub fn run_up_cli(args: &[String]) -> i32 {
     if args
         .iter()
         .any(|a| a == "--help" || a == "-h" || a == "help")
     {
         println!(
-            "Usage: chump up [--foreground] [--mode grind|travel|off] [--workers N] [--dry-run]"
+            "Usage: chump up [--foreground|--status|--stop] [--mode grind|travel|off] [--workers N] [--dry-run]"
         );
         println!();
-        println!("Initializes ~/.chump/config.toml (if missing) and starts the cross-platform `chumpd` supervisor.");
+        println!("Initializes ~/.chump/config.toml (if missing) and manages the cross-platform `chumpd` supervisor.");
         return 0;
     }
 
-    let foreground = args.iter().any(|a| a == "--foreground");
-    let dry_run = args.iter().any(|a| a == "--dry-run");
-
+    let mut foreground = false;
+    let mut status_only = false;
+    let mut stop_only = false;
+    let mut dry_run = false;
     let mut requested_mode: Option<String> = None;
     let mut requested_workers: Option<usize> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--mode" => {
-                if let Some(m) = args.get(i + 1) {
+            "--foreground" => foreground = true,
+            "--status" | "status" => status_only = true,
+            "--stop" | "stop" | "down" => stop_only = true,
+            "--dry-run" => dry_run = true,
+            "--mode" => match args.get(i + 1) {
+                Some(m) => {
                     requested_mode = Some(m.trim().to_ascii_lowercase());
                     i += 1;
                 }
-            }
-            "--workers" => {
-                if let Some(w) = args.get(i + 1).and_then(|s| s.trim().parse::<usize>().ok()) {
+                None => {
+                    eprintln!("chump up: --mode requires a value (grind, travel, or off)");
+                    return 2;
+                }
+            },
+            "--workers" => match args.get(i + 1).and_then(|s| s.trim().parse::<usize>().ok()) {
+                Some(w) => {
                     requested_workers = Some(w);
                     i += 1;
                 }
+                None => {
+                    eprintln!("chump up: --workers requires a positive integer");
+                    return 2;
+                }
+            },
+            other => {
+                eprintln!("chump up: unknown argument '{other}'");
+                eprintln!("Usage: chump up [--foreground|--status|--stop] [--mode grind|travel|off] [--workers N] [--dry-run]");
+                return 2;
             }
-            _ => {}
         }
         i += 1;
     }
@@ -502,6 +519,55 @@ pub fn run_up_cli(args: &[String]) -> i32 {
     let cfg_path = chump_config::default_config_path();
     let repo_root = resolve_active_git_repo(None);
     let chumpd_bin = resolve_chumpd_exe();
+    let ipc_path = chump_pal::ipc::ipc_file_path_in(&chump_home, "chumpd");
+
+    if status_only {
+        let mode = fs::read_to_string(chump_home.join("fleet-mode"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                chump_config::ChumpConfig::load_effective()
+                    .ok()
+                    .map(|c| c.fleet.mode.as_str().to_string())
+            })
+            .unwrap_or_else(|| "off".to_string());
+        if let Some(ep) = fs::read_to_string(&ipc_path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<chump_pal::ipc::IpcEndpoint>(&s).ok())
+        {
+            if chump_pal::is_pid_alive(ep.pid) {
+                println!(
+                    "chumpd status: running (pid={}, ipc=127.0.0.1:{}, mode={mode})",
+                    ep.pid, ep.port
+                );
+                return 0;
+            }
+        }
+        println!("chumpd status: stopped (mode={mode})");
+        return 0;
+    }
+
+    if stop_only {
+        if let Some(ep) = fs::read_to_string(&ipc_path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<chump_pal::ipc::IpcEndpoint>(&s).ok())
+        {
+            if chump_pal::is_pid_alive(ep.pid) {
+                if dry_run {
+                    println!("[dry-run] stop chumpd (pid={})", ep.pid);
+                    return 0;
+                }
+                let _ = chump_pal::terminate_process(ep.pid, false);
+                let _ = fs::remove_file(&ipc_path);
+                println!("Stopped chumpd (pid={})", ep.pid);
+                return 0;
+            }
+        }
+        let _ = fs::remove_file(&ipc_path);
+        println!("chumpd is not running");
+        return 0;
+    }
 
     if dry_run {
         println!(
@@ -531,7 +597,6 @@ pub fn run_up_cli(args: &[String]) -> i32 {
     }
 
     // Check if chumpd is already running via its loopback IPC endpoint.
-    let ipc_path = chump_pal::ipc::ipc_file_path_in(&chump_home, "chumpd");
     if let Some(ep) = fs::read_to_string(&ipc_path)
         .ok()
         .and_then(|s| serde_json::from_str::<chump_pal::ipc::IpcEndpoint>(&s).ok())
@@ -546,7 +611,9 @@ pub fn run_up_cli(args: &[String]) -> i32 {
     }
 
     let mut cmd = Command::new(&chumpd_bin);
-    cmd.current_dir(&repo_root).env("CHUMP_REPO", &repo_root);
+    cmd.current_dir(&repo_root)
+        .env("CHUMP_REPO", &repo_root)
+        .env("CHUMP_STATE_DIR", &chump_home);
 
     if foreground {
         match cmd.status() {
@@ -695,5 +762,7 @@ mod tests {
             0
         );
         assert_eq!(run_up_cli(&["--dry-run".to_string()]), 0);
+        assert_eq!(run_up_cli(&["--status".to_string()]), 0);
+        assert_eq!(run_up_cli(&["--bogus-flag".to_string()]), 2);
     }
 }

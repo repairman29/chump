@@ -2543,6 +2543,38 @@ pub fn build_provider_single_pub() -> Box<dyn Provider + Send + Sync> {
     build_provider_single()
 }
 
+/// EFFECTIVE-1937: Zero-config clean-install cloud fallback `(base_url, api_key, model)`
+/// used when no local Ollama chat model is available and neither `OPENAI_API_BASE` nor an
+/// `sk-...` OpenAI key was configured.
+fn resolve_clean_install_cloud_fallback(
+    anthropic_key: Option<&str>,
+    gemini_key: Option<&str>,
+    mistral_key: Option<&str>,
+) -> Option<(String, String, String)> {
+    if let Some(k) = anthropic_key.map(str::trim).filter(|s| !s.is_empty()) {
+        return Some((
+            "https://api.anthropic.com/v1".to_string(),
+            k.to_string(),
+            "claude-sonnet-4-5".to_string(),
+        ));
+    }
+    if let Some(k) = gemini_key.map(str::trim).filter(|s| !s.is_empty()) {
+        return Some((
+            "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+            k.to_string(),
+            "gemini-3.6-flash".to_string(),
+        ));
+    }
+    if let Some(k) = mistral_key.map(str::trim).filter(|s| !s.is_empty()) {
+        return Some((
+            "https://api.mistral.ai/v1".to_string(),
+            k.to_string(),
+            "codestral-latest".to_string(),
+        ));
+    }
+    None
+}
+
 fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
     #[cfg(feature = "mistralrs-infer")]
     {
@@ -2576,6 +2608,77 @@ fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
             inner: OpenAIProvider::new(api_key).with_model(model),
         });
     }
+
+    // EFFECTIVE-1937: On a clean install with no explicit OPENAI_MODEL, prefer a
+    // live local Ollama chat model first; if local Ollama is offline or only has
+    // embedding models, fall back automatically to configured config.toml slots
+    // or cloud BYOK credentials instead of failing with 404 on qwen2.5:7b.
+    if env_model.is_none() {
+        let available_local = fetch_local_models_sync(DEFAULT_OLLAMA_API_BASE);
+        if let Some(local_chat) = select_local_model(&available_local, None) {
+            eprintln!(
+                "chump: auto-selected local model '{}' from {} (set OPENAI_MODEL to override)",
+                local_chat, DEFAULT_OLLAMA_API_BASE
+            );
+            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            return Box::new(LocalOpenAIProvider::with_fallback(
+                DEFAULT_OLLAMA_API_BASE.to_string(),
+                fallback,
+                api_key,
+                local_chat,
+            ));
+        }
+
+        let cascade_explicitly_off = std::env::var("CHUMP_CASCADE_ENABLED")
+            .ok()
+            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false"))
+            .unwrap_or(false);
+        let eff_cfg = chump_config::ChumpConfig::load_effective().ok();
+        if !cascade_explicitly_off
+            && eff_cfg
+                .as_ref()
+                .map(|c| c.providers.iter().any(|p| p.enabled))
+                .unwrap_or(false)
+        {
+            let cascade = ProviderCascade::from_env();
+            if !cascade.slots.is_empty() {
+                let arc = Arc::new(cascade);
+                let _ = CASCADE_FOR_STATUS.set(Arc::clone(&arc));
+                return Box::new(CascadeHolder(arc));
+            }
+        }
+
+        let anthropic_key = std::env::var("ANTHROPIC_API_KEY")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                eff_cfg
+                    .as_ref()
+                    .and_then(|c| c.auth.anthropic_api_key.clone())
+            });
+        let gemini_key = std::env::var("GEMINI_API_KEY")
+            .or_else(|_| std::env::var("GOOGLE_API_KEY"))
+            .ok();
+        let mistral_key = std::env::var("MISTRAL_API_KEY").ok();
+        if let Some((cloud_base, cloud_key, cloud_model)) = resolve_clean_install_cloud_fallback(
+            anthropic_key.as_deref(),
+            gemini_key.as_deref(),
+            mistral_key.as_deref(),
+        ) {
+            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            return Box::new(LocalOpenAIProvider::with_fallback(
+                cloud_base,
+                fallback,
+                cloud_key,
+                cloud_model,
+            ));
+        }
+    }
+
     // Default local Ollama path: auto-discover model.
     let model = resolve_model_for_endpoint(DEFAULT_OLLAMA_API_BASE, env_model);
     let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
@@ -4538,5 +4641,38 @@ mod resilient_276_tests {
         std::env::remove_var("CHUMP_AMBIENT_LOG");
         let s = std::fs::read_to_string(&log).unwrap();
         assert!(s.contains("provider_slot_timeout") && s.contains("slot-x"));
+    }
+
+    #[test]
+    fn effective1937_clean_install_cloud_fallback_priority() {
+        assert_eq!(
+            resolve_clean_install_cloud_fallback(
+                Some("sk-ant-api03-test"),
+                Some("gem"),
+                Some("mis")
+            ),
+            Some((
+                "https://api.anthropic.com/v1".to_string(),
+                "sk-ant-api03-test".to_string(),
+                "claude-sonnet-4-5".to_string()
+            ))
+        );
+        assert_eq!(
+            resolve_clean_install_cloud_fallback(Some("  "), Some("gem-key"), None),
+            Some((
+                "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+                "gem-key".to_string(),
+                "gemini-3.6-flash".to_string()
+            ))
+        );
+        assert_eq!(
+            resolve_clean_install_cloud_fallback(None, None, Some("mistral-key")),
+            Some((
+                "https://api.mistral.ai/v1".to_string(),
+                "mistral-key".to_string(),
+                "codestral-latest".to_string()
+            ))
+        );
+        assert_eq!(resolve_clean_install_cloud_fallback(None, None, None), None);
     }
 }

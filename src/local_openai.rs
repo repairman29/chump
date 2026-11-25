@@ -1197,7 +1197,11 @@ impl Provider for LocalOpenAIProvider {
         let temperature = crate::neuromodulation::adaptive_temperature(base_temperature);
         let top_p = crate::neuromodulation::adaptive_top_p();
         body["temperature"] = json!(temperature);
-        body["top_p"] = json!(top_p);
+        // EFFECTIVE-1937: Anthropic Claude 4.5+ rejects `/v1/chat/completions` requests
+        // that specify both `temperature` and `top_p` (HTTP 400 invalid_request_error).
+        if !is_anthropic {
+            body["top_p"] = json!(top_p);
+        }
 
         // COG-012: request logprobs when opted in (CHUMP_LOGPROBS_ENABLED=1).
         // Gracefully no-ops on providers that ignore the field.
@@ -3081,5 +3085,17 @@ mod tests {
         let out_no_tools = build_openai_chat_messages(&msgs, false);
         assert_eq!(out_no_tools.len(), 1);
         assert!(out_no_tools[0]["content"].is_string());
+    }
+
+    #[test]
+    fn effective1937_anthropic_endpoint_omits_top_p_alongside_temperature() {
+        let mut anthropic_body = serde_json::json!({"model": "claude-sonnet-4-5"});
+        let is_anthropic = "https://api.anthropic.com/v1".contains("api.anthropic.com");
+        anthropic_body["temperature"] = serde_json::json!(0.3);
+        if !is_anthropic {
+            anthropic_body["top_p"] = serde_json::json!(0.9);
+        }
+        assert!(anthropic_body.get("temperature").is_some());
+        assert!(anthropic_body.get("top_p").is_none());
     }
 }
