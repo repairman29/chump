@@ -119,10 +119,10 @@ impl GapStatus {
     }
 }
 
-/// Internal helper: drive a postgrest::Builder to completion and parse the
+/// Internal helper: drive a postgrest_client::Builder to completion and parse the
 /// JSON body. Used by every read/write path in this module.
 pub(crate) async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(
-    builder: postgrest::Builder,
+    builder: crate::postgrest_client::Builder,
     table: &'static str,
 ) -> Result<T> {
     let resp = builder
