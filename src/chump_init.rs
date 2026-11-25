@@ -71,12 +71,14 @@ impl InitArgs {
                     out.open_browser = false;
                     i += 1;
                 }
-                "--no-interactive" => {
+                "--no-interactive" | "--yes" | "-y" => {
                     out.no_interactive = true;
                     i += 1;
                 }
                 "--help" | "-h" => {
-                    println!("Usage: chump init [--port N] [--no-browser] [--no-interactive]");
+                    println!(
+                        "Usage: chump init [--port N] [--no-browser] [--no-interactive|--yes]"
+                    );
                     std::process::exit(0);
                 }
                 other => return Err(anyhow!("chump init: unknown flag {other:?}")),
@@ -108,12 +110,14 @@ pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
         .map_err(|e| anyhow!("cannot create {}: {e}", chump_home.display()))?;
 
     let config_path = chump_home.join("config.toml");
+    let effective_no_interactive =
+        args.no_interactive || !std::io::IsTerminal::is_terminal(&std::io::stdin());
     if config_path.exists() {
         println!("  [b] ~/.chump/config.toml already exists — skipping write");
         println!("  [c] FLEET_MODEL — using value in config.toml");
     } else {
-        let fleet_model = resolve_fleet_model(args.no_interactive)?;
-        let (api_key, openai_base) = resolve_api_config(args.no_interactive)?;
+        let fleet_model = resolve_fleet_model(effective_no_interactive)?;
+        let (api_key, openai_base) = resolve_api_config(effective_no_interactive)?;
         write_config_toml(&config_path, &api_key, &openai_base, &fleet_model)?;
         println!("  [b] wrote ~/.chump/config.toml");
         println!("  [c] FLEET_MODEL={fleet_model}");
@@ -393,11 +397,11 @@ impl ModelConfig {
 fn detect_model() -> ModelConfig {
     // 1. Anthropic API key → Claude (no local server needed)
     if let Ok(k) = std::env::var("ANTHROPIC_API_KEY") {
-        if !k.is_empty() && !k.starts_with("sk-ant-api0") {
+        if !k.trim().is_empty() {
             return ModelConfig {
                 api_base: None,
                 api_key: k,
-                model: Some("claude-haiku-4-5-20251001".into()),
+                model: Some("claude-sonnet-4-5".into()),
                 source: "ANTHROPIC_API_KEY",
             };
         }
@@ -511,8 +515,10 @@ fn write_minimal_env(env_path: &Path, cfg: &ModelConfig, port: u16) -> Result<()
         lines.push(format!("OPENAI_API_BASE={}", base));
         lines.push(format!("OPENAI_API_KEY={}", cfg.api_key));
     }
-    if let Some(model) = &cfg.model {
-        lines.push(format!("OPENAI_MODEL={}", model));
+    if cfg.source != "ANTHROPIC_API_KEY" {
+        if let Some(model) = &cfg.model {
+            lines.push(format!("OPENAI_MODEL={}", model));
+        }
     }
 
     lines.push(String::new());
@@ -529,7 +535,7 @@ fn write_minimal_env(env_path: &Path, cfg: &ModelConfig, port: u16) -> Result<()
 // ────────────────────────── server lifecycle ──────────────────────────
 
 fn server_is_healthy(port: u16) -> bool {
-    probe_url(&format!("http://localhost:{}/health", port))
+    probe_url(&format!("http://127.0.0.1:{}/api/health", port))
 }
 
 fn start_server(repo_root: &Path, port: u16) -> Result<()> {

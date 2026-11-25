@@ -122,9 +122,13 @@ impl Config {
     }
 
     fn state_dir(&self) -> PathBuf {
-        std::env::var("CHUMP_STATE_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| self.home.join(".chump"))
+        if let Ok(sd) = std::env::var("CHUMP_STATE_DIR") {
+            let trimmed = sd.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
+        }
+        chump_pal::chump_home()
     }
 
     fn is_paused(&self) -> bool {
@@ -132,7 +136,7 @@ impl Config {
     }
 
     fn mode(&self) -> String {
-        if let Ok(s) = fs::read_to_string(self.home.join(".chump/fleet-mode")) {
+        if let Ok(s) = fs::read_to_string(self.state_dir().join("fleet-mode")) {
             let trimmed = s.trim();
             if !trimmed.is_empty() {
                 return trimmed.to_string();
@@ -519,13 +523,25 @@ async fn handle_ipc(cfg: Config, listener: TcpListener, expected_token: String) 
 
 #[tokio::main]
 async fn main() {
-    // PHASE-R R6 / INFRA-8575: thin `chumpd worker` arm — the per-worker loop
-    // control (cadence, heartbeat, fleet-paused sentinel, per-tick budget).
-    // Dispatched before any supervisor setup so it never binds the IPC server or
-    // takes pool ownership; worker.sh execs this.
     let argv: Vec<String> = std::env::args().collect();
-    if argv.get(1).map(String::as_str) == Some("worker") {
-        std::process::exit(worker_loop::run(&argv[2..]));
+    match argv.get(1).map(String::as_str) {
+        Some("--version" | "-V" | "version") => {
+            println!("chumpd {}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
+        Some("--help" | "-h" | "help") => {
+            println!("Usage: chumpd [--version|--help|worker ...]");
+            println!("Supervises Chump fleet workers, OAuth refresh, and lease reaping.");
+            return;
+        }
+        Some("worker") => {
+            // PHASE-R R6 / INFRA-8575: thin `chumpd worker` arm — the per-worker loop
+            // control (cadence, heartbeat, fleet-paused sentinel, per-tick budget).
+            // Dispatched before any supervisor setup so it never binds the IPC server or
+            // takes pool ownership; worker.sh execs this.
+            std::process::exit(worker_loop::run(&argv[2..]));
+        }
+        _ => {}
     }
 
     chump_pal::install_shutdown_signal(&SHUTDOWN_SIGNAL);
