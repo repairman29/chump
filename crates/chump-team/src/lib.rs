@@ -47,6 +47,7 @@ pub mod config;
 pub mod errors;
 pub mod gaps;
 pub mod nuggets;
+pub(crate) mod postgrest_client;
 pub mod quotas;
 
 pub use auth::{TeamApiKey, TeamAuth};
@@ -58,7 +59,7 @@ pub use gaps::{Effort, GapFilter, GapPatch, GapStatus, Priority, SharedGap};
 pub use nuggets::{Confidence, EmbedMode, Nugget, NuggetKind, NuggetMatch, NuggetQuery};
 pub use quotas::OperatorQuota;
 
-use postgrest::Postgrest;
+use postgrest_client::Postgrest;
 use std::sync::Arc;
 
 /// Top-level client. One per running process — clone freely (cheap).
