@@ -1,6 +1,6 @@
 ---
 doc_tag: log
-last_audited: 2026-11-24
+last_audited: 2026-11-25
 ---
 
 # scripts/ci test census
@@ -13,13 +13,13 @@ Rule: a new scripts/ci test is wired or it is deleted. The shrink-only gate
 (`scripts/ci/test-census-shrink-only.sh`) fails any PR that adds an unwired
 test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 
-- Run date: 2026-11-24 (generated 2026-11-24T15:20:39Z)
+- Run date: 2026-11-25 (generated 2026-11-25T15:01:05Z)
 - Mode: full on linux; tests run this time: 482
 - Per-test timeout: 120s; jobs: 6
 
 | total | wired | unwired | red | pass | fail | timeout | skip | not run |
 |---|---|---|---|---|---|---|---|---|
-| 482 | 472 | 10 | 83 | 399 | 50 | 29 | 4 | 0 |
+| 482 | 472 | 10 | 83 | 399 | 51 | 28 | 4 | 0 |
 
 | | green | red |
 |---|---|---|
@@ -32,8 +32,10 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-acp-real-clients.sh` (fail, exit 1, run:linux)
 - `test-advisory-merge.sh` (fail, exit 1, run:linux)
 - `test-almanac-liveness-reindex.sh` (fail, exit 1, run:linux)
+- `test-api-gap-queue-shape.sh` (fail, exit 1, run:linux)
 - `test-architect-tick.sh` (fail, exit 1, run:linux)
 - `test-arm-policy.sh` (fail, exit 1, run:linux)
+- `test-auto-arm-sweeper.sh` (timeout, exit 124, run:linux)
 - `test-auto-merge-armer-red-head.sh` (timeout, exit 124, run:linux)
 - `test-bot-merge-arm-ship-order.sh` (timeout, exit 124, run:linux)
 - `test-bot-merge-conflict-integration.sh` (fail, exit 1, run:linux)
@@ -72,7 +74,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-gap-id-cross-session.sh` (timeout, exit 124, run:linux)
 - `test-gap-list-since.sh` (fail, exit 1, run:linux)
 - `test-gap-preflight-ac-gate.sh` (fail, exit 1, run:linux)
-- `test-gap-reserve-no-stale-collision.sh` (timeout, exit 124, run:linux)
 - `test-gap-reserve-padding.sh` (fail, exit 1, run:linux)
 - `test-gap-show-ac-render.sh` (fail, exit 1, run:linux)
 - `test-gap-store-single-source.sh` (fail, exit 1, run:linux)
@@ -108,7 +109,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-stale-binary-ship-blocked.sh` (timeout, exit 124, run:linux)
 - `test-stale-branch-rebase.sh` (timeout, exit 124, run:linux)
 - `test-state-db-restore.sh` (fail, exit 1, run:linux)
-- `test-tool-normalize.sh` (timeout, exit 124, run:linux)
 - `test-uuid-gap-id-compat.sh` (fail, exit 1, run:linux)
 
 ## unwired-red (1)
@@ -129,7 +129,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-ambient-schema.sh`
 - `test-api-chat-cost-kill.sh`
 - `test-api-cost-leaderboard.sh`
-- `test-api-gap-queue-shape.sh`
 - `test-arm-policy-native.sh`
 - `test-attribution-portable.sh`
 - `test-audit-lanes-green.sh`
@@ -137,7 +136,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-audit-step-isolation.sh`
 - `test-audit-workflow-not-cancellable.sh`
 - `test-auth-status.sh`
-- `test-auto-arm-sweeper.sh`
 - `test-auto-merge-armer.sh`
 - `test-autonomous-ship-rate.sh`
 - `test-autoscale-decisions.sh`
@@ -281,6 +279,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-gap-quality-gate.sh`
 - `test-gap-rebalance.sh`
 - `test-gap-reserve-concurrency.sh`
+- `test-gap-reserve-no-stale-collision.sh`
 - `test-gap-run-now.sh`
 - `test-gap-ship-single-source.sh`
 - `test-gap-status-flip.sh`
@@ -484,6 +483,7 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-supervision-trees.sh`
 - `test-system-integration.sh`
 - `test-telemetry-cost.sh`
+- `test-tool-normalize.sh`
 - `test-triage-test-failure.sh`
 - `test-trunk-recovery-reviver.sh`
 - `test-unresolved-deps-resolution.sh`
