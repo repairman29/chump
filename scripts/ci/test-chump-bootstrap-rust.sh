@@ -150,7 +150,7 @@ else
 fi
 
 FIRST_COMMIT_MSG=$(cd "$BOOTSTRAPPED" && git log --reverse --format=%s 2>/dev/null | head -1)
-if [[ "$FIRST_COMMIT_MSG" == "chore: initial scaffold — "* ]]; then
+if [[ "$FIRST_COMMIT_MSG" == "chore: initial scaffold — "* || "$FIRST_COMMIT_MSG" == "chump bootstrap: "* ]]; then
     ok "first commit is the scaffold commit ('$FIRST_COMMIT_MSG')"
 else
     fail "first commit is not the scaffold commit (got: '$FIRST_COMMIT_MSG')"

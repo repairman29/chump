@@ -32,6 +32,9 @@ def wiring_sources(root):
     pf = os.path.join(root, "crates", "chump-preflight", "src", "preflight.rs")
     if os.path.isfile(pf):
         srcs.append(pf)
+    extra = os.path.join(root, "scripts", "ci", "preflight-extra-test-scripts.txt")
+    if os.path.isfile(extra):
+        srcs.append(extra)
     return srcs
 
 

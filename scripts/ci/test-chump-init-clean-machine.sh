@@ -36,8 +36,13 @@ fi
 TMP="$(mktemp -d -t test-chump-init.XXXXXX)"
 FAKE_HOME="$TMP/home"
 FIXTURE_REPO="$TMP/repo"
+INIT_PORT=13987
+export CHUMP_HOME="$FAKE_HOME/.chump"
 mkdir -p "$FAKE_HOME" "$FIXTURE_REPO"
-cleanup() { rm -rf "$TMP"; }
+cleanup() {
+    pkill -f "chump --web --port $INIT_PORT" 2>/dev/null || true
+    rm -rf "$TMP"
+}
 trap cleanup EXIT
 
 # Set up a minimal git repo so chump's repo_root detection is happy.
@@ -55,7 +60,7 @@ pass "Check 1: chump --version → '$VER_OUT'"
 
 info "Running: chump init --no-interactive (CHUMP_HOME=$FAKE_HOME)"
 INIT_OUT="$(HOME="$FAKE_HOME" CHUMP_REPO="$FIXTURE_REPO" CHUMP_BINARY_STALENESS_CHECK=0 \
-    "$CHUMP_BIN" init --no-interactive --no-browser 2>&1 || true)"
+    "$CHUMP_BIN" init --no-interactive --no-browser --port "$INIT_PORT" 2>&1 || true)"
 echo "$INIT_OUT" | head -20
 
 # Check exit condition: look for known success strings rather than relying on

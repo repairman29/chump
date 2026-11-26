@@ -66,10 +66,10 @@ fi
 # We produce a deduplicated set: one test path per line, stored in FAILED_TESTS.
 
 _extract_failed_tests() {
-  local raw
-  # CREDIBLE-1532: strip ANSI SGR escape sequences before matching so colorized
-  # nextest / cargo test logs parse identically to plain text.
-  raw="$(printf '%s\n' "$1" | sed -E 's/\x1b\[[0-9;]*[mGKH]//g')"
+  local raw esc
+  # CREDIBLE-1532: strip ANSI SGR escape sequences portably across BSD & GNU sed.
+  esc="$(printf '\033')"
+  raw="$(printf '%s\n' "$1" | sed -E "s/${esc}\[[0-9;]*[mGKH]//g")"
   {
     # Format 1: "test foo::bar ... FAILED"
     printf '%s\n' "$raw" \
@@ -125,32 +125,26 @@ _load_known_flakes() {
     return
   fi
   if command -v python3 >/dev/null 2>&1; then
-    python3 - <<'PYEOF' 2>/dev/null || true
-import sys, yaml
+    python3 - "$KNOWN_FLAKES" <<'PYEOF' 2>/dev/null || true
+import re, sys
+path = sys.argv[1]
 try:
-    with open(sys.argv[1]) as f:
+    import yaml  # type: ignore
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    for entry in data.get('flakes', []):
-        test = entry.get('test', '') if isinstance(entry, dict) else ''
-        if test:
-            print(test)
+    for entry in data.get("flakes", []):
+        if isinstance(entry, dict) and entry.get("test"):
+            print(entry["test"])
+except ImportError:
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r'^\s*-\s*test:\s*"?([^"#]+?)"?\s*(?:#.*)?$', line)
+            if m and m.group(1).strip():
+                print(m.group(1).strip())
 except Exception:
     pass
 PYEOF
-    # Pass the filename to the heredoc via positional arg trick
-    python3 -c "
-import yaml, sys
-try:
-    with open('$KNOWN_FLAKES') as f:
-        data = yaml.safe_load(f) or {}
-    for entry in data.get('flakes', []):
-        if isinstance(entry, dict) and entry.get('test'):
-            print(entry['test'])
-except Exception:
-    pass
-" 2>/dev/null || true
   else
-    # grep-based fallback: look for lines matching "  - test: "
     grep -E '^[[:space:]]+- test:' "$KNOWN_FLAKES" \
       | sed -E 's/^[[:space:]]+-[[:space:]]+test:[[:space:]]+"?([^"#]+)"?[[:space:]]*(#.*)?$/\1/' \
       | sed 's/[[:space:]]*$//' \
