@@ -82,22 +82,47 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Check crates.io registry token availability
+        id: creds
+        env:
+          HAS_CARGO_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
+          HAS_APP: ${{ secrets.QUEUE_DRIVER_APP_ID != '' && secrets.QUEUE_DRIVER_APP_PRIVATE_KEY != '' }}
+        run: |
+          echo "has_cargo_token=${HAS_CARGO_TOKEN}" >> "$GITHUB_OUTPUT"
+          echo "has_app=${HAS_APP}" >> "$GITHUB_OUTPUT"
+          if [ "${HAS_CARGO_TOKEN}" != "true" ]; then
+            echo "release-plz: CARGO_REGISTRY_TOKEN secret is not configured; skipping release-pr dry-run cleanly." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Mint GitHub App token for release PRs
+        id: app_token
+        if: steps.creds.outputs.has_cargo_token == 'true' && steps.creds.outputs.has_app == 'true'
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.QUEUE_DRIVER_APP_ID }}
+          private-key: ${{ secrets.QUEUE_DRIVER_APP_PRIVATE_KEY }}
+
       - name: Install release-plz
-        run: cargo install release-plz --version "^0.3"
+        if: steps.creds.outputs.has_cargo_token == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: release-plz
 
       - name: Run release-plz (dry-run)
+        if: steps.creds.outputs.has_cargo_token == 'true'
         run: |
           release-plz release-pr \
             --backend github \
-            --git-token "${{ secrets.GITHUB_TOKEN }}"
+            --git-token "${GIT_TOKEN}"
         env:
+          GIT_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Report dry-run status
         run: |
-          echo "✓ Dry-run complete"
-          echo "  If no PR was created, all packages are already at the latest version"
-          echo "  or a release PR was already open (check existing PRs)."
+          echo "✓ release-plz check complete"
+          echo "  If CARGO_REGISTRY_TOKEN is configured and publishable crates changed, release-plz opens/updates the release PR."
 
   publish:
     name: Publish to crates.io
@@ -107,26 +132,43 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check crates.io registry token availability
+        id: creds
+        env:
+          HAS_CARGO_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
+        run: |
+          echo "has_cargo_token=${HAS_CARGO_TOKEN}" >> "$GITHUB_OUTPUT"
+          if [ "${HAS_CARGO_TOKEN}" != "true" ]; then
+            echo "release-plz publish: CARGO_REGISTRY_TOKEN secret is not configured; skipping crates.io publish cleanly." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.creds.outputs.has_cargo_token == 'true'
         with:
           fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.creds.outputs.has_cargo_token == 'true'
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.creds.outputs.has_cargo_token == 'true'
 
       - name: Install release-plz
-        run: cargo install release-plz --version "^0.3"
+        if: steps.creds.outputs.has_cargo_token == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: release-plz
 
       - name: Check for release PR
         id: check-pr
+        if: steps.creds.outputs.has_cargo_token == 'true'
         run: |
           # release-plz will only publish if all checks pass and a release commit exists
           # This step is informational; actual publishing happens via release-plz
           echo "status=ready" >> "$GITHUB_OUTPUT"
 
       - name: Publish (via release-plz)
-        if: steps.check-pr.outputs.status == 'ready'
+        if: steps.creds.outputs.has_cargo_token == 'true' && steps.check-pr.outputs.status == 'ready'
         run: |
           release-plz release publish \
             --backend github \

@@ -64,7 +64,10 @@ if ! git rev-parse "$BASE_REF" &>/dev/null; then
     exit 0
 fi
 
-mapfile -t CHANGED_WORKFLOWS < <(git diff --name-only "${BASE_REF}...HEAD" 2>/dev/null \
+CHANGED_WORKFLOWS=()
+while IFS= read -r _wf; do
+    [[ -n "$_wf" ]] && CHANGED_WORKFLOWS+=("$_wf")
+done < <(git diff --name-only "${BASE_REF}...HEAD" 2>/dev/null \
     | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
 
 if [[ "${#CHANGED_WORKFLOWS[@]}" -eq 0 ]]; then
