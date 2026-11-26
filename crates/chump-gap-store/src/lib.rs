@@ -4354,6 +4354,119 @@ impl GapStore {
             }
         }
     }
+
+    /// ZERO-WASTE-056 + INFRA-247 + RESILIENT-1645: atomically mirror a shipped
+    /// gap's `status: done` + `closed_pr` into `<worktree_root>/docs/gaps/<ID>.yaml`
+    /// when shipping from a feature/worktree branch (so the YAML update lands in
+    /// the work PR itself without dirtying canonical `main`) or when
+    /// `--update-yaml` was explicitly requested.
+    pub fn sync_yaml_for_ship(
+        &self,
+        gap_id: &str,
+        worktree_root: &std::path::Path,
+        worktree_branch: Option<&str>,
+        explicit_update_yaml: bool,
+        external_repo: Option<&str>,
+    ) -> Result<bool> {
+        if !should_sync_yaml_on_ship(worktree_branch, explicit_update_yaml, external_repo) {
+            return Ok(false);
+        }
+        let gaps_dir = worktree_root.join("docs").join("gaps");
+        self.dump_per_file_single(gap_id, &gaps_dir)
+    }
+
+    /// CREDIBLE-1550 + ZERO-WASTE-056: cache-first reconciliation of open gaps
+    /// whose typed `gap_prs` FK links a PR that has already merged according to
+    /// `<repo_root>/.chump/github_cache.db` (`pr_state.merged_at IS NOT NULL`).
+    ///
+    /// Routes every closure through [`GapStore::ship`] (single receipt-gated
+    /// `finalize_status_done` writer, `CREDIBLE-1491`) and never consults PR
+    /// titles or commit subjects (`CREDIBLE-1550`).
+    pub fn reconcile_merged_pr_links(
+        &self,
+        repo_root: &std::path::Path,
+        dry_run: bool,
+    ) -> Result<Vec<(String, i64)>> {
+        let Some(cache_conn) = open_github_cache(repo_root) else {
+            return Ok(Vec::new());
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT gp.pr_number \
+             FROM gap_prs gp \
+             JOIN gaps g ON g.id = gp.gap_id \
+             WHERE g.status NOT IN ('done','wontfix','superseded','invalid','closed','deferred','perpetual') \
+             ORDER BY gp.opened_at DESC",
+        )?;
+        let pr_numbers: Vec<i64> = stmt
+            .query_map([], |r| r.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut closed = Vec::new();
+        let mut seen_gaps = std::collections::HashSet::new();
+
+        for pr_number in pr_numbers {
+            let is_merged = cache_conn
+                .query_row(
+                    "SELECT merged_at FROM pr_state WHERE number = ?1 AND merged_at IS NOT NULL LIMIT 1",
+                    [pr_number],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok()
+                .is_some_and(|s| !s.trim().is_empty());
+            if !is_merged {
+                continue;
+            }
+            let linked_gaps = self.gaps_for_pr(pr_number)?;
+            for gap_id in linked_gaps {
+                if seen_gaps.contains(&gap_id) || self.already_terminal(&gap_id)?.is_some() {
+                    continue;
+                }
+                if dry_run {
+                    seen_gaps.insert(gap_id.clone());
+                    closed.push((gap_id, pr_number));
+                    continue;
+                }
+                match self.ship(&gap_id, "reconcile-merged", Some(pr_number)) {
+                    Ok(()) => {
+                        let _ = self.mark_pr_merged(&gap_id, pr_number);
+                        seen_gaps.insert(gap_id.clone());
+                        closed.push((gap_id, pr_number));
+                    }
+                    Err(err) => {
+                        eprintln!("[reconcile-merged] skipped {gap_id} (PR #{pr_number}): {err:#}");
+                    }
+                }
+            }
+        }
+
+        Ok(closed)
+    }
+}
+
+/// Decide whether `chump gap ship` should write `<worktree_root>/docs/gaps/<ID>.yaml`.
+///
+/// - External-repo gaps (`external_repo:owner/name`) never write local `docs/gaps`.
+/// - Explicit `--update-yaml` always writes.
+/// - Feature/worktree branches (`worktree_branch` != `main`/`master`/`HEAD`) write
+///   automatically so the YAML closure lands in the work PR (`ZERO-WASTE-056`).
+/// - Post-merge closes run directly on canonical `main`/`master` without
+///   `--update-yaml` skip writing to avoid dirtying the canonical checkout
+///   (`RESILIENT-1645` / `RESILIENT-1686`).
+pub fn should_sync_yaml_on_ship(
+    worktree_branch: Option<&str>,
+    explicit_update_yaml: bool,
+    external_repo: Option<&str>,
+) -> bool {
+    if external_repo.map(str::trim).is_some_and(|s| !s.is_empty()) {
+        return false;
+    }
+    if explicit_update_yaml {
+        return true;
+    }
+    worktree_branch
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .is_some_and(|b| !matches!(b, "main" | "master" | "HEAD"))
 }
 
 /// INFRA-8043 (MISSION-045 parity for every filer): a P0/P1 gap must trace to an
@@ -10930,6 +11043,131 @@ mod tests {
             yaml.contains("closed_pr: 4242"),
             "post-ship yaml must record closed_pr, got: {yaml}"
         );
+    }
+
+    #[test]
+    fn zerowaste056_worktree_branch_syncs_worktree_yaml_not_canonical_main() {
+        let (store, dir) = test_store();
+        let id = store
+            .reserve("ZERO-WASTE", "worktree-branch yaml sync", "P2", "s")
+            .unwrap();
+        store.link_pr(&id, 5999, "deadbeef").unwrap();
+        store.ship(&id, "s", Some(5999)).unwrap();
+
+        let canonical_root = dir.path().join("canonical-main");
+        let worktree_root = dir.path().join("linked-worktree");
+        std::fs::create_dir_all(&canonical_root).unwrap();
+        std::fs::create_dir_all(&worktree_root).unwrap();
+
+        let wrote = store
+            .sync_yaml_for_ship(&id, &worktree_root, Some("chump/zw-056-test"), false, None)
+            .unwrap();
+        assert!(
+            wrote,
+            "feature-branch ship must write worktree docs/gaps/<ID>.yaml"
+        );
+        let wt_yaml = std::fs::read_to_string(
+            worktree_root
+                .join("docs")
+                .join("gaps")
+                .join(format!("{id}.yaml")),
+        )
+        .unwrap();
+        assert!(wt_yaml.contains("status: done"));
+        assert!(wt_yaml.contains("closed_pr: 5999"));
+        assert!(
+            !canonical_root.join("docs").exists(),
+            "canonical main checkout must remain clean when shipping from a linked worktree"
+        );
+    }
+
+    #[test]
+    fn zerowaste056_canonical_main_skips_unrequested_dirty_unless_explicit() {
+        let (store, dir) = test_store();
+        let id = store
+            .reserve("ZERO-WASTE", "canonical-main clean guard", "P2", "s")
+            .unwrap();
+        store.link_pr(&id, 6001, "cafebabe").unwrap();
+        store.ship(&id, "s", Some(6001)).unwrap();
+
+        let main_root = dir.path().join("main-checkout");
+        std::fs::create_dir_all(&main_root).unwrap();
+
+        // Post-merge close on `main` without --update-yaml leaves working tree clean.
+        let wrote_default = store
+            .sync_yaml_for_ship(&id, &main_root, Some("main"), false, None)
+            .unwrap();
+        assert!(!wrote_default);
+        assert!(!main_root.join("docs").exists());
+
+        // External-repo gap never writes local docs/gaps even with explicit flag.
+        let wrote_ext = store
+            .sync_yaml_for_ship(&id, &main_root, Some("chump/ext"), true, Some("owner/repo"))
+            .unwrap();
+        assert!(!wrote_ext);
+
+        // Explicit --update-yaml on `main` writes docs/gaps/<ID>.yaml.
+        let wrote_explicit = store
+            .sync_yaml_for_ship(&id, &main_root, Some("main"), true, None)
+            .unwrap();
+        assert!(wrote_explicit);
+        assert!(main_root
+            .join("docs")
+            .join("gaps")
+            .join(format!("{id}.yaml"))
+            .is_file());
+    }
+
+    #[test]
+    fn credible1550_reconcile_merged_pr_links_closes_merged_and_skips_open() {
+        let (store, dir) = test_store();
+        let gap_merged = store
+            .reserve("CREDIBLE", "merged pr link gap", "P2", "s")
+            .unwrap();
+        let gap_open = store
+            .reserve("CREDIBLE", "still open pr link gap", "P2", "s")
+            .unwrap();
+
+        store.link_pr(&gap_merged, 7101, "1111aaaa").unwrap();
+        store.link_pr(&gap_open, 7102, "2222bbbb").unwrap();
+
+        // Seed webhook github_cache.db in dir.path()/.chump/github_cache.db.
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let cache_db = chump_dir.join("github_cache.db");
+        let cache_conn = rusqlite::Connection::open(&cache_db).unwrap();
+        cache_conn
+            .execute_batch(
+                "CREATE TABLE pr_state (
+                    number INTEGER PRIMARY KEY,
+                    state TEXT,
+                    head_ref TEXT,
+                    merged_at TEXT
+                );
+                INSERT INTO pr_state (number, state, head_ref, merged_at)
+                    VALUES (7101, 'MERGED', 'chump/merged', '2026-11-26T12:00:00Z');
+                INSERT INTO pr_state (number, state, head_ref, merged_at)
+                    VALUES (7102, 'OPEN', 'chump/open', NULL);",
+            )
+            .unwrap();
+        drop(cache_conn);
+
+        // 1. Dry-run reports only gap_merged without mutating state.db.
+        let dry = store.reconcile_merged_pr_links(dir.path(), true).unwrap();
+        assert_eq!(dry, vec![(gap_merged.clone(), 7101)]);
+        assert_eq!(store.get(&gap_merged).unwrap().unwrap().status, "open");
+
+        // 2. Live reconcile transitions gap_merged -> done (closed_pr=7101) and leaves gap_open open.
+        let closed = store.reconcile_merged_pr_links(dir.path(), false).unwrap();
+        assert_eq!(closed, vec![(gap_merged.clone(), 7101)]);
+        let merged_row = store.get(&gap_merged).unwrap().unwrap();
+        assert_eq!(merged_row.status, "done");
+        assert_eq!(merged_row.closed_pr, Some(7101));
+        assert_eq!(store.get(&gap_open).unwrap().unwrap().status, "open");
+
+        // 3. Re-running is idempotent (0 newly closed).
+        let second = store.reconcile_merged_pr_links(dir.path(), false).unwrap();
+        assert!(second.is_empty());
     }
 
     #[test]
