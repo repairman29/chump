@@ -19,7 +19,7 @@ pr-run-mode = "plan"
 # release, pointing at the bottle artifacts it builds for each target below.
 # Result: `brew install chump` pulls a bottle in ~30s instead of compiling
 # from source for ~20 minutes.
-installers = ["shell", "homebrew"]
+installers = ["shell", "powershell", "homebrew"]
 # Tap repo for the homebrew installer. Repo: https://github.com/repairman29/homebrew-chump
 # Created 2026-04-30 (gh CLI). cargo-dist seeds the formula on first release.
 tap = "repairman29/homebrew-chump"
@@ -31,13 +31,13 @@ tap = "repairman29/homebrew-chump"
 # that pushes Formula/chump.rb to the tap on every release.
 # Requires HOMEBREW_TAP_TOKEN secret (PAT with write access to homebrew-chump).
 publish-jobs = ["homebrew"]
-# Target platforms. Windows is intentionally excluded — Chump on Windows is documented
-# as WSL2-only, so the Linux x86_64 binary covers Windows users.
+# Universal Chump v1.0 target platforms (macOS Apple Silicon + Intel, Linux ARM64 + x64, Windows x64).
 targets = [
   "aarch64-apple-darwin",
   "x86_64-apple-darwin",
   "aarch64-unknown-linux-gnu",
   "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
 ]
 
 # Install GTK3/WebKit system libs on Linux runners. The main `chump` binary doesn't

@@ -33,6 +33,7 @@ const EXEMPT_PATHS: &[&str] = &[
     "scripts/ci/bypass-env-var-allowlist.txt",
     "scripts/ci/bypass-var-ceiling.txt",
     "scripts/ci/env-vars-internal.txt",
+    "docs/CAPABILITIES_REGISTRY.json",
     "src/verify/rules/no_new_bypass_env_vars.rs",
 ];
 
@@ -341,10 +342,10 @@ mod tests {
     #[test]
     fn exempt_registry_files_are_skipped() {
         let v = var("REGISTRY", suffix_bypass());
-        let ev = eval(vec![diff(
-            "scripts/ci/env-vars-internal.txt",
-            std::slice::from_ref(&v),
-        )]);
+        let ev = eval(vec![
+            diff("scripts/ci/env-vars-internal.txt", std::slice::from_ref(&v)),
+            diff("docs/CAPABILITIES_REGISTRY.json", std::slice::from_ref(&v)),
+        ]);
         assert!(matches!(ev, Evaluation::Pass(_)));
     }
 
