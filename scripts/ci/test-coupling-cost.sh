@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-CHUMP="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
+CHUMP="${CHUMP_BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
 
 PASS=0
 FAIL=0
@@ -91,7 +91,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3: workflow-only diff triggers all three filters
+# Test 3: workflow-only diff triggers workflow/code filters without e2e/tauri
 # ---------------------------------------------------------------------------
 echo "Test 3: workflow-only diff (.github/workflows/ci.yml)"
 out="$(coupling_json ".github/workflows/ci.yml")"
@@ -102,14 +102,13 @@ d = json.load(sys.stdin)
 rows = d['rows']
 assert len(rows) == 1
 filters = rows[0]['filters_hit']
-# ci.yml matches code (.github/workflows/**), e2e, and tauri
+# ci.yml matches code (.github/workflows/**) and ci_config_raw without e2e/tauri
 assert 'code' in filters, f'code not in filters: {filters}'
-assert 'e2e' in filters, f'e2e not in filters: {filters}'
-assert 'tauri' in filters, f'tauri not in filters: {filters}'
+assert 'ci_config_raw' in filters, f'ci_config_raw not in filters: {filters}'
 " 2>&1; then
-    ok ".github/workflows/ci.yml hits code + e2e + tauri filters"
+    ok ".github/workflows/ci.yml hits code + ci_config_raw filters"
 else
-    fail ".github/workflows/ci.yml should hit all three filters"
+    fail ".github/workflows/ci.yml should hit code + ci_config_raw filters"
 fi
 
 # ---------------------------------------------------------------------------

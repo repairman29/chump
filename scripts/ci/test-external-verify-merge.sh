@@ -23,21 +23,21 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 TOOLCHAIN_BIN="${HOME}/.rustup/toolchains/1.96.0-aarch64-apple-darwin/bin"
 export PATH="${TOOLCHAIN_BIN}:${HOME}/.cargo/bin:${PATH}"
+export CHUMP_VERIFY_CI_EMPTY_GRACE_SECS=0
+export CHUMP_VERIFY_CI_POLL_SECS=1
 
-# Build the binary first (fail fast if it doesn't compile).
-echo "[test] building chump binary ..."
-cargo build --quiet --manifest-path "${REPO_ROOT}/Cargo.toml" 2>&1
-# Resolve the REAL target dir. Both CI (CARGO_TARGET_DIR / sccache cache) and
-# linked worktrees (.cargo/config target-dir, INFRA-481) redirect it, so the
-# binary is NOT always under ${REPO_ROOT}/target. cargo metadata reports the
-# actual target_directory; fall back to the conventional path if it's empty.
-_target_dir="$(cargo metadata --no-deps --format-version 1 --manifest-path "${REPO_ROOT}/Cargo.toml" 2>/dev/null | jq -r '.target_directory // empty')"
-CHUMP_BIN="${_target_dir:-${REPO_ROOT}/target}/debug/chump"
+# Reuse pre-built CHUMP_BIN when available; otherwise build it.
+if [[ -z "${CHUMP_BIN:-}" || ! -x "${CHUMP_BIN}" ]]; then
+  echo "[test] building chump binary ..."
+  cargo build --quiet --manifest-path "${REPO_ROOT}/Cargo.toml" 2>&1
+  _target_dir="$(cargo metadata --no-deps --format-version 1 --manifest-path "${REPO_ROOT}/Cargo.toml" 2>/dev/null | jq -r '.target_directory // empty')"
+  CHUMP_BIN="${_target_dir:-${REPO_ROOT}/target}/debug/chump"
+fi
 if [[ ! -x "${CHUMP_BIN}" ]]; then
   echo "FAIL: chump binary not found at ${CHUMP_BIN}" >&2
   exit 1
 fi
-echo "[test] build OK"
+echo "[test] binary OK (${CHUMP_BIN})"
 
 PASS=0
 FAIL=0

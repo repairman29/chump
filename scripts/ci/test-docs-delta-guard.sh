@@ -50,6 +50,7 @@ if [[ -f "$REPO_ROOT/scripts/git-hooks/commit-msg" ]]; then
     chmod +x "$SANDBOX/scripts/git-hooks/commit-msg"
 fi
 echo "# existing" > "$SANDBOX/docs/existing.md"
+cp "$REPO_ROOT/rust-toolchain.toml" "$SANDBOX/rust-toolchain.toml" 2>/dev/null || true
 cat > "$SANDBOX/Cargo.toml" <<'EOF'
 [package]
 name = "sandbox"

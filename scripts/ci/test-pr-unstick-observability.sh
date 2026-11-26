@@ -89,7 +89,7 @@ SHIM
 
 run_curator() {
   env \
-    PATH="$SHIM_DIR:/usr/bin:/bin" \
+    PATH="$SHIM_DIR:/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin" \
     CHUMP_AMBIENT_LOG="$AMB" \
     CHUMP_FLEET_STATE="$FS" \
     LOCK_DIR="$LOCK_DIR" \
@@ -103,7 +103,8 @@ pr_unstick_lines() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 1: success path — gap reserve succeeds. gh_calls + no failure_class.
+# Scenario 1: stuck PRs present — emits signal-only pr_unstick + pr_stuck_cluster
+# with gh_calls:1 and no failure_class (2026-07-26 anti-bloat contract).
 # ---------------------------------------------------------------------------
 setup
 base_chump_shim reserve_ok
@@ -112,45 +113,63 @@ run_curator
 
 LINE="$(pr_unstick_lines)"
 [[ -n "$LINE" ]] || fail "scenario1: no pr_unstick decision emitted"
-echo "$LINE" | grep -q '"action_taken":"filed INFRA-' \
-  || fail "scenario1: expected a filed-gap action_taken, got: $LINE"
+echo "$LINE" | grep -q '"action_taken":"signal-only' \
+  || fail "scenario1: expected signal-only action_taken, got: $LINE"
 echo "$LINE" | grep -q '"gh_calls":1' \
   || fail "scenario1: expected gh_calls:1, got: $LINE"
-ok "scenario1: success path emits gh_calls and files the gap"
+grep -q '"kind":"pr_stuck_cluster"' "$AMB" \
+  || fail "scenario1: expected pr_stuck_cluster ambient alert"
+ok "scenario1: stuck-PR path emits signal-only pr_unstick + pr_stuck_cluster with gh_calls"
 teardown
 
 # ---------------------------------------------------------------------------
-# Scenario 2: gap-reserve PERMANENT failure — failure_class=permanent.
+# Scenario 2: gh pr list PERMANENT failure — failure_class=permanent.
 # ---------------------------------------------------------------------------
 setup
-base_chump_shim reserve_permanent
-gh_shim_stuck
+base_chump_shim reserve_ok
+cat > "$SHIM_DIR/gh" <<'SHIM'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "pr list" ]]; then
+  echo "HTTP 401: Bad credentials" >&2
+  exit 1
+fi
+exit 0
+SHIM
+chmod +x "$SHIM_DIR/gh"
 run_curator
 
 LINE="$(pr_unstick_lines)"
 [[ -n "$LINE" ]] || fail "scenario2: no pr_unstick decision emitted"
-echo "$LINE" | grep -q '"action_taken":"error: chump gap reserve failed"' \
-  || fail "scenario2: expected gap-reserve failure action_taken, got: $LINE"
+echo "$LINE" | grep -q '"action_taken":"error: gh pr list rc=' \
+  || fail "scenario2: expected gh-pr-list error action_taken, got: $LINE"
 echo "$LINE" | grep -q '"failure_class":"permanent"' \
   || fail "scenario2: expected failure_class:permanent, got: $LINE"
 echo "$LINE" | grep -q '"gh_calls":1' \
   || fail "scenario2: expected gh_calls:1, got: $LINE"
-ok "scenario2: gap-reserve permanent failure classified correctly"
+ok "scenario2: gh pr list permanent failure classified correctly"
 teardown
 
 # ---------------------------------------------------------------------------
-# Scenario 3: gap-reserve TRANSIENT failure — failure_class=transient.
+# Scenario 3: gh pr list TRANSIENT failure (connection reset) — failure_class=transient.
 # ---------------------------------------------------------------------------
 setup
-base_chump_shim reserve_transient
-gh_shim_stuck
+base_chump_shim reserve_ok
+cat > "$SHIM_DIR/gh" <<'SHIM'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "pr list" ]]; then
+  echo "error: connection reset by peer" >&2
+  exit 1
+fi
+exit 0
+SHIM
+chmod +x "$SHIM_DIR/gh"
 run_curator
 
 LINE="$(pr_unstick_lines)"
 [[ -n "$LINE" ]] || fail "scenario3: no pr_unstick decision emitted"
 echo "$LINE" | grep -q '"failure_class":"transient"' \
   || fail "scenario3: expected failure_class:transient, got: $LINE"
-ok "scenario3: gap-reserve transient failure (connection reset) classified correctly"
+ok "scenario3: gh pr list transient failure (connection reset) classified correctly"
 teardown
 
 # ---------------------------------------------------------------------------

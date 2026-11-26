@@ -42,7 +42,7 @@ fi
 # commits into open PR branches (#3007/#3006/#2975) when preflight ran on
 # every push. Refuse to run from a `chump/*-claim` branch or when leases
 # are active — the cheapest correct fix. Bypass: CHUMP_AC_GATE_TEST_FORCE=1.
-if [[ "${CHUMP_AC_GATE_TEST_FORCE:-0}" != "1" ]]; then
+if [[ "${CHUMP_AC_GATE_TEST_FORCE:-0}" != "1" && "${CHUMP_CENSUS_IN_PROGRESS:-0}" != "1" ]]; then
     _curr_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
     case "$_curr_branch" in
         chump/*-claim)

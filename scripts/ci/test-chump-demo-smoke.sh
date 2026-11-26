@@ -16,10 +16,16 @@ trap 'rm -rf "$TMP"' EXIT
 
 find_bin() {
   local name="$1"
-  if [[ -n "${CARGO_TARGET_DIR:-}" ]] && [[ -x "$CARGO_TARGET_DIR/debug/$name" ]]; then
+  if [[ "$name" == "chump" && -n "${CHUMP_BIN:-}" && -x "${CHUMP_BIN}" ]]; then
+    echo "$CHUMP_BIN"
+  elif [[ -n "${CARGO_TARGET_DIR:-}" ]] && [[ -x "$CARGO_TARGET_DIR/debug/$name" ]]; then
     echo "$CARGO_TARGET_DIR/debug/$name"
+  elif [[ -n "${CARGO_TARGET_DIR:-}" ]] && [[ -x "$CARGO_TARGET_DIR/release/$name" ]]; then
+    echo "$CARGO_TARGET_DIR/release/$name"
   elif [[ -x "$ROOT/target/debug/$name" ]]; then
     echo "$ROOT/target/debug/$name"
+  elif [[ -x "$ROOT/target/release/$name" ]]; then
+    echo "$ROOT/target/release/$name"
   fi
 }
 
@@ -29,19 +35,20 @@ if [[ -z "$CHUMP" ]] || [[ -z "$DEMO" ]]; then
   echo "test-chump-demo-smoke: building chump + chump-demo …" >&2
   if ! command -v cargo >/dev/null 2>&1; then
     echo "  SKIP: cargo not on PATH" >&2
-    exit 0
+    exit 77
   fi
-  cargo build -q --bin chump --bin chump-demo 2>&1 || {
-    echo "  SKIP: cargo build failed" >&2
-    exit 0
+  cargo build -q -p chump --bin chump -p chump-demo --bin chump-demo 2>&1 || {
+    echo "  FAIL: cargo build failed" >&2
+    exit 1
   }
   CHUMP="$(find_bin chump)"
   DEMO="$(find_bin chump-demo)"
   if [[ -z "$CHUMP" ]] || [[ -z "$DEMO" ]]; then
-    echo "  SKIP: binaries still missing after cargo build" >&2
-    exit 0
+    echo "  FAIL: binaries still missing after cargo build" >&2
+    exit 1
   fi
 fi
+export PATH="$(dirname "$DEMO"):$PATH"
 
 fail=0
 

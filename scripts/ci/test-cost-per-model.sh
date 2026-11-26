@@ -56,8 +56,8 @@ if ! grep -q "model_id: groq-llama-3.3-70b-versatile" docs/pricing/model_rates.y
     exit 1
 fi
 
-if ! grep -q "model_id: deepseek" docs/pricing/model_rates.yaml; then
-    echo "FAIL: deepseek not found in model_rates.yaml"
+if ! grep -qE "model_id: (together-)?deepseek" docs/pricing/model_rates.yaml; then
+    echo "FAIL: deepseek entry not found in model_rates.yaml"
     exit 1
 fi
 

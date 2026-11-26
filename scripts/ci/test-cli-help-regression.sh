@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GOLDEN="$REPO_ROOT/crates/chump-preflight/tests/help-golden.txt"
 
-CHUMP="${REPO_ROOT}/target/debug/chump"
+CHUMP="${CHUMP_BIN:-${REPO_ROOT}/target/debug/chump}"
 if [[ ! -x "$CHUMP" ]]; then
     CHUMP="${HOME}/.cargo/bin/chump"
 fi

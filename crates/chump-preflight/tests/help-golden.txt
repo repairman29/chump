@@ -18,6 +18,14 @@ OPTIONS:
                     --scope all + --with-tests, then runs every audit.yml test
                     script that is locally-safe (auto-skips network/gh gates).
                     Slower, but one local pass replaces a ~20-min CI round-trip.
+    --structural    RESILIENT-1622: run ONLY the structural (no-build,
+                    scripts-scope) subset — census-shrink-only, preflight-ci-
+                    parity, env-var-coverage, event-registry-audit, path-filter-
+                    coverage, no-new-bypass-env-vars, raw-gh-lint. No cargo
+                    compile; budget <30s warm. bot-merge.sh runs this before
+                    push and the bot-merge pre-push hook runs it (INFRA-3521
+                    narrowed) so the structural CI-fail classes are caught
+                    locally instead of costing a CI round + repair dispatch.
     --keep-going    Don't exit on the first failure; run all gates
     --json          Emit one JSON object per gate to stdout (machine-readable)
     --pre-commit    Enable pre-commit-only gates (docs-delta-trailer audit

@@ -64,8 +64,8 @@ fi
 CARGO_OUTPUT=""
 if command -v cargo >/dev/null 2>&1 && [[ -f "$REPO_ROOT/Cargo.toml" ]]; then
     echo ""
-    echo "  [running cargo test orchestrate ...]"
-    CARGO_OUTPUT="$(cd "$REPO_ROOT" && cargo test orchestrate 2>&1)" || true
+    echo "  [running cargo test -p chump --bin chump orchestrate ...]"
+    CARGO_OUTPUT="$(cd "$REPO_ROOT" && cargo test -p chump --bin chump orchestrate 2>&1)" || true
     echo "$CARGO_OUTPUT" | grep -E "^test .* (ok|FAILED|ignored)" | sed 's/^/    /'
 fi
 

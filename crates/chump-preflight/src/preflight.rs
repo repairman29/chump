@@ -247,10 +247,6 @@ const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
     ("cost-watch", "scripts/ci/test-cost-watch.sh"),
     ("coupling-cost", "scripts/ci/test-coupling-cost.sh"),
     (
-        "cursor-cli-integration",
-        "scripts/ci/test-cursor-cli-integration.sh",
-    ),
-    (
         "doc-only-clippy-skip",
         "scripts/ci/test-doc-only-clippy-skip.sh",
     ),

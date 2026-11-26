@@ -266,3 +266,5 @@ Counts at audit time:
 - 16 pre-commit hook siblings (1 orchestrator + 15 siblings)
 - 1 pre-push hook (1291 lines)
 - ~70% admin-merge bypass rate this week (operator-reported, evidence triangulated from `bot_merge_bypassed` ambient + `--admin` in commit subjects)
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->

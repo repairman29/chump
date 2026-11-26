@@ -427,3 +427,5 @@ Roughly:
 - **Phase 3 default-on docs + flag flip**: ~2 hrs (after sampling validates)
 
 **Total to Phase 1 dry-run: ~3 working sessions (~12 hrs).** Most slices ship as parallelizable Sonnet dispatches once the umbrella is decomposed.
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->

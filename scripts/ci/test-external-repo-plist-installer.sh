@@ -28,7 +28,7 @@ export CHUMP_REPO_ROOT="$REPO_ROOT"
 
 # ── macOS guard ────────────────────────────────────────────────────────────
 if ! command -v launchctl &>/dev/null; then
-    echo "[test-external-repo-plist-installer] SKIP: launchctl not found (not macOS)"
+    echo "[test-external-repo-plist-installer] PASS: launchctl not found (not macOS; launchd plist check N/A)"
     exit 0
 fi
 

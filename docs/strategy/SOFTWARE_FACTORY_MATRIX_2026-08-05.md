@@ -153,3 +153,5 @@ _Filed 2026-08-05 under DOC-079. Companion gaps: EFFECTIVE-356/357/358.
 §4 scope note filed 2026-09-03 under CREDIBLE-231; see also
 [`docs/strategy/RUN_THE_BUSINESS_2026-08-09.md`](./RUN_THE_BUSINESS_2026-08-09.md)
 and [`docs/strategy/FACTORY_ORG_MODEL_2026-08-08.md`](./FACTORY_ORG_MODEL_2026-08-08.md)._
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->
