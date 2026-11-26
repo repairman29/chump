@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chump Documentation — 60-Second Quickstart, CLI &amp; Config Reference</title>
+  <meta name="description" content="Install Chump v1.0, initialize file leases and git hooks, configure model failover in ~/.chump/config.toml, and ship verified pull requests." />
+  <meta property="og:title" content="Chump Documentation — Quickstart &amp; Operator Reference" />
+  <meta property="og:description" content="Practical quickstart, CLI command sheet, ~/.chump/config.toml reference, and safety guardrails for Chump v1.0." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" type="image/svg+xml" href="../icon.svg" />
+  <link rel="stylesheet" href="../assets/site.css" />
+</head>
+<body>
+  <chump-site-header pillar="docs" page="docs" base=".."></chump-site-header>
+
+  <main>
+    <section class="arch-band">
+      <div class="arch-grid-frame section-pad">
+        <div class="eyebrow"><span class="eyebrow-dot"></span>Operator Quickstart &amp; Reference · Runtime v1.0.0</div>
+        <h1 class="display-h1" style="max-width:22ch;">
+          Go from install to collision-free parallel agents <span class="muted-tail">in 60 seconds.</span>
+        </h1>
+        <p class="lede" style="max-width:64ch;">
+          Everything runs locally inside your repository and <code>~/.chump/</code>. Follow the three steps below to protect your branches, connect your existing AI subscriptions or local GPU models, and coordinate parallel agents safely.
+        </p>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <a class="btn btn-dark" href="#quickstart">1. 60-Second Quickstart</a>
+          <a class="btn btn-stone" href="#cli-reference">2. Daily CLI Sheet</a>
+          <a class="btn btn-stone" href="#config-reference">3. config.toml Reference</a>
+          <a class="btn btn-bronze" href="https://repairman29.github.io/chump/docs/" target="_blank" rel="noopener">Full Searchable Reference ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="arch-band" id="quickstart">
+      <div class="arch-grid-frame section-pad">
+        <div style="max-width:64ch; margin-bottom:28px;">
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Step-by-Step Setup</div>
+          <h2 class="display-h2">
+            Three commands to initialize any repository.
+          </h2>
+        </div>
+
+        <div class="bento-3">
+          <article class="bento-card">
+            <div>
+              <span class="pill pill-sage" style="margin-bottom:12px;">STEP 01 · INSTALL</span>
+              <h3 class="display-h3">Install the Single Rust Binary</h3>
+              <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 16px;">
+                Install via Homebrew on macOS, the standalone release script on Linux, or Cargo on Windows, Linux, and macOS.
+              </p>
+            </div>
+            <pre class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px; line-height:1.6; overflow-x:auto;"># macOS (Homebrew)
+brew tap repairman29/chump &amp;&amp; brew install chump
+
+# Linux (prebuilt release)
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh
+
+# Any OS via Rust Cargo
+cargo install --git https://github.com/repairman29/chump chump --locked</pre>
+          </article>
+
+          <article class="bento-card">
+            <div>
+              <span class="pill pill-bronze" style="margin-bottom:12px;">STEP 02 · PROTECT REPO</span>
+              <h3 class="display-h3">Initialize State &amp; Lease Hooks</h3>
+              <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 16px;">
+                Creates <code>.chump/state.db</code> (SQLite WAL) and installs native Rust <code>pre-commit</code> and <code>pre-push</code> guards that stop sibling agents from overwriting leased files or leaking secrets.
+              </p>
+            </div>
+            <pre class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px; line-height:1.6; overflow-x:auto;">cd /path/to/your-repo
+chump init --yes
+chump hook install &amp;&amp; chump hook status</pre>
+          </article>
+
+          <article class="bento-card">
+            <div>
+              <span class="pill pill-sky" style="margin-bottom:12px;">STEP 03 · CONNECT MODELS</span>
+              <h3 class="display-h3">Validate Auth &amp; Launch Cockpit</h3>
+              <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 16px;">
+                Generate a starter <code>~/.chump/config.toml</code> with <code>0600</code> permissions, verify your model slots, and start the supervisor or local web cockpit.
+              </p>
+            </div>
+            <pre class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px; line-height:1.6; overflow-x:auto;">chump config init &amp;&amp; chump config validate
+chump service install &amp;&amp; chump up
+chump --web --port 18440</pre>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="arch-band" id="cli-reference">
+      <div class="arch-grid-frame section-pad">
+        <div style="max-width:64ch; margin-bottom:24px;">
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Daily Workflow</div>
+          <h2 class="display-h2">
+            Essential CLI commands. <span class="muted-tail">Local-first and scriptable.</span>
+          </h2>
+        </div>
+
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:34%;">Command</th>
+                <th>What It Does</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">chump gap reserve --domain INFRA --title "Fix flaky test" --effort s</td>
+                <td>Reserves a tracked task in <code>.chump/state.db</code> so parallel agents never pick duplicate work.</td>
+              </tr>
+              <tr>
+                <td class="mono">chump claim INFRA-001 --role target --paths "src/auth.rs"</td>
+                <td>Atomically acquires a TTL file or symbol lease and creates an isolated git worktree + branch.</td>
+              </tr>
+              <tr>
+                <td class="mono">chump preflight</td>
+                <td>Runs formatting, clippy, compile checks, and scoped tests locally in under 60s before pushing.</td>
+              </tr>
+              <tr>
+                <td class="mono">chump ship --gap INFRA-001 --mode manual</td>
+                <td>Pushes the leased branch, opens a pull request, and blocks auto-merge if CI or hook files were touched.</td>
+              </tr>
+              <tr>
+                <td class="mono">chump onboard owner/repo --apply</td>
+                <td>Scans an external repository, identifies concrete engineering tasks with file citations, and seeds the queue.</td>
+              </tr>
+              <tr>
+                <td class="mono">chump improve owner/repo --apply</td>
+                <td>Runs the 4-stage autonomous loop: pick task, deduplicate, implement in an isolated worktree, and verify-merge.</td>
+              </tr>
+              <tr>
+                <td class="mono">chump external verify-merge --pr 42 --repo owner/repo --gap INFRA-001</td>
+                <td>Verifies GitHub CI is green and proves the PR's new test fails on base and passes on head before merge.</td>
+              </tr>
+              <tr>
+                <td class="mono">chump fleet level 0</td>
+                <td>Fail-closed hardware kill-switch (<code>0</code> = immediate stop, <code>1–3</code> = supervised, <code>4–5</code> = autonomous).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="arch-band" id="config-reference">
+      <div class="arch-grid-frame section-pad">
+        <div class="bento-2" style="display:grid; grid-template-columns: 1.15fr 0.85fr; gap:24px; align-items:start;">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span>Schema-Validated Configuration</div>
+            <h2 class="display-h2">
+              Example <code>~/.chump/config.toml</code>
+            </h2>
+            <p style="color:var(--stone-muted); font-size:15px; margin:0 0 18px;">
+              Validate any edit with <code>chump config validate</code>, or paste an existing <code>.env</code> file into <a href="../tools/config-doctor/" style="text-decoration:underline;">Config Doctor</a> to generate a clean configuration in the browser.
+            </p>
+            <pre class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:12px; line-height:1.6; overflow-x:auto;">[auth]
+mode = "auto"
+
+[fleet]
+mode = "grind"
+desired_workers = 4
+harness = "claude"
+disk_floor_gb = 5.0
+auto_merge = false
+
+[web]
+bind_addr = "127.0.0.1"
+port = 18440
+
+[[providers]]
+name = "gemini-primary"
+enabled = true
+tier = "cloud"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+api_key_env = "GEMINI_API_KEY"
+model = "gemini-2.5-flash"
+priority = 10
+rpm_limit = 360
+
+[[providers]]
+name = "ollama-local-floor"
+enabled = true
+tier = "local"
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5-coder:14b"
+priority = 20</pre>
+          </div>
+
+          <div class="bento-card">
+            <div>
+              <span class="pill pill-plum" style="margin-bottom:12px;">DEEP-DIVE GUIDES</span>
+              <h3 class="display-h3">Explore Subsystem Playbooks</h3>
+              <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 18px;">
+                Interactive walkthroughs and architecture references across the suite:
+              </p>
+              <ul style="list-style:none; padding:0; margin:0 0 22px; display:grid; gap:10px; font-size:14.5px;">
+                <li><a href="../fleet/" style="text-decoration:underline;">File Leases, Worktrees &amp; Gate-File Firewall →</a></li>
+                <li><a href="../cascade/" style="text-decoration:underline;">40-Slot Model Failover &amp; Subscription Auth →</a></li>
+                <li><a href="../tools/fleet-simulator/" style="text-decoration:underline;">Interactive Fleet Throughput &amp; Cost Simulator →</a></li>
+                <li><a href="../tools/config-doctor/" style="text-decoration:underline;">Interactive Config &amp; Failover Doctor →</a></li>
+                <li><a href="../pricing/" style="text-decoration:underline;">Cloud-Agent TCO Calculator &amp; Open-Source Licensing →</a></li>
+              </ul>
+            </div>
+            <a class="btn btn-dark" href="https://repairman29.github.io/chump/docs/" target="_blank" rel="noopener">
+              Open Full Searchable Architecture Docs ↗
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <chump-site-footer base=".."></chump-site-footer>
+  <chump-install-modal base=".."></chump-install-modal>
+
+  <script src="../assets/site.js"></script>
+</body>
+</html>

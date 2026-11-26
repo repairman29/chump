@@ -25,6 +25,7 @@ const SITE_PAGES: &[&str] = &[
     "web/site/index.html",
     "web/site/fleet/index.html",
     "web/site/cascade/index.html",
+    "web/site/docs/index.html",
     "web/site/tools/fleet-simulator/index.html",
     "web/site/tools/config-doctor/index.html",
     "web/site/pricing/index.html",
@@ -52,6 +53,10 @@ fn all_product_pages_have_complete_meta_and_portable_shell() {
     assert!(root.join("web/site/assets/site.css").is_file());
     assert!(root.join("web/site/assets/site.js").is_file());
     assert!(root.join("web/site/icon.svg").is_file());
+    assert!(
+        root.join("web/docs/index.html").is_file(),
+        "web/docs/index.html must exist so /docs/ on local chump --web redirects cleanly to /site/docs/"
+    );
 
     for rel in SITE_PAGES {
         let path = root.join(rel);
@@ -101,14 +106,6 @@ fn internal_relative_site_links_resolve_to_existing_targets() {
         for cap in href_re.captures_iter(&html) {
             let href = &cap[1];
             let candidate = page_dir.join(href);
-            // `./docs/` or `../docs/` is assembled by `.github/workflows/docs-pages.yml` from `docs/README.md`.
-            if href.ends_with("/docs/") || href == "./docs/" {
-                assert!(
-                    root.join("docs/README.md").is_file(),
-                    "docs/README.md must exist for {href} in {rel}"
-                );
-                continue;
-            }
             let exists = candidate.is_file() || candidate.join("index.html").is_file();
             assert!(
                 exists,
