@@ -668,6 +668,52 @@ html[data-theme="dark"] .btn-dark {
   background: var(--stone-inset);
 }
 
+.copy-chip[data-copied="true"] {
+  border-color: var(--stone-sage);
+  color: var(--stone-sage);
+  font-weight: 600;
+}
+
+.mobile-menu-btn {
+  display: none;
+  border: 1px solid var(--stone-rule-strong);
+  background: var(--stone-card);
+  color: var(--stone-ink);
+  border-radius: var(--radius-pill);
+  padding: 7px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mobile-nav-drawer {
+  display: none;
+  border-top: 1px solid var(--stone-rule);
+  background: var(--stone-card);
+  padding: 12px clamp(18px, 3.5vw, 40px) 16px;
+}
+
+.mobile-nav-drawer[data-open="true"] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mobile-nav-drawer a {
+  padding: 9px 12px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--stone-rule);
+  background: var(--stone-elevated);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--stone-ink);
+}
+
+.mobile-nav-drawer a:hover {
+  background: var(--stone-inset);
+}
+
 /* ── Telemetry Strip ─────────────────────────────────────────────────────── */
 
 .telemetry-strip {
@@ -1134,5 +1180,13 @@ html[data-theme="dark"] .btn-dark {
   }
   .nav-links {
     display: none;
+  }
+  .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .mobile-nav-drawer[data-open="true"] {
+    grid-template-columns: 1fr;
   }
 }

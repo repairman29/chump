@@ -1,14 +1,24 @@
-site_name: Chump Doctrine
-site_description: The Chump agent-fleet doctrine corpus — process, architecture, and design docs.
+site_name: Chump Documentation
+site_description: Operator guide, CLI reference, multi-agent file leases, model cascade, and Rust architecture for Chump v1.0.
+repo_url: https://github.com/repairman29/chump
 docs_dir: docs
 site_dir: site
 
 theme:
   name: material
   palette:
+    - scheme: default
+      primary: custom
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
     - scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: black
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - navigation.instant
     - navigation.sections
@@ -30,3 +40,21 @@ markdown_extensions:
 
 exclude_docs: |
   proprietary/**
+  gaps/**
+  archive/**
+  audits/**
+  audit/**
+  investigations/**
+  syntheses/**
+  baselines/**
+  test-fixtures/**
+  design-pass/**
+  outreach/**
+  marketing/**
+  RED_LETTER.md
+  operations/OOPS.md
+  *-NOTES.md
+  *-NOTES-*.md
+  *_design.md
+  *_score.md
+  _inventory.csv

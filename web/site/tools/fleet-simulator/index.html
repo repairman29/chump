@@ -9,19 +9,22 @@
   <meta property="og:site_name" content="Chump" />
   <meta property="og:title" content="Chump Fleet Throughput &amp; Cost Sankey Simulator" />
   <meta property="og:description" content="Model concurrent coding agents, merge-stomp prevention, and local GPU offload in real time." />
-  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../../icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/site/assets/site.css" />
+  <link rel="stylesheet" href="../../assets/site.css" />
   <style>
     .sim-workspace {
       display: grid;
-      grid-template-columns: 280px 1fr 310px;
+      grid-template-columns: minmax(250px, 280px) minmax(0, 1fr) minmax(260px, 310px);
       min-height: calc(100vh - 110px);
       border-bottom: 1px solid var(--stone-rule);
+      max-width: 100%;
+      overflow-x: hidden;
     }
     .sim-sidebar {
+      min-width: 0;
       border-right: 1px solid var(--stone-rule);
       background: var(--stone-elevated);
       padding: 20px 18px;
@@ -31,21 +34,24 @@
       gap: 20px;
     }
     .sim-canvas {
-      padding: 24px clamp(18px, 3vw, 34px);
+      min-width: 0;
+      padding: 24px clamp(16px, 2.5vw, 32px);
       background: var(--stone-canvas);
     }
     .sim-inspector {
+      min-width: 0;
       border-left: 1px solid var(--stone-rule);
       background: var(--stone-card);
       padding: 20px 18px;
     }
     .sim-kpi-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
       margin-bottom: 20px;
     }
     .sim-kpi {
+      min-width: 0;
       background: var(--stone-card);
       border: 1px solid var(--stone-rule);
       border-radius: var(--radius-md);
@@ -79,7 +85,7 @@
       width: 100%;
       accent-color: var(--stone-bronze);
     }
-    @media (max-width: 1120px) {
+    @media (max-width: 1200px) {
       .sim-workspace {
         grid-template-columns: 1fr;
       }
@@ -95,10 +101,15 @@
         grid-template-columns: 1fr 1fr;
       }
     }
+    @media (max-width: 560px) {
+      .sim-kpi-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
-  <chump-site-header pillar="tools" page="simulator" base="/site"></chump-site-header>
+  <chump-site-header pillar="tools" page="simulator" base="../.."></chump-site-header>
 
   <main class="sim-workspace">
     <!-- ── Left Sidebar: Presets & Workstream Mix ────────────────────────── -->
@@ -178,7 +189,7 @@
       <!-- Live SVG Sankey Flow Diagram -->
       <div class="app-window" style="margin-bottom:20px;">
         <div class="app-window-bar">
-          <span>Weekly Task &amp; Compute Flow (Pre-Dispatch → Routing Tier → Merge Outcome)</span>
+          <span>Weekly Task &amp; Compute Flow (Backlog → Routing Tier → Merge Outcome)</span>
           <span class="mono" id="sankey-subtitle">95 tasks/wk</span>
         </div>
         <div style="padding:18px; background:var(--stone-card);">
@@ -285,10 +296,10 @@
     </aside>
   </main>
 
-  <chump-site-footer base="/site"></chump-site-footer>
-  <chump-install-modal></chump-install-modal>
+  <chump-site-footer base="../.."></chump-site-footer>
+  <chump-install-modal base="../.."></chump-install-modal>
 
-  <script src="/site/assets/site.js"></script>
+  <script src="../../assets/site.js"></script>
   <script>
     (function () {
       const presets = [
@@ -318,7 +329,7 @@
         },
         {
           id: "airgap12",
-          label: "Sovereign Air-Gap · 12 Agents vLLM",
+          label: "Offline Air-Gap · 12 Agents vLLM",
           sub: "100% local GPU · $0 cloud",
           agents: 12,
           tasks: 140,
@@ -417,7 +428,6 @@
         document.getElementById("val-unitcost").textContent = "$" + unitCost.toFixed(2);
         document.getElementById("val-ram").textContent = ram + " GB";
 
-        /* Pairwise collision rate grows with concurrency and hotspot overlap */
         const concurrencyFactor = agents <= 1 ? 0 : 1 - Math.pow(1 - overlap * 0.32, agents - 1);
         const rawCollisionFraction = Math.min(0.62, concurrencyFactor * 0.78);
 
@@ -438,7 +448,6 @@
         const localTasksWk = Math.round(tasks * offload);
         const cloudTasksWk = tasks - localTasksWk;
 
-        /* Unleased collisions waste extra cloud retries */
         const retryMultiplier = leases ? 1.04 : 1 + rawCollisionFraction * 0.65;
         const monthlySpend = cloudTasksWk * unitCost * retryMultiplier * 4.33;
         const allCloudBaseline = tasks * unitCost * (1 + rawCollisionFraction * 0.65) * 4.33;
@@ -478,8 +487,6 @@
         const scale = 150 / Math.max(tasks, 1);
         const wLocal = Math.max(6, localTasksWk * scale);
         const wCloud = Math.max(6, cloudTasksWk * scale);
-        const wMerged = Math.max(8, netMergedWk * scale);
-        const wWaste = Math.max(4, (tasks - netMergedWk) * scale);
 
         const localToMerged = Math.max(4, wLocal * (1 - residualWasteFrac));
         const cloudToMerged = Math.max(4, wCloud * (1 - residualWasteFrac));
@@ -488,23 +495,19 @@
 
         const svg = document.getElementById("sankey-svg");
         svg.innerHTML = `
-          <!-- Left -> Middle ribbons -->
           <path d="${ribbonPath(165, 100, 360, 78)}" fill="none" stroke="var(--stone-sage)" stroke-opacity="0.32" stroke-width="${wLocal}" />
           <path d="${ribbonPath(165, 165, 360, 192)}" fill="none" stroke="var(--stone-bronze)" stroke-opacity="0.32" stroke-width="${wCloud}" />
 
-          <!-- Middle -> Right ribbons -->
           <path d="${ribbonPath(465, 74, 655, 86)}" fill="none" stroke="var(--stone-sage)" stroke-opacity="0.38" stroke-width="${localToMerged}" />
           <path d="${ribbonPath(465, 186, 655, 126)}" fill="none" stroke="var(--stone-bronze)" stroke-opacity="0.38" stroke-width="${cloudToMerged}" />
           <path d="${ribbonPath(465, 96, 655, 212)}" fill="none" stroke="var(--stone-coral)" stroke-opacity="0.28" stroke-width="${localToWaste}" />
           <path d="${ribbonPath(465, 206, 655, 224)}" fill="none" stroke="var(--stone-coral)" stroke-opacity="0.36" stroke-width="${cloudToWaste}" />
 
-          <!-- Left Node: Backlog -->
           <rect x="24" y="54" width="140" height="162" rx="10" fill="var(--stone-elevated)" stroke="var(--stone-rule-strong)" />
           <text x="94" y="122" text-anchor="middle" fill="var(--stone-faint)" font-family="IBM Plex Mono, monospace" font-size="10">WEEKLY QUEUE</text>
-          <text x="94" y="146" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="18" font-weight="600">${tasks} gaps</text>
+          <text x="94" y="146" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="18" font-weight="600">${tasks} tasks</text>
           <text x="94" y="166" text-anchor="middle" fill="var(--stone-muted)" font-family="Inter, sans-serif" font-size="11">${agents} workers</text>
 
-          <!-- Middle Nodes: Routing -->
           <rect x="360" y="34" width="106" height="88" rx="10" fill="var(--stone-sage-tint)" stroke="var(--stone-sage)" />
           <text x="413" y="68" text-anchor="middle" fill="var(--stone-sage)" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">$0 LOCAL / OAUTH</text>
           <text x="413" y="92" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="15" font-weight="600">${localTasksWk}/wk</text>
@@ -513,7 +516,6 @@
           <text x="413" y="182" text-anchor="middle" fill="var(--stone-bronze-deep)" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">METERED CLOUD</text>
           <text x="413" y="206" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="15" font-weight="600">${cloudTasksWk}/wk</text>
 
-          <!-- Right Nodes: Outcomes -->
           <rect x="655" y="42" width="142" height="122" rx="10" fill="var(--stone-card)" stroke="var(--stone-sage)" stroke-width="2" />
           <text x="726" y="88" text-anchor="middle" fill="var(--stone-sage)" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">MERGED CLEAN</text>
           <text x="726" y="114" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="19" font-weight="600">${netMergedWk} PRs</text>
@@ -524,7 +526,6 @@
           <text x="726" y="229" text-anchor="middle" fill="var(--stone-ink)" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600">${tasks - netMergedWk} tasks</text>
         `;
 
-        /* Pro-Forma Table */
         const streams = [
           { name: "Core Implementation", share: 0.35 },
           { name: "Bug & CI Repairs", share: 0.30 },
@@ -562,7 +563,35 @@
       document.getElementById("sim-copy-toml").addEventListener("click", (e) => {
         const ram = Number(elRam.value);
         const safeJobs = ram <= 8 ? 1 : ram <= 16 ? 2 : ram <= 32 ? 4 : 8;
-        const toml = `# Generated from Chump Fleet Sankey Modeller\nauth_mode = "auto"\nfleet_mode = "grind"\ndesired_workers = ${elAgents.value}\ncargo_build_jobs = ${safeJobs}\nlease_firewall = ${elLeases.checked}\nlocal_offload_target_pct = ${elOffload.value}\n`;
+        const toml =
+`# Generated from Chump Fleet Sankey Modeller (passes 'chump config validate')
+[auth]
+mode = "auto"
+
+[fleet]
+mode = "grind"
+desired_workers = ${elAgents.value}
+harness = "claude"
+disk_floor_gb = 5.0
+auto_merge = true
+
+[web]
+bind_addr = "127.0.0.1"
+port = 3847
+
+[settings]
+CARGO_BUILD_JOBS = ${safeJobs}
+LEASE_FIREWALL = ${elLeases.checked}
+LOCAL_OFFLOAD_TARGET_PCT = ${elOffload.value}
+
+[[providers]]
+name = "local-ollama-floor"
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5-coder:14b"
+priority = 20
+tier = "local"
+enabled = true
+`;
         window.ChumpSite.copyText(toml, e.currentTarget);
       });
 

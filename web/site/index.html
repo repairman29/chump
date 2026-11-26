@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chump — Autonomous Code Fleets for Sovereign Hardware</title>
-  <meta name="description" content="Coordinate 2 to 24 coding agents on one repository without file stomps or runaway API bills. Atomic SQLite file leases, a 40-slot model cascade, and a Rust merge firewall on macOS, Linux, and Windows." />
+  <title>Chump — Run 10 Coding Agents on One Repo Without Merge Stomps</title>
+  <meta name="description" content="Open-source Rust multi-agent coordinator for Claude Code, Codex, OpenCode, Aider, and Ollama. Sub-2ms pre-commit file leases, isolated git worktrees, and 40-slot model failover on macOS, Linux, and Windows." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Chump" />
-  <meta property="og:title" content="Chump — Autonomous Code Fleets for Sovereign Hardware" />
-  <meta property="og:description" content="Running one coding agent is easy. Running ten on the same repo without them clobbering each other is the unsolved problem. Chump is the Rust coordinator that solves it." />
-  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="Chump — Run 10 Coding Agents on One Repo Without Merge Stomps" />
+  <meta property="og:description" content="Wrap Claude Code, Codex, OpenCode, Aider, and local Ollama in isolated git worktrees, atomic file leases, and automatic HTTP 429 failover on hardware you own." />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/site/assets/site.css" />
+  <link rel="stylesheet" href="./assets/site.css" />
 </head>
 <body>
-  <chump-site-header pillar="overview" page="overview" base="/site"></chump-site-header>
+  <chump-site-header pillar="overview" page="overview" base="."></chump-site-header>
 
   <main>
     <!-- ── 1. Architectural 1px-Grid Hero ────────────────────────────────── -->
@@ -26,13 +26,13 @@
           <div class="hero-copy-col">
             <div class="eyebrow">
               <span class="eyebrow-dot"></span>
-              <span>Chump Universal v1.0 · macOS · Linux · Windows</span>
+              <span>Open-Source Rust CLI (v1.0) · Works with Claude Code, Codex, OpenCode, Aider &amp; Ollama</span>
             </div>
             <h1 class="display-h1">
-              Autonomous code fleets, <span class="muted-tail">structured for sovereign hardware.</span>
+              Run 10 coding agents on one repo—<span class="muted-tail">without merge stomps or runaway API bills.</span>
             </h1>
             <p class="lede">
-              Running one coding agent is easy. Running ten on the same repository without overwritten files, duplicate pull requests, or surprise API bills takes a real coordination layer. Chump gives every agent an atomic file lease, an isolated git worktree, and a 40-slot model cascade on hardware you own.
+              Running one coding agent is easy. Running five in parallel turns into overwritten files, HTTP 429 stalls, and $500/seat cloud VMs. Chump wraps the agents you already use in isolated git worktrees, a sub-2ms pre-commit file-lease firewall, and automatic failover from flat-rate OAuth subscriptions to $0 local Ollama models.
             </p>
 
             <div class="install-box" aria-label="Quick install commands">
@@ -49,8 +49,9 @@
             </div>
 
             <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
-              <a class="btn btn-dark" href="/site/tools/fleet-simulator/">Model Your Fleet (Free Tool) →</a>
-              <a class="btn btn-stone" href="/site/fleet/">Explore Fleet Coordinator</a>
+              <a class="btn btn-dark" href="#quickstart">Get Started in 60 Seconds →</a>
+              <a class="btn btn-stone" href="./fleet/">See File-Lease Firewall</a>
+              <a class="mono" href="./tools/fleet-simulator/" style="font-size:12px; color:var(--stone-bronze-deep); text-decoration:underline; margin-left:4px;">Model cost &amp; throughput →</a>
             </div>
           </div>
 
@@ -58,35 +59,35 @@
             <canvas id="hero-lattice" class="lattice-canvas" aria-label="Interactive 3D fleet coordination lattice"></canvas>
             <div class="floating-telemetry pos-top">
               <span class="pill pill-bronze">LEASED</span>
-              <span>crates/chump-ship · session-1</span>
+              <span>src/auth.rs · claude-worker-1</span>
             </div>
             <div class="floating-telemetry pos-mid">
-              <span class="pill pill-sage">46 / 46</span>
-              <span>Win · Linux · macOS green</span>
+              <span class="pill pill-sage">BLOCKED STOMP</span>
+              <span>1.4ms pre-commit guard</span>
             </div>
             <div class="floating-telemetry pos-bot">
-              <span class="pill pill-sky">SLOT 4</span>
-              <span>Ollama Qwen-14B · $0.00 / tok</span>
+              <span class="pill pill-sky">FAILOVER</span>
+              <span>429 → Ollama Qwen-14B ($0.00)</span>
             </div>
           </div>
         </div>
 
         <div class="telemetry-strip">
           <div class="telemetry-cell">
-            <span class="telemetry-val">59 crates</span>
-            <span class="telemetry-lbl">Rust 2024 workspace</span>
+            <span class="telemetry-val">60 crates</span>
+            <span class="telemetry-lbl">Rust 2021 workspace</span>
           </div>
           <div class="telemetry-cell">
-            <span class="telemetry-val">14 public</span>
-            <span class="telemetry-lbl">Apache-2.0 libs on crates.io</span>
+            <span class="telemetry-val">13 Apache-2.0</span>
+            <span class="telemetry-lbl">Reusable workspace crates</span>
           </div>
           <div class="telemetry-cell">
-            <span class="telemetry-val">5,454</span>
-            <span class="telemetry-lbl">Automated nextest cases</span>
+            <span class="telemetry-val">5,450+</span>
+            <span class="telemetry-lbl">Automated Rust &amp; CI checks</span>
           </div>
           <div class="telemetry-cell">
             <span class="telemetry-val">40 slots</span>
-            <span class="telemetry-lbl">Thompson-sampled LLM cascade</span>
+            <span class="telemetry-lbl">Smart 429 &amp; cost failover</span>
           </div>
           <div class="telemetry-cell">
             <span class="telemetry-val">$0 seat tax</span>
@@ -96,18 +97,102 @@
       </div>
     </section>
 
+    <!-- ── 1.5. 60-Second Adoption Ladder & Before/After Contrast ────────── -->
+    <section class="arch-band" id="quickstart">
+      <div class="arch-grid-frame section-pad">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:28px;">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span>Adopt in Three Incremental Steps</div>
+            <h2 class="display-h2">
+              Keep your existing coding agents. <span class="muted-tail">Add guardrails in under a minute.</span>
+            </h2>
+          </div>
+          <a class="btn btn-stone btn-sm" href="./docs/">Full Operator Quickstart →</a>
+        </div>
+
+        <div class="bento-3" style="margin-bottom:26px;">
+          <article class="bento-card">
+            <div>
+              <span class="pill pill-sage" style="margin-bottom:12px;">STEP 1 · 5 SECONDS</span>
+              <h3 class="display-h3">Stop File Stomps &amp; Key Leaks</h3>
+              <p style="color:var(--stone-muted); font-size:14px; margin:0 0 14px;">
+                Install compiled Rust <code>pre-commit</code> and <code>pre-push</code> hooks inside any git repo. Parallel terminal tabs can no longer overwrite leased files or commit API keys.
+              </p>
+            </div>
+            <pre style="margin:0; padding:11px 13px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:12px; overflow-x:auto;"><code>$ chump hook install &amp;&amp; chump hook status</code></pre>
+          </article>
+
+          <article class="bento-card">
+            <div>
+              <span class="pill pill-bronze" style="margin-bottom:12px;">STEP 2 · 20 SECONDS</span>
+              <h3 class="display-h3">Pool OAuth, APIs &amp; Local Ollama</h3>
+              <p style="color:var(--stone-muted); font-size:14px; margin:0 0 14px;">
+                Scaffold <code>~/.chump/config.toml</code> to use flat-rate subscriptions first, fast cloud APIs second, and $0 local Ollama models whenever quotas trip.
+              </p>
+            </div>
+            <pre style="margin:0; padding:11px 13px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:12px; overflow-x:auto;"><code>$ chump config init &amp;&amp; chump config validate</code></pre>
+          </article>
+
+          <article class="bento-card">
+            <div>
+              <span class="pill pill-sky" style="margin-bottom:12px;">STEP 3 · 35 SECONDS</span>
+              <h3 class="display-h3">Supervise Parallel Worktrees</h3>
+              <p style="color:var(--stone-muted); font-size:14px; margin:0 0 14px;">
+                Start the native background daemon (<code>launchd</code>, <code>systemd --user</code>, or Windows Task Scheduler) and open the local web cockpit on port <code>3847</code>.
+              </p>
+            </div>
+            <pre style="margin:0; padding:11px 13px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:12px; overflow-x:auto;"><code>$ chump service install &amp;&amp; chump up</code></pre>
+          </article>
+        </div>
+
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:28%;">Failure Mode</th>
+                <th>5 Raw Agent Tabs (Without Chump)</th>
+                <th>Parallel Fleet Supervised by Chump</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Shared file edits</strong></td>
+                <td>Silent overwrites &amp; painful git rebase conflicts</td>
+                <td><span class="pill pill-sage">&lt; 2ms pre-commit path &amp; symbol lease block</span></td>
+              </tr>
+              <tr>
+                <td><strong>Upstream HTTP 429 / quota hit</strong></td>
+                <td>Mid-refactor crash or stalled terminal session</td>
+                <td><span class="pill pill-sage">Automatic failover across OAuth, 40 APIs &amp; Ollama</span></td>
+              </tr>
+              <tr>
+                <td><strong>Agent claims “Done!” early</strong></td>
+                <td>Unpushed branch, failing tests, or hallucinated merge</td>
+                <td><span class="pill pill-sage">Task closes only after verified commit on origin/main</span></td>
+              </tr>
+              <tr>
+                <td><strong>CI &amp; git hook tampering</strong></td>
+                <td>Agent weakens <code>.github/workflows/</code> to make CI pass</td>
+                <td><span class="pill pill-plum">Compile-time guard withholds auto-merge for human review</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- ── 2. Dual Subsystem Switcher + Interactive 3-Pane Preview ──────── -->
     <section class="arch-band" id="workspace-preview">
       <div class="arch-grid-frame section-pad">
         <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:28px;">
           <div>
-            <div class="eyebrow"><span class="eyebrow-dot"></span>Two Coordinated Subsystems</div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span>Two Coordinated Control Planes</div>
             <h2 class="display-h2">
-              One binary. <span class="muted-tail">Two compounding control planes.</span>
+              One Rust binary. <span class="muted-tail">Zero cloud middlemen.</span>
             </h2>
           </div>
           <p style="margin:0; color:var(--stone-muted); max-width:44ch; font-size:14.5px;">
-            Switch between <strong>Chump Fleet</strong> and <strong>Chump Cascade</strong> below, then click any task or provider slot inside the workspace to inspect live receipts.
+            Switch between <strong>Chump Fleet</strong> and <strong>Chump Cascade</strong> below, then click any active task or model slot inside the preview to inspect live receipts.
           </p>
         </div>
 
@@ -115,22 +200,22 @@
           <button type="button" class="pillar-card-btn" role="tab" data-suite-tab="fleet" aria-selected="true">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <span class="pill pill-sage">01 · CHUMP FLEET</span>
-              <span class="mono" style="font-size:12px; color:var(--stone-bronze);">/site/fleet/ →</span>
+              <span class="mono" style="font-size:12px; color:var(--stone-bronze);">./fleet/ →</span>
             </div>
-            <div class="display-h3" style="margin-bottom:6px;">Multi-Agent Gap Registry &amp; Lease Firewall</div>
+            <div class="display-h3" style="margin-bottom:6px;">Task Queue, Worktrees &amp; File-Lease Firewall</div>
             <p style="margin:0; font-size:14px; color:var(--stone-muted);">
-              SQLite WAL backlog, atomic file and symbol-region leases, linked git worktrees, pre-commit stomp prevention, and gate-guarded PR shipping.
+              SQLite WAL task queue, atomic file and symbol-region leases, isolated git worktrees, pre-commit stomp prevention, and proof-of-merge PR shipping.
             </p>
           </button>
 
           <button type="button" class="pillar-card-btn" role="tab" data-suite-tab="cascade" aria-selected="false">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <span class="pill pill-bronze">02 · CHUMP CASCADE</span>
-              <span class="mono" style="font-size:12px; color:var(--stone-bronze);">/site/cascade/ →</span>
+              <span class="mono" style="font-size:12px; color:var(--stone-bronze);">./cascade/ →</span>
             </div>
-            <div class="display-h3" style="margin-bottom:6px;">BYO-Auth, 40-Slot Bandit Router &amp; chumpd</div>
+            <div class="display-h3" style="margin-bottom:6px;">BYO-Auth, 40-Slot Failover Router &amp; chumpd</div>
             <p style="margin:0; font-size:14px; color:var(--stone-muted);">
-              Route across Claude subscription OAuth, metered API keys, coding harnesses, and $0 local Ollama/vLLM with automatic 429 circuit-breaking.
+              Route across Claude subscription OAuth, metered API keys, CLI coding harnesses, and $0 local Ollama/vLLM with automatic HTTP 429 circuit-breaking.
             </p>
           </button>
         </div>
@@ -139,7 +224,7 @@
           <div class="app-window-bar">
             <div style="display:flex; align-items:center; gap:12px;">
               <span class="window-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-              <span id="window-caption">chump — .chump/state.db · AUTONOMY_LEVEL=5 (UNLEASHED)</span>
+              <span id="window-caption">chump — .chump/state.db · AUTONOMY_LEVEL=3 (SUPERVISED)</span>
             </div>
             <span id="window-rhs">4 active workers · 0 lease collisions</span>
           </div>
@@ -147,7 +232,7 @@
           <div class="three-pane">
             <div class="pane-left">
               <div class="mono" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--stone-faint); margin-bottom:10px;" id="left-pane-heading">
-                Active Queue (4)
+                Active Task Queue (4)
               </div>
               <div id="left-pane-list"></div>
             </div>
@@ -164,23 +249,23 @@
     <section class="arch-band" id="intent-router">
       <div class="arch-grid-frame section-pad">
         <div style="max-width:68ch; margin-bottom:28px;">
-          <div class="eyebrow"><span class="eyebrow-dot"></span>Front-Door Intent Router (src/front_door.rs)</div>
+          <div class="eyebrow"><span class="eyebrow-dot"></span>CLI Task Router (chump trek &amp; chump consult)</div>
           <h2 class="display-h2">
-            Start from plain language. <span class="muted-tail">Land on a deterministic spine.</span>
+            Start from plain English. <span class="muted-tail">Run exact, verifiable CLI commands.</span>
           </h2>
           <p class="lede" style="margin-bottom:0;">
-            Every engineering request enters in a different state—starting greenfield, grinding down tech debt, rescuing wedged pull requests, or mapping an unfamiliar codebase. Type a scenario or pick a preset to see how Chump routes it.
+            Whether you are adopting an existing repo, burning down lint and test debt overnight, diagnosing conflicted pull requests, or scaffolding a new service, pick a scenario below to preview the exact workflow.
           </p>
         </div>
 
         <div class="sandstone-surface">
           <div class="frosted-inner">
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;" id="router-presets">
-              <button type="button" class="copy-chip" data-preset="improve">Grind 30 clippy &amp; test fixes overnight</button>
-              <button type="button" class="copy-chip" data-preset="rescue">Unstick 5 conflicted PRs blocking main</button>
-              <button type="button" class="copy-chip" data-preset="comprehend">Map auth &amp; billing blast radius before refactor</button>
-              <button type="button" class="copy-chip" data-preset="ingest">Adopt an existing repo onto Rust hooks &amp; leases</button>
-              <button type="button" class="copy-chip" data-preset="create">Scaffold a new Axum + SQLite service from spec</button>
+              <button type="button" class="copy-chip" data-preset="improve">Fix 30 clippy &amp; flaky tests overnight</button>
+              <button type="button" class="copy-chip" data-preset="rescue">Diagnose &amp; rebase 5 conflicted PRs</button>
+              <button type="button" class="copy-chip" data-preset="comprehend">Map auth &amp; billing blast radius</button>
+              <button type="button" class="copy-chip" data-preset="ingest">Add Rust lease hooks to an existing repo</button>
+              <button type="button" class="copy-chip" data-preset="create">Scaffold a new Axum + SQLite service</button>
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
@@ -191,21 +276,21 @@
                 aria-label="Describe what your repository needs"
                 style="flex:1; min-width:240px; padding:12px 14px; border-radius:var(--radius-md); border:1px solid var(--stone-rule-strong); background:var(--stone-card);"
               />
-              <button type="button" class="btn btn-dark" id="router-run-btn">Classify Intent</button>
+              <button type="button" class="btn btn-dark" id="router-run-btn">Preview Commands</button>
             </div>
 
             <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:18px;" class="bento-2">
               <div class="trace-card" style="margin:0;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                  <span class="pill pill-bronze" id="router-mode-pill">MODE · IMPROVE</span>
-                  <span class="mono" style="font-size:11.5px; color:var(--stone-sage);" id="router-conf">Confidence 96%</span>
+                  <span class="pill pill-bronze" id="router-mode-pill">ROUTE · IMPROVE</span>
+                  <span class="mono" style="font-size:11.5px; color:var(--stone-sage);" id="router-conf">Auto-Executable</span>
                 </div>
-                <div class="display-h3" style="font-size:18px; margin-bottom:8px;" id="router-headline">Autonomous Improve Loop + Atomic Leases</div>
+                <div class="display-h3" style="font-size:18px; margin-bottom:8px;" id="router-headline">Parallel Task Queue + Isolated Worktrees</div>
                 <p style="margin:0 0 12px; font-size:13.5px; color:var(--stone-muted);" id="router-desc">
-                  Picks non-overlapping gaps from <code>.chump/state.db</code>, provisions isolated worktrees, verifies via <code>chump preflight</code>, and opens gate-guarded PRs.
+                  Reserves non-overlapping tasks in <code>.chump/state.db</code>, creates isolated git worktrees, runs local preflight checks, and opens gate-guarded pull requests.
                 </p>
                 <div class="mono" style="font-size:11px; color:var(--stone-faint);">
-                  Shared Spine: <strong>Comprehend → Contract → Execute → Verify → Deliver</strong>
+                  Pipeline: <strong>Reserve → Claim Lease → Verify → Open PR → Proof of Merge</strong>
                 </div>
               </div>
 
@@ -214,7 +299,7 @@
                   <span class="mono" style="font-size:11px; color:var(--stone-muted);">Executable CLI Sequence</span>
                   <button type="button" class="copy-chip" id="router-copy-btn">Copy Commands</button>
                 </div>
-                <pre id="router-cli" style="margin:0; padding:12px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:12px; line-height:1.6; overflow-x:auto;"><code>chump fleet level 4
+                <pre id="router-cli" style="margin:0; padding:12px; border-radius:var(--radius-xs); background:var(--stone-inset); font-size:12px; line-height:1.6; overflow-x:auto;"><code>chump fleet level 3
 chump gap reserve --domain INFRA --title "Fix workspace clippy &amp; test flakes" --effort s
 chump claim INFRA-001 --role target --paths "crates/"
 chump ship --gap INFRA-001 --mode bot-merge</code></pre>
@@ -229,9 +314,9 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
     <section class="arch-band">
       <div class="arch-grid-frame section-pad">
         <div style="max-width:64ch; margin-bottom:32px;">
-          <div class="eyebrow"><span class="eyebrow-dot"></span>Built for Tired Senior Engineers</div>
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Built for Parallel-Agent Power Users</div>
           <h2 class="display-h2">
-            Clean ownership. Governed spend. <span class="muted-tail">Reviewed merges.</span>
+            Clean file ownership. Predictable spend. <span class="muted-tail">Verified merges.</span>
           </h2>
         </div>
 
@@ -241,7 +326,7 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
               <span class="pill pill-sage" style="margin-bottom:14px;">ATOMIC OWNERSHIP</span>
               <h3 class="display-h3">File &amp; Symbol-Region Leases</h3>
               <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 18px;">
-                Claim whole paths (<code>crates/chump-ship/*</code>) or individual Rust symbols (<code>src/auth.rs::verify_token</code>). Intruder commits from sibling agents are rejected at <code>pre-commit</code> before a conflict ever hits git history.
+                Claim whole directories (<code>crates/chump-ship/*</code>) or individual Rust symbols (<code>src/auth.rs::verify_token</code>). Conflicting commits from sibling agents are rejected at <code>pre-commit</code> before a stomp ever enters git history.
               </p>
             </div>
             <div class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px;">
@@ -252,32 +337,36 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
 
           <article class="bento-card">
             <div>
-              <span class="pill pill-bronze" style="margin-bottom:14px;">SWAPPABLE HARNESS</span>
-              <h3 class="display-h3">Models &amp; Agents Stay Interchangeable</h3>
+              <span class="pill pill-bronze" style="margin-bottom:14px;">BRING YOUR OWN HARNESS</span>
+              <h3 class="display-h3">Agents &amp; Models Stay Swappable</h3>
               <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 14px;">
-                Keep your preferred coding CLI or run Chump's built-in Rust agent. Inspect the generated environment contract for any harness:
+                Keep your preferred coding CLI or run Chump's built-in local Rust agent. Inspect the validated <code>~/.chump/config.toml</code> snippet for any harness:
               </p>
-              <label for="harness-picker" class="mono" style="font-size:11px; color:var(--stone-faint); display:block; margin-bottom:6px;">Select CHUMP_AGENT_HARNESS:</label>
+              <label for="harness-picker" class="mono" style="font-size:11px; color:var(--stone-faint); display:block; margin-bottom:6px;">Select [fleet] harness:</label>
               <select id="harness-picker" style="width:100%; padding:9px 11px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-elevated); margin-bottom:12px;">
-                <option value="claude">claude (Claude Code + Max OAuth)</option>
-                <option value="opencode">opencode (Bulk Multi-Model Gateway)</option>
+                <option value="claude">claude (Claude Code + OAuth)</option>
+                <option value="opencode">opencode (Multi-Model CLI Gateway)</option>
                 <option value="codex">codex (OpenAI Codex CLI)</option>
                 <option value="aider">aider (Git-Diff Pair Agent)</option>
                 <option value="goose">goose (AAIF MCP Agent)</option>
                 <option value="chump-local">chump-local (Built-in Rust + Ollama)</option>
               </select>
             </div>
-            <div class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px;" id="harness-snippet">
-              agent_harness = "claude"<br />auth_mode = "oauth"<br />fallback_slot = "ollama/qwen2.5-coder:14b"
-            </div>
+            <pre class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px; line-height:1.55; overflow-x:auto;" id="harness-snippet">[auth]
+mode = "oauth"
+
+[fleet]
+mode = "grind"
+harness = "claude"
+desired_workers = 4</pre>
           </article>
 
           <article class="bento-card">
             <div>
-              <span class="pill pill-plum" style="margin-bottom:14px;">CREDIBLE-1576 FIREWALL</span>
-              <h3 class="display-h3">Agents Never Self-Approve Gate Files</h3>
+              <span class="pill pill-plum" style="margin-bottom:14px;">WORKFLOW GATE FIREWALL</span>
+              <h3 class="display-h3">Agents Never Self-Approve CI or Hooks</h3>
               <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 18px;">
-                <code>chump-ship</code> compiles a non-overridable constant of protected globs. If a branch modifies workflows, CI scripts, or git hooks, PR creation succeeds—but auto-merge arming fails closed for human review.
+                <code>chump-ship</code> compiles a non-overridable list of protected gate globs. If an agent modifies GitHub Actions workflows, CI scripts, or git hooks, the PR opens—but auto-merge arming fails closed for human review.
               </p>
             </div>
             <div class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px;">
@@ -295,17 +384,17 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
         <div class="dark-slab">
           <div>
             <div class="eyebrow" style="color:var(--stone-bronze-bright);">
-              <span class="eyebrow-dot"></span>Zero-Signup Engineering Tools
+              <span class="eyebrow-dot"></span>Zero-Signup Browser Tools
             </div>
             <h2 class="display-h2" style="color:var(--stone-on-dark);">
-              Outsmart cloud-agent burn and merge chaos before installing a binary.
+              Model multi-agent throughput and audit your config before installing a binary.
             </h2>
             <p style="font-size:15.5px; margin:0 0 26px;">
-              Test your repository's concurrency, hotspot overlap, and local-GPU offload in our browser-native Sankey simulator—or paste an existing <code>.env</code> into Config Doctor to audit single points of failure.
+              Simulate concurrent workers, hotspot collision rates, and local-GPU offload in our interactive Sankey modeller—or paste an existing <code>.env</code> or <code>config.toml</code> into Config Doctor to generate a schema-valid setup.
             </p>
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
-              <a class="btn btn-bronze" href="/site/tools/fleet-simulator/">Open Fleet Sankey Simulator →</a>
-              <a class="btn btn-stone" href="/site/tools/config-doctor/">Run Config Sovereignty Doctor</a>
+              <a class="btn btn-bronze" href="./tools/fleet-simulator/">Open Fleet Simulator →</a>
+              <a class="btn btn-stone" href="./tools/config-doctor/">Run Config Doctor</a>
             </div>
           </div>
 
@@ -324,7 +413,7 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
                 <strong>94%</strong> collision-free commits via worktree + path leases
               </div>
               <div style="font-size:13.5px; color:var(--stone-on-dark); margin-bottom:8px;">
-                <strong>65–75%</strong> xs/s tasks routed to $0 local Ollama or subscription OAuth
+                <strong>65–75%</strong> routine tasks routed to $0 local Ollama or subscription OAuth
               </div>
               <div style="font-size:12.5px; color:var(--stone-on-dark-muted);">
                 RAM-aware <code>CARGO_BUILD_JOBS</code> cap prevents laptop swap thrashing.
@@ -339,22 +428,22 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
     <section class="arch-band">
       <div class="arch-grid-frame section-pad">
         <div class="honest-box">
-          <div class="eyebrow" style="margin-bottom:8px;"><span class="eyebrow-dot"></span>Honest Status · Zero Fabricated Logos</div>
+          <div class="eyebrow" style="margin-bottom:8px;"><span class="eyebrow-dot"></span>Open Source · Zero Fabricated Customer Logos</div>
           <blockquote class="honest-quote">
             “I built agent fleets five times before this one worked. Named it Chump so I'd remember who was doing the learning.”
           </blockquote>
           <p style="margin:0; color:var(--stone-muted); font-size:14.5px;">
-            Chump is real, public Rust software: <strong>14 reusable crates published on crates.io under Apache-2.0</strong>, with the coordinator binary licensed under <strong>AGPL-3.0</strong> so cloud vendors cannot wrap and rent it back to you. Verified across macOS, Ubuntu Linux, and Windows Server with 5,454 automated tests. No fake customer testimonials—inspect the code, run the simulator, and judge by receipts.
+            Chump is real, public Rust software: a <strong>60-crate Rust 2021 workspace</strong> with <strong>13 permissive Apache-2.0 library crates</strong> and an <strong>AGPL-3.0</strong> coordinator binary so cloud vendors cannot wrap and rent it back to you. Verified across macOS, Ubuntu Linux, and Windows Server. Inspect the source, run the simulator, and judge by receipts.
           </p>
         </div>
       </div>
     </section>
   </main>
 
-  <chump-site-footer base="/site"></chump-site-footer>
-  <chump-install-modal></chump-install-modal>
+  <chump-site-footer base="."></chump-site-footer>
+  <chump-install-modal base="."></chump-install-modal>
 
-  <script src="/site/assets/site.js"></script>
+  <script src="./assets/site.js"></script>
   <script>
     (function () {
       window.initChumpLattice("hero-lattice");
@@ -362,8 +451,8 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
       /* Hero OS install switcher */
       const installCmds = {
         brew: "brew tap repairman29/chump && brew install chump",
-        linux: "curl -fsSL https://raw.githubusercontent.com/repairman29/chump/main/chump-node-install.sh | sh",
-        windows: "cargo install --git https://github.com/repairman29/chump chump",
+        linux: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh",
+        windows: "cargo install --git https://github.com/repairman29/chump chump --locked",
         cargo: "cargo install --git https://github.com/repairman29/chump chump --locked",
       };
       const heroCmdEl = document.getElementById("hero-install-cmd");
@@ -384,127 +473,127 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
       /* 3-Pane Workspace Preview Data */
       const suites = {
         fleet: {
-          caption: "chump — .chump/state.db · AUTONOMY_LEVEL=5 (UNLEASHED)",
+          caption: "chump — .chump/state.db · AUTONOMY_LEVEL=3 (SUPERVISED)",
           rhs: "4 active workers · 0 lease collisions",
-          leftHeading: "Active Gap Queue (4)",
+          leftHeading: "Active Task Queue (4)",
           items: [
             {
-              id: "MISSION-010",
-              badge: "SHIPPED",
+              id: "TASK-101 · Cross-OS Paths",
+              badge: "MERGED",
               pill: "pill-sage",
-              sub: "Universal 3-OS runtime & PAL",
-              owner: "worker-01 · target",
-              worktree: ".chump/worktrees/v1-universal",
+              sub: "Windows, Linux & macOS path layer",
+              owner: "worker-01 · claude",
+              worktree: ".chump/worktrees/pal-paths",
               paths: "crates/chump-pal/*, crates/chumpd/*",
-              zoomTitle: "CROSS-OS KILL-SWITCH VERIFIED",
-              zoomBody: "AUTONOMY_LEVEL resolved via HOME → USERPROFILE → HOMEDRIVE+HOMEPATH; CHUMP_HOME sandbox bypass blocked (17/17 tests).",
-              thought: "Thought 6.4s · Cited chump:crates/chump-pal/src/paths.rs:21",
-              diff: "+151 / -54 across 7 files · 46/46 CI checks green",
-              cli: "chump ship --gap MISSION-010 --mode bot-merge",
+              zoomTitle: "PROOF-OF-MERGE VERIFIED ON MAIN",
+              zoomBody: "Commit verified reachable on origin/main across macOS, Linux, and Windows CI before marking task done.",
+              thought: "Checked crates/chump-pal/src/paths.rs · 17/17 cross-OS tests passed",
+              diff: "+151 / -54 across 7 files · All CI checks green",
+              cli: "chump ship --gap INFRA-101 --mode bot-merge",
             },
             {
-              id: "CREDIBLE-1576",
-              badge: "GUARDED",
+              id: "TASK-102 · CI Gate Guard",
+              badge: "HELD FOR HUMAN",
               pill: "pill-plum",
-              sub: "Gate-file auto-merge refusal",
-              owner: "worker-02 · ci-audit",
-              worktree: "/tmp/chump-credible-1576",
+              sub: "Workflow auto-merge protection",
+              owner: "worker-02 · codex",
+              worktree: "/tmp/chump-gate-guard",
               paths: "crates/chump-ship/src/gate_guard.rs",
-              zoomTitle: "SELF-ARM REFUSED (HUMAN REVIEW REQUIRED)",
-              zoomBody: "Diff touches .github/workflows/ci-universal.yml (matched BOT_MERGE_GATE_FILE_GLOBS). Branch pushed; --auto-merge held.",
-              thought: "Thought 4.1s · Cited chump:crates/chump-ship/src/gate_guard.rs:31",
-              diff: "+98 / -12 across 2 files · PR opened, auto-merge withheld",
+              zoomTitle: "AUTO-MERGE REFUSED ON WORKFLOW EDIT",
+              zoomBody: "Diff touches .github/workflows/ci.yml. Branch pushed and PR opened cleanly, while --auto-merge held for human sign-off.",
+              thought: "Matched protected pattern .github/workflows/* in gate_guard.rs",
+              diff: "+98 / -12 across 2 files · PR open, awaiting human review",
               cli: "chump ship --gate-arm-check --auto-merge",
             },
             {
-              id: "INFRA-3463",
+              id: "TASK-103 · Auth Refactor",
               badge: "IN FLIGHT",
               pill: "pill-bronze",
-              sub: "Route code reviewer via ProviderCascade",
-              owner: "worker-03 · fleet-worker",
-              worktree: "/tmp/chump-infra-3463",
+              sub: "Route code review through shared cascade",
+              owner: "worker-03 · opencode",
+              worktree: "/tmp/chump-auth-refactor",
               paths: "src/cli_dispatch/mod.rs::llm_complete",
-              zoomTitle: "LEASE FIREWALL BLOCKED INTRUDER",
-              zoomBody: "worker-04 attempted git commit on src/cli_dispatch/mod.rs; rejected in 1.4ms because worker-03 holds active lease.",
-              thought: "Thought 8.9s · Cited chump:src/provider_cascade.rs:2358",
-              diff: "+42 / -67 · Replaced raw curl x-api-key with chump llm-complete",
-              cli: "chump claim INFRA-3463 --role fleet-worker --paths src/cli_dispatch/mod.rs",
+              zoomTitle: "PRE-COMMIT FIREWALL BLOCKED SIBLING STOMP",
+              zoomBody: "worker-04 attempted git commit on src/cli_dispatch/mod.rs; rejected in 1.4ms because worker-03 holds an active lease.",
+              thought: "Active symbol lease held by worker-03 (TTL 14m remaining)",
+              diff: "+42 / -67 · Routed completions via chump llm-complete",
+              cli: "chump claim INFRA-103 --role target --paths src/cli_dispatch/mod.rs",
             },
             {
-              id: "RESILIENT-073",
+              id: "TASK-104 · Kill-Switch Dial",
               badge: "VERIFIED",
               pill: "pill-sky",
-              sub: "Fail-closed fleet autonomy dial",
-              owner: "worker-04 · shepherd",
-              worktree: "/tmp/chump-resilient-073",
+              sub: "Fail-closed autonomy dial (0–5)",
+              owner: "worker-04 · aider",
+              worktree: "/tmp/chump-autonomy-dial",
               paths: "crates/chump-atomic-claim/src/autonomy_level.rs",
-              zoomTitle: "ZERO-DEPENDENCY FAIL-CLOSED READ",
-              zoomBody: "Missing, empty, negative, or corrupt AUTONOMY_LEVEL returns 0 (STOP) with zero SQLite or network dependency.",
-              thought: "Thought 3.2s · Cited chump:crates/chump-atomic-claim/src/autonomy_level.rs:44",
+              zoomTitle: "FAIL-CLOSED HARDWARE & WORKER CAP",
+              zoomBody: "Missing, empty, or corrupt ~/.chump/AUTONOMY_LEVEL immediately defaults to Level 0 (STOP) with zero network dependency.",
+              thought: "Verified Levels 0..5 worker caps and merge permissions",
               diff: "+64 / -8 · 17 unit + 17 shell kill-switch checks pass",
               cli: "chump fleet level 3",
             },
           ],
         },
         cascade: {
-          caption: "chump cascade stats — strategy=bandit · rpm_headroom=80%",
-          rhs: "6 slots active · $0.14 spent today",
-          leftHeading: "Configured Provider Slots",
+          caption: "chump config show — mode=auto · rpm_headroom=80%",
+          rhs: "4 tiers active · $0.14 metered spend today",
+          leftHeading: "Configured Failover Slots",
           items: [
             {
               id: "Slot #1 · Claude OAuth",
               badge: "PRIMARY",
               pill: "pill-sage",
-              sub: "Subscription token · $0 marginal",
-              owner: "Priority 5 · class=opus",
+              sub: "Flat-rate subscription · $0 marginal",
+              owner: "Priority 5 · tier=subscription",
               worktree: "~/.claude/.credentials.json",
               paths: "184 hits · 0 circuit trips · p50 1.4s",
-              zoomTitle: "CROSS-OS SUBSCRIPTION CREDENTIAL SYNC",
-              zoomBody: "chumpd oauth_sync refreshes macOS Keychain & ~/.claude/.credentials.json across Linux and Windows USERPROFILE.",
-              thought: "Bandit α=185, β=3 · Win probability 98.4%",
-              diff: "Routed architecture & hard-ship tasks · $0.00 API invoice",
-              cli: "chump config show",
+              zoomTitle: "CROSS-OS SUBSCRIPTION TOKEN SYNC",
+              zoomBody: "chumpd refreshes macOS Keychain and ~/.claude/.credentials.json (%USERPROFILE% on Windows) automatically.",
+              thought: "Adaptive win score 98.4% · Zero per-token API billing",
+              diff: "Handled complex architecture & multi-file refactors",
+              cli: "chump config validate",
             },
             {
               id: "Slot #2 · Gemini 2.5 Flash",
               badge: "CLOUD",
               pill: "pill-sky",
               sub: "1M context · 360 RPM ceiling",
-              owner: "Priority 12 · class=sonnet",
+              owner: "Priority 10 · tier=cloud",
               worktree: "generativelanguage.googleapis.com",
               paths: "412 hits · RPM headroom 80% · p50 0.9s",
-              zoomTitle: "HEADROOM THROTTLE BEFORE 429",
-              zoomBody: "Proactively shifts overflow requests at 80% of 360 RPM so sibling agents never stall on upstream Retry-After.",
-              thought: "Bandit α=410, β=6 · Win probability 97.1%",
-              diff: "Handled comprehension & large-diff triage",
+              zoomTitle: "PROACTIVE HEADROOM SHIFT BEFORE HTTP 429",
+              zoomBody: "Shifts overflow requests at 80% of RPM ceiling so parallel workers never stall waiting on Retry-After headers.",
+              thought: "Adaptive win score 97.1% · Sub-second response latency",
+              diff: "Handled large-context codebase search & triage",
               cli: "chump llm-complete --model sonnet 'Summarize diff'",
             },
             {
-              id: "Slot #3 · Codestral",
+              id: "Slot #3 · Mistral Codestral",
               badge: "FALLBACK",
               pill: "pill-bronze",
               sub: "256k context · code specialist",
-              owner: "Priority 14 · class=opus",
+              owner: "Priority 14 · tier=paid",
               worktree: "api.mistral.ai/v1",
               paths: "67 hits · automatic failover · p50 1.1s",
-              zoomTitle: "ZERO-CRASH SLOT FAILOVER",
-              zoomBody: "Absorbed 19 burst turns during primary rate-limit window with zero aborted agent sessions.",
-              thought: "Bandit α=68, β=2 · Win probability 95.8%",
-              diff: "Zero failed patches during upstream 429 burst",
-              cli: "chump provider-chain simulate --chain oauth,gemini,codestral --scenario rate-limit",
+              zoomTitle: "ZERO-DROP FAILOVER DURING BURSTS",
+              zoomBody: "Absorbed 19 burst turns during upstream rate-limit windows without aborting a single in-flight worker.",
+              thought: "Adaptive win score 95.8% · Circuit CLOSED",
+              diff: "Zero interrupted commits during rate-limit burst",
+              cli: "chump config show",
             },
             {
               id: "Slot #4 · Local Ollama",
               badge: "$0 FLOOR",
               pill: "pill-plum",
               sub: "qwen2.5-coder:14b · 127.0.0.1:11434",
-              owner: "Priority 20 · air-gap floor",
+              owner: "Priority 20 · tier=local",
               worktree: "Local GPU / Apple Silicon Metal",
-              paths: "290 hits · $0.00 cost · offline ready",
-              zoomTitle: "AIR-GAPPED SOVEREIGN FLOOR",
-              zoomBody: "Executes xs/s effort gaps with --slim writer toolset completely offline when WAN or cloud quotas drop.",
-              thought: "Bandit α=275, β=16 · Effort filter: xs,s",
-              diff: "Saved est. $46.80 in routine lint/test/doc turns",
+              paths: "290 hits · $0.00 cost · air-gap ready",
+              zoomTitle: "100% OFFLINE LOCAL FLOOR",
+              zoomBody: "Runs routine lint, test, and doc fixes completely offline when Wi-Fi drops or cloud budgets hit ceiling.",
+              thought: "Local HTTP endpoint 127.0.0.1:11434/v1 · $0 marginal cost",
+              diff: "Saved ~$46.80 in routine small-scope turns",
               cli: "chump agent-run --slim --cwd . --prompt-file task.md",
             },
           ],
@@ -571,7 +660,7 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
           </div>
           <div class="zoom-callout">
             <div class="mono" style="font-size:11px; font-weight:600; color:var(--stone-bronze-deep); margin-bottom:4px;">
-              🔍 LIVE RECEIPT · ${cur.zoomTitle}
+              LIVE RECEIPT · ${cur.zoomTitle}
             </div>
             <div style="color:var(--stone-ink);">${cur.zoomBody}</div>
           </div>
@@ -580,19 +669,19 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
         document.getElementById("right-pane-body").innerHTML = `
           <div>
             <div class="mono" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--stone-faint); margin-bottom:10px;">
-              Agent Trace &amp; Receipt
+              Execution Receipt
             </div>
             <div class="trace-card">
               <div class="mono" style="font-size:11px; color:var(--stone-bronze); margin-bottom:4px;">${cur.thought}</div>
               <div style="color:var(--stone-muted);">${cur.diff}</div>
             </div>
             <div class="trace-card">
-              <div class="mono" style="font-size:11px; color:var(--stone-muted); margin-bottom:6px;">Reproducible CLI call:</div>
+              <div class="mono" style="font-size:11px; color:var(--stone-muted); margin-bottom:6px;">Reproducible CLI command:</div>
               <code style="font-size:11.5px; word-break:break-all;">$ ${cur.cli}</code>
             </div>
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <a class="btn btn-dark btn-sm" style="flex:1;" href="${activeSuite === "fleet" ? "/site/fleet/" : "/site/cascade/"}">
+            <a class="btn btn-dark btn-sm" style="flex:1;" href="${activeSuite === "fleet" ? "./fleet/" : "./cascade/"}">
               Deep-Dive ${activeSuite === "fleet" ? "Fleet" : "Cascade"} →
             </a>
           </div>
@@ -612,53 +701,53 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
 
       renderSuite();
 
-      /* Front-Door Intent Router */
+      /* CLI Task Router */
       const routerCatalog = {
         improve: {
-          mode: "MODE · IMPROVE",
-          conf: "Confidence 96%",
-          headline: "Autonomous Improve Loop + Atomic Leases",
-          desc: "Picks non-overlapping gaps from .chump/state.db, provisions isolated git worktrees, runs local preflight, and opens gate-guarded PRs.",
+          mode: "ROUTE · IMPROVE",
+          conf: "Auto-Executable (chump trek)",
+          headline: "Parallel Task Queue + Isolated Worktrees",
+          desc: "Reserves non-overlapping tasks in .chump/state.db, creates isolated git worktrees, runs local preflight checks, and opens gate-guarded PRs.",
           prompt: "Grind 30 clippy and flaky-test fixes across crates/ overnight without agents overwriting each other",
-          cli: `chump fleet level 4\nchump gap reserve --domain INFRA --title "Fix workspace clippy & test flakes" --effort s\nchump claim INFRA-001 --role target --paths "crates/"\nchump ship --gap INFRA-001 --mode bot-merge`,
+          cli: `chump fleet level 3\nchump gap reserve --domain INFRA --title "Fix workspace clippy & test flakes" --effort s\nchump claim INFRA-001 --role target --paths "crates/"\nchump ship --gap INFRA-001 --mode bot-merge`,
         },
         rescue: {
-          mode: "MODE · RESCUE",
-          conf: "Confidence 94%",
-          headline: "Stuck-Branch Rebase & Conflict Diagnostics",
-          desc: "Inspects DIRTY/BEHIND pull requests via the local SQLite GitHub cache, rebases clean stacks, and isolates conflicting hunks for human review.",
-          prompt: "Unstick 5 conflicted pull requests that went dirty after main moved",
-          cli: `chump health\nchump rebase-stuck\nchump ship --mode bot-merge --dry-run\nchump verify --stage ci`,
+          mode: "ROUTE · CONSULT & REBASE",
+          conf: "Diagnostic First (chump consult)",
+          headline: "Conflict Diagnosis & Clean-Stack Rebase",
+          desc: "Diagnoses wedged or conflicted pull requests via the local SQLite GitHub cache, rebases clean branches, and flags real conflicts for human review rather than guessing.",
+          prompt: "Diagnose and rebase 5 conflicted pull requests blocking main",
+          cli: `chump consult "Unstick 5 conflicted PRs blocking main"\nchump health\nchump ship --mode bot-merge --dry-run`,
         },
         comprehend: {
-          mode: "MODE · COMPREHEND",
-          conf: "Confidence 95%",
-          headline: "Grounded Almanac Index & Blast-Radius Briefings",
-          desc: "Queries symbol signatures, call-graph neighbors, and historical gap receipts before touching shared modules.",
+          mode: "ROUTE · CONSULT & MAP",
+          conf: "Read-Only Audit (chump consult)",
+          headline: "Codebase Symbol & Blast-Radius Briefing",
+          desc: "Maps symbol callers, module dependencies, and active sibling leases before refactoring shared authentication or billing code.",
           prompt: "Map auth and billing blast radius across a 250k-LOC workspace before refactoring",
-          cli: `chump --briefing INFRA-001\nchump brain status --json\nchump claim-lint --range origin/main..HEAD`,
+          cli: `chump consult "Map auth and billing blast radius before refactor"\nchump --briefing INFRA-001\nchump claim-lint --range origin/main..HEAD`,
         },
         ingest: {
-          mode: "MODE · INGEST",
-          conf: "Confidence 97%",
-          headline: "Zero-Touch Repository Onboarding & Hook Firewall",
-          desc: "Installs native Rust pre-commit/pre-push hooks, initializes config.toml, and scans existing repo workflows without mutating production code.",
-          prompt: "Adopt an existing team repository onto native Rust git hooks and lease protection",
-          cli: `chump config init && chump config validate\nchump hook install && chump hook status\nchump onboard .`,
+          mode: "ROUTE · INGEST",
+          conf: "Auto-Executable (chump trek)",
+          headline: "Existing Repo Onboarding & Hook Firewall",
+          desc: "Scaffolds config.toml, installs native Rust pre-commit/pre-push hooks, and prepares an existing repository for safe parallel agent work.",
+          prompt: "Add native Rust git lease hooks and config to an existing team repository",
+          cli: `chump config init && chump config validate\nchump hook install && chump hook status\nchump trek "Onboard repository ." --yes`,
         },
         create: {
-          mode: "MODE · CREATE",
-          conf: "Confidence 93%",
-          headline: "Greenfield Bootstrap + Outcome Contract",
-          desc: "Scaffolds a clean repository, installs pre-commit secret and lease guards from commit zero, and seeds structured milestone gaps.",
-          prompt: "Scaffold a new local-first Axum + SQLite service with clear milestone gaps",
-          cli: `chump config init\nchump hook install\nchump gap reserve --domain PRODUCT --title "Bootstrap core Axum + SQLite API" --effort m\nchump agent-run --slim --cwd . --prompt-file spec.md`,
+          mode: "ROUTE · CREATE",
+          conf: "Auto-Executable (chump bootstrap)",
+          headline: "Greenfield Repo Scaffold + Starter Queue",
+          desc: "Initializes a clean repository with Rust git hooks installed from commit zero and seeds structured milestone tasks.",
+          prompt: "Scaffold a new local-first Axum + SQLite service from spec",
+          cli: `chump bootstrap "Local-first Axum + SQLite API" --dir ./my-service --skip-arch-decision\ncd ./my-service && chump hook install`,
         },
       };
 
       function classifyText(raw) {
         const t = raw.toLowerCase();
-        if (t.includes("conflict") || t.includes("stuck") || t.includes("dirty") || t.includes("broken") || t.includes("rescue")) return "rescue";
+        if (t.includes("conflict") || t.includes("stuck") || t.includes("dirty") || t.includes("broken") || t.includes("rescue") || t.includes("rebase")) return "rescue";
         if (t.includes("understand") || t.includes("map") || t.includes("blast") || t.includes("architecture") || t.includes("audit")) return "comprehend";
         if (t.includes("adopt") || t.includes("onboard") || t.includes("existing") || t.includes("hook") || t.includes("migrate")) return "ingest";
         if (t.includes("scaffold") || t.includes("new ") || t.includes("greenfield") || t.includes("create") || t.includes("from spec")) return "create";
@@ -693,19 +782,19 @@ chump ship --gap INFRA-001 --mode bot-merge</code></pre>
         window.ChumpSite.copyText(document.getElementById("router-cli").textContent, e.currentTarget);
       });
 
-      /* Harness picker */
+      /* Schema-valid ChumpConfig snippets per harness */
       const harnessMap = {
-        claude: 'agent_harness = "claude"\nauth_mode = "oauth"\nfallback_slot = "ollama/qwen2.5-coder:14b"',
-        opencode: 'agent_harness = "opencode"\nauth_mode = "cascade"\npreferred_class = "sonnet"',
-        codex: 'agent_harness = "codex"\nauth_mode = "api_key"\nlease_firewall = true',
-        aider: 'agent_harness = "aider"\nworktree_isolation = true\nauto_commits = "hook-verified"',
-        goose: 'agent_harness = "goose"\nmcp_bridge = true\nautonomy_ceiling = 4',
-        "chump-local": 'agent_harness = "chump-local"\nendpoint = "http://127.0.0.1:11434/v1"\ncost_per_turn = "$0.00"',
+        claude: `[auth]\nmode = "oauth"\n\n[fleet]\nmode = "grind"\nharness = "claude"\ndesired_workers = 4`,
+        opencode: `[auth]\nmode = "auto"\n\n[fleet]\nmode = "grind"\nharness = "opencode"\ndesired_workers = 6`,
+        codex: `[auth]\nmode = "api-key"\n\n[fleet]\nmode = "grind"\nharness = "codex"\ndesired_workers = 4`,
+        aider: `[auth]\nmode = "auto"\n\n[fleet]\nmode = "grind"\nharness = "aider"\ndesired_workers = 3`,
+        goose: `[auth]\nmode = "auto"\n\n[fleet]\nmode = "grind"\nharness = "goose"\ndesired_workers = 4`,
+        "chump-local": `[auth]\nmode = "auto"\n\n[fleet]\nmode = "grind"\nharness = "chump-local"\n\n[[providers]]\nname = "ollama-local"\nbase_url = "http://127.0.0.1:11434/v1"\nmodel = "qwen2.5-coder:14b"\ntier = "local"`,
       };
       const picker = document.getElementById("harness-picker");
       const snippet = document.getElementById("harness-snippet");
       picker.addEventListener("change", () => {
-        snippet.innerHTML = (harnessMap[picker.value] || harnessMap.claude).replace(/\n/g, "<br />");
+        snippet.textContent = harnessMap[picker.value] || harnessMap.claude;
       });
     })();
   </script>

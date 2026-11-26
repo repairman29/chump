@@ -4,16 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pricing &amp; Open-Core TCO — Chump</title>
-  <meta name="description" content="Transparent $0 open-core licensing. Unlimited local workers, zero per-seat SaaS tax, zero API token markup, and an interactive Cloud-Agent TCO comparator." />
+  <meta name="description" content="Transparent $0 open-core licensing. Unlimited local workers, zero per-seat SaaS tax, zero API token markup, and an interactive Cloud-Agent TCO calculator." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Chump" />
-  <meta property="og:title" content="Chump Pricing &amp; Cloud-Agent TCO Comparator" />
-  <meta property="og:description" content="$0 self-hosted coordinator. Your plan scales with raw compute you control, never your headcount." />
-  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="Chump Pricing &amp; Cloud-Agent TCO Calculator" />
+  <meta property="og:description" content="$0 self-hosted coordinator. Your cost scales with raw compute you control, never your headcount." />
+  <link rel="icon" href="../icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/site/assets/site.css" />
+  <link rel="stylesheet" href="../assets/site.css" />
   <style>
     .tier-grid {
       display: grid;
@@ -76,14 +76,14 @@
   </style>
 </head>
 <body>
-  <chump-site-header pillar="pricing" page="pricing" base="/site"></chump-site-header>
+  <chump-site-header pillar="pricing" page="pricing" base=".."></chump-site-header>
 
   <main>
     <!-- ── 1. Pricing Hero & 4 Tier Cards ────────────────────────────────── -->
     <section class="arch-band">
       <div class="arch-grid-frame section-pad">
         <div style="max-width:70ch; margin-bottom:34px;">
-          <div class="eyebrow"><span class="eyebrow-dot"></span>Open-Core Sovereign Licensing</div>
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Open-Core Self-Hosted Licensing</div>
           <h1 class="display-h1">
             Zero seat tax. Unlimited workers. <span class="muted-tail">Pay only for compute you choose to run.</span>
           </h1>
@@ -98,16 +98,16 @@
         <div class="tier-grid">
           <article class="tier-card tier-accent-stone">
             <div>
-              <span class="pill pill-sage">AIR-GAP READY</span>
+              <span class="pill pill-sage">OFFLINE READY</span>
               <h2 class="display-h3" style="margin-top:10px;">Solo Local</h2>
               <div class="tier-price">$0</div>
               <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">No account · No API key required</div>
               <ul class="tier-list">
                 <li><span class="check-glyph">✓</span><span>Unlimited workers on Ollama, LM Studio, llama.cpp, or vLLM</span></li>
-                <li><span class="check-glyph">✓</span><span>SQLite WAL gap registry &amp; Markdown briefings</span></li>
+                <li><span class="check-glyph">✓</span><span>SQLite WAL task queue &amp; Markdown briefings</span></li>
                 <li><span class="check-glyph">✓</span><span>Native Rust <code>pre-commit</code> lease &amp; secret firewall</span></li>
-                <li><span class="check-glyph">✓</span><span>Local PWA Cockpit (<code>/v2/</code>) &amp; analytical tools</span></li>
-                <li><span class="check-glyph">✓</span><span>14 reusable crates under Apache-2.0</span></li>
+                <li><span class="check-glyph">✓</span><span>Local web cockpit (<code>/v2/</code>) &amp; diagnostic tools</span></li>
+                <li><span class="check-glyph">✓</span><span>13 reusable workspace crates under Apache-2.0</span></li>
               </ul>
             </div>
             <button type="button" class="btn btn-stone" style="width:100%;" data-trigger-install>Install Free</button>
@@ -115,32 +115,32 @@
 
           <article class="tier-card tier-accent-sage">
             <div>
-              <span class="pill pill-sky">MOST COMMON</span>
+              <span class="pill pill-sky">MOST POPULAR</span>
               <h2 class="display-h3" style="margin-top:10px;">BYO Keys &amp; OAuth</h2>
               <div class="tier-price">$0</div>
               <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">0% token markup · Direct to provider</div>
               <ul class="tier-list">
                 <li><span class="check-glyph">✓</span><span>Everything in Solo Local</span></li>
                 <li><span class="check-glyph">✓</span><span>Claude Subscription OAuth credential sync</span></li>
-                <li><span class="check-glyph">✓</span><span>40-slot cascading API router + Thompson bandit</span></li>
+                <li><span class="check-glyph">✓</span><span>40-slot cascading API router + smart HTTP 429 failover</span></li>
                 <li><span class="check-glyph">✓</span><span><code>claude</code>, <code>opencode</code>, <code>codex</code>, <code>aider</code>, <code>goose</code></span></li>
                 <li><span class="check-glyph">✓</span><span>Native <code>launchd</code>, <code>systemd</code> &amp; Windows supervision</span></li>
               </ul>
             </div>
-            <a class="btn btn-dark" style="width:100%;" href="/site/cascade/#daemon-builder">Generate config.toml →</a>
+            <a class="btn btn-dark" style="width:100%;" href="../cascade/#daemon-builder">Generate config.toml →</a>
           </article>
 
           <article class="tier-card tier-accent-dark">
             <div>
               <span class="pill pill-plum">TEAM SELF-HOSTED</span>
-              <h2 class="display-h3" style="margin-top:10px;">Sovereign Fleet</h2>
+              <h2 class="display-h3" style="margin-top:10px;">Team Fleet</h2>
               <div class="tier-price">$0</div>
               <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">AGPL-3.0 Open Core · Unlimited seats</div>
               <ul class="tier-list">
                 <li><span class="check-glyph">✓</span><span>Multi-machine NATS fleet coordination bus</span></li>
                 <li><span class="check-glyph">✓</span><span>Local SQLite GitHub webhook cache (&lt;100ms)</span></li>
-                <li><span class="check-glyph">✓</span><span>CREDIBLE-1576 gate-file auto-merge refusal</span></li>
-                <li><span class="check-glyph">✓</span><span>INFRA-1392 proof-of-merge verification</span></li>
+                <li><span class="check-glyph">✓</span><span>Compile-time workflow &amp; hook auto-merge refusal</span></li>
+                <li><span class="check-glyph">✓</span><span>Proof-of-merge verification on <code>origin/main</code></span></li>
                 <li><span class="check-glyph">✓</span><span>Full RFC3339 <code>ambient.jsonl</code> audit stream</span></li>
               </ul>
             </div>
@@ -155,13 +155,13 @@
               <div class="mono" style="font-size:11.5px; color:var(--stone-faint);">Closed-source redistribution exemption</div>
               <ul class="tier-list">
                 <li><span class="check-glyph">✓</span><span>Commercial license exempt from AGPL-3.0 copyleft</span></li>
-                <li><span class="check-glyph">✓</span><span>Embed coordinator inside proprietary products</span></li>
-                <li><span class="check-glyph">✓</span><span>Air-gapped VPC / defense appliance deployment</span></li>
+                <li><span class="check-glyph">✓</span><span>Embed coordinator inside proprietary products or SaaS</span></li>
+                <li><span class="check-glyph">✓</span><span>Air-gapped VPC / regulated appliance deployment</span></li>
                 <li><span class="check-glyph">✓</span><span>Custom gate-policy &amp; harness integration review</span></li>
-                <li><span class="check-glyph">✓</span><span>Direct maintainer architecture advisory</span></li>
+                <li><span class="check-glyph">✓</span><span>Private direct maintainer architecture advisory</span></li>
               </ul>
             </div>
-            <a class="btn btn-bronze" style="width:100%;" href="https://github.com/repairman29/chump/issues" target="_blank" rel="noopener">Inquire via GitHub ↗</a>
+            <a class="btn btn-bronze" style="width:100%;" href="mailto:jeff@jeffadkins.dev?subject=Chump%20Commercial%20%2F%20OEM%20Licensing">Email Commercial Licensing →</a>
           </article>
         </div>
       </div>
@@ -211,10 +211,10 @@
       </div>
     </section>
 
-    <!-- ── 3. Exhaustive 8-Category Comparison Matrix ────────────────────── -->
+    <!-- ── 3. Exhaustive Comparison Matrix ───────────────────────────────── -->
     <section class="arch-band" id="compare-matrix">
       <div class="arch-grid-frame section-pad">
-        <div class="eyebrow"><span class="eyebrow-dot"></span>Capability &amp; Sovereignty Matrix</div>
+        <div class="eyebrow"><span class="eyebrow-dot"></span>Capability Comparison Matrix</div>
         <h2 class="display-h2" style="margin-bottom:24px;">Compare Architecture Line by Line</h2>
 
         <div class="data-table-wrap">
@@ -257,7 +257,7 @@
               <tr><th colspan="4">3 · Git &amp; Merge Firewall</th></tr>
               <tr>
                 <td>Compile-time CI/hook self-merge refusal</td>
-                <td><span class="pill pill-sage">CREDIBLE-1576 constant</span></td>
+                <td><span class="pill pill-sage">Non-overridable guard</span></td>
                 <td>Not enforced</td>
                 <td>Not enforced</td>
               </tr>
@@ -300,9 +300,9 @@
             </div>
           </details>
           <details class="faq-item">
-            <summary>When does AGPL-3.0 apply, and why are 14 crates Apache-2.0?</summary>
+            <summary>When does AGPL-3.0 apply, and why are 13 workspace crates Apache-2.0?</summary>
             <div class="faq-body">
-              AGPL-3.0 applies only if you modify Chump itself and host Chump as a network service for external users without sharing your Chump modifications—preventing cloud providers from wrapping Chump as a closed SaaS. Meanwhile, 14 standalone building-block crates on crates.io carry permissive <strong>Apache-2.0</strong> licenses so any Rust project can embed them freely.
+              AGPL-3.0 applies only if you modify Chump itself and host Chump as a network service for external users without sharing your Chump modifications—preventing cloud providers from wrapping Chump as a closed SaaS. Meanwhile, 13 standalone building-block crates carry permissive <strong>Apache-2.0</strong> licenses so any Rust project can embed them freely.
             </div>
           </details>
         </div>
@@ -310,10 +310,10 @@
     </section>
   </main>
 
-  <chump-site-footer base="/site"></chump-site-footer>
-  <chump-install-modal></chump-install-modal>
+  <chump-site-footer base=".."></chump-site-footer>
+  <chump-install-modal base=".."></chump-install-modal>
 
-  <script src="/site/assets/site.js"></script>
+  <script src="../assets/site.js"></script>
   <script>
     (function () {
       document.querySelectorAll("[data-trigger-install]").forEach((btn) => {

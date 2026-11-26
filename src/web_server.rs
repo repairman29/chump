@@ -1445,11 +1445,12 @@ async fn handle_gap_dep_clean(
     // `chump gap dep-clean --apply` and avoids re-implementing the dep walker.
     // INFRA-1485: tokio::process::Command + 10s timeout (dep-clean can be slow
     // on large repos but should not block tokio workers indefinitely).
-    let repo_root = crate::repo_path::runtime_base();
+    let repo_root = active_cockpit_repo_root();
     let chump_bin = std::env::current_exe()
         .ok()
         .unwrap_or_else(|| std::path::PathBuf::from("chump"));
     let fut = tokio::process::Command::new(&chump_bin)
+        .kill_on_drop(true)
         .args(["gap", "dep-clean", "--apply", "--json"])
         .current_dir(&repo_root)
         .output();
@@ -2013,17 +2014,30 @@ async fn handle_briefing(headers: HeaderMap) -> Result<Json<serde_json::Value>, 
 }
 
 // --- Dashboard (ship status, log tail, chassis progress) ---
+/// Resolve the active repository root for cockpit/dashboard read & write handlers.
+/// Honors runtime working-repo overrides set via `POST /api/repo/working`
+/// (`<chump-repo-switcher>`), falling back to `CHUMP_REPO` then `runtime_base()`.
+fn active_cockpit_repo_root() -> PathBuf {
+    if repo_path::has_working_repo_override() {
+        return repo_path::repo_root();
+    }
+    std::env::var("CHUMP_REPO")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_path::runtime_base())
+}
+
 async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let base = repo_path::runtime_base();
+    let base = active_cockpit_repo_root();
     let ship_log_path = base.join("logs/heartbeat-ship.log");
 
     // INFRA-1485: tokio::process::Command + 1s timeout so a stalled pgrep
     // doesn't park a tokio worker thread.
     let ship_running = {
         let fut = tokio::process::Command::new("pgrep")
+            .kill_on_drop(true)
             .args(["-f", "heartbeat-ship"])
             .output();
         match tokio::time::timeout(std::time::Duration::from_secs(1), fut).await {
@@ -2470,7 +2484,7 @@ async fn handle_dashboard_stream(
     }
 
     fn build_dashboard_snapshot() -> String {
-        let base = repo_path::runtime_base();
+        let base = active_cockpit_repo_root();
         let ship_log_path = base.join("logs/heartbeat-ship.log");
         let ship_running = std::process::Command::new("pgrep")
             .args(["-f", "heartbeat-ship"])
@@ -3935,9 +3949,7 @@ async fn handle_needs_judgment(headers: HeaderMap) -> Result<Json<serde_json::Va
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let repo_root = std::env::var("CHUMP_REPO")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| repo_path::runtime_base());
+    let repo_root = active_cockpit_repo_root();
 
     let db_path = chump_gap_store::store_path::state_db_path(&repo_root); // INFRA-8190
     let ambient_path = std::env::var("CHUMP_AMBIENT_IN_PROMPT")
@@ -4045,9 +4057,7 @@ async fn handle_needs_judgment_ack(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let repo_root = std::env::var("CHUMP_REPO")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| repo_path::runtime_base());
+    let repo_root = active_cockpit_repo_root();
 
     let ambient_path = std::env::var("CHUMP_AMBIENT_IN_PROMPT")
         .map(std::path::PathBuf::from)
@@ -4858,10 +4868,7 @@ async fn handle_telemetry_cost(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let window = q.window.as_deref().unwrap_or("session");
-    let repo_root = match std::env::var("CHUMP_REPO") {
-        Ok(r) => PathBuf::from(r),
-        Err(_) => repo_path::runtime_base(),
-    };
+    let repo_root = active_cockpit_repo_root();
     let lock_dir = std::env::var("CHUMP_LOCK_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_root.join(".chump-locks"));
@@ -5000,10 +5007,7 @@ async fn handle_telemetry_cost(
 /// slo_breach: true when pillar has < 2 pickable gaps (L2-SLO-4).
 async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
     let _ = check_auth(&headers); // unauthenticated read-only for dashboard convenience
-    let repo_root = match std::env::var("CHUMP_REPO") {
-        Ok(r) => std::path::PathBuf::from(r),
-        Err(_) => repo_path::runtime_base(),
-    };
+    let repo_root = active_cockpit_repo_root();
 
     // ── Fleet SLO breach count via chump health --slo-check --json ───────────
     // Wrapped in tokio::time::timeout to prevent blocking the async runtime
@@ -5017,6 +5021,7 @@ async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
         .unwrap_or(3);
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump"));
     let health_future = tokio::process::Command::new(&exe)
+        .kill_on_drop(true)
         .args(["health", "--slo-check", "--json"])
         .current_dir(&repo_root)
         .output();
@@ -5470,6 +5475,7 @@ async fn handle_pr_detail(
     // starvation. PWA cockpit's PRCard polls this every 30s per visible
     // PR; sync Command was a tail-latency hazard.
     let gh_fut = tokio::process::Command::new("gh")
+        .kill_on_drop(true)
         .args([
             "pr",
             "view",
@@ -6998,10 +7004,7 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let repo_root = match std::env::var("CHUMP_REPO") {
-        Ok(r) => PathBuf::from(r),
-        Err(_) => repo_path::runtime_base(),
-    };
+    let repo_root = active_cockpit_repo_root();
 
     let lock_dir = std::env::var("CHUMP_LOCK_DIR")
         .map(PathBuf::from)
@@ -7176,6 +7179,7 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
             let timeout_dur = std::time::Duration::from_secs(gh_timeout_secs);
             async move {
                 let cmd = tokio::process::Command::new("gh")
+                    .kill_on_drop(true)
                     .args([
                         "pr",
                         "list",
@@ -7296,10 +7300,7 @@ async fn handle_gap_queue(
     let domain_filter = params.get("domain").cloned();
     let priority_filter = params.get("priority").cloned();
 
-    let repo_root = match std::env::var("CHUMP_REPO") {
-        Ok(r) => PathBuf::from(r),
-        Err(_) => repo_path::runtime_base(),
-    };
+    let repo_root = active_cockpit_repo_root();
 
     let gap_store_inst = match crate::gap_store::GapStore::open(&repo_root) {
         Ok(s) => s,
@@ -7801,10 +7802,7 @@ async fn handle_gap_next(
 /// GET /api/debt (and /api/debt-index) — INFRA-8179: debt/dormancy crown-metric
 /// index computed from `.chump/state.db` (`gaps` + optional `tech_debt_findings`).
 async fn handle_debt() -> Json<serde_json::Value> {
-    let repo_root = match std::env::var("CHUMP_REPO") {
-        Ok(r) => PathBuf::from(r),
-        Err(_) => repo_path::runtime_base(),
-    };
+    let repo_root = active_cockpit_repo_root();
     let section = chump_kpi_report::kpi_report::build_debt_index_section(&repo_root);
     let live_pct = section.gauge.live_pct;
     let debt = section.gauge.debt;
@@ -7850,10 +7848,7 @@ async fn handle_debt() -> Json<serde_json::Value> {
 /// GET /api/dashboard-summary — INFRA-8179: honest landing/ci_qa health on the
 /// `chump --web` serve path (mirrors `chump-fleet-server::dashboard::build_summary`).
 async fn handle_dashboard_summary() -> Json<serde_json::Value> {
-    let repo_root = match std::env::var("CHUMP_REPO") {
-        Ok(r) => PathBuf::from(r),
-        Err(_) => repo_path::runtime_base(),
-    };
+    let repo_root = active_cockpit_repo_root();
 
     let mut stuck_prs = 0u64;
     let mut today_ships = 0u64;
