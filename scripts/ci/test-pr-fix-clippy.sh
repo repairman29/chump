@@ -10,11 +10,14 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
-CHUMP="${REPO_ROOT}/target/debug/chump"
+CHUMP="${CHUMP_BIN:-${REPO_ROOT}/target/debug/chump}"
 if [[ ! -f "$CHUMP" ]]; then
     CHUMP="${REPO_ROOT}/target/release/chump"
 fi
 if [[ ! -f "$CHUMP" ]]; then
+    CHUMP="$(command -v chump 2>/dev/null || echo "")"
+fi
+if [[ -z "$CHUMP" || ! -f "$CHUMP" ]]; then
     echo "[SKIP] chump binary not found — run 'cargo build' first"
     exit 0
 fi
@@ -27,6 +30,8 @@ cd "$FIXTURE"
 git init --quiet
 git config user.email "test@example.com"
 git config user.name "Test"
+git config receive.denyCurrentBranch updateInstead
+cp "$REPO_ROOT/rust-toolchain.toml" "$FIXTURE/rust-toolchain.toml" 2>/dev/null || true
 
 # Minimal Cargo project so cargo clippy can parse it.
 mkdir -p src
@@ -44,23 +49,20 @@ RUST
 
 git add -A && git commit --quiet -m "init"
 
-# ── Test branch: introduce a manual_split_once lint ───────────────────────────
+# ── Test branch: introduce a machine-applicable useless_format lint ──────────
 git checkout -b fix-clippy-test --quiet
 
 cat > src/main.rs <<'RUST'
-fn parse(s: &str) -> (&str, &str) {
-    let mut it = s.splitn(2, ':');
-    let k = it.next().unwrap_or("");
-    let v = it.next().unwrap_or("");
-    (k, v)
+fn parse(s: &str) -> String {
+    format!("hello")
+    + s
 }
 fn main() {
-    let (k, v) = parse("key:value");
-    println!("{k}={v}");
+    println!("{}", parse("world"));
 }
 RUST
 
-git add src/main.rs && git commit --quiet -m "add manual_split_once candidate"
+git add src/main.rs && git commit --quiet -m "add useless_format candidate"
 
 # ── Mock gh ───────────────────────────────────────────────────────────────────
 MOCK_GH_DIR=$(mktemp -d)
@@ -107,18 +109,15 @@ echo "=== Test 3: too many files — should refuse ==="
 # Introduce lints across 4 files to trigger the >3 guard.
 for i in 1 2 3 4; do
     cat > "src/file${i}.rs" <<RUST
-pub fn parse${i}(s: &str) -> (&str, &str) {
-    let mut it = s.splitn(2, ':');
-    let k = it.next().unwrap_or("");
-    let v = it.next().unwrap_or("");
-    (k, v)
+pub fn parse${i}(s: &str) -> String {
+    format!("hello") + s
 }
 RUST
 done
 
 # Also add them to main.rs so cargo knows they exist.
 cat > src/main.rs <<'RUST'
-mod file1; mod file2; mod file3; mod file4;
+pub mod file1; pub mod file2; pub mod file3; pub mod file4;
 fn main() {}
 RUST
 

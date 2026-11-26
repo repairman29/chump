@@ -29,7 +29,7 @@ FARMER="$REPO_ROOT/scripts/coord/farmer.sh"
 # rebase silently dropped the original guard (commit d39a5ba2e).
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "SKIP: test-farmer.sh is macOS-specific (uname=$(uname -s)); farmer is a launchd daemon"
-    exit 0
+    exit 77
 fi
 
 PASS=0

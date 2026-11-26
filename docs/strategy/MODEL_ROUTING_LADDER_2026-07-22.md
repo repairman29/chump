@@ -313,3 +313,5 @@ only by a live build receipt**, never by config inspection.
 `CLAUDE_CODE_OAUTH_TOKEN` in env (still sourced from `cj.env`), so the INFRA-267
 P0-fallback-to-Claude and EFFECTIVE-310 decompose paths still provide the rare
 frontier ceiling above the DeepSeek floor.
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->

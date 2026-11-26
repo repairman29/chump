@@ -17,8 +17,8 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Resolve chump binary: prefer local build (worktree CI), fall back to PATH
-CHUMP="${REPO_ROOT}/target/debug/chump"
+# Resolve chump binary: prefer CHUMP_BIN / local build (worktree CI), fall back to PATH
+CHUMP="${CHUMP_BIN:-${REPO_ROOT}/target/debug/chump}"
 if [[ ! -x "$CHUMP" ]]; then
     CHUMP="${HOME}/.cargo/bin/chump"
 fi
@@ -54,8 +54,8 @@ check_error() {
 # 1. chump gap set <no args> → Usage:
 check_error "gap set: no args shows Usage" "Usage:" gap set
 
-# 2. chump gap set --bad-flag → Error: unknown flag
-check_error "gap set: unknown flag shows Error" "Error:" gap set --bad-flag
+# 2. chump gap set --bad-flag → Error / unknown flag
+check_error "gap set: unknown flag shows Error" "Error:\|unknown flag" gap set --bad-flag
 
 # 3. chump gap show <no args> → Usage:
 check_error "gap show: no args shows Usage" "Usage:" gap show

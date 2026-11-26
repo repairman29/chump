@@ -41,7 +41,7 @@
 
 set -euo pipefail
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 # ── Gate control (AC#6) ────────────────────────────────────────────────────────

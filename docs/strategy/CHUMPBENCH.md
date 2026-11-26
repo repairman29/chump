@@ -135,3 +135,5 @@ stamp). ChumpBench is the harness that runs them all as one measurable lap.
 - Turns the 81-repo portfolio from "shelfware" into **the proving ground** — real, owned, diverse
   tracks at zero acquisition cost.
 - Makes every future capability testable: does it move touches-per-lap? If not, it didn't help.
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->

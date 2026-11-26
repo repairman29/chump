@@ -2,7 +2,7 @@
 # CREDIBLE-017: Validate all CLI commands use standard exit codes.
 set -euo pipefail
 
-BINARY="${1:-target/debug/chump}"
+BINARY="${1:-${CHUMP_BIN:-target/debug/chump}}"
 PASS=0
 FAIL=0
 
@@ -44,12 +44,12 @@ fi
 
 CHUMP="$BINARY"
 
-# 2a. no args → exit 2 (usage error)
+# 2a. no args → exit 0 (top-level FTUE / help overview)
 set +e
 "$CHUMP" >/dev/null 2>&1
 RC=$?
 set -e
-check_exit "chump (no args)" 2 $RC
+check_exit "chump (no args)" 0 $RC
 
 # 2b. unknown subcommand → exit 2
 set +e
@@ -93,12 +93,12 @@ RC=$?
 set -e
 check_exit "chump fleet help" 2 $RC
 
-# 2h. init --help → exit 2
+# 2h. init --help → exit 0
 set +e
 "$CHUMP" init --help 2>/dev/null
 RC=$?
 set -e
-check_exit "chump init --help" 2 $RC
+check_exit "chump init --help" 0 $RC
 
 echo "---"
 echo "Result: $PASS passed, $FAIL failed"

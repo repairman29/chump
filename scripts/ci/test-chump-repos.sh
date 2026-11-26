@@ -67,17 +67,15 @@ else
     fail "import_from_yaml does not call upsert_repos_from_skills"
 fi
 
-# ── Build binary ──────────────────────────────────────────────────────────────
-
-echo "  [build] cargo build --bin chump (quiet)..."
-cargo build --bin chump --manifest-path "$REPO_ROOT/Cargo.toml" -q 2>&1 | tail -5
-
-# INFRA-3517: resolve the built binary via the shared helper, which honors
-# .cargo/config.toml [build] target-dir. The old hardcoded
-# "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" missed config.toml target
-# dirs, so preflight reported "chump binary not found" on any host with a
-# shared target dir (e.g. ~/.cargo/chump-shared-target) — a local-only false-red.
-source "$(dirname "$0")/lib/discover-chump-bin.sh"
+# ── Resolve or build binary ───────────────────────────────────────────────────
+if [[ -z "${CHUMP_BIN:-}" || ! -x "${CHUMP_BIN}" ]]; then
+    source "$(dirname "$0")/lib/discover-chump-bin.sh" 2>/dev/null || true
+fi
+if [[ -z "${CHUMP_BIN:-}" || ! -x "${CHUMP_BIN}" ]]; then
+    echo "  [build] cargo build --bin chump (quiet)..."
+    cargo build --bin chump --manifest-path "$REPO_ROOT/Cargo.toml" -q 2>&1 | tail -5
+    source "$(dirname "$0")/lib/discover-chump-bin.sh"
+fi
 BIN="$CHUMP_BIN"
 
 # ── Functional tests ──────────────────────────────────────────────────────────

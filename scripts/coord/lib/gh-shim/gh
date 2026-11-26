@@ -217,7 +217,10 @@ fi
 # Mark that the shim is the recording path on this call — any
 # explicit chump_gh_record() call from a wrapper higher up the stack
 # (e.g. bot-merge.sh::gh_with_backoff) should skip its own emission
-# to avoid double-logging.
+# to avoid double-logging. Conversely, if chump_gh() ALREADY set
+# CHUMP_GH_SHIM_RECORDING=1 before invoking gh, chump_gh() owns the
+# post-call chump_gh_record() emission and this shim must not emit a duplicate.
+_caller_owns_recording="${CHUMP_GH_SHIM_RECORDING:-0}"
 export CHUMP_GH_SHIM_RECORDING=1
 "$_real_gh" "$@"
 rc=$?
@@ -226,7 +229,7 @@ unset CHUMP_GH_SHIM_RECORDING
 ended_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
 
 # Best-effort record. Never blocks/fails the real call.
-if declare -F chump_gh_record >/dev/null 2>&1; then
+if [[ "$_caller_owns_recording" != "1" ]] && declare -F chump_gh_record >/dev/null 2>&1; then
     chump_gh_record "$api_tag" "$(( ended_ms - started_ms ))" "$rc" "$script_tag" \
         2>/dev/null || true
 fi

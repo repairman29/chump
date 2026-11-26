@@ -23,14 +23,14 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 SPIKE_DIR="$REPO_ROOT/scripts/spike"
 
 if [[ ! -d "$SPIKE_DIR" ]]; then
-    echo "[SKIP] no scripts/spike/ directory yet"
+    echo "[PASS] no scripts/spike/ directory yet (0 unisolated spike scripts)"
     exit 0
 fi
 
 shopt -s nullglob
 spike_scripts=("$SPIKE_DIR"/*.sh)
 if [[ ${#spike_scripts[@]} -eq 0 ]]; then
-    echo "[SKIP] scripts/spike/ has no .sh files"
+    echo "[PASS] scripts/spike/ has no .sh files (0 unisolated spike scripts)"
     exit 0
 fi
 

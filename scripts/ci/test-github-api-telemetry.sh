@@ -30,9 +30,9 @@ cat >"$TMP/fakebin/gh" <<'EOF'
 #!/usr/bin/env bash
 # Args: $1 = subcommand (api/pr/run), rest = subargs
 if [[ "${1:-}" == "api" && "${2:-}" == "rate_limit" ]]; then
-    # The wrapper calls: gh api rate_limit --jq '"\(.resources.core.remaining) \(.resources.graphql.remaining)"'
-    # We emulate jq by inspecting --jq and printing the formatted answer.
-    echo "4321 87"
+    # The wrapper calls: gh api rate_limit --jq '"\(.resources.core.remaining) \(.resources.graphql.remaining) \(.resources.graphql.reset)"'
+    # Keep graphql > 100 so INFRA-1040's graphql_exhausted alert does not emit a second line.
+    echo "4321 870 1700000000"
     exit 0
 fi
 # For "pr merge 123 --auto --squash" or anything else, succeed with no output.
@@ -77,7 +77,7 @@ ok "ambient line shape includes all required fields"
 
 # ── Test 4: rate-limit values parsed from fake gh ────────────────────────────
 grep -q '"remaining_core":4321' <<<"$line" || fail "expected remaining_core=4321: $line"
-grep -q '"remaining_graphql":87' <<<"$line" || fail "expected remaining_graphql=87: $line"
+grep -q '"remaining_graphql":870' <<<"$line" || fail "expected remaining_graphql=870: $line"
 ok "rate-limit values pulled from fake gh and recorded"
 
 # ── Test 5: chump_gh_record (record-only path, e.g. gh_with_backoff) ─────────

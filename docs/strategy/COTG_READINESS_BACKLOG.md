@@ -676,3 +676,5 @@ interventions the way this backlog mined a session — and the distance to
 zero-touch becomes a number the OS drives down on its own. That is what "wired to
 be a wise architect" means concretely: not that it never fails, but that every
 failure teaches it, and it never needs the same human twice.
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->

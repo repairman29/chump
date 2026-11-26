@@ -23,7 +23,13 @@ cleanup() {
     rm -rf "$WORK"
 }
 
-BIN="${CHUMP_BIN:-/private/tmp/chump-infra-991/target/debug/chump}"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+if [[ ! -x "$BIN" ]] && [[ -x "$REPO_ROOT/target/release/chump" ]]; then
+    BIN="$REPO_ROOT/target/release/chump"
+elif [[ ! -x "$BIN" ]] && command -v chump >/dev/null 2>&1; then
+    BIN="$(command -v chump)"
+fi
 if [[ ! -x "$BIN" ]]; then
     echo "[test] FAIL: chump binary not found at $BIN — build first with cargo build --bin chump" >&2
     exit 2

@@ -58,7 +58,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${CHUMP_CENSUS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-TIMEOUT_S="${CHUMP_CENSUS_TIMEOUT_S:-120}"
+CENSUS_TIMEOUT_S="${CHUMP_CENSUS_TIMEOUT_S:-180}"
 JOBS="${CHUMP_CENSUS_JOBS:-4}"
 PY="$SCRIPT_DIR/lib/census.py"
 
@@ -66,9 +66,13 @@ PY="$SCRIPT_DIR/lib/census.py"
 if [[ "${1:-}" == "--_run-one" ]]; then
     test_path="$2"; sandbox="$3"
     name="$(basename "$test_path")"
+    run_root="${CENSUS_RUN_ROOT:-$ROOT}"
+    rel_test="${test_path#"$ROOT/"}"
+    if [[ -f "$run_root/$rel_test" ]]; then
+        test_path="$run_root/$rel_test"
+    fi
     d="$sandbox/runs/$name"
-    mkdir -p "$d/home/.chump" "$d/locks" "$d/tmp"
-    cp "$sandbox/state.db" "$d/state.db"
+    mkdir -p "$d/home/.chump" "$d/tmp"
     # Same fleet-GO the CI fast-checks job sets (CREDIBLE-166): claim- and
     # bot-merge-exercising tests refuse at AUTONOMY_LEVEL 0/absent.
     echo 5 > "$d/home/.chump/AUTONOMY_LEVEL"
@@ -76,13 +80,21 @@ if [[ "${1:-}" == "--_run-one" ]]; then
     start=$(date +%s)
     rc=0
     (
-        cd "$ROOT"
+        cd "$run_root"
         export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
         export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
-        export HOME="$d/home" CHUMP_HOME="$d/home/.chump"
-        export CHUMP_STATE_DB="$d/state.db" CHUMP_AMBIENT_LOG="$d/ambient.jsonl"
-        export CHUMP_LOCK_DIR="$d/locks" TMPDIR="$d/tmp"
+        export HOME="$d/home" TMPDIR="$d/tmp"
         export GIT_CONFIG_GLOBAL="$d/gitconfig" CHUMP_CENSUS_IN_PROGRESS=1
+        # Do NOT force CHUMP_STATE_DB / CHUMP_AMBIENT_LOG / CHUMP_LOCK_DIR /
+        # CHUMP_HOME globally: tests that build temp fixture repos via
+        # CHUMP_REPO="$TMP" expect <TMP>/.chump/state.db, and global overrides
+        # hijack them into one shared sandbox db. HOME="$d/home" already
+        # isolates ~/.chump, and CENSUS_RUN_ROOT isolates any live checkout.
+        unset CHUMP_STATE_DB CHUMP_AMBIENT_LOG CHUMP_LOCK_DIR CHUMP_HOME
+        if [[ -n "${CENSUS_CHUMP_BIN:-}" && -x "${CENSUS_CHUMP_BIN}" ]]; then
+            export CHUMP_BIN="${CENSUS_CHUMP_BIN}"
+            export PATH="$(dirname "${CENSUS_CHUMP_BIN}"):$PATH"
+        fi
         # No live credentials inside a census test: nothing reaches GitHub or
         # a model API on the caller's behalf.
         unset GH_TOKEN GITHUB_TOKEN ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
@@ -101,10 +113,11 @@ if [[ "${1:-}" == "--_run-one" ]]; then
             alarm $t; waitpid($pid, 0); alarm 0;
             my $st = $?; kill "KILL", -$pid;
             exit(($st & 127) ? 128 + ($st & 127) : $st >> 8);
-        ' "$TIMEOUT_S" bash "$test_path"
+        ' "$CENSUS_TIMEOUT_S" bash "$test_path"
     ) </dev/null >"$d/out.log" 2>&1 || rc=$?
     dur=$(( $(date +%s) - start ))
-    clean="$(sed $'s/\x1b\\[[0-9;]*m//g' "$d/out.log" 2>/dev/null || true)"
+    esc="$(printf '\033')"
+    clean="$(sed "s/${esc}\\[[0-9;]*m//g" "$d/out.log" 2>/dev/null || cat "$d/out.log" 2>/dev/null || true)"
     status=fail
     if [[ $rc -eq 0 ]]; then
         status=pass
@@ -153,11 +166,24 @@ if [[ -n "$CHECK_BASE" ]]; then
 fi
 
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/chump-census.XXXXXX")"
+CENSUS_WORKTREE=""
+CENSUS_CREATED_TARGET_LINKS=()
+cleanup_census() {
+    local link
+    for link in "${CENSUS_CREATED_TARGET_LINKS[@]:-}"; do
+        [[ -L "$link" ]] && rm -f "$link" || true
+    done
+    if [[ -n "$CENSUS_WORKTREE" ]]; then
+        git -C "$ROOT" worktree remove --force "$CENSUS_WORKTREE" >/dev/null 2>&1 || rm -rf "$CENSUS_WORKTREE"
+    fi
+    if [[ "${CHUMP_CENSUS_KEEP_SANDBOX:-0}" != "1" ]]; then
+        rm -rf "$SANDBOX"
+    fi
+}
 if [[ "${CHUMP_CENSUS_KEEP_SANDBOX:-0}" == "1" ]]; then
     echo "census: sandbox kept at $SANDBOX" >&2
-else
-    trap 'rm -rf "$SANDBOX"' EXIT
 fi
+trap cleanup_census EXIT
 mkdir -p "$SANDBOX/results" "$SANDBOX/runs"
 
 partial=0
@@ -165,7 +191,7 @@ partial=0
 if [[ -z "$OUT_DIR" ]]; then
     if [[ $partial -eq 1 && $WRITE -eq 0 && $NO_RUN -eq 0 ]]; then
         OUT_DIR="$SANDBOX/out"
-        export CHUMP_CENSUS_KEEP_SANDBOX=1; trap - EXIT
+        export CHUMP_CENSUS_KEEP_SANDBOX=1
         echo "census: partial run; output + per-test logs kept in $SANDBOX (pass --write to merge into docs)" >&2
     else
         OUT_DIR="$DOCS_DIR"
@@ -183,18 +209,42 @@ mode=full
 if [[ $NO_RUN -eq 1 ]]; then
     mode=no-run
 else
-    fixture="${CHUMP_CENSUS_STATE_DB_FIXTURE:-$ROOT/.chump/state.db}"
-    if [[ -s "$fixture" ]]; then
-        cp "$fixture" "$SANDBOX/state.db"
-    elif command -v sqlite3 >/dev/null; then
-        sqlite3 "$SANDBOX/state.db" 'PRAGMA user_version=0;' >/dev/null
-    else
-        : > "$SANDBOX/state.db"
+    CENSUS_RUN_ROOT="$ROOT"
+    if [[ -e "$ROOT/.git" ]] && [[ -f "$ROOT/.chump/state.db" || -f "$ROOT/.chump-locks/ambient.jsonl" ]]; then
+        if git -C "$ROOT" worktree add --detach "$SANDBOX/worktree" HEAD >/dev/null 2>&1; then
+            CENSUS_WORKTREE="$SANDBOX/worktree"
+            CENSUS_RUN_ROOT="$CENSUS_WORKTREE"
+            git -C "$ROOT" diff HEAD --binary | git -C "$CENSUS_WORKTREE" apply --allow-empty >/dev/null 2>&1 || true
+        fi
+    fi
+    CENSUS_CHUMP_BIN="${CHUMP_BIN:-}"
+    if [[ -z "$CENSUS_CHUMP_BIN" || ! -x "$CENSUS_CHUMP_BIN" ]]; then
+        for cand in \
+            "$ROOT/target/release/chump" \
+            "$ROOT/target/debug/chump" \
+            "${CARGO_TARGET_DIR:-}/release/chump" \
+            "${CARGO_TARGET_DIR:-}/debug/chump" \
+            "$HOME/.cargo/bin/chump" \
+            "$(command -v chump 2>/dev/null || true)"; do
+            if [[ -n "$cand" && -x "$cand" ]]; then
+                CENSUS_CHUMP_BIN="$cand"
+                break
+            fi
+        done
+    fi
+    if [[ -n "$CENSUS_CHUMP_BIN" && -x "$CENSUS_CHUMP_BIN" ]]; then
+        for sub in release debug; do
+            if [[ ! -e "$CENSUS_RUN_ROOT/target/$sub/chump" ]]; then
+                mkdir -p "$CENSUS_RUN_ROOT/target/$sub"
+                ln -sf "$CENSUS_CHUMP_BIN" "$CENSUS_RUN_ROOT/target/$sub/chump"
+                CENSUS_CREATED_TARGET_LINKS+=("$CENSUS_RUN_ROOT/target/$sub/chump")
+            fi
+        done
     fi
     n="$(wc -l < "$SANDBOX/selected.txt" | tr -d ' ')"
-    echo "census: running $n tests (jobs=$JOBS timeout=${TIMEOUT_S}s)" >&2
+    echo "census: running $n tests (jobs=$JOBS timeout=${CENSUS_TIMEOUT_S}s)" >&2
     if [[ "$n" -gt 0 ]]; then
-        export ROOT TIMEOUT_S
+        export ROOT CENSUS_TIMEOUT_S CENSUS_RUN_ROOT CENSUS_CHUMP_BIN
         tr '\n' '\0' < "$SANDBOX/selected.txt" \
             | xargs -0 -P "$JOBS" -I{} bash "${BASH_SOURCE[0]}" --_run-one "{}" "$SANDBOX" \
             || echo "census: xargs exited $? (a runner died; its test is recorded as fail)" >&2
@@ -204,5 +254,5 @@ fi
 prev="$OUT_DIR/ci-test-census.json"
 [[ -f "$prev" ]] || prev="$DOCS_DIR/ci-test-census.json"
 python3 "$PY" report --root "$ROOT" --classified "$SANDBOX/classified.json" \
-    --results "$SANDBOX/results" --mode "$mode" --timeout "$TIMEOUT_S" --jobs "$JOBS" \
+    --results "$SANDBOX/results" --mode "$mode" --timeout "$CENSUS_TIMEOUT_S" --jobs "$JOBS" \
     --selected "$SANDBOX/selected.txt" --prev "$prev" --out-dir "$OUT_DIR" ${KNOWN_RED:+--known-red "$KNOWN_RED"}

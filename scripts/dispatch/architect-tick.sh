@@ -434,7 +434,12 @@ _scrub_headless_claude_env() {
 }
 
 if command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
-    cycle_output="$(_scrub_headless_claude_env; bounded "$TIMEOUT_S" "$CLAUDE_BIN" "${CLAUDE_ARGS[@]}" 2>&1)"
+    cycle_output="$(
+        _arch_t="$TIMEOUT_S"
+        _arch_bin="$CLAUDE_BIN"
+        _scrub_headless_claude_env
+        bounded "$_arch_t" "$_arch_bin" "${CLAUDE_ARGS[@]}" 2>&1
+    )"
     cycle_rc=$?
 else
     log "WARN: claude binary '$CLAUDE_BIN' not on PATH — recording a no-agent tick"

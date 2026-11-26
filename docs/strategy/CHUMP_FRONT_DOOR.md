@@ -176,3 +176,5 @@ person's hands, and how many times we had to reach in to get it there.
   already-shipped intervention metric.
 - Sequencing: this doc's §6 replaces "E1→E2→…" wave-order for the *delivery* half — build the
   first full lap (IMPROVE) before breadth.
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->

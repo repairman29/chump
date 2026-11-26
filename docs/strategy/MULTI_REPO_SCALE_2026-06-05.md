@@ -269,3 +269,5 @@ the first non-BEAST external repo.
 
 These are operator + strategy decisions, not fleet-engineering ones.
 Filed for visibility but not for the gap registry.
+
+<!-- research-privacy-exempt: operational architecture/routing doc, not empirical eval claims -->
