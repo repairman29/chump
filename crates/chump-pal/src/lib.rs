@@ -26,8 +26,8 @@ pub use paths::{
     temp_file_path, user_home, with_file_lock,
 };
 pub use process::{
-    configure_isolated_child, is_pid_alive, parent_pid, success_exit_status, terminate_process,
-    terminate_process_group,
+    configure_detached_daemon, configure_isolated_child, is_pid_alive, parent_pid,
+    success_exit_status, terminate_process, terminate_process_group,
 };
 pub use shell::{pwsh_or_cmd, shell_command};
 pub use signal::{
@@ -86,6 +86,34 @@ mod tests {
         assert!(is_pid_alive(pid));
 
         terminate_process_group(pid, true).expect("terminate_process_group");
+        let _ = child.wait();
+        assert!(!is_pid_alive(pid));
+    }
+
+    #[test]
+    fn detached_daemon_survives_spawning_thread_exit() {
+        let mut child = std::thread::spawn(|| {
+            #[cfg(unix)]
+            let mut cmd = shell_command("sleep 30");
+            #[cfg(windows)]
+            let mut cmd = shell_command("ping -n 30 127.0.0.1 >NUL");
+
+            configure_detached_daemon(&mut cmd);
+            cmd.spawn().expect("spawn detached daemon")
+        })
+        .join()
+        .expect("spawner thread join");
+
+        // On Linux, PR_SET_PDEATHSIG fires when the spawning thread exits;
+        // configure_detached_daemon must keep the daemon alive past spawner exit.
+        std::thread::sleep(Duration::from_millis(150));
+        let pid = child.id();
+        assert!(
+            is_pid_alive(pid),
+            "detached daemon pid={pid} must survive spawning thread exit"
+        );
+
+        terminate_process_group(pid, true).expect("terminate detached daemon");
         let _ = child.wait();
         assert!(!is_pid_alive(pid));
     }

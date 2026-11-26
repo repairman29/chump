@@ -645,7 +645,7 @@ pub fn run_up_cli(args: &[String]) -> i32 {
                 return 1;
             }
         };
-        chump_pal::configure_isolated_child(&mut cmd);
+        chump_pal::configure_detached_daemon(&mut cmd);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::from(log_file))
             .stderr(Stdio::from(log_err));
