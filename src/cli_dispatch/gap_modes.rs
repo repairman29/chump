@@ -2969,23 +2969,16 @@ pub(crate) async fn dispatch_gap_or_tail(args: Vec<String>) -> Result<()> {
                                     .spawn(); // fire-and-forget
                             }
                         }
-                        // ZERO-WASTE-056 + INFRA-247 + RESILIENT-1645: write
-                        // <worktree_root>/docs/gaps/<ID>.yaml ATOMICALLY when shipping
-                        // from a feature/worktree branch (so the YAML closure lands in
-                        // the WORK PR rather than dirtying canonical `main`) or when
-                        // `--update-yaml` was explicitly requested.
-                        let wt_branch = std::process::Command::new("git")
-                            .args(["rev-parse", "--abbrev-ref", "HEAD"])
-                            .current_dir(&worktree_root)
-                            .output()
-                            .ok()
-                            .filter(|o| o.status.success())
-                            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+                        // ZERO-WASTE-056 + INFRA-247: write <worktree_root>/docs/gaps/<ID>.yaml
+                        // ATOMICALLY by default so the YAML closure lands in the WORK PR
+                        // (not canonical `main` when in a linked worktree); pass
+                        // `--no-update-yaml` for post-merge host sweeps on `main`.
+                        let _ = update_yaml;
+                        let no_update_yaml = args.iter().any(|a| a == "--no-update-yaml");
                         match store.sync_yaml_for_ship(
                             &gap_id,
                             &worktree_root,
-                            wt_branch.as_deref(),
-                            update_yaml,
+                            no_update_yaml,
                             external_repo.as_deref(),
                         ) {
                             Ok(true) => {

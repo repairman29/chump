@@ -4355,20 +4355,19 @@ impl GapStore {
         }
     }
 
-    /// ZERO-WASTE-056 + INFRA-247 + RESILIENT-1645: atomically mirror a shipped
-    /// gap's `status: done` + `closed_pr` into `<worktree_root>/docs/gaps/<ID>.yaml`
-    /// when shipping from a feature/worktree branch (so the YAML update lands in
-    /// the work PR itself without dirtying canonical `main`) or when
-    /// `--update-yaml` was explicitly requested.
+    /// ZERO-WASTE-056 + INFRA-247: atomically mirror a shipped gap's
+    /// `status: done` + `closed_pr` into `<worktree_root>/docs/gaps/<ID>.yaml`
+    /// by default (so in linked worktrees the YAML update lands in the work PR
+    /// rather than dirtying canonical `main`), unless `--no-update-yaml` or an
+    /// `external_repo` was supplied.
     pub fn sync_yaml_for_ship(
         &self,
         gap_id: &str,
         worktree_root: &std::path::Path,
-        worktree_branch: Option<&str>,
-        explicit_update_yaml: bool,
+        no_update_yaml: bool,
         external_repo: Option<&str>,
     ) -> Result<bool> {
-        if !should_sync_yaml_on_ship(worktree_branch, explicit_update_yaml, external_repo) {
+        if !should_sync_yaml_on_ship(no_update_yaml, external_repo) {
             return Ok(false);
         }
         let gaps_dir = worktree_root.join("docs").join("gaps");
@@ -4446,27 +4445,14 @@ impl GapStore {
 /// Decide whether `chump gap ship` should write `<worktree_root>/docs/gaps/<ID>.yaml`.
 ///
 /// - External-repo gaps (`external_repo:owner/name`) never write local `docs/gaps`.
-/// - Explicit `--update-yaml` always writes.
-/// - Feature/worktree branches (`worktree_branch` != `main`/`master`/`HEAD`) write
-///   automatically so the YAML closure lands in the work PR (`ZERO-WASTE-056`).
-/// - Post-merge closes run directly on canonical `main`/`master` without
-///   `--update-yaml` skip writing to avoid dirtying the canonical checkout
-///   (`RESILIENT-1645` / `RESILIENT-1686`).
-pub fn should_sync_yaml_on_ship(
-    worktree_branch: Option<&str>,
-    explicit_update_yaml: bool,
-    external_repo: Option<&str>,
-) -> bool {
-    if external_repo.map(str::trim).is_some_and(|s| !s.is_empty()) {
+/// - `--no-update-yaml` explicitly suppresses the mirror (for post-merge host sweeps).
+/// - All other `chump gap ship` calls write `<worktree_root>/docs/gaps/<ID>.yaml`
+///   atomically (`ZERO-WASTE-056`).
+pub fn should_sync_yaml_on_ship(no_update_yaml: bool, external_repo: Option<&str>) -> bool {
+    if no_update_yaml || external_repo.map(str::trim).is_some_and(|s| !s.is_empty()) {
         return false;
     }
-    if explicit_update_yaml {
-        return true;
-    }
-    worktree_branch
-        .map(str::trim)
-        .filter(|b| !b.is_empty())
-        .is_some_and(|b| !matches!(b, "main" | "master" | "HEAD"))
+    true
 }
 
 /// INFRA-8043 (MISSION-045 parity for every filer): a P0/P1 gap must trace to an
@@ -6826,8 +6812,9 @@ pub fn extract_verify_commands(acceptance_criteria: &str) -> Vec<String> {
         .iter()
         .filter_map(|item| {
             let t = item.trim();
-            if t.len() >= MARKER.len() && t[..MARKER.len()].eq_ignore_ascii_case(MARKER) {
-                let cmd = t[MARKER.len()..].trim();
+            let prefix = t.get(..MARKER.len())?;
+            if prefix.eq_ignore_ascii_case(MARKER) {
+                let cmd = t.get(MARKER.len()..)?.trim();
                 if cmd.is_empty() {
                     None
                 } else {
@@ -10797,6 +10784,7 @@ mod tests {
     // the `hakari` subcommand installed is a silent no-op, so a real cargo on
     // PATH would NOT kill the mutant — hence the deterministic fake.)
     #[test]
+    #[cfg(unix)]
     #[serial_test::serial(resilient1686_path_env)]
     fn resilient1686_ship_leaves_working_tree_byte_identical() {
         use std::os::unix::fs::PermissionsExt;
@@ -11060,11 +11048,11 @@ mod tests {
         std::fs::create_dir_all(&worktree_root).unwrap();
 
         let wrote = store
-            .sync_yaml_for_ship(&id, &worktree_root, Some("chump/zw-056-test"), false, None)
+            .sync_yaml_for_ship(&id, &worktree_root, false, None)
             .unwrap();
         assert!(
             wrote,
-            "feature-branch ship must write worktree docs/gaps/<ID>.yaml"
+            "default gap ship must write worktree docs/gaps/<ID>.yaml"
         );
         let wt_yaml = std::fs::read_to_string(
             worktree_root
@@ -11082,10 +11070,10 @@ mod tests {
     }
 
     #[test]
-    fn zerowaste056_canonical_main_skips_unrequested_dirty_unless_explicit() {
+    fn zerowaste056_no_update_yaml_and_external_repo_skip_local_mirror() {
         let (store, dir) = test_store();
         let id = store
-            .reserve("ZERO-WASTE", "canonical-main clean guard", "P2", "s")
+            .reserve("ZERO-WASTE", "no-update-yaml clean guard", "P2", "s")
             .unwrap();
         store.link_pr(&id, 6001, "cafebabe").unwrap();
         store.ship(&id, "s", Some(6001)).unwrap();
@@ -11093,29 +11081,37 @@ mod tests {
         let main_root = dir.path().join("main-checkout");
         std::fs::create_dir_all(&main_root).unwrap();
 
-        // Post-merge close on `main` without --update-yaml leaves working tree clean.
-        let wrote_default = store
-            .sync_yaml_for_ship(&id, &main_root, Some("main"), false, None)
+        // --no-update-yaml leaves working tree clean.
+        let wrote_suppressed = store
+            .sync_yaml_for_ship(&id, &main_root, true, None)
             .unwrap();
-        assert!(!wrote_default);
+        assert!(!wrote_suppressed);
         assert!(!main_root.join("docs").exists());
 
-        // External-repo gap never writes local docs/gaps even with explicit flag.
+        // External-repo gap never writes local docs/gaps.
         let wrote_ext = store
-            .sync_yaml_for_ship(&id, &main_root, Some("chump/ext"), true, Some("owner/repo"))
+            .sync_yaml_for_ship(&id, &main_root, false, Some("owner/repo"))
             .unwrap();
         assert!(!wrote_ext);
 
-        // Explicit --update-yaml on `main` writes docs/gaps/<ID>.yaml.
-        let wrote_explicit = store
-            .sync_yaml_for_ship(&id, &main_root, Some("main"), true, None)
+        // Default writes docs/gaps/<ID>.yaml.
+        let wrote_default = store
+            .sync_yaml_for_ship(&id, &main_root, false, None)
             .unwrap();
-        assert!(wrote_explicit);
+        assert!(wrote_default);
         assert!(main_root
             .join("docs")
             .join("gaps")
             .join(format!("{id}.yaml"))
             .is_file());
+
+        // Guard extract_verify_commands against multi-byte UTF-8 straddling byte index 7.
+        let utf8_ac =
+            r#"["abcde — multi-byte em-dash at byte 6..9", "verify: cargo test -p chumpd"]"#;
+        assert_eq!(
+            extract_verify_commands(utf8_ac),
+            vec!["cargo test -p chumpd".to_string()]
+        );
     }
 
     #[test]
@@ -15400,6 +15396,7 @@ mod reconcile_terminal_tests {
     /// `CHUMP_GH_BIN` without consulting chump's own git history, refuses external_repo
     /// gaps without `--external-repo`, and refuses `--external-repo` on untagged gaps.
     #[test]
+    #[cfg(unix)]
     fn credible1579_external_repo_ship_verifies_merged_pr_and_rejects_mismatches() {
         use std::os::unix::fs::PermissionsExt;
 

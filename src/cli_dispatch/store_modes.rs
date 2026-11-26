@@ -276,6 +276,7 @@ pub(crate) fn validate_gap_mutation_args(
             const VALUE_FLAGS: &[&str] = &["--closed-pr", "--external-repo", "--session"];
             const BOOL_FLAGS: &[&str] = &[
                 "--update-yaml",
+                "--no-update-yaml",
                 "--why",
                 "--no-outcome-required",
                 "--json",
