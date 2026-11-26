@@ -114,7 +114,7 @@
                 <a class="pillar-tab" href="${prefix}/fleet/" aria-current="${pillar === "fleet" ? "true" : "false"}">File Leases &amp; Fleet</a>
                 <a class="pillar-tab" href="${prefix}/cascade/" aria-current="${pillar === "cascade" ? "true" : "false"}">Model Failover</a>
                 <a class="pillar-tab" href="${prefix}/tools/fleet-simulator/" aria-current="${pillar === "tools" ? "true" : "false"}">Free Tools</a>
-                <a class="pillar-tab" href="${prefix}/docs/">Docs</a>
+                <a class="pillar-tab" href="${prefix}/docs/" aria-current="${pillar === "docs" ? "true" : "false"}">Docs</a>
               </nav>
               <div class="utility-right">
                 <span class="live-daemon-pill" data-live="false" data-daemon-badge>
@@ -142,7 +142,7 @@
                 <span class="nav-badge">Tool</span>
               </a>
               <a class="nav-link" href="${prefix}/pricing/" ${page === "pricing" ? 'aria-current="page"' : ""}>Pricing &amp; TCO</a>
-              <a class="nav-link" href="${prefix}/docs/">Docs</a>
+              <a class="nav-link" href="${prefix}/docs/" ${page === "docs" ? 'aria-current="page"' : ""}>Docs</a>
             </nav>
             <div class="nav-actions">
               <a class="btn btn-stone btn-sm" href="https://github.com/repairman29/chump" target="_blank" rel="noopener" data-cockpit-cta>GitHub ↗</a>
@@ -218,7 +218,7 @@
                   <li><a href="${prefix}/fleet/#firewall-sandbox">Pre-Commit Lease Firewall</a></li>
                   <li><a href="${prefix}/fleet/#lineage-explorer">5-Stage Task Pipeline</a></li>
                   <li><a href="${prefix}/fleet/#gate-guard">Workflow Auto-Merge Guard</a></li>
-                  <li><a href="${prefix}/docs/" data-cockpit-cta>Operator Documentation →</a></li>
+                  <li><a href="${prefix}/docs/">Operator Documentation →</a></li>
                 </ul>
               </div>
               <div class="footer-col">
@@ -251,8 +251,8 @@
             </div>
             <div class="footer-trust-bar">
               <div class="trust-badges">
-                <span class="trust-badge">AGPL-3.0 Coordinator</span>
-                <span class="trust-badge">13 Apache-2.0 Workspace Crates</span>
+                <span class="trust-badge">Open-Source Rust v1.0</span>
+                <span class="trust-badge">Zero Repo License Impact</span>
                 <span class="trust-badge">macOS · Linux · Windows</span>
                 <span class="trust-badge">Zero Cloud Telemetry</span>
                 <span class="trust-badge">Offline Ready (Ollama / vLLM)</span>
@@ -315,7 +315,7 @@ chump --web --port 3847</code></pre>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
               <a class="btn btn-stone btn-sm" href="${prefix}/tools/config-doctor/">Audit Existing .env →</a>
-              <a class="btn btn-dark btn-sm" href="${prefix}/docs/" data-cockpit-cta>Read Quickstart Docs →</a>
+              <a class="btn btn-dark btn-sm" href="${prefix}/docs/">Read Quickstart Docs →</a>
             </div>
           </div>
         </div>

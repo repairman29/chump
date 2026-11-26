@@ -224,9 +224,12 @@
           <div class="app-window-bar">
             <div style="display:flex; align-items:center; gap:12px;">
               <span class="window-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-              <span id="window-caption">chump — .chump/state.db · AUTONOMY_LEVEL=3 (SUPERVISED)</span>
+              <span id="window-caption">chump — 4 agents working on one app · AUTONOMY_LEVEL=3 (SUPERVISED)</span>
             </div>
-            <span id="window-rhs">4 active workers · 0 lease collisions</span>
+            <span id="window-rhs">Zero overwritten files · Risky edits held for you</span>
+          </div>
+          <div id="window-scenario" style="padding:10px 18px; border-bottom:1px solid var(--stone-rule); background:var(--stone-inset); font-size:13.5px; color:var(--stone-ink);">
+            <strong>Plain-English Scenario:</strong> Four coding agents are building features on the same repository at the same time. Click any task on the left to see both the business outcome and the exact engineering receipt underneath.
           </div>
 
           <div class="three-pane">
@@ -433,7 +436,7 @@ desired_workers = 4</pre>
             “I built agent fleets five times before this one worked. Named it Chump so I'd remember who was doing the learning.”
           </blockquote>
           <p style="margin:0; color:var(--stone-muted); font-size:14.5px;">
-            Chump is real, public Rust software: a <strong>60-crate Rust 2021 workspace</strong> with <strong>13 permissive Apache-2.0 library crates</strong> and an <strong>AGPL-3.0</strong> coordinator binary so cloud vendors cannot wrap and rent it back to you. Verified across macOS, Ubuntu Linux, and Windows Server. Inspect the source, run the simulator, and judge by receipts.
+            Open-source Rust that runs natively on macOS, Linux, and Windows. Your source code stays on your own hardware, your API keys talk straight to your providers, and your repository's license stays 100% yours. <a href="https://github.com/repairman29/chump" target="_blank" rel="noopener" style="text-decoration:underline;">Inspect the source on GitHub</a>, test your setup in the <a href="./tools/fleet-simulator/" style="text-decoration:underline;">browser simulator</a>, or review open-source licensing on <a href="./pricing/" style="text-decoration:underline;">Pricing &amp; TCO</a>.
           </p>
         </div>
       </div>
@@ -473,72 +476,74 @@ desired_workers = 4</pre>
       /* 3-Pane Workspace Preview Data */
       const suites = {
         fleet: {
-          caption: "chump — .chump/state.db · AUTONOMY_LEVEL=3 (SUPERVISED)",
-          rhs: "4 active workers · 0 lease collisions",
-          leftHeading: "Active Task Queue (4)",
+          caption: "chump — 4 agents working on one app · AUTONOMY_LEVEL=3 (SUPERVISED)",
+          rhs: "Zero overwritten files · Risky edits held for you",
+          scenario: "Plain-English Scenario: Four AI coding agents are building features on the same codebase at the same time. Click any task on the left to see the plain-English team outcome alongside the exact git and CLI receipt.",
+          leftHeading: "Parallel Tasks Running Now (4)",
           items: [
             {
-              id: "TASK-101 · Cross-OS Paths",
-              badge: "MERGED",
+              id: "Stripe Checkout Webhook",
+              badge: "SHIPPED",
               pill: "pill-sage",
-              sub: "Windows, Linux & macOS path layer",
-              owner: "worker-01 · claude",
-              worktree: ".chump/worktrees/pal-paths",
-              paths: "crates/chump-pal/*, crates/chumpd/*",
-              zoomTitle: "PROOF-OF-MERGE VERIFIED ON MAIN",
-              zoomBody: "Commit verified reachable on origin/main across macOS, Linux, and Windows CI before marking task done.",
-              thought: "Checked crates/chump-pal/src/paths.rs · 17/17 cross-OS tests passed",
-              diff: "+151 / -54 across 7 files · All CI checks green",
-              cli: "chump ship --gap INFRA-101 --mode bot-merge",
+              sub: "Tested & merged automatically while you slept",
+              owner: "Agent 1 · Claude Code",
+              worktree: ".chump/worktrees/checkout-webhook",
+              paths: "src/billing/webhook.rs, tests/webhook_test.rs",
+              zoomTitle: "OUTCOME · MERGED ONLY AFTER REAL TEST PROOF",
+              zoomBody: "Agent worked in its own isolated branch, proved the new test failed before the fix and passed after, and merged once all CI checks turned green.",
+              thought: "Verified GitHub CI green + new webhook test passes",
+              diff: "+142 / -19 across 2 files · Merged cleanly to main",
+              cli: "chump ship --gap BILLING-101 --mode bot-merge",
             },
             {
-              id: "TASK-102 · CI Gate Guard",
-              badge: "HELD FOR HUMAN",
+              id: "Deploy Pipeline Change",
+              badge: "PAUSED FOR YOU",
               pill: "pill-plum",
-              sub: "Workflow auto-merge protection",
-              owner: "worker-02 · codex",
-              worktree: "/tmp/chump-gate-guard",
-              paths: "crates/chump-ship/src/gate_guard.rs",
-              zoomTitle: "AUTO-MERGE REFUSED ON WORKFLOW EDIT",
-              zoomBody: "Diff touches .github/workflows/ci.yml. Branch pushed and PR opened cleanly, while --auto-merge held for human sign-off.",
-              thought: "Matched protected pattern .github/workflows/* in gate_guard.rs",
-              diff: "+98 / -12 across 2 files · PR open, awaiting human review",
+              sub: "Agent touched deploy rules — held for human sign-off",
+              owner: "Agent 2 · Codex CLI",
+              worktree: ".chump/worktrees/deploy-workflow",
+              paths: ".github/workflows/deploy.yml",
+              zoomTitle: "OUTCOME · AGENTS CANNOT SELF-APPROVE CI OR DEPLOY RULES",
+              zoomBody: "Because this agent edited a GitHub Actions workflow file, Chump opened the pull request cleanly and automatically withheld auto-merge until a human approves it.",
+              thought: "Matched protected workflow path .github/workflows/*",
+              diff: "+28 / -6 in deploy.yml · PR open, waiting for your review",
               cli: "chump ship --gate-arm-check --auto-merge",
             },
             {
-              id: "TASK-103 · Auth Refactor",
-              badge: "IN FLIGHT",
+              id: "Login Session Refresh",
+              badge: "NO OVERWRITES",
               pill: "pill-bronze",
-              sub: "Route code review through shared cascade",
-              owner: "worker-03 · opencode",
-              worktree: "/tmp/chump-auth-refactor",
-              paths: "src/cli_dispatch/mod.rs::llm_complete",
-              zoomTitle: "PRE-COMMIT FIREWALL BLOCKED SIBLING STOMP",
-              zoomBody: "worker-04 attempted git commit on src/cli_dispatch/mod.rs; rejected in 1.4ms because worker-03 holds an active lease.",
-              thought: "Active symbol lease held by worker-03 (TTL 14m remaining)",
-              diff: "+42 / -67 · Routed completions via chump llm-complete",
-              cli: "chump claim INFRA-103 --role target --paths src/cli_dispatch/mod.rs",
+              sub: "Stopped a second agent from editing the same file",
+              owner: "Agent 3 · OpenCode",
+              worktree: ".chump/worktrees/login-refresh",
+              paths: "src/auth/session.rs",
+              zoomTitle: "OUTCOME · ZERO MERGE STOMPS OR WASTED REWORK",
+              zoomBody: "Agent 4 tried to edit src/auth/session.rs while Agent 3 was still working on it. Chump's pre-commit guard blocked the conflicting edit in 1.4ms before any work was lost.",
+              thought: "Active file lease held by Agent 3 (14m remaining)",
+              diff: "+42 / -18 in session.rs · Sibling collision prevented",
+              cli: "chump claim AUTH-103 --role target --paths src/auth/session.rs",
             },
             {
-              id: "TASK-104 · Kill-Switch Dial",
-              badge: "VERIFIED",
+              id: "Instant Stop & Spend Dial",
+              badge: "HARD CAP",
               pill: "pill-sky",
-              sub: "Fail-closed autonomy dial (0–5)",
-              owner: "worker-04 · aider",
-              worktree: "/tmp/chump-autonomy-dial",
-              paths: "crates/chump-atomic-claim/src/autonomy_level.rs",
-              zoomTitle: "FAIL-CLOSED HARDWARE & WORKER CAP",
-              zoomBody: "Missing, empty, or corrupt ~/.chump/AUTONOMY_LEVEL immediately defaults to Level 0 (STOP) with zero network dependency.",
-              thought: "Verified Levels 0..5 worker caps and merge permissions",
-              diff: "+64 / -8 · 17 unit + 17 shell kill-switch checks pass",
+              sub: "One offline switch pauses every agent immediately",
+              owner: "Agent 4 · Aider",
+              worktree: "~/.chump/AUTONOMY_LEVEL",
+              paths: "Level 0 (STOP) through Level 5 (Full Autonomy)",
+              zoomTitle: "OUTCOME · YOU STAY IN CONTROL EVEN IF WI-FI DROPS",
+              zoomBody: "Setting level 0 stops new claims and merges immediately from a plain local file—no cloud dashboard or internet connection required.",
+              thought: "Supervised mode active (Level 3: PRs open, human merges)",
+              diff: "0 runaway loops · Instant local stop with `chump fleet level 0`",
               cli: "chump fleet level 3",
             },
           ],
         },
         cascade: {
-          caption: "chump config show — mode=auto · rpm_headroom=80%",
-          rhs: "4 tiers active · $0.14 metered spend today",
-          leftHeading: "Configured Failover Slots",
+          caption: "chump config show — mode=auto · 80% rate-limit cushion",
+          rhs: "Subscriptions first · $0.14 metered API spend today",
+          scenario: "Plain-English Scenario: Instead of crashing when one AI provider rate-limits you—or burning metered API dollars on routine chores—Chump routes across your flat-rate subscriptions, backup APIs, and free local GPU models automatically.",
+          leftHeading: "Automatic Model Priority (4)",
           items: [
             {
               id: "Slot #1 · Claude OAuth",
@@ -608,6 +613,8 @@ desired_workers = 4</pre>
         document.getElementById("window-caption").textContent = s.caption;
         document.getElementById("window-rhs").textContent = s.rhs;
         document.getElementById("left-pane-heading").textContent = s.leftHeading;
+        const scenEl = document.getElementById("window-scenario");
+        if (scenEl && s.scenario) scenEl.textContent = s.scenario;
 
         const listEl = document.getElementById("left-pane-list");
         listEl.innerHTML = s.items
