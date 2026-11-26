@@ -80,21 +80,22 @@ jobs:
           cache-targets: true
 
       - name: Fetch the latest fleet chump binary (or build fallback) [census-nightly]
+        if: runner.os == 'Linux'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
           target=x86_64-unknown-linux-gnu
           got_bin=0
+          mkdir -p "$HOME/.cargo/bin"
           read -r run_id sha < <(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow build-fleet-binaries.yml --branch main --status success --limit 1 \
             --json databaseId,headSha -q '.[0] | "\(.databaseId) \(.headSha)"' 2>/dev/null) || true
           if [[ -n "${run_id:-}" ]] && gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n "chump-${target}-${sha}" -D "$RUNNER_TEMP/chump-bin"; then
-            for p in target/release target/debug; do
+            for p in target/release target/debug "$HOME/.cargo/bin"; do
               mkdir -p "$p"
               install -m 0755 "$RUNNER_TEMP/chump-bin/chump" "$p/chump"
             done
-            sudo install -m 0755 "$RUNNER_TEMP/chump-bin/chump" /usr/local/bin/chump
             echo "binary from build-fleet-binaries run $run_id (sha $sha)"
             got_bin=1
           fi
@@ -103,7 +104,7 @@ jobs:
             cargo build -p chump --bin chump -p chump-demo --bin chump-demo
             mkdir -p target/release
             cp -f target/debug/chump target/release/chump
-            sudo install -m 0755 target/debug/chump /usr/local/bin/chump
+            install -m 0755 target/debug/chump "$HOME/.cargo/bin/chump"
           else
             cargo build -p chump-demo --bin chump-demo || true
           fi
