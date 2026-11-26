@@ -1,12 +1,14 @@
 name: docs-pages
 
-# Builds the mkdocs-material doctrine site from docs/ and deploys it to
-# GitHub Pages. Read-only build (no secrets consumed beyond the default,
-# auto-scoped GITHUB_TOKEN used by actions/deploy-pages).
+# Publishes the Warm-Stone Chump Product Suite (`web/site/`) at the GitHub Pages
+# root (`/`) and the curated MkDocs operator documentation (`docs/`) under `/docs/`.
+# Read-only build using only the auto-scoped GITHUB_TOKEN for Pages deployment.
 on:
   push:
     branches: [main]
     paths:
+      - 'web/site/**'
+      - 'web/icon.svg'
       - 'docs/**'
       - 'mkdocs.yml'
       - '.github/workflows/docs-pages.yml'
@@ -35,14 +37,21 @@ jobs:
         if: runner.os == 'Linux'
         run: pip install -r docs/requirements-docs-site.txt
 
-      - name: Build site
-        run: mkdocs build
+      - name: Assemble product site and documentation bundle
+        if: runner.os == 'Linux'
+        run: |
+          rm -rf _pages
+          mkdir -p _pages
+          cp -R web/site/. _pages/
+          cp web/icon.svg _pages/icon.svg
+          touch _pages/.nojekyll
+          mkdocs build -d _pages/docs
 
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site
+          path: _pages
 
   deploy:
     needs: build

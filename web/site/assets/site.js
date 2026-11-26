@@ -6,6 +6,7 @@
 (function () {
   const THEME_KEY = "chump_site_theme";
   let probed = false;
+  let daemonHealth = null;
 
   function applySavedTheme() {
     try {
@@ -44,25 +45,38 @@
     window.dispatchEvent(new CustomEvent("chump-theme-change", { detail: { theme: next } }));
   }
 
+  function normalizeBase(raw) {
+    const trimmed = (raw || ".").trim();
+    if (!trimmed || trimmed === ".") return ".";
+    return trimmed.replace(/\/+$/, "");
+  }
+
   function copyText(text, btnEl) {
-    if (!navigator.clipboard) {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-      } catch (_) {}
-      ta.remove();
-    } else {
-      navigator.clipboard.writeText(text).catch(() => {});
-    }
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        navigator.clipboard.writeText(text).catch(() => {});
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand("copy");
+        } catch (_) {}
+        ta.remove();
+      }
+    } catch (_) {}
     if (btnEl) {
-      const prev = btnEl.textContent;
+      if (!btnEl.dataset.origLabel) {
+        btnEl.dataset.origLabel = btnEl.textContent;
+      }
       btnEl.textContent = "Copied ✓";
-      setTimeout(() => {
-        btnEl.textContent = prev;
-      }, 1600);
+      btnEl.setAttribute("data-copied", "true");
+      clearTimeout(btnEl._copyTimer);
+      btnEl._copyTimer = setTimeout(() => {
+        btnEl.textContent = btnEl.dataset.origLabel || "Copy";
+        btnEl.removeAttribute("data-copied");
+      }, 1800);
     }
   }
 
@@ -88,7 +102,7 @@
     connectedCallback() {
       const pillar = this.getAttribute("pillar") || "overview";
       const page = this.getAttribute("page") || "overview";
-      const base = this.getAttribute("base") || "/site";
+      const prefix = normalizeBase(this.getAttribute("base"));
       const themeText = currentTheme() === "dark" ? "Theme: Stone" : "Theme: Charcoal";
 
       this.innerHTML = `
@@ -96,43 +110,56 @@
           <div class="utility-bar">
             <div class="utility-inner">
               <nav class="pillar-tabs" aria-label="Chump product suites">
-                <a class="pillar-tab" href="${base}/" aria-current="${pillar === "overview" ? "true" : "false"}">Chump Overview</a>
-                <a class="pillar-tab" href="${base}/fleet/" aria-current="${pillar === "fleet" ? "true" : "false"}">Chump Fleet</a>
-                <a class="pillar-tab" href="${base}/cascade/" aria-current="${pillar === "cascade" ? "true" : "false"}">Chump Cascade</a>
-                <a class="pillar-tab" href="${base}/tools/fleet-simulator/" aria-current="${pillar === "tools" ? "true" : "false"}">Free Tools</a>
+                <a class="pillar-tab" href="${prefix}/" aria-current="${pillar === "overview" ? "true" : "false"}">Overview</a>
+                <a class="pillar-tab" href="${prefix}/fleet/" aria-current="${pillar === "fleet" ? "true" : "false"}">File Leases &amp; Fleet</a>
+                <a class="pillar-tab" href="${prefix}/cascade/" aria-current="${pillar === "cascade" ? "true" : "false"}">Model Failover</a>
+                <a class="pillar-tab" href="${prefix}/tools/fleet-simulator/" aria-current="${pillar === "tools" ? "true" : "false"}">Free Tools</a>
+                <a class="pillar-tab" href="${prefix}/docs/">Docs</a>
               </nav>
               <div class="utility-right">
                 <span class="live-daemon-pill" data-live="false" data-daemon-badge>
                   <span class="live-daemon-dot"></span>
-                  <span data-daemon-text>Static Preview · Self-host in 60s</span>
+                  <span data-daemon-text>Open-Source Rust v1.0 · Self-host in 60s</span>
                 </span>
                 <button type="button" class="theme-btn" data-theme-toggle data-theme-label aria-label="Toggle color theme">${themeText}</button>
               </div>
             </div>
           </div>
           <div class="nav-bar">
-            <a class="brand-mark" href="${base}/">
+            <a class="brand-mark" href="${prefix}/">
               <span class="brand-glyph" aria-hidden="true"></span>
               <span>Chump</span>
             </a>
             <nav class="nav-links" aria-label="Primary navigation">
-              <a class="nav-link" href="${base}/fleet/" ${page === "fleet" ? 'aria-current="page"' : ""}>Fleet Coordinator</a>
-              <a class="nav-link" href="${base}/cascade/" ${page === "cascade" ? 'aria-current="page"' : ""}>Model Cascade</a>
-              <a class="nav-link" href="${base}/tools/fleet-simulator/" ${page === "simulator" ? 'aria-current="page"' : ""}>
+              <a class="nav-link" href="${prefix}/fleet/" ${page === "fleet" ? 'aria-current="page"' : ""}>Fleet Coordinator</a>
+              <a class="nav-link" href="${prefix}/cascade/" ${page === "cascade" ? 'aria-current="page"' : ""}>Model Cascade</a>
+              <a class="nav-link" href="${prefix}/tools/fleet-simulator/" ${page === "simulator" ? 'aria-current="page"' : ""}>
                 <span>Fleet Simulator</span>
                 <span class="nav-badge">Tool</span>
               </a>
-              <a class="nav-link" href="${base}/tools/config-doctor/" ${page === "doctor" ? 'aria-current="page"' : ""}>
+              <a class="nav-link" href="${prefix}/tools/config-doctor/" ${page === "doctor" ? 'aria-current="page"' : ""}>
                 <span>Config Doctor</span>
                 <span class="nav-badge">Tool</span>
               </a>
-              <a class="nav-link" href="${base}/pricing/" ${page === "pricing" ? 'aria-current="page"' : ""}>Pricing &amp; TCO</a>
+              <a class="nav-link" href="${prefix}/pricing/" ${page === "pricing" ? 'aria-current="page"' : ""}>Pricing &amp; TCO</a>
+              <a class="nav-link" href="${prefix}/docs/">Docs</a>
             </nav>
             <div class="nav-actions">
-              <a class="btn btn-stone btn-sm" href="/v2/">Live Cockpit ↗</a>
+              <a class="btn btn-stone btn-sm" href="https://github.com/repairman29/chump" target="_blank" rel="noopener" data-cockpit-cta>GitHub ↗</a>
               <button type="button" class="btn btn-dark btn-sm" data-open-install>Quick Install</button>
+              <button type="button" class="mobile-menu-btn" data-mobile-toggle aria-expanded="false" aria-label="Toggle navigation menu">Menu ☰</button>
             </div>
           </div>
+          <nav class="mobile-nav-drawer" data-open="false" aria-label="Mobile navigation">
+            <a href="${prefix}/">Product Overview</a>
+            <a href="${prefix}/fleet/">Fleet Coordinator &amp; Leases</a>
+            <a href="${prefix}/cascade/">Model Cascade &amp; Failover</a>
+            <a href="${prefix}/tools/fleet-simulator/">Fleet Simulator (Tool)</a>
+            <a href="${prefix}/tools/config-doctor/">Config Doctor (Tool)</a>
+            <a href="${prefix}/pricing/">Pricing &amp; TCO Calculator</a>
+            <a href="${prefix}/docs/">Operator Documentation</a>
+            <a href="https://github.com/repairman29/chump" target="_blank" rel="noopener" data-cockpit-cta>GitHub Source ↗</a>
+          </nav>
         </header>
       `;
 
@@ -144,7 +171,22 @@
         installBtn.addEventListener("click", () => window.ChumpSite.openInstallModal());
       }
 
-      probeLocalDaemon();
+      const mobileBtn = this.querySelector("[data-mobile-toggle]");
+      const drawer = this.querySelector(".mobile-nav-drawer");
+      if (mobileBtn && drawer) {
+        mobileBtn.addEventListener("click", () => {
+          const nextOpen = drawer.getAttribute("data-open") !== "true";
+          drawer.setAttribute("data-open", nextOpen ? "true" : "false");
+          mobileBtn.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+          mobileBtn.textContent = nextOpen ? "Close ✕" : "Menu ☰";
+        });
+      }
+
+      if (daemonHealth) {
+        applyDaemonOnline(daemonHealth);
+      } else {
+        probeLocalDaemon();
+      }
     }
   }
 
@@ -152,7 +194,7 @@
 
   class ChumpSiteFooter extends HTMLElement {
     connectedCallback() {
-      const base = this.getAttribute("base") || "/site";
+      const prefix = normalizeBase(this.getAttribute("base"));
       this.innerHTML = `
         <footer class="site-footer">
           <div class="shell">
@@ -163,63 +205,64 @@
                   <span>Chump</span>
                 </div>
                 <p style="font-size:13.5px; color:var(--stone-on-dark-muted); margin:0 0 16px; max-width:28ch;">
-                  Local-first Rust coordinator, file-lease firewall, and 40-slot model cascade for autonomous coding fleets.
+                  Local-first Rust coordinator, pre-commit file-lease firewall, and 40-slot model failover router for parallel coding agents.
                 </p>
                 <div class="mono" style="font-size:11.5px; color:var(--stone-bronze-bright);" data-footer-version>
-                  Runtime v0.2.0 · Universal (macOS · Linux · Windows)
+                  Runtime v1.0.0 · Universal (macOS · Linux · Windows)
                 </div>
               </div>
               <div class="footer-col">
                 <h4>Chump Fleet</h4>
                 <ul>
-                  <li><a href="${base}/fleet/">Coordinator Overview</a></li>
-                  <li><a href="${base}/fleet/#firewall-sandbox">Pre-Commit Lease Firewall</a></li>
-                  <li><a href="${base}/fleet/#lineage-explorer">Gap State-Machine Lineage</a></li>
-                  <li><a href="${base}/fleet/#gate-guard">CREDIBLE-1576 Gate Guard</a></li>
-                  <li><a href="/v2/">Open Live PWA Cockpit ↗</a></li>
+                  <li><a href="${prefix}/fleet/">Coordinator Overview</a></li>
+                  <li><a href="${prefix}/fleet/#firewall-sandbox">Pre-Commit Lease Firewall</a></li>
+                  <li><a href="${prefix}/fleet/#lineage-explorer">5-Stage Task Pipeline</a></li>
+                  <li><a href="${prefix}/fleet/#gate-guard">Workflow Auto-Merge Guard</a></li>
+                  <li><a href="${prefix}/docs/" data-cockpit-cta>Operator Documentation →</a></li>
                 </ul>
               </div>
               <div class="footer-col">
                 <h4>Chump Cascade</h4>
                 <ul>
-                  <li><a href="${base}/cascade/">40-Slot Model Router</a></li>
-                  <li><a href="${base}/cascade/#bandit-lab">Thompson Bandit Lab</a></li>
-                  <li><a href="${base}/cascade/#daemon-builder">3-OS chumpd Service Builder</a></li>
-                  <li><a href="${base}/cascade/#byo-harnesses">Claude / OpenCode / Codex / Aider</a></li>
+                  <li><a href="${prefix}/cascade/">40-Slot Failover Router</a></li>
+                  <li><a href="${prefix}/cascade/#bandit-lab">Live HTTP 429 Failover Lab</a></li>
+                  <li><a href="${prefix}/cascade/#daemon-builder">3-OS Service &amp; TOML Builder</a></li>
+                  <li><a href="${prefix}/cascade/#byo-harnesses">Claude / Codex / OpenCode / Aider</a></li>
                 </ul>
               </div>
               <div class="footer-col">
                 <h4>Interactive Tools</h4>
                 <ul>
-                  <li><a href="${base}/tools/fleet-simulator/">Fleet Throughput &amp; Sankey Modeller</a></li>
-                  <li><a href="${base}/tools/config-doctor/">Config &amp; 4-Pillar Sovereignty Doctor</a></li>
-                  <li><a href="${base}/#intent-router">Front-Door Intent Router</a></li>
-                  <li><a href="${base}/pricing/#tco-comparator">Cloud-Agent TCO Comparator</a></li>
+                  <li><a href="${prefix}/tools/fleet-simulator/">Fleet Throughput &amp; Cost Simulator</a></li>
+                  <li><a href="${prefix}/tools/config-doctor/">Config &amp; Failover Doctor</a></li>
+                  <li><a href="${prefix}/#intent-router">CLI Task Router</a></li>
+                  <li><a href="${prefix}/pricing/#tco-comparator">Cloud-Agent TCO Calculator</a></li>
                 </ul>
               </div>
               <div class="footer-col">
                 <h4>Open Core &amp; Source</h4>
                 <ul>
-                  <li><a href="${base}/pricing/">Pricing &amp; Licensing</a></li>
+                  <li><a href="${prefix}/pricing/">Pricing &amp; Licensing</a></li>
+                  <li><a href="${prefix}/docs/">Documentation Hub</a></li>
                   <li><a href="https://github.com/repairman29/chump" target="_blank" rel="noopener">GitHub (repairman29/chump) ↗</a></li>
-                  <li><a href="https://crates.io/search?q=chump" target="_blank" rel="noopener">14 Crates on crates.io ↗</a></li>
-                  <li><a href="https://jeffadkins.dev/chump/" target="_blank" rel="noopener">Builder Essay (jeffadkins.dev) ↗</a></li>
+                  <li><a href="https://crates.io/search?q=chump" target="_blank" rel="noopener">Apache-2.0 Crates on crates.io ↗</a></li>
                 </ul>
               </div>
             </div>
             <div class="footer-trust-bar">
               <div class="trust-badges">
                 <span class="trust-badge">AGPL-3.0 Coordinator</span>
-                <span class="trust-badge">14 Apache-2.0 Library Crates</span>
+                <span class="trust-badge">13 Apache-2.0 Workspace Crates</span>
                 <span class="trust-badge">macOS · Linux · Windows</span>
                 <span class="trust-badge">Zero Cloud Telemetry</span>
-                <span class="trust-badge">Air-Gap Ready (Ollama / vLLM)</span>
+                <span class="trust-badge">Offline Ready (Ollama / vLLM)</span>
               </div>
-              <div>Built in Rust · Owned by the operator</div>
+              <div>Built in Rust · Runs on hardware you own</div>
             </div>
           </div>
         </footer>
       `;
+      if (daemonHealth) applyDaemonOnline(daemonHealth);
     }
   }
 
@@ -227,23 +270,24 @@
 
   class ChumpInstallModal extends HTMLElement {
     connectedCallback() {
+      const prefix = normalizeBase(this.getAttribute("base"));
       const commands = {
         brew: "brew tap repairman29/chump && brew install chump && chump config init",
-        cargo: "cargo install --git https://github.com/repairman29/chump chump && chump config init",
-        linux: "curl -fsSL https://raw.githubusercontent.com/repairman29/chump/main/chump-node-install.sh | sh",
-        windows: "cargo install --git https://github.com/repairman29/chump chump; chump.exe config init; chump.exe service install",
+        linux: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh",
+        windows: "cargo install --git https://github.com/repairman29/chump chump --locked",
+        cargo: "cargo install --git https://github.com/repairman29/chump chump --locked",
       };
 
       this.innerHTML = `
         <div class="modal-backdrop" data-open="false" role="dialog" aria-modal="true" aria-labelledby="install-modal-title">
           <div class="modal-card">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-              <span class="eyebrow" style="margin:0;"><span class="eyebrow-dot"></span>Zero-Account Install</span>
+              <span class="eyebrow" style="margin:0;"><span class="eyebrow-dot"></span>60-Second Local Setup</span>
               <button type="button" class="copy-chip" data-close-modal>ESC ✕</button>
             </div>
-            <h3 id="install-modal-title" class="display-h3" style="margin-bottom:8px;">Run Chump on hardware you already own</h3>
+            <h3 id="install-modal-title" class="display-h3" style="margin-bottom:8px;">Install Chump on your machine</h3>
             <p style="font-size:14px; color:var(--stone-muted); margin:0 0 18px;">
-              No cloud signup, no seat license, and no proxy wrapper around your API keys. Initialize <code>config.toml</code>, install portable git hooks, and bring the local cockpit up in under a minute.
+              No account signup, no seat fee, and no proxy middleman around your keys. Works immediately with Claude Code, Codex CLI, OpenCode, Aider, or local Ollama.
             </p>
             <div class="install-box" style="max-width:none; margin-bottom:18px;">
               <div class="install-tabs" role="tablist">
@@ -258,15 +302,20 @@
               </div>
             </div>
             <div class="trace-card" style="margin-bottom:18px;">
-              <div class="mono" style="font-size:11.5px; color:var(--stone-muted); margin-bottom:6px;">First 4 commands in any git repository:</div>
-              <pre style="margin:0; font-size:12px; line-height:1.65; overflow-x:auto;"><code>chump config init &amp;&amp; chump config validate
+              <div class="mono" style="font-size:11.5px; color:var(--stone-muted); margin-bottom:6px;">Start small or go autonomous in any git repository:</div>
+              <pre style="margin:0; font-size:12px; line-height:1.65; overflow-x:auto;"><code># Step 1: Add &lt;2ms pre-commit file-lease &amp; secret protection
 chump hook install
-chump fleet level 5
-chump --web --port 3000</code></pre>
+
+# Step 2: Generate &amp; validate ~/.chump/config.toml
+chump config init &amp;&amp; chump config validate
+
+# Step 3: Start background supervisor + local web cockpit
+chump service install &amp;&amp; chump up
+chump --web --port 3847</code></pre>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-              <a class="btn btn-stone btn-sm" href="/site/tools/config-doctor/">Validate Existing .env →</a>
-              <a class="btn btn-dark btn-sm" href="/v2/">Open Local Cockpit (/v2/) →</a>
+              <a class="btn btn-stone btn-sm" href="${prefix}/tools/config-doctor/">Audit Existing .env →</a>
+              <a class="btn btn-dark btn-sm" href="${prefix}/docs/" data-cockpit-cta>Read Quickstart Docs →</a>
             </div>
           </div>
         </div>
@@ -301,6 +350,8 @@ chump --web --port 3000</code></pre>
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") window.ChumpSite.closeInstallModal();
       });
+
+      if (daemonHealth) applyDaemonOnline(daemonHealth);
     }
   }
 
@@ -316,9 +367,35 @@ chump --web --port 3000</code></pre>
 
   /* ── Live /api/health Probe (When Served via `chump --web`) ────────────── */
 
+  function applyDaemonOnline(data) {
+    const ver = data.binary_version || "1.0.0";
+    const sha = data.build_sha ? ` (${String(data.build_sha).slice(0, 8)})` : "";
+    const mode = data.cascade_mode ? ` · ${data.cascade_mode}` : "";
+    document.querySelectorAll("[data-daemon-badge]").forEach((pill) => {
+      pill.setAttribute("data-live", "true");
+    });
+    document.querySelectorAll("[data-daemon-text]").forEach((txt) => {
+      txt.textContent = `Local chumpd live · v${ver}${mode}`;
+    });
+    document.querySelectorAll("[data-footer-version]").forEach((el) => {
+      el.textContent = `Connected to local chump-web v${ver}${sha}${mode}`;
+    });
+    document.querySelectorAll("[data-cockpit-cta]").forEach((link) => {
+      link.setAttribute("href", "/v2/");
+      link.removeAttribute("target");
+      link.removeAttribute("rel");
+      link.textContent = "Live Cockpit ↗";
+    });
+  }
+
   async function probeLocalDaemon() {
     if (probed) return;
     probed = true;
+    const host = window.location.hostname;
+    const isLocalDaemonPath =
+      (host === "127.0.0.1" || host === "localhost") &&
+      window.location.pathname.startsWith("/site");
+    if (!isLocalDaemonPath) return;
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 900);
@@ -327,22 +404,12 @@ chump --web --port 3000</code></pre>
       if (!res.ok) return;
       const data = await res.json();
       if (data && data.status === "ok") {
-        const ver = data.binary_version || "0.2.0";
-        const sha = data.build_sha ? ` (${String(data.build_sha).slice(0, 8)})` : "";
-        const mode = data.cascade_mode ? ` · ${data.cascade_mode}` : "";
-        document.querySelectorAll("[data-daemon-badge]").forEach((pill) => {
-          pill.setAttribute("data-live", "true");
-        });
-        document.querySelectorAll("[data-daemon-text]").forEach((txt) => {
-          txt.textContent = `Local chumpd live · v${ver}${mode}`;
-        });
-        document.querySelectorAll("[data-footer-version]").forEach((el) => {
-          el.textContent = `Connected to local chump-web v${ver}${sha}${mode}`;
-        });
+        daemonHealth = data;
+        applyDaemonOnline(data);
         window.dispatchEvent(new CustomEvent("chump-daemon-health", { detail: data }));
       }
     } catch (_) {
-      /* Static hosting / offline — keep graceful static label */
+      /* Static hosting / offline — keep graceful static Docs/GitHub CTAs */
     }
   }
 
@@ -411,6 +478,10 @@ chump --web --port 3000</code></pre>
     });
 
     function frame() {
+      if (document.hidden) {
+        requestAnimationFrame(frame);
+        return;
+      }
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;

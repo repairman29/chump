@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chump Cascade — 40-Slot Model Router, BYO-Auth &amp; 3-OS chumpd Supervisor</title>
-  <meta name="description" content="Route agent completions across Claude subscription OAuth, 40 cascading API slots, coding harnesses, and $0 local Ollama/vLLM with Thompson-sampling bandit failover." />
+  <title>Chump Cascade — Smart 429 Failover Router, BYO-Auth &amp; 3-OS Daemon</title>
+  <meta name="description" content="Route coding-agent turns across Claude subscription OAuth, up to 40 API-key slots, CLI coding harnesses, and $0 local Ollama/vLLM with automatic HTTP 429 failover." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Chump" />
-  <meta property="og:title" content="Chump Cascade — Sovereign Model Routing &amp; 3-OS Supervisor" />
-  <meta property="og:description" content="Subscription OAuth, cascading API keys, BYO coding harnesses, and local Ollama in one fail-safe Rust router." />
-  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="Chump Cascade — Smart 429 Failover Router &amp; 3-OS Supervisor" />
+  <meta property="og:description" content="Subscription OAuth, 40 cascading API keys, BYO coding harnesses, and local Ollama in one fail-safe Rust router." />
+  <link rel="icon" href="../icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Host+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/site/assets/site.css" />
+  <link rel="stylesheet" href="../assets/site.css" />
 </head>
 <body>
-  <chump-site-header pillar="cascade" page="cascade" base="/site"></chump-site-header>
+  <chump-site-header pillar="cascade" page="cascade" base=".."></chump-site-header>
 
   <main>
     <!-- ── 1. Hero + 4-Lane Auth Matrix ──────────────────────────────────── -->
@@ -25,10 +25,10 @@
         <div style="max-width:72ch; margin-bottom:34px;">
           <div class="eyebrow"><span class="eyebrow-dot"></span>02 · Chump Cascade &amp; chumpd Supervisor</div>
           <h1 class="display-h1">
-            Route every turn to the cheapest slot <span class="muted-tail">that passes the test.</span>
+            Route every turn to the lowest-cost model <span class="muted-tail">that passes the test.</span>
           </h1>
           <p class="lede">
-            Single-provider coding agents stall the instant a rate limit trips or a credit card ceiling hits. Chump unifies subscription OAuth, up to 40 API provider slots, external coding CLIs, and local Ollama/vLLM behind one Thompson-sampled cascade with zero proxy middlemen.
+            Single-provider coding agents stall the instant an HTTP 429 rate limit trips or a monthly API cap hits. Chump unifies flat-rate subscription OAuth, up to 40 API provider slots, external coding CLIs, and local Ollama/vLLM behind one adaptive failover router with zero proxy middlemen.
           </p>
           <div style="display:flex; gap:12px; flex-wrap:wrap;">
             <a class="btn btn-dark" href="#bandit-lab">Run Live 429 Failover Lab</a>
@@ -60,14 +60,14 @@
       </div>
     </section>
 
-    <!-- ── 2. Interactive Thompson-Sampling Bandit & 429 Failover Lab ────── -->
+    <!-- ── 2. Interactive Smart 429 & Cost Failover Lab ──────────────────── -->
     <section class="arch-band" id="bandit-lab">
       <div class="arch-grid-frame section-pad">
         <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:24px;">
           <div>
-            <div class="eyebrow"><span class="eyebrow-dot"></span>Interactive ProviderCascade Simulator (src/provider_cascade.rs)</div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span>Interactive Failover Simulator (ProviderCascade)</div>
             <h2 class="display-h2">
-              Trip an upstream 429. <span class="muted-tail">Watch the cascade self-heal.</span>
+              Trip an upstream HTTP 429. <span class="muted-tail">Watch the router self-heal.</span>
             </h2>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -78,7 +78,7 @@
 
         <div class="app-window">
           <div class="app-window-bar">
-            <span>ProviderCascade · RPM Headroom=80% · Thompson Bandit Beta(α, β)</span>
+            <span>ProviderCascade · RPM Headroom=80% · Adaptive Reliability Scoring</span>
             <span id="bandit-summary" class="mono">0 turns dispatched · $0.00 cumulative spend · 0 aborted sessions</span>
           </div>
 
@@ -87,9 +87,9 @@
               <thead>
                 <tr>
                   <th>Slot &amp; Priority</th>
-                  <th>Model Class</th>
+                  <th>Model Tier</th>
                   <th>Cost / Turn</th>
-                  <th>Bandit Beta(α, β) Win Est.</th>
+                  <th>Adaptive Reliability Score</th>
                   <th class="num">Routed Hits</th>
                   <th>Simulated Upstream Health</th>
                 </tr>
@@ -110,12 +110,12 @@
     <section class="arch-band" id="daemon-builder">
       <div class="arch-grid-frame section-pad">
         <div style="max-width:68ch; margin-bottom:26px;">
-          <div class="eyebrow"><span class="eyebrow-dot"></span>Zero-Tmux Supervisor (crates/chumpd + src/service_cmd.rs)</div>
+          <div class="eyebrow"><span class="eyebrow-dot"></span>Native 3-OS Supervisor (chumpd + chump service)</div>
           <h2 class="display-h2">
             Configure once. <span class="muted-tail">Supervise natively on macOS, Linux, or Windows.</span>
           </h2>
           <p class="lede" style="margin-bottom:0;">
-            Pick your host OS, authentication strategy, coding harness, and machine RAM below to generate a ready-to-save <code>~/.chump/config.toml</code> and native supervisor manifest.
+            Pick your host OS, authentication strategy, coding harness, and machine RAM below to generate a schema-validated <code>~/.chump/config.toml</code> (passes <code>chump config validate</code>) and native service setup.
           </p>
         </div>
 
@@ -132,12 +132,12 @@
               </div>
 
               <div>
-                <label for="cfg-auth" class="mono" style="font-size:11px; color:var(--stone-muted); display:block; margin-bottom:6px;">Primary Auth Mode</label>
+                <label for="cfg-auth" class="mono" style="font-size:11px; color:var(--stone-muted); display:block; margin-bottom:6px;">Primary Auth Strategy</label>
                 <select id="cfg-auth" style="width:100%; padding:9px 10px; border-radius:var(--radius-xs); border:1px solid var(--stone-rule-strong); background:var(--stone-card);">
-                  <option value="auto">auto (OAuth + Cascade)</option>
-                  <option value="oauth">oauth (Subscription)</option>
-                  <option value="api_key">api_key (API Slots)</option>
-                  <option value="none">none (Local Ollama)</option>
+                  <option value="auto">auto (OAuth + API + Local)</option>
+                  <option value="oauth">oauth (Subscription First)</option>
+                  <option value="api-key">api-key (Cascading API Slots)</option>
+                  <option value="local">local-only (Zero-Key Ollama)</option>
                 </select>
               </div>
 
@@ -187,19 +187,19 @@
     </section>
   </main>
 
-  <chump-site-footer base="/site"></chump-site-footer>
-  <chump-install-modal></chump-install-modal>
+  <chump-site-footer base=".."></chump-site-footer>
+  <chump-install-modal base=".."></chump-install-modal>
 
-  <script src="/site/assets/site.js"></script>
+  <script src="../assets/site.js"></script>
   <script>
     (function () {
-      /* Thompson Bandit & 429 Failover Simulator */
+      /* Smart 429 & Cost Failover Simulator */
       const initialSlots = () => [
-        { name: "Slot #1 · Claude Subscription OAuth", prio: 5, cls: "opus", cost: 0.0, alpha: 24, beta: 2, hits: 0, state: "healthy" },
-        { name: "Slot #2 · Gemini 2.5 Flash", prio: 12, cls: "sonnet", cost: 0.004, alpha: 30, beta: 3, hits: 0, state: "healthy" },
-        { name: "Slot #3 · Mistral Codestral", prio: 14, cls: "opus", cost: 0.009, alpha: 18, beta: 2, hits: 0, state: "healthy" },
-        { name: "Slot #4 · Groq Llama 3.3 70B", prio: 15, cls: "sonnet", cost: 0.002, alpha: 15, beta: 3, hits: 0, state: "healthy" },
-        { name: "Slot #5 · Local Ollama (Qwen-14B)", prio: 20, cls: "haiku/s", cost: 0.0, alpha: 20, beta: 2, hits: 0, state: "healthy" },
+        { name: "Slot #1 · Claude Subscription OAuth", prio: 5, cls: "frontier", cost: 0.0, alpha: 24, beta: 2, hits: 0, state: "healthy" },
+        { name: "Slot #2 · Gemini 2.5 Flash", prio: 10, cls: "fast-1M", cost: 0.004, alpha: 30, beta: 3, hits: 0, state: "healthy" },
+        { name: "Slot #3 · Mistral Codestral", prio: 14, cls: "code-256k", cost: 0.009, alpha: 18, beta: 2, hits: 0, state: "healthy" },
+        { name: "Slot #4 · Groq Llama 3.3 70B", prio: 15, cls: "fast-api", cost: 0.002, alpha: 15, beta: 3, hits: 0, state: "healthy" },
+        { name: "Slot #5 · Local Ollama (Qwen-14B)", prio: 20, cls: "local-$0", cost: 0.0, alpha: 20, beta: 2, hits: 0, state: "healthy" },
       ];
 
       let slots = initialSlots();
@@ -214,8 +214,6 @@
         tbody.innerHTML = slots
           .map((s, idx) => {
             const winPct = ((s.alpha / (s.alpha + s.beta)) * 100).toFixed(1);
-            const pillCls =
-              s.state === "healthy" ? "pill-sage" : s.state === "429" ? "pill-amber" : "pill-coral";
             return `
               <tr>
                 <td class="mono"><strong>${s.name}</strong> <span style="color:var(--stone-faint);">(p=${s.prio})</span></td>
@@ -226,7 +224,7 @@
                     <div style="flex:1; max-width:110px; height:7px; border-radius:99px; background:var(--stone-inset); overflow:hidden;">
                       <div style="width:${winPct}%; height:100%; background:var(--stone-bronze);"></div>
                     </div>
-                    <span class="mono" style="font-size:11.5px;">${winPct}% (α=${s.alpha}, β=${s.beta})</span>
+                    <span class="mono" style="font-size:11.5px;">${winPct}% (${s.alpha}/${s.alpha + s.beta})</span>
                   </div>
                 </td>
                 <td class="num">${s.hits}</td>
@@ -262,7 +260,6 @@
         for (let t = 0; t < 10; t++) {
           totalTurns += 1;
           let served = false;
-          /* Rank healthy candidates by bandit score + priority bias */
           const ordered = slots
             .map((s, idx) => ({
               idx,
@@ -311,7 +308,7 @@
 
       renderSlots();
 
-      /* Config & 3-OS Service Builder */
+      /* Schema-Valid ChumpConfig & 3-OS Service Builder */
       const osEl = document.getElementById("cfg-os");
       const authEl = document.getElementById("cfg-auth");
       const harEl = document.getElementById("cfg-harness");
@@ -319,17 +316,37 @@
 
       function renderBuilder() {
         const os = osEl.value;
-        const auth = authEl.value;
+        const authChoice = authEl.value;
+        const authMode = authChoice === "local" ? "auto" : authChoice;
         const harness = harEl.value;
         const ram = Number(ramEl.value);
         const jobs = ram <= 8 ? 1 : ram <= 16 ? 2 : ram <= 32 ? 4 : 8;
 
         const providerBlock =
-          auth === "none"
+          authChoice === "local"
             ? `\n[[providers]]\nname = "local-ollama"\nbase_url = "http://127.0.0.1:11434/v1"\nmodel = "qwen2.5-coder:14b"\npriority = 1\ntier = "local"\nenabled = true`
             : `\n[[providers]]\nname = "gemini-flash"\nbase_url = "https://generativelanguage.googleapis.com/v1beta/openai"\napi_key_env = "GEMINI_API_KEY"\nmodel = "gemini-2.5-flash"\npriority = 10\ntier = "cloud"\nenabled = true\n\n[[providers]]\nname = "local-ollama-floor"\nbase_url = "http://127.0.0.1:11434/v1"\nmodel = "qwen2.5-coder:14b"\npriority = 20\ntier = "local"\nenabled = true`;
 
-        const toml = `# Generated by Chump Cascade Builder\nauth_mode = "${auth}"\nfleet_mode = "grind"\ndesired_workers = ${jobs}\nagent_harness = "${harness}"\ncargo_build_jobs = ${jobs}\n${providerBlock}`;
+        const toml =
+`# Generated by Chump Cascade Builder (passes 'chump config validate')
+[auth]
+mode = "${authMode}"
+
+[fleet]
+mode = "grind"
+desired_workers = ${jobs}
+harness = "${harness}"
+disk_floor_gb = 5.0
+auto_merge = true
+
+[web]
+bind_addr = "127.0.0.1"
+port = 3847
+
+[settings]
+CARGO_BUILD_JOBS = ${jobs}
+${providerBlock}`;
+
         document.getElementById("out-toml").textContent = toml;
         document.getElementById("out-toml-label").textContent =
           os === "windows" ? "%USERPROFILE%\\.chump\\config.toml" : "~/.chump/config.toml";
@@ -338,13 +355,13 @@
         let svcBody = "";
         if (os === "macos") {
           svcLabel = "~/Library/LaunchAgents/com.chump.chumpd.plist";
-          svcBody = `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n  <key>Label</key><string>com.chump.chumpd</string>\n  <key>ProgramArguments</key>\n  <array><string>/opt/homebrew/bin/chumpd</string></array>\n  <key>EnvironmentVariables</key>\n  <dict><key>CARGO_BUILD_JOBS</key><string>${jobs}</string></dict>\n  <key>KeepAlive</key><true/>\n</dict>\n</plist>\n\n# Install & start:\n$ chump service install && chump service start`;
+          svcBody = `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n  <key>Label</key><string>com.chump.chumpd</string>\n  <key>ProgramArguments</key>\n  <array><string>/opt/homebrew/bin/chumpd</string></array>\n  <key>EnvironmentVariables</key>\n  <dict><key>CARGO_BUILD_JOBS</key><string>${jobs}</string></dict>\n  <key>KeepAlive</key><true/>\n</dict>\n</plist>\n\n# Register & launch supervisor:\n$ chump service install && chump up && chump service status`;
         } else if (os === "linux") {
           svcLabel = "~/.config/systemd/user/chumpd.service";
-          svcBody = `[Unit]\nDescription=Universal Chump Supervisor Daemon (chumpd)\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment="CARGO_BUILD_JOBS=${jobs}"\nExecStart=%h/.cargo/bin/chumpd\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n\n# Install & start:\n$ chump service install && systemctl --user status chumpd`;
+          svcBody = `[Unit]\nDescription=Universal Chump Supervisor Daemon (chumpd)\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment="CARGO_BUILD_JOBS=${jobs}"\nExecStart=%h/.cargo/bin/chumpd\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n\n# Register & launch supervisor:\n$ chump service install && chump up && systemctl --user status chumpd`;
         } else {
           svcLabel = "Windows Scheduled Task (PowerShell)";
-          svcBody = `# Register background supervisor under %USERPROFILE%\nPS> chump.exe config init\nPS> chump.exe service install\nPS> schtasks /Query /TN "ChumpSupervisor"\n\n# Derived compile cap for ${ram} GB host:\n$env:CARGO_BUILD_JOBS = "${jobs}"\n# Kill-switch path: $env:USERPROFILE\\.chump\\AUTONOMY_LEVEL`;
+          svcBody = `# Register background supervisor under %USERPROFILE%\nPS> chump.exe config init\nPS> chump.exe service install\nPS> chump.exe up\nPS> schtasks /Query /TN "ChumpDaemon"\n\n# Derived compile cap for ${ram} GB host:\n$env:CARGO_BUILD_JOBS = "${jobs}"\n# Kill-switch path: $env:USERPROFILE\\.chump\\AUTONOMY_LEVEL`;
         }
         document.getElementById("out-service-label").textContent = svcLabel;
         document.getElementById("out-svc").textContent = svcBody;
