@@ -20,3 +20,6 @@ workspace = true
 [[bin]]
 name = "chump-reviewer-routing"
 path = "src/bin/chump-reviewer-routing.rs"
+
+[package.metadata.dist]
+dist = false

@@ -31,3 +31,6 @@ path = "src/bin/chump-pre-push.rs"
 [[bin]]
 name = "chump-pre-commit"
 path = "src/bin/chump-pre-commit.rs"
+
+[package.metadata.dist]
+dist = false

@@ -53,10 +53,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.QUEUE_DRIVER_APP_ID }}
+          private-key: ${{ secrets.QUEUE_DRIVER_APP_PRIVATE_KEY }}
+
       - name: Checkout main
         uses: actions/checkout@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           ref: main
           fetch-depth: 1
 
@@ -129,7 +136,8 @@ jobs:
       - name: Commit and push (content changed only)
         if: steps.after.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          HAS_APP_TOKEN: ${{ steps.app-token.outputs.token != '' && '1' || '0' }}
           BEFORE_SHA: ${{ steps.before.outputs.sha }}
           AFTER_SHA: ${{ steps.after.outputs.sha }}
         run: |
@@ -144,11 +152,18 @@ jobs:
           git push --force origin "$BRANCH"
           PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number -q '.[0].number // empty')"
           if [[ -z "$PR" ]]; then
-            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+            if gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
               --title "chore(capabilities): regenerate CAPABILITIES_REGISTRY.json" \
-              --body "Automated CAPABILITIES_REGISTRY.json regeneration (\`${BEFORE_SHA:-<none>}\` -> \`${AFTER_SHA}\`). Opened via PR per CREDIBLE-1564 (no direct push to main)."
+              --body "Automated CAPABILITIES_REGISTRY.json regeneration (\`${BEFORE_SHA:-<none>}\` -> \`${AFTER_SHA}\`). Opened via PR per CREDIBLE-1564 (no direct push to main)."; then
+              echo "[commit] opened capabilities-registry PR"
+            elif [[ "$HAS_APP_TOKEN" == "0" ]]; then
+              echo "::warning::pushed $BRANCH ($AFTER_SHA), but GITHUB_TOKEN is not permitted to call createPullRequest (configure QUEUE_DRIVER_APP_ID / QUEUE_DRIVER_APP_PRIVATE_KEY to auto-open PRs)"
+            else
+              exit 1
+            fi
+          else
+            echo "[commit] updated existing capabilities-registry PR #$PR"
           fi
-          echo "[commit] opened/updated capabilities-registry PR"
 
       - name: Freshness report
         id: freshness

@@ -18,7 +18,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 # registered publish targets for a shipped gap's artifact_type.
 chump-bench = { path = "../chump-bench", version = "0.1.0" }
 # CREDIBLE-1495: LandingReceipt type for receipt validation.
-chump-ship = { path = "../chump-ship", version = "0.2.0" }
+chump-ship = { path = "../chump-ship", version = "1.0.0" }
 # INFRA-8190: the ONE gap-store path resolver (re-exported as store_path).
 chump-store-path = { path = "../chump-store-path", version = "0.1.0" }
 rusqlite = { version = "0.42", features = ["bundled", "fallible_uint"] }
@@ -90,3 +90,6 @@ required-features = ["postgres-backend"]
 
 [lints]
 workspace = true
+
+[package.metadata.dist]
+dist = false

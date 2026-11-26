@@ -24,3 +24,6 @@ workspace = true
 [[bin]]
 name = "chump-policy"
 path = "src/bin/chump-policy.rs"
+
+[package.metadata.dist]
+dist = false

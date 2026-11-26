@@ -64,7 +64,7 @@ resolver = "2"
 
 [package]
 name = "chump"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 description = "Self-hosted Rust agent: OpenAI-compatible inference, rich tools, SQLite state, optional web PWA and Discord"
 repository = "https://github.com/repairman29/chump"
@@ -159,7 +159,7 @@ chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.3.0" }
 coord-mesh = { path = "crates/coord-mesh", version = "0.1.0" }
 chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.2.0" }
 chump-planner = { path = "crates/chump-planner", version = "0.1.0" }
-chump-ship = { path = "crates/chump-ship", version = "0.2.0" }
+chump-ship = { path = "crates/chump-ship", version = "1.0.0" }
 chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle", version = "0.2.0" }
 chump-cancel-registry = { path = "crates/chump-cancel-registry", version = "0.2.0" }
 chump-perception = { path = "crates/chump-perception", version = "0.2.0" }

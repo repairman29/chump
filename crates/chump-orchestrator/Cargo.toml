@@ -42,3 +42,6 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+[package.metadata.dist]
+dist = false

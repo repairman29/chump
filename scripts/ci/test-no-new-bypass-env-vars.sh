@@ -448,12 +448,14 @@ extract_bypass_varnames() {
       #   - this lint script itself (self-test case strings)
       #   - the allowlist file (grandfathered var documentation)
       #   - env-vars-internal.txt (var documentation registry, not code)
+      #   - docs/CAPABILITIES_REGISTRY.json (generated docstring inventory, not code)
       #   - the ceiling file (INFRA-6073): its changelog names every var it
       #     signs off on — bookkeeping prose, not a real introduction
       suppress = ($0 ~ /scripts\/ci\/test-no-new-bypass-env-vars\.sh/ ||
                   $0 ~ /scripts\/ci\/bypass-env-var-allowlist\.txt/ ||
                   $0 ~ /scripts\/ci\/bypass-var-ceiling\.txt/ ||
-                  $0 ~ /scripts\/ci\/env-vars-internal\.txt/)
+                  $0 ~ /scripts\/ci\/env-vars-internal\.txt/ ||
+                  $0 ~ /docs\/CAPABILITIES_REGISTRY\.json/)
     }
     !suppress { print }
   ' "$tmpfile" > "$filtered_file"

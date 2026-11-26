@@ -33,3 +33,6 @@ path = "src/bin/chump-inbox.rs"
 
 [lints]
 workspace = true
+
+[package.metadata.dist]
+dist = false
