@@ -20,9 +20,11 @@
 
 mod file_sandbox;
 pub mod lease_reaper;
+pub mod merged_pr_reconciler;
 #[path = "../../../src/node_pause.rs"]
 pub mod node_pause;
 pub mod oauth_sync;
+pub mod target_gc;
 mod worker_loop;
 
 use serde::{Deserialize, Serialize};
@@ -585,6 +587,19 @@ async fn main() {
         .and_then(|s| s.trim().parse::<u64>().ok())
         .unwrap_or(lease_reaper::DEFAULT_LEASE_REAP_INTERVAL_SECS);
     lease_reaper::spawn_background_reaper(cfg.repo.join(".chump-locks"), reap_interval);
+
+    // 3. Cross-platform bounded Cargo target-cache & orphan-worktree GC (ZERO-WASTE-052 / RESILIENT-307).
+    target_gc::spawn_background_target_gc(
+        cfg.repo.clone(),
+        cfg.home.clone(),
+        target_gc::DEFAULT_TARGET_GC_INTERVAL_SECS,
+    );
+
+    // 4. Typed `gap_prs` merged-PR reconciler via `chump gap reconcile-merged` (CREDIBLE-1550).
+    merged_pr_reconciler::spawn_background_reconciler(
+        cfg.repo.clone(),
+        merged_pr_reconciler::DEFAULT_MERGED_PR_RECONCILE_INTERVAL_SECS,
+    );
 
     // scanner-anchor: "kind":"chumpd_started"
     emit(

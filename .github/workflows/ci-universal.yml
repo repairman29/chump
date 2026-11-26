@@ -59,11 +59,15 @@ jobs:
         run: |
           cargo test -p chump-pal -p chump-config -p chump-ship -p chump-git-hooks -p chumpd
           cargo test -p chump-atomic-claim autonomy_level::tests
+          cargo test -p chump-gap-store zerowaste056
+          cargo test -p chump-gap-store credible1550_reconcile_merged_pr_links
 
-      - name: Unit tests — chump auth, service, and cognition gate
+      - name: Unit tests — chump auth, service, init, gap_cmd, and cognition gate
         run: |
           cargo test --bin chump auth::tests
           cargo test --bin chump service_cmd::tests
+          cargo test --bin chump chump_init::tests
+          cargo test --bin chump doctor::gap_cmd::tests
           cargo test --bin chump cognition_gate::tests
 
       - name: Build chump, chumpd, and chump-ship binaries
@@ -71,7 +75,7 @@ jobs:
           cargo build --bin chump
           cargo build -p chumpd -p chump-ship
 
-      - name: Clean-machine FTUE smoke (config, hooks, service, ship)
+      - name: Clean-machine FTUE smoke (config, hooks, service, ship, up, init)
         shell: bash
         run: |
           set -euo pipefail
@@ -79,10 +83,16 @@ jobs:
           BIN_DIR="$PWD/target/debug"
           export PATH="$BIN_DIR:$PATH"
           TMP_ROOT="$(mktemp -d)"
-          trap 'cd "$WORK_START" 2>/dev/null || true; rm -rf "$TMP_ROOT" 2>/dev/null || true' EXIT
+          trap 'chump up --stop >/dev/null 2>&1 || true; cd "$WORK_START" 2>/dev/null || true; rm -rf "$TMP_ROOT" 2>/dev/null || true' EXIT
 
           export CHUMP_HOME="$TMP_ROOT/chump-home"
           mkdir -p "$CHUMP_HOME"
+
+          # 0. Pre-takeover CLI guards on chumpd & chump init (EFFECTIVE-1937)
+          grep -q "chumpd" <<<"$(chumpd --version)"
+          grep -q "Usage:" <<<"$(chumpd --help)"
+          test ! -f "$CHUMP_HOME/run/chumpd.ipc"
+          grep -q -- "--yes" <<<"$(chump init --help)"
 
           # 1. Unified config init + validate
           chump config init
@@ -101,9 +111,18 @@ jobs:
           SEED_BRANCH="main"
           git push -u origin "$SEED_BRANCH"
 
-          # 3. Install & verify native Rust git hooks
+          # 3. Install & verify native Rust git hooks + protected-branch push block
           chump hook install
           chump hook status
+          echo "protected check" >> README.md
+          git add README.md
+          git commit -m "chore: verify protected branch pre-push guard"
+          if git push origin "$SEED_BRANCH" 2>"$TMP_ROOT/push-err.txt"; then
+            echo "ERROR: direct push to protected branch '$SEED_BRANCH' should have been blocked" >&2
+            exit 1
+          fi
+          grep -qi "protected_branch_push\|protected branch" "$TMP_ROOT/push-err.txt"
+          CHUMP_ALLOW_MAIN_PUSH=1 git push origin "$SEED_BRANCH"
 
           # 4. Exercise live pre-commit Rust hook on a feature branch
           git checkout -b chump/test-ftue-1
@@ -111,14 +130,31 @@ jobs:
           git add ftue.txt
           git commit -m "feat(TEST-FTUE): exercise live rust pre-commit hook"
 
-          # 5. Native OS service dry-run + status
+          # 5. Native OS service dry-run + live chump up lifecycle (stopped -> running -> stopped)
           chump service install --dry-run
           chump service status --dry-run
+          grep -q "stopped" <<<"$(chump up --status)"
+          chump up --mode off
+          for _ in $(seq 1 30); do
+            if grep -q "running" <<<"$(chump up --status)"; then
+              break
+            fi
+            sleep 0.2
+          done
+          grep -q "running" <<<"$(chump up --status)"
+          chump up --stop
+          for _ in $(seq 1 20); do
+            if grep -q "stopped" <<<"$(chump up --status)"; then
+              break
+            fi
+            sleep 0.2
+          done
+          grep -q "stopped" <<<"$(chump up --status)"
 
           # 6. Native Rust ship dry-run receipt
           chump ship --gap TEST-FTUE --dry-run
 
-          # 7. Cross-OS USERPROFILE fallback (HOME empty/unset) + reserve + claim + briefing
+          # 7. Cross-OS USERPROFILE fallback (HOME empty/unset) + reserve + claim + briefing + reconcile-merged
           WIN_PROFILE="$TMP_ROOT/win-profile"
           mkdir -p "$WIN_PROFILE" "$TMP_ROOT/wt"
           git checkout "$SEED_BRANCH"
@@ -126,5 +162,6 @@ jobs:
           GAP_ID="$(HOME="" USERPROFILE="$WIN_PROFILE" ANTHROPIC_API_KEY="ftue-configured" chump gap reserve --domain INFRA --title "INFRA: universal FTUE smoke" --effort s --quiet)"
           HOME="" USERPROFILE="$WIN_PROFILE" ANTHROPIC_API_KEY="ftue-configured" CHUMP_WORKTREE_BASE="$TMP_ROOT/wt" CHUMP_SESSION_ID="ftue-session-1" chump claim "$GAP_ID" --role implementer --skip-doctor
           HOME="" USERPROFILE="$WIN_PROFILE" chump --briefing "$GAP_ID" >/dev/null
+          HOME="" USERPROFILE="$WIN_PROFILE" chump gap reconcile-merged --dry-run >/dev/null
           git worktree prune 2>/dev/null || true
           chump llm-complete --help >/dev/null

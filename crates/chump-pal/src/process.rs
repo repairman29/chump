@@ -224,6 +224,30 @@ pub fn configure_isolated_child(cmd: &mut Command) {
     }
 }
 
+/// Configure `cmd` as an independent background daemon intended to OUTLIVE the
+/// short-lived CLI process or thread that spawned it (e.g. `chump up` launching `chumpd`):
+/// - Unix: `libc::setsid()` in `pre_exec` (new session + new process group, no
+///   controlling terminal, and crucially NO `PR_SET_PDEATHSIG` so `chump up` exiting
+///   on Linux never sends `SIGTERM` to `chumpd`).
+/// - Windows: `creation_flags(CREATE_NEW_PROCESS_GROUP)`.
+pub fn configure_detached_daemon(cmd: &mut Command) {
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        cmd.pre_exec(|| {
+            let _ = libc::setsid();
+            Ok(())
+        });
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+    }
+}
+
 /// Construct a synthetic exit-code-0 [`ExitStatus`] portably across Unix and Windows.
 pub fn success_exit_status() -> ExitStatus {
     #[cfg(unix)]

@@ -2969,17 +2969,18 @@ pub(crate) async fn dispatch_gap_or_tail(args: Vec<String>) -> Result<()> {
                                     .spawn(); // fire-and-forget
                             }
                         }
-                        // ZERO-WASTE-056: write docs/gaps/<ID>.yaml ATOMICALLY on
-                        // every ship, so the gap-close rides in the WORK PR and no
-                        // separate per-gap reconcile PR is ever needed (that churn
-                        // was ~half of all merges). Uses the LOSSLESS single-file
-                        // writer (dump_per_file_single merge-preserves hand-curated
-                        // fields) — NOT the destructive bulk regen ZERO-WASTE-020
-                        // disabled. --update-yaml is now the default; the flag is
-                        // still accepted (bot-merge.sh path) but no longer required.
+                        // ZERO-WASTE-056 + INFRA-247: write <worktree_root>/docs/gaps/<ID>.yaml
+                        // ATOMICALLY by default so the YAML closure lands in the WORK PR
+                        // (not canonical `main` when in a linked worktree); pass
+                        // `--no-update-yaml` for post-merge host sweeps on `main`.
                         let _ = update_yaml;
-                        let gaps_dir = repo_root.join("docs/gaps");
-                        match store.dump_per_file_single(&gap_id, &gaps_dir) {
+                        let no_update_yaml = args.iter().any(|a| a == "--no-update-yaml");
+                        match store.sync_yaml_for_ship(
+                            &gap_id,
+                            &worktree_root,
+                            no_update_yaml,
+                            external_repo.as_deref(),
+                        ) {
                             Ok(true) => {
                                 println!("  synced docs/gaps/{}.yaml (status=done)", gap_id)
                             }
@@ -3160,6 +3161,72 @@ pub(crate) async fn dispatch_gap_or_tail(args: Vec<String>) -> Result<()> {
                 // to main's "unknown subcommand 'gap'" catch-all (exit 2) — same
                 // latent bug fixed for link-pr just above.
                 return Ok(());
+            }
+            "reconcile-merged" => {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap reconcile-merged [--dry-run] [--json]\n\n\
+                         Close open gaps whose typed `gap_prs` link points to a PR marked\n\
+                         MERGED in `.chump/github_cache.db`, routing every transition through\n\
+                         the receipt-gated `GapStore::ship` path (CREDIBLE-1550)."
+                    );
+                    return Ok(());
+                }
+                for extra in args.iter().skip(3) {
+                    if !matches!(extra.as_str(), "--dry-run" | "--json") {
+                        eprintln!(
+                            "chump gap reconcile-merged: unknown argument {extra:?} (expected --dry-run or --json)"
+                        );
+                        std::process::exit(2);
+                    }
+                }
+                let dry_run = args.iter().skip(3).any(|a| a == "--dry-run");
+                match store.reconcile_merged_pr_links(&repo_root, dry_run) {
+                    Ok(closed) => {
+                        if !dry_run {
+                            for (gid, pr_num) in &closed {
+                                let _ = crate::doctor::gap_cmd::emit_gap_shipped(
+                                    &repo_root,
+                                    gid,
+                                    "reconcile-merged",
+                                    Some(*pr_num),
+                                );
+                            }
+                        }
+                        if json_out {
+                            let payload: Vec<_> = closed
+                                .iter()
+                                .map(|(gid, pr)| {
+                                    serde_json::json!({
+                                        "gap_id": gid,
+                                        "pr_number": pr,
+                                        "dry_run": dry_run,
+                                    })
+                                })
+                                .collect();
+                            println!("{}", serde_json::to_string(&payload)?);
+                        } else if closed.is_empty() {
+                            println!("reconcile-merged: 0 merged gap_prs links pending closure");
+                        } else {
+                            for (gid, pr) in &closed {
+                                if dry_run {
+                                    println!("[dry-run] would ship {gid} (merged PR #{pr})");
+                                } else {
+                                    println!("shipped {gid} (merged PR #{pr})");
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap reconcile-merged: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
             }
             // EFFECTIVE-038: A2A L2 task-suspension. `suspend` moves a gap
             // into status=waiting_operator carrying a structured question
