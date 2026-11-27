@@ -77,9 +77,10 @@ where
     let s = String::deserialize(d)?;
     match s.as_str() {
         "claude" => Ok(DispatchBackend::Claude),
+        "agy" | "antigravity" | "gemini" => Ok(DispatchBackend::Agy),
         "chump-local" | "chump_local" | "local" => Ok(DispatchBackend::ChumpLocal),
         other => Err(serde::de::Error::custom(format!(
-            "unknown backend {other:?} (valid: claude | chump-local)"
+            "unknown backend {other:?} (valid: claude | agy | chump-local)"
         ))),
     }
 }
