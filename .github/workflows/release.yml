@@ -132,7 +132,7 @@ jobs:
         run: |
           if ! command -v cargo > /dev/null 2>&1; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           fi
       - name: "Install Linux system libraries for Tauri transitive deps"
         if: "runner.os == 'Linux'"
@@ -171,9 +171,11 @@ jobs:
         shell: bash
         run: |
           # Parse out what we just built and upload it to scratch storage
-          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
-          dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "paths<<EOF"
+            dist print-upload-files-from-manifest --manifest dist-manifest.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       - name: "Upload artifacts"
@@ -218,9 +220,11 @@ jobs:
           echo "dist ran successfully"
 
           # Parse out what we just built and upload it to scratch storage
-          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
-          jq --raw-output ".upload_files[]" dist-manifest.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "paths<<EOF"
+            jq --raw-output ".upload_files[]" dist-manifest.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       - name: "Upload artifacts"
@@ -293,9 +297,10 @@ jobs:
           RELEASE_COMMIT: "${{ github.sha }}"
         run: |
           # Write and read notes from a file to avoid quoting breaking things
-          echo "$ANNOUNCEMENT_BODY" > $RUNNER_TEMP/notes.txt
-
-          gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
+          echo "$ANNOUNCEMENT_BODY" > "$RUNNER_TEMP/notes.txt"
+          extra_flags=()
+          if [ -n "$PRERELEASE_FLAG" ]; then extra_flags+=("$PRERELEASE_FLAG"); fi
+          gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" "${extra_flags[@]}" --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
 
   publish-homebrew-formula:
     needs:
@@ -309,30 +314,36 @@ jobs:
       GITHUB_EMAIL: "admin+bot@axo.dev"
     if: ${{ !fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases }}
     steps:
-      # INFRA-1383: fail fast before spending 35min on artifact builds if the
-      # homebrew tap token is missing. v0.1.2 release burned full runner time
-      # because this check ran last. Now it runs first.
-      - name: Preflight — HOMEBREW_TAP_TOKEN secret present
+      - name: Mint GitHub App token for homebrew-chump tap
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.QUEUE_DRIVER_APP_ID }}
+          private-key: ${{ secrets.QUEUE_DRIVER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: homebrew-chump
+      # INFRA-1383 / INFRA-8657: fail fast if neither GitHub App token nor HOMEBREW_TAP_TOKEN is available.
+      - name: Preflight — tap write token present
         env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_TOKEN: ${{ steps.app-token.outputs.token || secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
-            echo "::error::HOMEBREW_TAP_TOKEN secret is empty or not set."
+          if [ -z "${TAP_TOKEN}" ]; then
+            echo "::error::Neither GitHub App token (homebrew-chump) nor HOMEBREW_TAP_TOKEN secret is set."
             echo "::error::This release will publish binaries but brew tap will NOT auto-update."
-            echo "::error::Fix: create a classic PAT (scope: public_repo) for repairman29/homebrew-chump"
-            echo "::error::     and add it as repo secret HOMEBREW_TAP_TOKEN at:"
+            echo "::error::Fix: grant the GitHub App write access to repairman29/homebrew-chump or set HOMEBREW_TAP_TOKEN at:"
             echo "::error::     https://github.com/repairman29/chump/settings/secrets/actions"
             echo "::error::See docs/process/RELEASE.md §Homebrew tap token for full procedure."
             echo "::error::Manual fallback: download chump.rb from release assets, commit to"
             echo "::error::     github.com/repairman29/homebrew-chump/Formula/ manually."
             exit 1
           fi
-          echo "HOMEBREW_TAP_TOKEN present — proceeding with tap update."
+          echo "Tap token present — proceeding with tap update."
       - uses: actions/checkout@v7
         with:
           persist-credentials: true
           repository: "repairman29/homebrew-chump"
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          token: ${{ steps.app-token.outputs.token || secrets.HOMEBREW_TAP_TOKEN }}
       # So we have access to the formula
       - name: Fetch homebrew formulae
         uses: actions/download-artifact@v8
@@ -349,7 +360,7 @@ jobs:
 
           for release in $(echo "$PLAN" | jq --compact-output '.releases[] | select([.artifacts[] | endswith(".rb")] | any)'); do
             filename=$(echo "$release" | jq '.artifacts[] | select(endswith(".rb"))' --raw-output)
-            name=$(echo "$filename" | sed "s/\.rb$//")
+            name="${filename%.rb}"
             version=$(echo "$release" | jq .app_version --raw-output)
 
             export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"

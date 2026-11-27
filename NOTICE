@@ -12,9 +12,10 @@ Chump is dual-structured under the "owned and protected commons" model:
 
 - **Reusable library crates → Apache-2.0** (`LICENSE-APACHE`). Depend on them freely; the
   patent grant and contributor terms come along. These are the substrate others build on.
-  Crates: `chump-cost-tracker`, `chump-agent-lease`, `chump-cancel-registry`,
-  `chump-mcp-lifecycle`, `chump-messaging`, `chump-perception`, `chump-tool-macro`,
-  `chump-gap-store`.
+  Crates: `chump-agent-lease`, `chump-cancel-registry`, `chump-comprehension-organ`,
+  `chump-config`, `chump-cost-tracker`, `chump-gap-store`, `chump-mcp-lifecycle`,
+  `chump-messaging`, `chump-pal`, `chump-perception`, `chump-store-path`,
+  `chump-test-helpers`, `chump-tool-macro`.
 
 Each crate's `Cargo.toml` `license` field is authoritative. Versions published to crates.io
 before this change remain under their original MIT grant (irrevocable); this applies going forward.
