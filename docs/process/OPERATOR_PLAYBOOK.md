@@ -422,7 +422,7 @@ repo-local store, `node.env` pinned `CHUMP_STATE_DB` to `~/.chump/state.db`
 for sourced sessions, so some nodes carry two diverged stores. Measured on
 cuphead 2026-10-17 04:30Z: live `~/chump/.chump/state.db` 13499 gaps / 499
 open / 20 PHASE-R; stale `~/.chump/state.db` 12787 gaps / 8266 open / 0
-PHASE-R (closetjunky is the other way round, 4145 vs 12779). Merge the stale
+PHASE-R (worker-node-01 is the other way round, 4145 vs 12779). Merge the stale
 store in **before** a full node install flips the pin:
 
 ```bash

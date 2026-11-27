@@ -1,448 +1,98 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
 ---
 
-# Web API reference
-
-The web server is started with `chump --web` (default port 3000; override with `--port` or `CHUMP_WEB_PORT`). All API routes are under `/api/`. Implemented in `src/web_server.rs`.
-
-## Health and status
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
-| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), **`tool_policy`** (effective **`CHUMP_TOOLS_ASK`**, auto-approve flags for PWA Settings), **`llm_last_completion`** / **`llm_completion_totals`** (which backend last answered; see below), **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout), and **`github_rate_limit`** (see below). |
-| GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
-| GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON, plus **`recent_async_jobs`** (last 12 rows from the async job log — same data as `GET /api/jobs`). Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/eval/export-pilot-summary.sh`. |
-| GET | `/api/jobs` | **Async job log (P2.2):** recent rows from **`chump_async_jobs`** (`chump_memory.db`). Query **`limit`** (1–200, default 40). Each job: `id`, `job_type` (e.g. `autonomy_once`), `status`, optional `task_id` / `session_id`, `detail`, `last_error`, timestamps. Bearer required when `CHUMP_WEB_TOKEN` is set. |
-| GET | `/api/analytics` | **Session / turn telemetry:** JSON summary from `web_sessions_db::analytics_summary()` (sessions, messages, tool calls, latency aggregates, feedback counts). Bearer when `CHUMP_WEB_TOKEN` is set. |
-| POST | `/api/messages/{id}/feedback` | **Per-message feedback:** JSON body `{"feedback": 1}` (up) or `{"feedback": -1}` (down). Updates `chump_web_messages.feedback` for the UUID `id`. Bearer when token is set. |
-
-### `GET /api/stack-status` — `inference` object
-
-- **`primary_backend`:** `"openai_compatible"` (default) or `"mistralrs"` when **`CHUMP_INFERENCE_BACKEND=mistralrs`** (case-insensitive) **and** **`CHUMP_MISTRALRS_MODEL`** is non-empty. The mistral.rs predicate is **env-only**; it does not verify that the binary was built with `--features mistralrs-infer`.
-- **`openai_compatible`:** Top-level `inference` is the OpenAI HTTP probe: `configured`, `models_reachable`, `probe`, `models_url`, `http_status`, `error` — same semantics as before, plus `primary_backend: "openai_compatible"`. For **local** bases (`127.0.0.1` / `localhost`), Chump runs a short `GET …/models` (timeout **`CHUMP_STACK_PROBE_TIMEOUT_SECS`**, default 8).
-- **`mistralrs`:** Top-level `inference` reports **`configured: true`**, **`models_reachable: true`**, **`probe: "mistralrs_in_process"`**, and **`mistralrs_model`**. Optional HTTP status is under **`openai_http_sidecar`** (same shape as the OpenAI probe, without `primary_backend`). A failing sidecar must **not** be interpreted as “chat has no model” when primary is in-process mistral.rs.
-
-### `GET /api/stack-status` — `cognitive_control` object
-
-Live snapshot of precision / neuromod hooks (WP-6.x): **`recommended_max_tool_calls`**, **`recommended_max_delegate_parallel`**, **`belief_tool_budget`** (from **`CHUMP_BELIEF_TOOL_BUDGET`**), **`task_uncertainty`** (epistemic, `belief_state`), **`context_exploration_fraction`**, **`effective_tool_timeout_secs`** (default base 30s, scaled by serotonin heuristic). The same fields are mirrored under **`consciousness_dashboard.precision`** on **`GET /health`** when **`CHUMP_HEALTH_PORT`** is set (separate from this minimal **`GET /api/health`**).
-
-### `GET /api/stack-status` — LLM backend metrics
-
-- **`llm_last_completion`:** `null` until a completion succeeds in this process, then an object: **`kind`** (`mistralrs` \| `cascade` \| `openai_http` \| `openai_api`), **`label`** (model id, cascade slot name, or HTTP host:port), **`stream_text_deltas`** (bool; mistral streaming path only), **`at_unix_ms`**.
-- **`llm_completion_totals`:** Object mapping **`"kind::label"`** → integer count since process start. Cascade inner HTTP attempts do not increment `openai_http` (only the winning slot’s `cascade` entry). See [METRICS.md](METRICS.md) §1c.
-
-The same **`llm_last_completion`** and **`llm_completion_totals`** fields are included on **`GET /health`** (health port) for operators who poll that endpoint.
+# HTTP & SSE Web API Reference
 
-### `GET /api/stack-status` — `github_rate_limit` object (INFRA-1337)
+`chump --web` starts an `axum` HTTP and Server-Sent Events (SSE) server (`src/web_server.rs`, default `127.0.0.1:3000`, configurable via `--port` or `[web] port` in `~/.chump/config.toml`). All programmatic routes live under `/api/`.
 
-Polled once every 60 seconds in-process via `gh api rate_limit`. Exposed at the top level of the response so PRODUCT-107 status-footer and INFRA-1203 health view can read `d.github_rate_limit.graphql_remaining` directly.
+---
 
-| Field | Type | Description |
-|---|---|---|
-| `github_rate_limit` | object or `null` | Rate limit snapshot. `null` when `gh` is unavailable or the first fetch has not yet completed. |
-| `github_rate_limit.graphql_remaining` | integer | Remaining GraphQL API calls before reset. |
-| `github_rate_limit.graphql_limit` | integer | Total GraphQL API call budget per reset window. |
-| `github_rate_limit.core_remaining` | integer | Remaining REST core API calls. |
-| `github_rate_limit.core_limit` | integer | Total REST core budget. |
-| `github_rate_limit.reset_at_iso` | string | ISO-8601 UTC timestamp of the next GraphQL reset window. |
-| `github_rate_limit_error` | string (optional) | Present **only** when `github_rate_limit` is `null`; describes why the fetch failed (e.g. `"gh not found"`, `"not yet fetched"`). |
+## 1. Authentication & Payload Limits
 
-**Example (healthy):**
-```json
-{
-  "github_rate_limit": {
-    "graphql_remaining": 4820,
-    "graphql_limit": 5000,
-    "core_remaining": 4150,
-    "core_limit": 5000,
-    "reset_at_iso": "2026-05-15T14:00:00Z"
-  }
-}
-```
+- **Bearer Authentication (`CHUMP_WEB_TOKEN`):** When `CHUMP_WEB_TOKEN` is set, send `Authorization: Bearer <token>` on all mutating and workspace-reading endpoints (`/api/chat`, `/api/approve`, `/api/tasks`, `/api/sessions`, `/api/gap/claim/*`, `/api/gap/work/*`, `/api/autopilot/*`, `/api/ingest`, `/api/upload`). Lightweight liveness (`GET /api/health`) remains unauthenticated for local health probes.
+- **Upload & Capture Caps:** `POST /api/upload` enforces an `11 MiB` multipart ceiling; `POST /api/ingest` caps individual text/URL fields at `512 KiB` (returning HTTP `413` if exceeded).
 
-**Example (gh unavailable):**
-```json
-{
-  "github_rate_limit": null,
-  "github_rate_limit_error": "gh not found: No such file or directory"
-}
-```
+---
 
-## Dashboard
+## 2. Health, Stack & Cascade Telemetry
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/dashboard` | Ship heartbeat status and observability: JSON with `ship_running`, `ship_summary`, `ship_log_tail`, `chassis_log`, `current_step` (last line of chassis log), `last_episodes` (recent episode summaries). Used by the PWA Dashboard tab for "what we're doing" and recent activity. Optional `Authorization: Bearer <token>` when `CHUMP_WEB_TOKEN` is set. |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/health` | Fast liveness check returning `status`, `binary_version`, `build_sha`, and `version_match`. |
+| `GET` | `/api/stack-status` | Full runtime readiness: `inference` (`primary_backend`, `models_reachable`, `error`), `air_gap_mode`, `tool_policy`, `llm_last_completion`, `llm_completion_totals`, and `github_rate_limit`. |
+| `GET` | `/api/cascade-status` | Per-slot status across `[[providers]]`: priority, `circuit_state`, remaining RPD/RPM, and latency stats. |
+| `GET` | `/api/fleet/health` | Aggregate 4-pillar grades (`effective`, `credible`, `resilient`, `zero_waste`), 24h ship KPIs, SLO status, and GraphQL budget (60s cache). |
+| `GET` | `/api/roadmap` | Server-side `docs/ROADMAP.md` milestone parser enriched with live `.chump/state.db` gap completion ratios (60s cache). |
+| `GET` | `/api/analytics` | Session, message, tool-call, and latency summary from `web_sessions_db`. |
 
-**Empty or sparse dashboard (external / minimal setup):** If you have not configured **`chump-brain/`**, ship heartbeat scripts, or episode logging, fields such as `ship_running`, `chassis_log`, `current_step`, or `last_episodes` may be empty or placeholders. That is expected for a **web-only golden path** ([docs/process/EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md)). Populate the brain ([CHUMP_BRAIN.md](CHUMP_BRAIN.md)), run ship/autonomy heartbeats ([OPERATIONS.md](OPERATIONS.md)), and use the agent so episodes accumulate—then the Dashboard reflects real activity.
+---
 
-## Chat and approval
+## 3. Task Queue (Gap Registry) Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/chat` | Send message; streaming SSE. Body: **`message`**, optional **`session_id`**, **`attachments`**, **`bot`**. Optional **`policy_override`**: `{ "relax_tools": "run_cli,write_file", "ttl_secs": 3600 }` — when **`CHUMP_POLICY_OVERRIDE_API=1`**, registers a time-boxed relax of **CHUMP_TOOLS_ASK** for that session and applies it to **this** agent run (see [TOOL_APPROVAL.md](TOOL_APPROVAL.md) §Policy overrides). Returns **402** `{"error":"session_cost_exceeded","session_cost_usd":<N>,"threshold_usd":<T>}` when session spend exceeds the `[cost] kill` value in `~/.chump/config.toml` (INFRA-1335). |
-| POST | `/api/approve` | Resolve a tool approval request (allow/deny); JSON body `{ "request_id": "<uuid>", "allowed": true \| false }`. Idempotent if the id is unknown (already resolved). Same bearer auth as other routes when `CHUMP_WEB_TOKEN` is set. |
-| POST | `/api/policy-override` | Register the same relax **without** sending a chat message: `{ "session_id", "relax_tools", "ttl_secs" }`. Gated on **`CHUMP_POLICY_OVERRIDE_API=1`**. **`ttl_secs`** clamped **60–604800** (7 days). Returns `{ "ok": true }` or `{ "ok": false, "error": "…" }` when the API is disabled. |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/gap-queue` | Queryable task list supporting `?status=open,claimed`, `?domain=INFRA`, and `?priority=P1` filters. Returns `gaps[]`, `count`, `total`, and `claimable_count`. |
+| `POST` | `/api/gap/claim/{id}` | Atomically acquires a lease and creates an isolated git worktree for `{id}`. |
+| `POST` | `/api/gap/work/{id}` | Spawns an asynchronous background worker run for `{id}`, returning `{ status: "accepted", request_id }`. |
+| `GET` | `/api/gap/{id}/status` | Current workflow phase (`preflight`, `claim`, `execute-gap`, `ship`), `progress_pct`, and error state. |
+| `GET` | `/api/gap/{id}/stream` | Live SSE stream of `gap_workflow_phase` transitions for `{id}`. |
 
-## Autopilot and working repo (PWA Providers tab)
+---
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/autopilot/status` | Autopilot / ship state: `desired_enabled`, `actual_state`, `ship_running`, `pid`, `last_error`, etc. |
-| POST | `/api/autopilot/start` | Same as mutating routes: Bearer when `CHUMP_WEB_TOKEN` set. PWA **Providers** tab calls this after confirm. |
-| POST | `/api/autopilot/stop` | Stops desired autopilot and managed ship; PWA **Providers** after confirm. |
-| GET | `/api/repo/context` | Effective git repo root for tools: `multi_repo_enabled`, `effective_root`, `has_working_override`, `chump_repo_env`, **`profiles`** (from **`CHUMP_REPO_PROFILES`**, array of `{name, path}`), **`active_profile`** (when override was set via profile). |
-| POST | `/api/repo/working` | Set or clear process working repo when **`CHUMP_MULTI_REPO_ENABLED=1`** (and **`CHUMP_REPO`** or **`CHUMP_HOME`**): JSON `{ "path": "/abs/repo" }`, **`{ "profile": "name" }`** (must match **`CHUMP_REPO_PROFILES`**), or `{ "clear": true }`. Do not send both `path` and `profile`. Requires `.git` at repo root. |
+## 4. Streaming Chat & Tool Approval
 
-### SSE event names (`POST /api/chat`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/chat` | Starts a streaming `text/event-stream` agent turn. JSON body: `{ "message": "...", "session_id": "..." }`. Returns HTTP `402` if a configured session cost ceiling is exceeded. |
+| `POST` | `/api/approve` | Resolves a pending `tool_approval_request` (`{ "request_id": "<uuid>", "allowed": true }`). Idempotent on retry. |
+| `POST` | `/api/policy-override` | Time-boxed session tool-approval relaxation (`60–604800s`) when the policy-relaxation API (`CHUMP_POLICY_OVERRIDE_API`) is enabled. |
+| `GET` | `/api/tool-approval-audit` | Recent `tool_approval_audit` entries (`?limit=40` or `?format=csv`). |
 
-The response is **text/event-stream**. Each event has an SSE `event:` name and a JSON `data:` payload. Names are defined by [`AgentEvent::event_type`](../src/stream_events.rs) (same string as the SSE `event` field). Payloads are the JSON serialization of the corresponding `AgentEvent` variant (`type` discriminator + fields, `snake_case`).
+### SSE Event Types (`POST /api/chat`)
 
-| SSE `event` | Meaning (short) |
-|-------------|-----------------|
-| `turn_start` | New turn; `request_id`, `timestamp`. |
-| `thinking` | Reasoning heartbeat; `elapsed_ms`. |
-| `text_delta` | Incremental assistant text (if used). |
-| `text_complete` | Full assistant text snapshot. |
-| `tool_call_start` | Tool invoked; `tool_name`, `tool_input`, `call_id`. |
-| `tool_call_result` | Tool finished; `result`, `duration_ms`, `success`, `call_id`. |
-| `model_call_start` | Provider round; `round`. |
-| `turn_complete` | Turn done; `full_text`, counts, optional `thinking_monologue`. |
-| `turn_error` | Fatal turn error message. |
-| `tool_approval_request` | Human approval needed; `request_id`, `risk_level`, `reason`, `expires_at_secs`, tool fields. |
-| `web_session_ready` | Server assigned `session_id` for this chat. |
+| `event:` Name | Payload Summary |
+|---------------|-----------------|
+| `web_session_ready` | Assigned or resumed `session_id` |
+| `turn_start` | Turn started (`request_id`, `timestamp`) |
+| `thinking` | Reasoning progress heartbeat or monologue delta |
+| `model_call_start` | Provider round index |
+| `text_delta` | Incremental assistant response chunk |
+| `text_complete` | Complete assistant text for the round |
+| `tool_call_start` | Tool invocation (`tool_name`, `tool_input`, `call_id`) |
+| `tool_call_result` | Tool execution outcome (`result`, `duration_ms`, `success`) |
+| `tool_approval_request` | Pause awaiting `POST /api/approve` (`request_id`, `risk_level`, `reason`) |
+| `turn_complete` | Final turn summary (`full_text`, token/tool counts) |
+| `turn_error` | Terminal error with actionable remediation hint |
 
-**In-process mistral + incremental text:** When **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1`** (with **`mistralrs-infer`** / **`mistralrs-metal`** and mistral primary env), the server may emit many **`text_delta`** events and **omit** **`text_complete`**; clients should still apply **`turn_complete.full_text`** as the canonical final string. See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b and [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md).
+---
 
-**Structured assistant JSON (tool-free turns):** Optional **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`** (path to JSON Schema file) constrains in-process mistral output only when the LLM request has **no tools**; see [ADR-002](ADR-002-mistralrs-structured-output-spike.md).
+## 5. Sessions, Tasks, Memory & Autopilot
 
-### Tauri desktop (`chump-desktop`, HTTP sidecar)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET / POST` | `/api/sessions` | List (`limit <= 100`) or create chat sessions |
+| `GET / PUT / DELETE` | `/api/sessions/{id}` (`.../messages`) | Fetch paginated messages (`limit <= 500`), rename, or delete a session |
+| `GET / POST / PUT / DELETE` | `/api/tasks` (`/api/tasks/{id}`) | Manage lightweight DAG tasks (`depends_on` cycle-checked in SQLite) |
+| `GET / POST` | `/api/autopilot/status`, `/start`, `/stop` | Query, start, or stop background ship supervision |
+| `GET / POST` | `/api/repo/context`, `/api/repo/working` | Inspect or switch active working repository (`CHUMP_MULTI_REPO_ENABLED=1`) |
+| `POST / GET` | `/api/upload`, `/api/files/{file_id}` | Upload and retrieve session attachments |
+| `GET / POST` | `/api/push/vapid-public-key`, `/subscribe`, `/unsubscribe` | Web Push subscription management |
 
-When the UI runs inside **Tauri** ([`docs/strategy/TAURI_FRONTEND_PLAN.md`](TAURI_FRONTEND_PLAN.md) Option B), the WebView still calls the same HTTP routes via an API root prefix (`__CHUMP_FETCH` in [`web/index.html`](../web/index.html)). Additionally, **`#[tauri::command]`** proxies exist for tooling and tests:
+---
 
-| Command | Role |
-|---------|------|
-| `get_desktop_api_base` | Returns `CHUMP_DESKTOP_API_BASE` or default `http://127.0.0.1:3000`. |
-| `health_snapshot` | `GET {base}/api/health` → JSON body string. |
-| `resolve_tool_approval` | `POST {base}/api/approve` with JSON `{ request_id, allowed }`; optional `token` → `Authorization: Bearer`. |
-| `submit_chat` | `POST {base}/api/chat` with raw `bodyJson`; returns **entire** SSE response as one string (harness only; UI should stream via `fetch`). |
+## 6. Static UI Routes
 
-Optional JS: [`web/desktop-bridge.js`](../web/desktop-bridge.js) (`createChumpDesktopApi()`).
+- `/v2/` — Sovereign Operator Cockpit
+- `/site/` — Product Suite, Fleet Simulator (`/site/tools/fleet-simulator/`), and Config Doctor (`/site/tools/config-doctor/`)
+- `/docs/` — Redirects to `/site/docs/` (60-second quickstart and command sheet)
 
-### Tauri native `emit` (Phase 2 — contract only)
+---
 
-When the agent eventually runs **in-process** with Tauri (Option A) or a bridge forwards events, native channels SHOULD reuse the **same** names and JSON shapes as the SSE `event` + `data` rows above (e.g. listen channel `chump/tool_call_start` with payload = current SSE `data` JSON). No duplicate schema. Wiring is tracked in [`docs/strategy/TAURI_FRONTEND_PLAN.md`](TAURI_FRONTEND_PLAN.md) Phase 2.
+## Related Guides
 
-## Sessions
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/sessions` | List sessions. |
-| POST | `/api/sessions` | Create session. |
-| GET | `/api/sessions/{id}/messages` | Get messages for a session. |
-| PUT | `/api/sessions/{id}` | Rename or update session. |
-| DELETE | `/api/sessions/{id}` | Delete session. |
-
-**Limits (`web_sessions_db.rs`, universal power P4.2):** list endpoint clamps **`limit` ≤ 100**; messages endpoint clamps **`limit` ≤ 500** per page (use offset for deep history). First user message seeds session title (**~60 chars**). FTS-backed context snippets use **up to 16** whitespace-separated query tokens (each escaped for FTS5) and return **1–24** excerpts.
-
-## Governance and audit
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/tool-approval-audit` | Recent **`tool_approval_audit`** events parsed from **`logs/chump.log` tail** (last ~768 KiB of the file). Query: **`limit`** (1–500, default 40); **`format=csv`** for CSV (`text/csv`). Supports structured JSON lines and legacy pipe format ([TOOL_APPROVAL.md](TOOL_APPROVAL.md)). Requires bearer when `CHUMP_WEB_TOKEN` is set. **Note:** log path follows the **web process cwd** + `logs/chump.log` (same as `chump_log` append path). |
-| GET | `/api/cos/decisions` | Newest **`cos/decisions/*.md`** under the resolved brain root (`CHUMP_BRAIN_PATH` / `chump-brain`), sorted by mtime. Query: **`limit`** (1–50, default 8). Each row: `filename`, `relative_path`, `modified_unix_ms`, `preview` (~480 chars). Read-only. |
-
-## Upload and files
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/upload` | Upload file (multipart); body limit 11 MiB. |
-| GET | `/api/files/{file_id}` | Serve uploaded file by ID. |
-
-## Tasks
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/tasks` | List tasks. |
-| POST | `/api/tasks` | Create task (optional **`depends_on`** array of task IDs for a dependency DAG; cycles rejected in DB). |
-| PUT | `/api/tasks/{id}` | Update task. |
-| DELETE | `/api/tasks/{id}` | Delete task. |
-
-**Task DAG (tool surface):** the **`task`** tool supports **`list_unblocked`**, **`add_dependency`**, **`remove_dependency`** alongside create/list/update/complete — see `src/task_tool.rs` / `src/task_db.rs`.
-
-## Briefing and ingest
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/briefing` | JSON: `date`, `sections[]` with **Tasks** (open by assignee), **Recent episodes**, **Watchlists** (counts), **Watch alerts** (flagged lines). Used by PWA and **`scripts/eval/morning-briefing-dm.sh`**. |
-| POST | `/api/ingest` | JSON body: `text` and/or `url` (at least one non-empty). Optional `source` (e.g. `pwa`, `ios_shortcut`) is stored as an HTML comment in the capture file. Max raw text/url payload **512 KiB** per field; larger requests → **413**. Request body limit ~576 KiB. Writes under `CHUMP_BRAIN_PATH/capture/`. |
-| POST | `/api/ingest/upload` | Multipart file field `file` (or `text`). Stored in `capture/`; each file **≤ 512 KiB** (multipart layer still allows up to 11 MiB before handler rejects). |
-
-## Research
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/research` | List research items (`research/*.md` under brain). |
-| POST | `/api/research` | Body: `{ "topic": "...", "content": "..." }`. Creates `research/<slug>.md` with status **queued**. Multi-pass agent synthesis is driven by heartbeat **`RESEARCH_BRIEF_PROMPT`** (writes `research/latest.md`) and research rounds in `scripts/dev/heartbeat-self-improve.sh` / Mabel. |
-| GET | `/api/research/{id}` | Get research item by ID. |
-
-## Watch
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/watch` | List watch lists with item counts (`watch/*.md` under brain). |
-| POST | `/api/watch` | Add watch item. |
-| GET | `/api/watch/alerts` | JSON array of `{ "list", "line" }` for **flagged** bullets: lines starting with `-` and containing `urgent`, `asap`, `deadline`, `[!]`, `!!!`, or `alert:` (case-insensitive where noted). Same logic as **Watch alerts** in `/api/briefing`. |
-| DELETE | `/api/watch/{list}/{item_id}` | Remove watch item. |
-
-## Projects
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/projects` | List projects. |
-| POST | `/api/projects` | Create project. |
-| POST | `/api/projects/{id}/activate` | Activate project. |
-
-## Autopilot (ship product heartbeat)
-
-Requires `Authorization: Bearer <token>` when `CHUMP_WEB_TOKEN` is set (same as other gated routes).
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/autopilot/status` | JSON: `desired_enabled`, `actual_state`, `last_error`, `ship_summary`, `consecutive_start_failures`, `auto_retry_paused_until_secs`, etc. |
-| POST | `/api/autopilot/start` | Sets desired on, clears auto-retry backoff, runs preflight, starts managed ship via `ensure-ship-heartbeat.sh`. Body empty. Response `{ "ok": true, "state": { ... } }` or `{ "ok": false, "error": "..." }`. |
-| POST | `/api/autopilot/stop` | Stops desired autopilot; best-effort TERM on lock PID, then `pkill` fallback. |
-
-When the web process is running with `--web`, it **reconciles on boot** and every **3 minutes**: if `desired_enabled` is true and the ship process is down, and auto-retry is not paused, it attempts start again (with backoff after repeated failures).
-
-**ChumpMenu** reads `CHUMP_WEB_HOST` (default `127.0.0.1`), `CHUMP_WEB_PORT` (default `3000`), and `CHUMP_WEB_TOKEN` from the repo `.env` so it hits the same URL as `chump --web`.
-
-Remote control (e.g. from another host on Tailscale): see [OPERATIONS.md](OPERATIONS.md) and `scripts/dev/autopilot-remote.sh`.
-
-## Push (Web Push)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/push/vapid-public-key` | Get VAPID **public** key for `pushManager.subscribe` (from **`CHUMP_VAPID_PUBLIC_KEY`** or placeholder). |
-| POST | `/api/push/subscribe` | Subscribe: JSON `{ "endpoint", "keys": { "p256dh", "auth" } }` → stored in **`chump_push_subscriptions`**. |
-| POST | `/api/push/unsubscribe` | Unsubscribe: JSON `{ "endpoint" }`. |
-
-**Server send (P2.1):** When **`CHUMP_VAPID_PRIVATE_KEY_FILE`** points to a PEM EC private key (same pair as the public key the PWA used to subscribe) and **`CHUMP_WEB_PUSH_AUTONOMY=1`**, each **`--autonomy-once`** outcome **`done`**, **`blocked`**, or **error** triggers a **fire-and-forget** broadcast to all subscribers with JSON body `{ "title", "body" }`. The service worker (`web/sw.js`) shows **`showNotification`**. Optional **`CHUMP_VAPID_SUBJECT`** (e.g. `mailto:you@example.com`) overrides the JWT `sub` claim. Stale endpoints (**404** / **410** class from the push service) are removed from the DB. See [OPERATIONS.md](OPERATIONS.md) for key generation.
-
-## Automation ingress (shortcuts, cron, webhooks)
-
-**P2.3 — consistent contracts for external `POST`/`GET` callers:**
-
-- **Bearer auth:** When `CHUMP_WEB_TOKEN` is set, send `Authorization: Bearer <token>` on every route that mutates state or returns private workspace data (tasks, sessions, ingest, upload, approve, autopilot control, audit endpoints above, briefing, dashboard, pilot-summary, repo working override, etc.). Health/stack-status remain open unless you add a reverse proxy.
-- **Payload caps:** **`POST /api/upload`** and **`POST /api/ingest/upload`**: multipart layer **11 MiB**; handler rejects captures **> 512 KiB** per file. **`POST /api/ingest`** and **`POST /api/shortcut/capture`**: **~576 KiB** request body with **512 KiB** max per `text` / `url` field (→ **413** when exceeded). **`POST /api/chat`**: large prompts are allowed for SSE turns; prefer sessioning over megabyte single messages.
-- **Idempotency:** **`POST /api/approve`** is safe to retry (unknown `request_id` → success). Task/session creates do **not** accept an idempotency key; use stable `session_id` in chat bodies when you need continuity across retries.
-
-## Shortcut (iOS Shortcuts / external)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/shortcut/task` | Create task from shortcut. |
-| POST | `/api/shortcut/capture` | Body: `{ "text": "..." }`, optional `source` (default label `ios_shortcut` in capture file). Same **512 KiB** cap as `/api/ingest`. |
-| GET | `/api/shortcut/status` | Shortcut status. |
-| POST | `/api/shortcut/command` | Execute shortcut command. |
-
-## Gap registry (INFRA-1197)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/gap-queue` | Queryable gap list for the PWA queue view. **Fat shape** since INFRA-1197: returns 15 fields per row, supports `?status` / `?domain` / `?priority` filters, sorted by priority asc → effort asc → created_at desc. |
-| POST | `/api/gap/claim/{id}` | Atomic claim — creates worktree + lease. |
-| GET | `/api/gap/status/{id}` | Gap status snapshot. |
-| GET | `/api/gap/{id}/status` | Workflow status (alias). |
-| GET | `/api/gap/{id}/stream` | SSE stream of `gap_workflow_phase` events for a gap (INFRA-1009). |
-| POST | `/api/gap/work/{id}` | Spawn an `--execute-gap` workflow. |
-
-### `GET /api/gap-queue` — query params + response shape
-
-Query (all optional, all additive):
-
-- **`status`** — `open` (default), `claimed`, `shipped`, `done`, `all`. Comma-separated for OR: `?status=open,claimed` returns both sets, deduped by `id`.
-- **`domain`** — exact domain match: `INFRA`, `CREDIBLE`, `EFFECTIVE`, `COG`, …
-- **`priority`** — exact priority match: `P0`, `P1`, `P2`, `P3`.
-
-Response:
-
-```json
-{
-  "gaps": [
-    {
-      "id": "INFRA-1197",
-      "title": "EFFECTIVE: /api/gap-queue returns full gap metadata …",
-      "priority": "P1",
-      "effort": "s",
-      "preflight_status": "blocked",
-      "preflight_error": "Already claimed by session claim-infra-1197-...",
-      "domain": "INFRA",
-      "status": "open",
-      "closed_pr": null,
-      "assigned_session": "claim-infra-1197-5675-1778768595",
-      "created_at": 1778768400,
-      "opened_date": "2026-05-14",
-      "depends_on": [],
-      "acceptance_criteria_count": 15,
-      "pillar": "effective"
-    }
-  ],
-  "count": 1,
-  "total": 272,
-  "claimable_count": 0
-}
-```
-
-**Field semantics:**
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `id` | string | Canonical gap ID (e.g. `INFRA-1197`). |
-| `title` | string | Truncated to 200 chars (utf-8 safe). |
-| `priority` | string | `P0` / `P1` / `P2` / `P3`. |
-| `effort` | string | `xs` / `s` / `m` / `l`. |
-| `preflight_status` | string | `claimable` / `blocked` / `error`. |
-| `preflight_error` | string \| null | Human-readable reason when not claimable. |
-| `domain` | string | `INFRA` / `CREDIBLE` / `EFFECTIVE` / `COG` / etc. |
-| `status` | string | `open` / `claimed` / `shipped` / `done`. |
-| `closed_pr` | int \| null | PR number when `status: shipped`/`done`, else `null`. Used by `<chump-pr-card>` to embed. |
-| `assigned_session` | string \| null | Session ID currently holding the lease (only set when `preflight_status: blocked` for that reason). |
-| `created_at` | int | Unix epoch seconds. |
-| `opened_date` | string \| null | ISO date from the YAML `opened_date` field. |
-| `depends_on` | array<string> | Gap IDs this row depends on. Empty array if none — not `null` — so callers can `.length` without guards. |
-| `acceptance_criteria_count` | int | Count of AC items. Use for badges; full AC body served from `/api/gap/status/{id}`. |
-| `pillar` | string \| null | `effective` / `credible` / `resilient` / `zero-waste` / `mission`, derived **only** from a leading title tag (`EFFECTIVE:` etc.). `null` when the title has no tag. Domain is **not** used as a fallback — intentionally crisp semantics. |
-
-**Sort order:** priority asc (`P0 < P1 < P2 < P3`), then effort asc (`xs < s < m < l`), then `created_at` desc (newest first within tier). Stable across requests.
-
-**Top-level fields:**
-
-- `gaps` — array of rows (post-filter, sorted).
-- `count` — `gaps.length` after filters.
-- `total` — pre-filter count for the selected `status` set. Lets a future paginated mode show "showing N of M".
-- `claimable_count` — number of rows with `preflight_status: "claimable"`.
-
-**Telemetry:** every request emits one `kind=gap_queue_request` ambient event with `{filter, count, ms}` fields. Tail `.chump-locks/ambient.jsonl` to spot frontend hot-loops.
-
-## GET /api/fleet/health (INFRA-1334)
-
-Aggregate fleet mission-health snapshot — the single data source for PRODUCT-107 status-footer and INFRA-1203 `<chump-view-fleet-health>`. Combines pillar grades, KPIs, SLO status, and GraphQL budget.
-
-**Response shape:**
-
-```json
-{
-  "pillars": {
-    "effective":  { "grade": "A", "score": 80, "count_pickable": 3, "count_in_flight": 1, "count_shipped_24h": 2, "trend": "flat", "breach_reasons": [] },
-    "credible":   { "grade": "B", "score": 30, "count_pickable": 1, ... },
-    "resilient":  { "grade": "F", "score":  0, "count_pickable": 0, ..., "breach_reasons": ["no open gaps in this pillar"] },
-    "zero_waste": { "grade": "F", "score":  0, ... },
-    "mission":    { "grade": "F", "score":  0, "trend": "flat", "breach_reasons": ["...rolled-up..."] }
-  },
-  "kpis": {
-    "ships_24h":      4,
-    "open_count":     42,
-    "claimed_count":  3,
-    "waste_rate_pct": 0.0
-  },
-  "slo": {
-    "status":       "ok",
-    "breach_count": 0,
-    "breaches":     []
-  },
-  "graphql_budget": { "remaining": 4800, "limit": 5000, "reset_at": "2026-05-15T21:00:00Z" },
-  "ts": "2026-05-15T20:55:00Z"
-}
-```
-
-**Field semantics:**
-
-| Key | Type | Meaning |
-|-----|------|---------|
-| `pillars` | object | Per-pillar grade assessment. Mirrors `/api/fleet/pillars` (INFRA-1339). `mission` is worst-grade roll-up. |
-| `kpis.ships_24h` | int | Gaps shipped/done in the last 24 h across all pillars. |
-| `kpis.open_count` | int | Total open (unclaimed) gaps. |
-| `kpis.claimed_count` | int | Currently claimed (in-flight) gaps. |
-| `kpis.waste_rate_pct` | float | 0–100 waste percentage. `0.0` when insufficient history (use `chump waste-tally` for full calculation). |
-| `slo.status` | string | `ok` / `breach` / `unknown`. `unknown` when `chump health --slo-check` binary is unavailable. |
-| `slo.breach_count` | int | Number of SLOs currently in breach. |
-| `slo.breaches` | array | `[{slo, current, target, unit}]` objects describing each breach. |
-| `graphql_budget` | object \| null | Latest GraphQL rate data from ambient.jsonl. `null` when no signal available. |
-| `graphql_budget.remaining` | int | Remaining GraphQL requests before reset. |
-| `graphql_budget.limit` | int | Total GraphQL quota per window (typically 5000). |
-| `graphql_budget.reset_at` | string \| null | ISO 8601 reset time, or `null` if unknown. |
-| `ts` | string | ISO 8601 UTC timestamp of report computation. |
-
-**Caching:** 60-second in-process OnceLock cache. Cache-miss emits `tracing::info!` with `mission_grade`, `slo_status`, `graphql_remaining`.
-
-**SLO data source:** subprocess call to `chump health --slo-check --json` on cache miss. Returns `status: "unknown"` on any error (binary absent, flag unrecognized, timeout).
-
-**GraphQL budget source:** scans `$CHUMP_REPO/.chump-locks/ambient.jsonl` in reverse for the most recent `graphql_exhausted` event. Returns `null` when no event found — this is expected on fresh deployments or when the fleet has not exhausted the quota.
-
-## GET /api/roadmap (INFRA-1338)
-
-Server-side parser for `docs/ROADMAP.md` with a 60-second in-process cache.
-Replaces the client-side markdown parsing fallback in
-`<chump-view-roadmap>` (INFRA-1207).
-
-**Response (always `200`):**
-
-```json
-{
-  "milestones": [
-    {
-      "id": "week-1",
-      "title": "Week 1 — User-facing front door (May 6 → 13) ✅ SHIPPED",
-      "status": "done",
-      "target_date": null,
-      "progress_pct": 100,
-      "done_ratio": 1.0,
-      "gaps": [
-        {"id": "INFRA-593", "title": "", "status": "shipped", "is_placeholder": false}
-      ],
-      "blockers": [],
-      "outcome": "A solo dev with Ollama can run `chump gen <task>` and get a working PR."
-    }
-  ],
-  "generated_at_iso": "2026-05-22T23:30:00Z",
-  "cache_age_secs": 0,
-  "roadmap_error": null
-}
-```
-
-**Fields:**
-
-| Field | Type | Meaning |
-|---|---|---|
-| `milestones` | array | One entry per `## Week N — title` heading in ROADMAP.md. |
-| `milestones[].id` | string | Stable slug, e.g. `week-1`, `week-3`. |
-| `milestones[].title` | string | "Week N — <week_title>" reproduced from the heading. |
-| `milestones[].status` | string | `done` \| `active` \| `next` \| `blocked` \| `unknown` — derived from title emoji tags (✅ → done, 🏗️ → active) then from gap-mix when no tag. |
-| `milestones[].done_ratio` | number | `[0.0, 1.0]` — shipped real gaps / total real gaps (placeholders excluded). |
-| `milestones[].progress_pct` | int \| null | `round(done_ratio * 100)`, or `null` when there are no real gaps. |
-| `milestones[].gaps[].id` | string | Gap identifier (e.g. `INFRA-593`). |
-| `milestones[].gaps[].status` | string | `shipped` \| `open` \| `in_flight` \| `not_filed` — resolved against `state.db`. |
-| `milestones[].gaps[].is_placeholder` | bool | `true` for `*-NEW` / `*-XXX` IDs that have not been filed yet. |
-| `milestones[].outcome` | string | Plain-text outcome statement extracted from `**Outcome.**`. |
-| `generated_at_iso` | string | ISO 8601 UTC timestamp the snapshot was built. |
-| `cache_age_secs` | int | Seconds since `generated_at_iso`. `0` on a cache miss; non-zero on a cache hit. |
-| `roadmap_error` | string \| null | Populated when the file is missing or unparseable; `null` on success. |
-
-**Caching:** 60-second in-process `OnceLock<RwLock<Snapshot>>`. A second call
-within the TTL returns the same `generated_at_iso` (CI test
-`scripts/ci/test-api-roadmap.sh` asserts this).
-
-**Failure mode:** if `docs/ROADMAP.md` is missing or contains no parseable
-milestones the endpoint still returns `200` with `milestones: []` plus a
-`roadmap_error` string. The frontend renders this gracefully — returning
-`500` here would make the Roadmap tab disappear on the first transient FS
-error.
-
-## Static
-
-The server serves the PWA from the static directory (default `CHUMP_WEB_STATIC_DIR` or repo `web/`). All non-API routes fall through to static files (e.g. `index.html`, `manifest.json`, `sw.js`).
+- [Web Cockpit (`/v2/`)](../PWA_USER_GUIDE.md)
+- [Daemon & Service Operations](../operations/OPERATIONS.md)
+- [Hardware & RAM Profiles](../operations/INFERENCE_PROFILES.md)

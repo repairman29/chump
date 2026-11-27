@@ -12,7 +12,7 @@ anchor: docs/FACTORY_VISION.md
 This is the **operational readiness plan**: the crisp bar for "fully operational," a
 *grounded* current-state assessment of every subsystem the autonomous loop depends on,
 the critical path, and the proof gate that declares done. **Gaps implement this plan;
-ATC executes them.** Authored by the board (Chair) from a live helsinki audit
+ATC executes them.** Authored by the board (Chair) from a live coordinator-node audit
 2026-08-13.
 
 ---
@@ -40,7 +40,7 @@ One broken link breaks hands-off. Current state, grounded 2026-08-13:
 | **Land** green→merged | Res+Scal | 🔴 **RED** | chump PRs rot **conflicted** (#3740/#3679, rebaser not clearing) or blocked; **olive green PRs rot 25d** (#3/#4/#6/#9 — no lander at all) | **RESILIENT-311** |
 | **Self-heal** flake/organ/jam | Res | 🟡 PARTIAL | easy classes covered (flake-rerun, organ-reconcile); **conflicts + shared-gate reds not** | RESILIENT-311 |
 | **Escalate** honest-when-stuck | Res | 🔴 **RED** | INFRA-3605 claimed→retracted→**no PR, no retry, no page 22h** — found only by hand | RESILIENT-309 |
-| **Deploy** reproducible | Res+Sec | 🟡 PARTIAL | organ-reconcile (P1) done; still a snowflake — 65 redundant Mac daemons shadow helsinki | RESILIENT-308 |
+| **Deploy** reproducible | Res+Sec | 🟡 PARTIAL | organ-reconcile (P1) done; still a snowflake — 65 redundant Mac daemons shadow coordinator-node | RESILIENT-308 |
 | **Observe** operator truth | Res | 🟡 PARTIAL | chairman-pulse + `kpi report` exist; convergence metric blind (opened_date) | INFRA-1611 |
 | **Tend products** factory tends what it ships | Scal | 🔴 **RED** | fleet lands only chump; **products untended** — this is why olive rots | RESILIENT-311 |
 | **Secure boundaries** | Sec | 🟡 PARTIAL | product-PR tap gate + revoke-before-publish exist; double-actor hazard (Mac); oauth/farmer freshness flaky | RESILIENT-308 / 056 |
@@ -84,7 +84,7 @@ node; oauth/farmer freshness flaky.
    the loudest failure and the direct answer to "PRs sitting unmerged make no sense."
 2. **Escalate-don't-drop** [Res] — **RESILIENT-309**. Hard work surfaces, never vanishes.
 3. **Reproducible + secure deploy** [Res+Sec] — **RESILIENT-308**. Kill the snowflake and
-   the double-actor node; helsinki = sole ops center, reproducible from repo.
+   the double-actor node; coordinator-node = sole ops center, reproducible from repo.
 4. **Trustworthy priority + measurable convergence** [Scal] — INFRA-3605 (done) + **INFRA-1611**.
 5. **Front door: vision→gap for a non-technical person** [Scal] — the COTG on-ramp (last,
    because it only matters once 1–4 make the loop trustworthy).
@@ -108,7 +108,7 @@ Fully operational = **all three proofs pass, sustained, unattended.**
 |-----|--------|--------|-----|
 | **RESILIENT-311** | Res+Scal | NEW | Landing subsystem: no green PR rots on any owned repo (chump rebase + product-repo tending) |
 | RESILIENT-309 | Res | filed | Escalate-don't-drop |
-| RESILIENT-308 | Res+Sec | filed | Decommission Mac double-actor; helsinki = sole ops center |
+| RESILIENT-308 | Res+Sec | filed | Decommission Mac double-actor; coordinator-node = sole ops center |
 | INFRA-1611 | Scal | filed | opened_date / measurable intake + convergence |
 | RESILIENT-056 | Sec | filed | Auth/oauth freshness safety net |
 | INFRA-3612 | Scal | filed | Almanac index off the Mac |

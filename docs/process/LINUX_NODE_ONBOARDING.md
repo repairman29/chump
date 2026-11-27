@@ -1,6 +1,6 @@
 # Linux node onboarding — fresh x86_64 box → shipping ChumpOS node
 
-> **Provenance:** condensed from the 2026-08-09 Helsinki bring-up. A single-machine
+> **Provenance:** condensed from the 2026-08-09 coordinator-node bring-up. A single-machine
 > onboarding SOP for fresh x86_64 Linux (Ubuntu Server 22.04/24.04/26.04) that needs
 > to become a **standalone shipping node** running Claude-dispatched work (not part of
 > a NATS-coordinated fleet — see [`ADD_A_FLEET_NODE.md`](./ADD_A_FLEET_NODE.md) for that).
@@ -321,7 +321,7 @@ sudo bash scripts/setup/install-helsinki-atc.sh --check   # exit 0 iff all 3 tim
 2. **`/usr/local/bin/chump` is a symlink, not a copy, and it must point at
    node-refresh's install target.** `node-refresh-chump.sh` installs to
    `CHUMP_NODE_BIN` (default `~/.local/bin/chump`) and swaps it in atomically;
-   it never touches `/usr/local/bin/chump` directly. On helsinki,
+   it never touches `/usr/local/bin/chump` directly. On coordinator-node,
    `/usr/local/bin/chump -> /root/.local/bin/chump` so that PATH resolution
    (`/usr/local/bin` ahead of `~/.cargo/bin` for non-login shells, cron, and
    systemd units) picks up each refresh automatically. If you ever `cp` a
@@ -344,4 +344,4 @@ If you later need **cross-machine coordination** (multiple nodes sharing work):
 
 - [`ADD_A_FLEET_NODE.md`](./ADD_A_FLEET_NODE.md) — multi-node NATS-coordinated fleet setup.
 - [`OFF_LAPTOP_SUBSTRATE.md`](./OFF_LAPTOP_SUBSTRATE.md) — provisioning inventory and runbook context.
-- [`docs/syntheses/linux-substrate-lessons-2026-07-28.md`](../syntheses/linux-substrate-lessons-2026-07-28.md) — real bugs and fixes from the Helsinki / closetjunky deployments.
+- [`docs/syntheses/linux-substrate-lessons-2026-07-28.md`](../syntheses/linux-substrate-lessons-2026-07-28.md) — real bugs and fixes from the coordinator-node / worker-node-01 deployments.

@@ -47,7 +47,7 @@ unmerged work** and were stashed here before the drop:
 | Stash ref | What it is | Why it matters |
 |---|---|---|
 | `refs/stash/2026-07-27/almanac-integration` | almanac↔chump **MCP wiring** + FTUE bootstrap entry + agent directive (`chump-mcp.json`, `crates/chump-coord/src/{mesh,rpc}.rs`) | integrates the [almanac](https://github.com/repairman29/almanac) tool into chump's MCP/coord layer; unmerged |
-| `refs/stash/2026-07-27/infra-2248-mesh-localprocess-transport` | `feat(INFRA-2248)`: `LocalProcessTransport` + `BandwidthBudget` + `MessageQueue` + named channels for `chump-coord` mesh | **load-bearing** two-node fleet mesh coordination (Helsinki↔closetjunky); unmerged |
+| `refs/stash/2026-07-27/infra-2248-mesh-localprocess-transport` | `feat(INFRA-2248)`: `LocalProcessTransport` + `BandwidthBudget` + `MessageQueue` + named channels for `chump-coord` mesh | **load-bearing** two-node fleet mesh coordination (coordinator-node↔worker-node-01); unmerged |
 | `refs/stash/2026-07-27/infra-2248-mesh-respawn-3309` | further `chump-coord` mesh work (same INFRA-2248 lineage) | companion to the above |
 
 The other ~2,282 dropped branches were spent exhaust and are **locally

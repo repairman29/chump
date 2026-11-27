@@ -48,15 +48,11 @@ pub fn validate_config() {
     let discord_raw = std::env::var("DISCORD_TOKEN").unwrap_or_default();
     if discord_token_effective(&discord_raw) {
         enabled.push("discord".to_string());
-    } else {
-        if !discord_raw.trim().is_empty() && is_discord_token_placeholder(discord_raw.trim()) {
-            warnings.push(
-                "DISCORD_TOKEN looks like a placeholder from .env.example — set a real token or clear for web-only"
-                    .to_string(),
-            );
-        } else {
-            warnings.push("DISCORD_TOKEN not set or empty (Discord mode disabled)".to_string());
-        }
+    } else if !discord_raw.trim().is_empty() && is_discord_token_placeholder(discord_raw.trim()) {
+        warnings.push(
+            "DISCORD_TOKEN looks like a placeholder from .env.example — set a real token or clear for CLI/web mode"
+                .to_string(),
+        );
     }
 
     if repo_path::repo_root_is_explicit() {
@@ -114,9 +110,12 @@ pub fn validate_config() {
     }
     if brain_root_ok() {
         enabled.push("brain".to_string());
-    } else {
+    } else if std::env::var("CHUMP_BRAIN_PATH")
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
         warnings
-            .push("CHUMP_BRAIN_PATH missing or not a directory (brain tools disabled)".to_string());
+            .push("CHUMP_BRAIN_PATH set but not a directory (brain tools disabled)".to_string());
     }
     if executive_mode() {
         enabled.push("executive_mode".to_string());

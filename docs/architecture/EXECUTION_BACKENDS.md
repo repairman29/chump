@@ -1,97 +1,87 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
 ---
 
 # Execution Backends
 
-Chump can dispatch shell commands (the `run_cli` tool family) through pluggable
-backends. Phase 3.3 ships three: **local** (default), **docker**, and **ssh**.
-Future phases may add Daytona, Modal, and Singularity once cloud SDK integration
-is justified.
+Chump dispatches tool shell commands (`run_cli`) through pluggable execution backends implemented in `src/execution/`:
 
-All backends shell out to system binaries. There are **no new Rust crate
-dependencies** for Phase 3.3 — `docker` and `ssh` must be installed and on PATH
-on the host running Chump.
+- **`local` (default):** Executes commands on the host OS via `crates/chump-pal` (`sh -c` on macOS/Linux, `cmd /C` on Windows) with process-group / Win32 Job Object cleanup.
+- **`docker`:** Executes each command inside a fresh, ephemeral container (`docker run --rm`) with `--network=none` isolation by default.
+- **`ssh`:** Executes commands on a remote build or GPU worker over OpenSSH (`BatchMode=yes`).
 
-## Selecting a backend
+All backends use standard system binaries on `PATH`—no extra daemon or proprietary SDK is required.
 
-Set the `CHUMP_EXECUTION` environment variable before launching Chump:
+---
+
+## Selecting a Backend
+
+Set `CHUMP_EXECUTION` in your environment or `[settings]` in `~/.chump/config.toml`:
 
 ```bash
-CHUMP_EXECUTION=local   chump   # default
-CHUMP_EXECUTION=docker  chump
-CHUMP_EXECUTION=ssh     chump
+CHUMP_EXECUTION=local   chump --once "cargo test --workspace"   # default
+CHUMP_EXECUTION=docker  chump --once "pytest -q"
+CHUMP_EXECUTION=ssh     chump --once "nvidia-smi"
 ```
 
-Unknown values fall back to `local` (with a warning logged).
+Unrecognized values log a warning and fall back safely to `local`.
 
-The allowlist / blocklist (`CHUMP_CLI_ALLOWLIST`, `CHUMP_CLI_BLOCKLIST`) is
-applied **before** dispatch — a command rejected by the allowlist never reaches
-the backend, regardless of which backend is selected.
+Command policy (`CHUMP_CLI_ALLOWLIST`, `CHUMP_CLI_BLOCKLIST`, and `CHUMP_TOOLS_ASK` approval prompts) runs **before** backend dispatch: a blocked or unapproved command never reaches `local`, `docker`, or `ssh`.
 
-## Backend reference
+---
 
-### local
+## Backend Reference
 
-Default. Runs commands on the host via `sh -c` (or `cmd /c` on Windows). This
-mirrors the existing behaviour of `cli_tool::CliTool::run`. No additional
-configuration.
+### 1. `local`
 
-### docker
+Runs commands directly in the working repository or claimed git worktree on macOS, Linux, or Windows. Output is capped and middle-trimmed when logs are huge so compiler output never overflows model context windows.
 
-Runs each command inside a fresh, ephemeral container (`docker run --rm`). The
-container is removed after the command exits.
+### 2. `docker`
 
-| Variable                | Default       | Purpose                                                         |
-| ----------------------- | ------------- | --------------------------------------------------------------- |
-| `CHUMP_DOCKER_IMAGE`    | `ubuntu:22.04`| Image to launch the container from.                             |
-| `CHUMP_DOCKER_MOUNT`    | (none)        | Bind mount, e.g. `/host/path:/container/path`.                  |
-| `CHUMP_DOCKER_NETWORK`  | `none`        | Container network mode. Default isolates the container.         |
+Runs each command inside a disposable container (`docker run --rm`):
 
-Health check: `docker version` with a 5-second timeout. If the binary or daemon
-is missing, the backend returns a clear error rather than panicking.
+| Environment Variable | Default | Purpose |
+|----------------------|---------|---------|
+| `CHUMP_DOCKER_IMAGE` | `ubuntu:24.04` | Container image used for command execution |
+| `CHUMP_DOCKER_MOUNT` | _(none)_ | Optional bind mount, e.g. `/path/to/worktree:/workspace` |
+| `CHUMP_DOCKER_NETWORK` | `none` | Container network mode (`none` isolates network egress by default) |
 
-### ssh
+Health check: runs `docker version` with a 5-second timeout and returns a clear diagnostic error if the Docker daemon is stopped.
 
-Executes commands on a remote host via the system `ssh` client. Uses the user's
-existing `~/.ssh/config` and key material — Chump never handles passwords.
+### 3. `ssh`
 
-| Variable             | Default        | Purpose                                            |
-| -------------------- | -------------- | -------------------------------------------------- |
-| `CHUMP_SSH_HOST`     | (required)     | Remote hostname or alias.                          |
-| `CHUMP_SSH_USER`     | `$USER`        | Remote username.                                   |
-| `CHUMP_SSH_PORT`     | `22`           | Remote port.                                       |
-| `CHUMP_SSH_OPTIONS`  | (none)         | Extra ssh flags (whitespace-separated).            |
+Runs commands on a remote Linux/macOS host using your existing `~/.ssh/config` and `ssh-agent` keys (Chump never stores or prompts for SSH passwords):
 
-`BatchMode=yes` is always passed so a missing key fails fast instead of
-prompting interactively.
+| Environment Variable | Default | Purpose |
+|----------------------|---------|---------|
+| `CHUMP_SSH_HOST` | _(required)_ | Hostname or `~/.ssh/config` host alias |
+| `CHUMP_SSH_USER` | Current OS user | Remote SSH username |
+| `CHUMP_SSH_PORT` | `22` | Remote SSH port |
+| `CHUMP_SSH_OPTIONS` | _(none)_ | Additional whitespace-separated `ssh` flags |
 
 Health check: `ssh -o BatchMode=yes -o ConnectTimeout=5 <host> echo ok`.
 
-## Security considerations
+---
 
-- **local** has full host authority. The existing `CHUMP_CLI_ALLOWLIST`
-  /`CHUMP_CLI_BLOCKLIST` and the heuristic risk checks in `cli_tool.rs` apply.
-- **docker** runs in an isolated container with `--network=none` by default. The
-  blast radius of a runaway command is limited to the container; nothing
-  persists after `--rm`. If you mount the host filesystem via
-  `CHUMP_DOCKER_MOUNT`, that isolation is reduced accordingly.
-- **ssh** executes commands on a remote machine you trust. Chump assumes the
-  host is allowed to act with the configured key's privileges. Key management
-  is out of scope — use `ssh-agent` and `~/.ssh/config` as you would normally.
+## Security Considerations
 
-## Adding a new backend
+- **`local`** runs with your OS user permissions. Keep `CHUMP_CLI_BLOCKLIST` and `CHUMP_TOOLS_ASK` enabled when running untrusted prompts.
+- **`docker`** bounds filesystem and network blast radius to the ephemeral container; mounting host directories via `CHUMP_DOCKER_MOUNT` grants write access only to that mounted subtree.
+- **`ssh`** inherits the remote account's permissions; scope SSH keys to dedicated build/worker accounts when isolating untrusted repositories.
 
-1. Create `src/execution/<name>.rs` implementing the `ExecutionBackend` trait
-   from `src/execution/mod.rs`. The trait requires `name()`, `execute()`, and
-   `health_check()`.
-2. Register the module in `src/execution/mod.rs` (`pub mod <name>;`).
-3. Add a match arm in `get_backend()` for the new `CHUMP_EXECUTION` value.
-4. Document the new backend's environment variables here.
-5. Add unit tests covering the factory branch and the new backend's argument
-   construction. Backends that depend on external binaries should fail
-   gracefully in `health_check()` when the binary is missing — see
-   `docker.rs::tests::health_check_returns_helpful_error_when_docker_missing`
-   for the pattern.
+---
+
+## Extending `ExecutionBackend`
+
+1. Implement the `ExecutionBackend` trait (`name()`, `execute()`, `health_check()`) under `src/execution/<backend>.rs`.
+2. Register the module and `CHUMP_EXECUTION` match arm in `src/execution/mod.rs`.
+3. Ensure `health_check()` returns a descriptive `Result::Err` rather than panicking when external binaries are absent, and add unit tests for argument construction.
+
+---
+
+## Related Guides
+
+- [System Architecture](ARCHITECTURE.md)
+- [Daemon & Service Operations](../operations/OPERATIONS.md)

@@ -53,7 +53,7 @@ origin shares *git*; each machine keeps its own local clone.
              │  KV: claims (try_claim_gap CAS)  ·  KV: capability manifests     │
              │  pub/sub: chump.work.<P>.external:<repo>.<machine-with-clone>    │
              └──────────────────────────────┬─────────────────────────────────┘
-   machine A                                │                    machine B (helsinki)
+   machine A                                │                    machine B (coordinator-node)
    state.db (gaps external_repo:almanac) ───┤── assign fans out ─► state.db
    ~/.chump/external/almanac/clone  ◄── per-machine ──►  ~/.chump/external/almanac/clone
      ├ worktree/agent-1 → gap X                            ├ worktree/agent-3 → gap Z

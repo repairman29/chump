@@ -25,7 +25,7 @@ forever after*. Gaps implement it; ATC executes.
 
 The experience, act by act:
 
-**Act 1 — Install.** Target is a fresh Linux box (helsinki-class; Ubuntu is fine). User
+**Act 1 — Install.** Target is a fresh Linux box (coordinator-node-class; Ubuntu is fine). User
 gets to a terminal and runs one thing (`curl … | sh`, a bot told to do it, one day a
 voice command). The install starts; **Rust compiles for a few minutes.** That dead time
 is a UX liability — we must not just sit there.

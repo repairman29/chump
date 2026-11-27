@@ -1,6 +1,6 @@
 # Add a Fleet Node — bare Linux box → shipping, NATS-coordinated worker
 
-> **Provenance:** this runbook captures the `closetjunky` bringup (2026-07-23) so it
+> **Provenance:** this runbook captures the `worker-node-01` bringup (2026-07-23) so it
 > never has to be re-derived. Every step below was a real thing that had to happen;
 > the gotcha callouts are real bugs we hit. Gaps: RESILIENT-191 (umbrella),
 > RESILIENT-185/186/189/190.
@@ -62,7 +62,7 @@ On the **new box** (fresh Ubuntu Server 22.04/24.04/26.04, ≥4 GB RAM, ≥30 GB
 
 ## 0.5 Get the box on the network — Ethernet vs Wi-Fi (🧑 + 🤖)
 
-> **Provenance:** DOC-098 / RESILIENT. Real incident 2026-08-09 — `closetjunky`
+> **Provenance:** DOC-098 / RESILIENT. Real incident 2026-08-09 — `worker-node-01`
 > moved to a new location and had to be recovered by hand at the console because
 > this runbook assumed Ethernet. The operator hand-wrote a netplan file with five
 > independent defects (`wlan0` instead of the real `wlp4s0`, `version:2` with no
@@ -226,7 +226,7 @@ sudo tailscale up --hostname=<hostname>          # prints an auth URL
 Then grab the stable tailnet IP — this also fixes dynamic home-IP churn for ChumpBar:
 
 ```bash
-tailscale ip -4      # e.g. 100.108.53.105
+tailscale ip -4      # e.g. 198.51.100.10
 ```
 
 ---

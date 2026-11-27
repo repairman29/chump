@@ -80,7 +80,7 @@ in almanac's own repo against the BEAST-MODE demo target).
 A number of the surviving 107 REAL flags are large multi-way "path" drifts
 (`REPO_ROOT`, `CHUMP_BIN`, `CHUMP_HOME`, `CHUMP_REPO`) whose variant lists
 mix genuine defaults with **per-machine/per-worktree absolute-path
-snapshots** (`/Users/jeffadkins/Projects/Chump`, `/private/tmp/chump-infra-990/...`).
+snapshots** (`/Users/developer/Projects/Chump`, `/private/tmp/chump-infra-990/...`).
 Those are arguably a fourth noise class (same failure mode as the $VAR
 case, but the "variable" is which developer's machine or which ephemeral
 worktree ran the scan) and would very likely shrink the REAL count further

@@ -1,7 +1,7 @@
 # Linux substrate lessons — what deploying chumpd off the laptop taught us
 
 > Synthesis, 2026-07-28. Consolidates the scattered lessons from moving chumpd
-> from Jeff's MacBook onto commodity Linux (Helsinki EU host + closetjunky cabinet
+> from Jeff's MacBook onto commodity Linux (coordinator-node EU host + worker-node-01 cabinet
 > box). Sources: RESILIENT-176/183/184/185/186/187/189/190/191/200, MISSION-051/
 > 065/066/072/073, and [`OFF_LAPTOP_SUBSTRATE.md`](../process/OFF_LAPTOP_SUBSTRATE.md)
 > + [`ADD_A_FLEET_NODE.md`](../process/ADD_A_FLEET_NODE.md).
@@ -30,7 +30,7 @@ Each new host surfaced a new gap; the provisioner absorbed them one at a time.
   installs build-essential, libssl-dev, GTK libs, pkg-config, sqlite3, gh, rustup.
 - **Low-RAM OOM:** boxes < 12 GB OOM on `cargo build` unless LTO off / 16
   codegen-units / 3 jobs + an 8 GB swapfile. Provisioner auto-detects and does it.
-  (closetjunky + Helsinki are 4-core / ~7.6 GB — both low-RAM.)
+  (worker-node-01 + coordinator-node are 4-core / ~7.6 GB — both low-RAM.)
 - **`CHUMP_REPO` phantom-path bug (RESILIENT-189):** without it chumpd defaults to
   `$HOME/Projects/Chump` and drives a path that doesn't exist on the node ("root-of-
   roots" bug from the EU migration). The env template pins it; never remove it.
@@ -84,13 +84,13 @@ This is the class that bites worst because nothing errors; it just degrades.
   second dial.
 
 ## Current state (2026-07-28)
-- **Two NATS-coordinated nodes live** over Tailscale: Helsinki (broker + chump-local,
-  x86_64 4-core) and closetjunky (BEAST mission loop, x86_64 4-core). Both currently
+- **Two NATS-coordinated nodes live** over Tailscale: coordinator-node (broker + chump-local,
+  x86_64 4-core) and worker-node-01 (BEAST mission loop, x86_64 4-core). Both currently
   **paused** (AUTONOMY_LEVEL=0) by operator decision; PR-merge plumbing stays on.
 - **Phase 0 (MISSION-065) is marked done, but the tail is open:** RESILIENT-185
   (provisioner actually *installs*, in_review), MISSION-068 (Hetzner config),
   MISSION-073 (systemd signal handling), restore-needs-LLM, the both-active guard.
-- **Phase 1 (MISSION-066, prove hands-off on BEAST) is open** — closetjunky's mission
+- **Phase 1 (MISSION-066, prove hands-off on BEAST) is open** — worker-node-01's mission
   loop is the vehicle and it's built; it just needs to be un-paused and verified
   zero-touch for a bounded window.
 

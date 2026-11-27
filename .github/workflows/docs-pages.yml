@@ -1,7 +1,8 @@
 name: docs-pages
 
 # Publishes the Warm-Stone Chump Product Suite (`web/site/`) at the GitHub Pages
-# root (`/`) and the curated MkDocs operator documentation (`docs/`) under `/docs/`.
+# root (`/`, including `/docs/`) and the curated, allowlist-only MkDocs reference
+# (`mkdocs.yml`) under `/reference/`.
 # Read-only build using only the auto-scoped GITHUB_TOKEN for Pages deployment.
 on:
   push:
@@ -45,7 +46,7 @@ jobs:
           cp -R web/site/. _pages/
           cp web/icon.svg _pages/icon.svg
           touch _pages/.nojekyll
-          mkdocs build -d _pages/docs
+          mkdocs build --strict -d _pages/reference
 
       - uses: actions/configure-pages@v6
 

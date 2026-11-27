@@ -1,297 +1,193 @@
+---
+doc_tag: canonical
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
+---
+
 # Chump User Guide
 
-> **Who this is for.** Anyone using Chump to run an AI coding agent on their own machine — no cloud bill, no prior agent-framework experience required.
+> **Audience:** Developers and engineering teams running one or more AI coding agents on **macOS, Linux, or Windows**—using existing subscriptions, API keys, or `$0` local models.
 >
-> **Prerequisite.** You have completed [QUICKSTART_OFFLINE.md](QUICKSTART_OFFLINE.md) and can run `chump --once 'Hello'` successfully.
+> **Prerequisite:** Install `chump` via the [5-Minute Clean Setup](process/EXTERNAL_GOLDEN_PATH.md) or [Offline Local Models](QUICKSTART_OFFLINE.md) guide and confirm `chump --version` prints `1.0.0` (or newer).
 
 ---
 
-## Contents
+## 1. Core Concepts
 
-1. [Core concepts in plain English](#1-core-concepts-in-plain-english)
-2. [Choosing a model for your hardware](#2-choosing-a-model-for-your-hardware)
-3. [Common workflows](#3-common-workflows)
-4. [Troubleshooting](#4-troubleshooting)
-5. [Quick reference](#5-quick-reference)
-
----
-
-## 1. Core concepts in plain English
-
-| Term | What it means |
+| Term | What It Means |
 |------|---------------|
-| **Gap** | A unit of work — like a ticket or task. You describe what you want; Chump's agent does it. |
-| **Fleet** | One or more agent workers running in parallel, each claiming and working a gap. |
-| **Worktree** | An isolated copy of your git repo where the agent writes code. Your working copy stays untouched. |
-| **Lease** | A lock file that says "agent X is working gap Y." Prevents two agents from colliding. |
-| **Claim** | The act of an agent taking ownership of a gap before it starts coding. |
-
-You don't need to manage any of these by hand — `chump` commands handle them. The list is here so error messages make sense.
-
----
-
-## 2. Choosing a model for your hardware
-
-Pick the largest model that fits comfortably in your Mac's unified memory. "Comfortably" means the model uses ≤ 70% of your total RAM so macOS has breathing room.
-
-### Quick picks
-
-| Your Mac | Recommended model | Pull command | RAM used |
-|----------|------------------|--------------|---------|
-| 8 GB | `llama3.2:1b` | `ollama pull llama3.2:1b` | ~1.5 GB |
-| 16 GB | `llama3.2` (3B) | `ollama pull llama3.2` | ~3 GB |
-| 24 GB | `llama3.2` or `qwen2.5-coder:14b` | `ollama pull qwen2.5-coder:14b` | ~9 GB |
-| 48 GB+ | `qwen2.5-coder:32b` or `llama3.1:70b` | `ollama pull qwen2.5-coder:32b` | ~22 GB |
-
-### Model trade-offs
-
-**Speed vs. quality.** Smaller models respond in seconds; larger models take 10–30 s per reply but produce better code. For quick experiments use a 1B–3B model; for real coding tasks use 7B+.
-
-**Coding-specialist models.** Models with `coder` in the name (e.g. `qwen2.5-coder`, `deepseek-coder`) are fine-tuned on source code and tend to outperform general models of the same size on programming tasks.
-
-**Changing models.** Update the env var and restart:
-
-```bash
-export CHUMP_MODEL=qwen2.5-coder:14b
-chump --once 'write a hello-world in Rust'
-```
-
-Add the export to `~/.zshrc` to make it permanent.
+| **Gap** | A tracked unit of engineering work stored in `.chump/state.db` (SQLite WAL) so parallel agents never pick duplicate tasks. |
+| **Lease** | A TTL-bounded JSON lock file in `.chump-locks/<session>.json` declaring which file globs (`crates/auth/**`) or symbols (`src/lib.rs::parse`) an agent owns. |
+| **Worktree** | An isolated linked git checkout created automatically by `chump claim` so each agent compiles and edits without disturbing your main working tree. |
+| **Hook Firewall** | Native Rust `pre-commit` and `pre-push` hooks (`chump hook install`) that reject cross-session lease collisions, secret leaks, and unformatted code in `<2ms`. |
+| **Provider Cascade** | Up to 40 prioritized model slots in `~/.chump/config.toml` combining subscription OAuth, cloud APIs, CLI harnesses, and local GPU endpoints. |
+| **Ship Pipeline** | `chump ship`, which rebases clean branches, opens pull requests, and blocks `--auto-merge` whenever `.github/workflows/*` or git hooks are modified. |
 
 ---
 
-## 3. Common workflows
+## 2. Configure Once (`~/.chump/config.toml`)
 
-### 3.1 One-shot coding task
-
-Use this when you want a quick answer or a small code change without setting up a full gap.
+Generate a starter configuration file (`~/.chump/config.toml` on macOS/Linux, `%USERPROFILE%\.chump\config.toml` on Windows) and verify it:
 
 ```bash
-chump --once 'Add a /health endpoint to my Axum server in src/main.rs'
+chump config init
+chump config path
+chump config validate
 ```
 
-The agent writes code to stdout. Review it, then paste into your editor.
+You can combine up to four model and execution lanes in one file:
+
+```toml
+[auth]
+mode = "auto"                # Auto-detects Claude OAuth credentials or API keys
+
+[fleet]
+mode = "grind"               # "grind" | "supervised" | "off"
+desired_workers = 2
+harness = "claude"           # "claude" | "opencode" | "codex" | "aider" | "chump-local"
+disk_floor_gb = 5.0
+auto_merge = false
+
+[web]
+bind_addr = "127.0.0.1"
+port = 3847
+
+[[providers]]
+name = "gemini-primary"
+enabled = true
+tier = "cloud"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+api_key_env = "GEMINI_API_KEY"
+model = "gemini-2.5-flash"
+priority = 10
+rpm_limit = 360
+
+[[providers]]
+name = "ollama-local-floor"
+enabled = true
+tier = "local"
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5-coder:14b"
+priority = 20
+```
+
+### Hardware Sizing for Local Models
+
+When running local inference (Ollama, LM Studio, llama.cpp, or vLLM), choose a model quantization that uses **≤ 70% of system RAM / VRAM** so builds and tests never swap to disk:
+
+| Available System / GPU Memory | Recommended Local Coding Model | Typical Footprint | Safe Parallel Workers |
+|-------------------------------|--------------------------------|-------------------|-----------------------|
+| **8 GB** | `qwen2.5-coder:3b` or `llama3.2:3b` | ~2.5 GB | 1 worker |
+| **16 GB** | `qwen2.5-coder:7b` | ~5.0 GB | 1–2 workers |
+| **24–32 GB** | `qwen2.5-coder:14b` | ~9.5 GB | 2–3 workers |
+| **48–64+ GB** | `qwen2.5-coder:32b` | ~20 GB | 4–6 workers |
+
+See [Hardware & RAM Profiles](operations/INFERENCE_PROFILES.md) for backend-specific flags.
 
 ---
 
-### 3.2 Reserve a gap and dispatch a worker
+## 3. Common Daily Workflows
 
-Use this for anything larger than a one-liner — the agent works in an isolated worktree and opens a PR when done.
+### 3.1 Protect Any Git Repository
+
+Install the native Rust git hooks and initialize `.chump/state.db`:
 
 ```bash
-# 1. Describe the work
-chump gap reserve --domain DEMO --title "Add input validation to the login form"
-
-# 2. Note the GAP-ID printed (e.g. DEMO-007), then dispatch
-chump dispatch --gap DEMO-007 --workers 1
-
-# 3. Watch progress (Ctrl-C to stop watching; work continues)
-tail -f .chump-locks/ambient.jsonl
+cd /path/to/your-repo
+chump init --yes
+chump hook install
+chump hook status
 ```
 
-When the agent finishes it opens a pull request. Review the PR in your browser or with `gh pr view`.
+Even if you only run interactive agents in separate terminal tabs (Claude Code, Cursor, Codex, Aider), `chump hook` immediately prevents two sessions from committing to the same leased file or pushing accidental secrets.
 
----
-
-### 3.3 Run multiple gaps in parallel (fleet mode)
-
-When you have several independent tasks ready, run them in parallel:
+### 3.2 Reserve, Claim, Edit, and Ship a Task
 
 ```bash
-# Reserve two gaps
-chump gap reserve --domain DEMO --title "Refactor auth module"
-chump gap reserve --domain DEMO --title "Add CSV export"
+# 1. Reserve a collision-free task ID in .chump/state.db
+chump gap reserve --domain INFRA --title "Add request timeout middleware" --priority P1 --effort s
 
-# Dispatch 2 workers (one per gap)
-chump dispatch --workers 2
+# 2. Atomically acquire a file lease and create an isolated git worktree
+chump claim INFRA-001 --role target --paths "src/middleware/**"
+
+# 3. Work inside the isolated worktree (with any IDE, CLI agent, or chump --once)
+cd /tmp/chump-infra-001
+# ... make edits and add unit tests ...
+
+# 4. Run local preflight (formatting, clippy, compile, and scoped tests)
+chump preflight
+
+# 5. Push and open a verified pull request
+chump ship --gap INFRA-001 --mode manual
 ```
 
-The dispatcher assigns each worker to an unclaimed gap automatically.
+### 3.3 Run Supervised Background Workers (`chumpd`)
 
-> **How many workers?** A safe starting point is one worker per 8 GB of RAM you can spare after the model is loaded. On a 24 GB Mac running a 9 GB model you have ~15 GB left — 2 workers is comfortable.
-
----
-
-### 3.4 Check what's in the queue
+Register and launch the cross-platform `chumpd` supervisor (`LaunchAgents` on macOS, `systemd --user` on Linux, `ChumpDaemon` Scheduled Task on Windows):
 
 ```bash
-chump gap list --status open
+chump service install
+chump up
+chump service status
 ```
 
-This shows every open gap with its priority, domain, and whether it has been claimed.
-
----
-
-### 3.5 Review and merge a finished PR
+Adjust concurrency or pause autonomous execution instantly at any time:
 
 ```bash
-gh pr list                        # see open PRs
-gh pr view <NUMBER>               # read the description
-gh pr diff <NUMBER>               # review the diff
-gh pr merge <NUMBER> --squash     # merge when happy
+chump fleet level 3      # Supervised worker pool
+chump fleet level 0      # Immediate fail-closed stop (kill-switch)
+chump fleet status       # Inspect active claims, worker health, and recent merges
 ```
 
----
+### 3.4 Onboard and Improve an External Repository
 
-### 3.6 Cancel or abandon a gap
-
-If you change your mind:
+Scan any `owner/repo` checkout, file grounded tasks with `file:line` citations, implement a fix in an isolated worktree, and run base-vs-head test verification before merging:
 
 ```bash
-chump gap set <GAP-ID> --status closed
+chump onboard owner/repo --apply
+chump improve owner/repo --apply
+chump external verify-merge --pr 42 --repo owner/repo --gap INFRA-001
 ```
 
-If a worker is still running, kill its terminal pane first, then release its lease:
+### 3.5 One-Shot Local Prompt (`chump --once`)
+
+Ask the built-in governed agent to answer a question or run a scoped task directly from your terminal:
 
 ```bash
-chump --release   # run inside the worker's session, or:
-rm .chump-locks/<session-id>.json
+chump --once "Summarize open P1 gaps and check which paths are currently leased" --why
 ```
 
 ---
 
 ## 4. Troubleshooting
 
-### "connection refused" when running `chump --once`
+### `LeaseCollisionGuard` blocks a `git commit`
 
-Ollama is not running.
-
-```bash
-ollama serve &
-```
-
-If it was already running but died, check the log:
+Another active session holds a lease on one or more staged files. Inspect active locks:
 
 ```bash
-cat /tmp/ollama-serve.log 2>/dev/null || journalctl -u ollama --no-pager | tail -20
+ls -la .chump-locks/*.json
 ```
 
----
+Either coordinate with the owning session, wait for its TTL to expire, or—if the owning terminal crashed—let `chumpd`'s automatic dead-PID lease reaper clean it up (or release your own session lease with `chump --release`).
 
-### The agent is very slow (> 60 s per reply)
+### `connection refused` on local port `11434` / `8000`
 
-1. **Check model size.** If you pulled a model larger than your RAM allows, the OS swaps to disk — performance collapses. Run `ollama list` and switch to a smaller model.
+Your local model server (`ollama serve`, LM Studio, or vLLM) is not running. Start the model server first and verify `curl -s http://127.0.0.1:11434/v1/models` returns JSON before re-running `chump`. See [Inference Stability](operations/INFERENCE_STABILITY.md).
 
-2. **Keep the model loaded.** By default Ollama unloads the model after 5 minutes. Set `OLLAMA_KEEP_ALIVE=-1` to keep it hot:
+### `chump config validate` reports an unrecognized key or invalid slot
 
-   ```bash
-   export OLLAMA_KEEP_ALIVE=-1
-   ollama serve &
-   ```
+Run `chump config show` to inspect effective settings, or paste your configuration into the browser-based [Config Doctor](https://repairman29.github.io/chump/tools/config-doctor/) to auto-remediate syntax and schema issues.
 
-3. **Free RAM.** Quit browsers and Electron apps before starting a long session. On Apple Silicon, every byte of unified memory freed goes directly to the GPU:
+### High CPU or disk usage during parallel Rust builds
 
-   ```bash
-   scripts/setup/enter-chump-mode.sh   # if you have this script
-   ```
-
-4. **Use the speed startup script:**
-
-   ```bash
-   scripts/setup/ollama-serve-fast.sh
-   ```
+Chump's `chump-pal` host prober automatically caps `CARGO_BUILD_JOBS` on low-RAM machines during `chump preflight`. If your `target/` directory grows large over weeks of heavy development, run `cargo clean` or follow [Storage & Worktree Hygiene](operations/STORAGE_AND_ARCHIVE.md).
 
 ---
 
-### The agent produces garbled or incomplete code
+## 5. Next Steps
 
-- Switch to a larger or coding-specialist model (see [§2](#2-choosing-a-model-for-your-hardware)).
-- Reduce `OLLAMA_CONTEXT_LENGTH` if it is set above 4096 — very long contexts degrade quality on small models.
-- Add more detail to your gap title or use `--once` with a longer description.
-
----
-
-### "gap is not pickable" / preflight fails
-
-```bash
-chump gap show <GAP-ID>    # read the gap details
-```
-
-Common causes:
-
-| Symptom | Fix |
-|---------|-----|
-| `status: closed` | The gap is already done — file a new one if needed. |
-| `depends_on` lists an open gap | Complete the dependency first. |
-| Another session holds the lease | Wait for it to finish or release the stale lease: `rm .chump-locks/<session>.json` |
-
----
-
-### PR opened but never merged / CI is stuck
-
-```bash
-gh pr checks <NUMBER>    # see which check is failing
-gh pr view <NUMBER>      # read the PR body for hints
-```
-
-If CI passes but auto-merge hasn't fired:
-
-```bash
-gh pr merge <NUMBER> --auto --squash
-```
-
----
-
-### "no valid auth path found" (`chump fleet doctor`)
-
-Chump needs either an Anthropic API key or a Claude subscription OAuth token for cloud-model workers. For fully offline use with Ollama only, set:
-
-```bash
-export OPENAI_API_BASE=http://localhost:11434/v1
-export OPENAI_API_KEY=ollama
-export CHUMP_MODEL=<your-ollama-model>
-```
-
-Then re-run `chump fleet doctor` — it should pass.
-
----
-
-### Out-of-memory crash (macOS "killed" message or Ollama restarts)
-
-Your model is too large for available RAM. Fix:
-
-1. Pull a smaller model: `ollama pull llama3.2:1b`
-2. Set `CHUMP_MODEL=llama3.2:1b`
-3. Restart Ollama: `pkill -f ollama && ollama serve &`
-
-For ongoing stability with larger models see [`howto/GPU_TUNING.md`](howto/GPU_TUNING.md).
-
----
-
-## 5. Quick reference
-
-```bash
-# One-shot task (no gap)
-chump --once '<describe what you want>'
-
-# Reserve a gap
-chump gap reserve --domain DEMO --title '<what you want done>'
-
-# List open gaps
-chump gap list --status open
-
-# Claim and work a gap manually
-chump claim <GAP-ID>
-
-# Dispatch workers (auto-picks gaps)
-chump dispatch --workers <N>
-
-# Watch live activity
-tail -f .chump-locks/ambient.jsonl
-
-# Health check
-chump fleet doctor
-
-# Release a lease (cleanup)
-chump --release
-
-# Change model
-export CHUMP_MODEL=<model-name>
-```
-
----
-
-**Next steps:**
-- Faster inference: [`howto/OLLAMA_SPEED.md`](howto/OLLAMA_SPEED.md)
-- Apple Silicon memory tuning: [`howto/GPU_TUNING.md`](howto/GPU_TUNING.md)
-- First-run setup detail: [`howto/SETUP_AND_RUN.md`](howto/SETUP_AND_RUN.md)
+- **Air-gapped local setup:** [Offline Local Models](QUICKSTART_OFFLINE.md)
+- **Web cockpit tour:** [Web Cockpit (`/v2/`)](PWA_USER_GUIDE.md)
+- **Multi-agent lease mechanics:** [File Leases & Worktrees](process/AGENT_COORDINATION.md)
+- **40-slot cascade & OAuth:** [Provider Cascade & OAuth](architecture/PROVIDER_CASCADE.md)

@@ -31,7 +31,7 @@ $ launchctl list | grep actions-runner
 62544  -9  com.chump.actions-runner-4
 
 $ /usr/libexec/PlistBuddy -c "Print :WorkingDirectory" ~/Library/LaunchAgents/com.chump.actions-runner.plist
-/Users/jeffadkins/actions-runner-chump
+/Users/developer/actions-runner-chump
 ```
 
 All four `WorkingDirectory` entries resolve to `~/actions-runner-chump*` —

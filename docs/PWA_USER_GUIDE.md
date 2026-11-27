@@ -1,248 +1,104 @@
-# PWA User Guide — Chump Web Interface
+---
+doc_tag: canonical
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
+---
 
-How to use the Chump Progressive Web App (PWA) to browse the gap queue,
-dispatch autonomous work, and monitor in-flight agent progress.
+# Web Cockpit (`/v2/`) User Guide
+
+Chump includes a zero-build, local-first browser cockpit served directly by `chump --web`—giving you live visibility into your task queue, active file leases, provider cascade slots, and agent streams without installing Node.js or external dashboards.
 
 ---
 
-## Quick start
+## 1. Quick Start
 
 ```bash
-# Start the web server (defaults to port 3000)
-chump --web
-
-# Custom port and repo path
-CHUMP_WEB_PORT=8080 CHUMP_REPO=/path/to/chump chump --web
+# Launch the local web server (default bind: 127.0.0.1:3000; customize with --port)
+chump --web --port 3847
 ```
 
-Open **http://localhost:3000** in your browser.
+Open **http://127.0.0.1:3847/v2/** in your browser for the Sovereign Operator Cockpit (or **http://127.0.0.1:3847/site/** for the interactive Config Doctor and Fleet Simulator).
+
+To require bearer authentication on mutating and workspace routes, set `CHUMP_WEB_TOKEN` before launching `chump --web`.
 
 ---
 
-## Gap queue view
+## 2. Cockpit Views (`/v2/`)
 
-The front page shows the open gap queue, pulled from `GET /api/gap-queue`:
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│  Chump Gap Queue                          [3 open / 2 in-flight]│
-├─────────────┬────────────────────────────────┬──────┬──────────┤
-│  Gap ID     │  Title                         │ Pri  │ Status   │
-├─────────────┼────────────────────────────────┼──────┼──────────┤
-│  INFRA-630  │  CREDIBLE: UUID gap-id compat  │  P1  │  open    │
-│  FLEET-048  │  CREDIBLE: operator impact…    │  P1  │  open    │
-│  COG-055    │  EFFECTIVE: wire surprisal EMA │  P2  │  open    │
-└─────────────┴────────────────────────────────┴──────┴──────────┘
-```
-
-Gaps are sorted by priority (P0 first, then P1, P2, P3). Gaps with
-unresolved dependencies are shown greyed out and cannot be dispatched.
+| View | Underlying Endpoint | What It Shows |
+|------|---------------------|---------------|
+| **Overview & Fleet Health** | `GET /api/fleet/health`, `GET /api/stack-status` | Four-pillar health grades (`Credible`, `Effective`, `Resilient`, `Zero-Waste`), active worker count, 24h ship count, and GitHub rate-limit headroom |
+| **Task Queue (Gaps)** | `GET /api/gap-queue` | Priority-sorted tasks (`P0` → `P3`), claimability status, owning session IDs, and one-click claim or dispatch actions |
+| **Providers & Cascade** | `GET /api/cascade-status` | Live status across configured OAuth, cloud API, and local Ollama/vLLM slots, including circuit-breaker states and RPM/RPD counters |
+| **Interactive Chat** | `POST /api/chat` (SSE) | Streaming chat with real-time tool-call cards and inline Allow/Deny approval prompts (`POST /api/approve`) |
+| **Roadmap** | `GET /api/roadmap` | Milestone progress parsed live from `docs/ROADMAP.md` and enriched against `.chump/state.db` |
 
 ---
 
-## Dispatching a gap
+## 3. Dispatching & Tracking a Task
 
-### Via the web UI
+### From the Browser
 
-1. Click on a gap row to expand its details (title, acceptance criteria, effort).
-2. Click the **Dispatch** button.
-3. The server calls `POST /api/gap/work/:id` and returns a `request_id`.
-4. A progress panel opens automatically, polling `GET /api/gap/:id/status`.
+1. Open the **Queue** view and click an unclaimed task row to inspect its acceptance criteria and effort size.
+2. Click **Dispatch** (`POST /api/gap/work/:id`).
+3. Watch live phase transitions (`preflight` → `claim` → `execute-gap` → `ship`) streamed from `GET /api/gap/:id/stream`.
 
-### Via the API (curl)
+### From `curl` or Scripts
 
 ```bash
-# Trigger autonomous work on INFRA-630
-curl -s -X POST http://localhost:3000/api/gap/work/INFRA-630 | python3 -m json.tool
+# Trigger background execution for INFRA-042
+curl -fsS -X POST http://127.0.0.1:3847/api/gap/work/INFRA-042
+
+# Poll structured workflow progress
+curl -fsS http://127.0.0.1:3847/api/gap/INFRA-042/status
 ```
 
-Response:
-```json
-{
-  "status": "accepted",
-  "gap_id": "INFRA-630",
-  "request_id": "a1b2c3d4e5f6"
-}
-```
-
-The `request_id` is a 12-character identifier. Pass it to support for triage
-if something goes wrong.
+| Phase | `progress_pct` | Meaning |
+|-------|:--------------:|---------|
+| `preflight` | `10` | Dependency, branch, and lease collision checks |
+| `claim` | `20` | Isolated git worktree and `.chump-locks/` lease created |
+| `execute-gap` | `40` | Agent editing code and running local tests |
+| `ship` | `80` | Branch pushed and pull request opened via `chump ship` |
+| `done` | `100` | Pull request verified and merged |
 
 ---
 
-## Monitoring workflow progress
-
-After dispatching, the gap moves through four phases. Poll
-`GET /api/gap/:id/status` to track progress:
+## 4. Health & Binary Freshness (`GET /api/health`)
 
 ```bash
-watch -n 5 "curl -s http://localhost:3000/api/gap/INFRA-630/status | python3 -m json.tool"
-```
-
-Example response during execution:
-
-```json
-{
-  "gap_id": "INFRA-630",
-  "gap_status": "open",
-  "workflow_phase": "execute-gap",
-  "workflow_status": "started",
-  "progress_pct": 40,
-  "error": null
-}
-```
-
-### Phase progression
-
-| Phase        | progress_pct | What is happening                                      |
-|--------------|:------------:|--------------------------------------------------------|
-| `preflight`  | 10           | Branch, worktree, lease checks                         |
-| `claim`      | 20           | Worktree created, branch pushed                        |
-| `execute-gap`| 40           | Agent is writing code / tests                          |
-| `ship`       | 80           | PR created, auto-merge armed                           |
-| _(done)_     | 100          | PR merged, gap shipped                                 |
-
-When `progress_pct` is 100 and `workflow_status` is `"success"`, open the
-PR link on GitHub. It should be auto-merged within minutes once CI passes.
-
-### Real-time log stream (CHUMP_PWA_LOG)
-
-For richer observability, set `CHUMP_PWA_LOG` before starting the server:
-
-```bash
-CHUMP_PWA_LOG=/tmp/chump-pwa.log chump --web
-```
-
-Each phase emits a JSON line:
-
-```json
-{"ts":"2026-05-12T14:30:00.000Z","request_id":"a1b2c3d4e5f6","gap_id":"INFRA-630","phase":"execute-gap","status":"started","duration_ms":null}
-{"ts":"2026-05-12T14:45:22.000Z","request_id":"a1b2c3d4e5f6","gap_id":"INFRA-630","phase":"ship","status":"success","duration_ms":912543}
-```
-
-Tail it for live updates:
-
-```bash
-tail -f /tmp/chump-pwa.log | python3 -m json.tool
-```
-
----
-
-## Claiming a gap manually (for human work)
-
-If you want to reserve a gap for human work rather than autonomous dispatch:
-
-```bash
-# Via API
-curl -s -X POST http://localhost:3000/api/gap/claim/INFRA-630 | python3 -m json.tool
-
-# Via CLI (equivalent)
-chump claim INFRA-630
-```
-
-The gap will appear as `in-flight` in the gap queue until you ship it.
-
----
-
-## Health check
-
-The server exposes `/api/health` for uptime monitoring and binary freshness:
-
-```bash
-curl -s http://localhost:3000/api/health | python3 -m json.tool
+curl -fsS http://127.0.0.1:3847/api/health
 ```
 
 ```json
 {
   "status": "ok",
   "service": "chump-web",
-  "binary_version": "0.4.2",
-  "build_sha": "5c130816",
-  "build_date": "2026-05-12",
-  "binary_age_secs": 3600,
+  "binary_version": "1.0.0",
+  "build_sha": "38a6c3d9f",
+  "build_date": "2026-11-27",
+  "binary_age_secs": 420,
   "version_match": true
 }
 ```
 
-If `binary_age_secs` exceeds 7200 (2 hours) and the source code is newer
-than the binary, the server logs a drift warning. Rebuild with `cargo build`
-and restart to clear it.
+When developing on a source checkout, `version_match: false` warns you if the running `chump` binary is older than recent edits to `src/` so you know when to rebuild and restart.
 
 ---
 
-## Troubleshooting
+## 5. Environment Reference
 
-### "Server returns 404 for /api/gap/work/…"
-
-Check that the gap ID exists:
-```bash
-chump gap show INFRA-630
-```
-If it returns nothing, the gap is not registered. Run `chump gap list`.
-
-### "Dispatch accepted but progress_pct stays at 0"
-
-The workflow runs asynchronously in a background thread. If phase events
-don't appear after 30 seconds, check:
-
-```bash
-tail -20 .chump-locks/ambient.jsonl | grep INFRA-630
-```
-
-Look for `gap_workflow_phase` events. If none appear, the agent may have
-crashed — check `chump --web` stdout for `FAILED` or `Error` lines.
-
-### "Workflow shows error in progress response"
-
-The `error` field in `/api/gap/:id/status` contains the phase and
-failure description, e.g. `"preflight lease_overlap"`. Common causes:
-
-| Error                  | Cause                                    | Fix                               |
-|------------------------|------------------------------------------|-----------------------------------|
-| `preflight …`          | Dependency not met, gap already claimed  | Check `chump gap show <ID>`       |
-| `claim …`              | Git / worktree failure                   | Check free disk space             |
-| `execute-gap FAILED`   | Agent tool call failed or CI error       | Re-dispatch; check ambient.jsonl  |
-| `ship FAILED`          | Push rejected or PR creation failed      | Run `gh auth status`              |
-
-### "PWA shows stale binary warning"
-
-The server detected that `src/web_server.rs` is newer than the running
-binary. Rebuild and restart:
-
-```bash
-cargo build && chump --web
-```
-
-### "Port already in use"
-
-```bash
-CHUMP_WEB_PORT=8080 chump --web
-```
-
-Or find and kill the existing process:
-```bash
-lsof -ti :3000 | xargs kill
-```
-
-### "CHUMP_REPO not configured"
-
-The agent can't locate the Chump checkout. Set `CHUMP_REPO`:
-```bash
-CHUMP_REPO="$(pwd)" chump --web
-```
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CHUMP_WEB_HOST` | `127.0.0.1` | Bind address (prefer `127.0.0.1`; set `CHUMP_WEB_TOKEN` if binding beyond loopback) |
+| `CHUMP_WEB_PORT` | `3000` | HTTP port (`--port` CLI flag takes precedence) |
+| `CHUMP_WEB_TOKEN` | _(unset)_ | Optional Bearer token required on mutating and private `/api/*` endpoints |
+| `CHUMP_REPO` | Current git root | Target repository root for queue and lease operations |
+| `CHUMP_PWA_LOG` | _(unset)_ | Optional file path for per-request JSONL phase logging |
 
 ---
 
-## Environment reference
+## Related Guides
 
-| Variable             | Default          | Purpose                                              |
-|----------------------|-----------------|------------------------------------------------------|
-| `CHUMP_WEB_PORT`     | `3000`           | Port the web server binds to                         |
-| `CHUMP_REPO`         | _(auto-detect)_  | Path to Chump repo used for gap dispatch             |
-| `CHUMP_BIN`          | `chump`          | Path to chump binary used for dispatch calls         |
-| `CHUMP_PWA_LOG`      | _(not set)_      | Path for per-request phase log (JSONL)               |
-| `GH_TOKEN`           | _(keyring)_      | GitHub token for agent commits/PRs                   |
-
-See [PWA_STARTUP.md](PWA_STARTUP.md) for the full startup validation reference.
-See [docs/process/PWA_DEPLOYMENT.md](process/PWA_DEPLOYMENT.md) for binary
-freshness and `CHUMP_BINARY_VERSION` deployment details.
+- [HTTP & SSE API](api/WEB_API_REFERENCE.md)
+- [Daemon & Service Operations](operations/OPERATIONS.md)
+- [User Guide](USER_GUIDE.md)

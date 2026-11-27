@@ -302,7 +302,7 @@ Scanned 374 CI gate step(s) across 1 primary workflow (`ci.yml`) + 27 sibling wo
 | `audit.yml` | `audit-shard` | worker picker anti-SPIN — advances past preflight-failing / open-PR gaps, never re-offers (RESILIENT-332) | MIRRORED | `chump preflight` runs `scripts/ci/test-worker-no-spin.sh` |
 | `audit.yml` | `audit-shard` | worker timeout scaler — no death-spiral, derives from immutable base (RESILIENT-135) | MIRRORED | `chump preflight` runs `scripts/ci/test-worker-timeout-scale.sh` |
 | `audit.yml` | `audit-shard` | auth-status validity probe — catches depleted-credential-wins-precedence trap (RESILIENT-086) | ALLOWLISTED | `scripts/ci/preflight-ci-parity-exceptions.txt` entry `test-auth-status.sh` |
-| `audit.yml` | `audit-shard` | chump-farmer-run host-aware PATH — Termux $PREFIX/bin reachable, Helsinki unchanged (RESILIENT-376) | ALLOWLISTED | `scripts/ci/preflight-ci-parity-exceptions.txt` entry `test-chump-farmer-run-path.sh` |
+| `audit.yml` | `audit-shard` | chump-farmer-run host-aware PATH — Termux $PREFIX/bin reachable, coordinator-node unchanged (RESILIENT-376) | ALLOWLISTED | `scripts/ci/preflight-ci-parity-exceptions.txt` entry `test-chump-farmer-run-path.sh` |
 | `audit.yml` | `audit-shard` | chump fleet bootstrap orchestrator (META-066) | ALLOWLISTED | `scripts/ci/preflight-ci-parity-exceptions.txt` entry `test-fleet-bootstrap.sh` |
 | `audit.yml` | `audit-shard` | PWA flake quarantine wiring (INFRA-1332) | ALLOWLISTED | `scripts/ci/preflight-ci-parity-exceptions.txt` entry `test-pwa-flake-quarantine.sh` |
 | `audit.yml` | `audit-shard` | worktree-prune protects live edits (INFRA-1347) | ALLOWLISTED | `scripts/ci/preflight-ci-parity-exceptions.txt` entry `test-worktree-prune-protects-live-edits.sh` |

@@ -28,7 +28,7 @@
           <a class="btn btn-dark" href="#quickstart">1. 60-Second Quickstart</a>
           <a class="btn btn-stone" href="#cli-reference">2. Daily CLI Sheet</a>
           <a class="btn btn-stone" href="#config-reference">3. config.toml Reference</a>
-          <a class="btn btn-bronze" href="https://repairman29.github.io/chump/docs/" target="_blank" rel="noopener">Full Searchable Reference ↗</a>
+          <a class="btn btn-bronze" href="../reference/">Full Searchable Reference →</a>
         </div>
       </div>
     </section>
@@ -48,7 +48,7 @@
               <span class="pill pill-sage" style="margin-bottom:12px;">STEP 01 · INSTALL</span>
               <h3 class="display-h3">Install the Single Rust Binary</h3>
               <p style="color:var(--stone-muted); font-size:14.5px; margin:0 0 16px;">
-                Install via Homebrew on macOS, the standalone release script on Linux, or Cargo on Windows, Linux, and macOS.
+                Install via Homebrew on macOS, the standalone release scripts on Linux and Windows PowerShell, or Cargo on any OS.
               </p>
             </div>
             <pre class="trace-card" style="margin:0; font-family:var(--font-mono); font-size:11.5px; line-height:1.6; overflow-x:auto;"># macOS (Homebrew)
@@ -58,7 +58,10 @@ brew tap repairman29/chump &amp;&amp; brew install chump
 curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh
 
-# Any OS via Rust Cargo
+# Windows (PowerShell prebuilt release)
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/repairman29/chump/releases/latest/download/chump-installer.ps1 | iex"
+
+# Any OS from source via Rust Cargo
 cargo install --git https://github.com/repairman29/chump chump --locked</pre>
           </article>
 
@@ -206,8 +209,8 @@ priority = 20</pre>
                 <li><a href="../pricing/" style="text-decoration:underline;">Cloud-Agent TCO Calculator &amp; Open-Source Licensing →</a></li>
               </ul>
             </div>
-            <a class="btn btn-dark" href="https://repairman29.github.io/chump/docs/" target="_blank" rel="noopener">
-              Open Full Searchable Architecture Docs ↗
+            <a class="btn btn-dark" href="../reference/">
+              Open Full Searchable Reference Docs →
             </a>
           </div>
         </div>

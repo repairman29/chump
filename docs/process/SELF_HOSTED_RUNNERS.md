@@ -172,7 +172,7 @@ effective throughput.
 
 ## Pi mesh expansion
 
-Per [project_fleet_vision](memory) the Pi mesh is the eventual home for
+Per project_fleet_vision (`memory`) the Pi mesh is the eventual home for
 sustained CI capacity. Each Pi 5 can host one runner labeled `[self-hosted,
 linux-arm64, chump-fleet]`. Rust compiles are slow on Pi but lightweight
 workflows (docs build, lint, smoke tests) run fine. Mixed mesh — M4 for
@@ -1152,7 +1152,7 @@ to **process cwd**, not the git-common-dir. A linked worktree
 (`.claude/worktrees/<name>/`) has its own `.chump/state.db` — freshly
 scaffolded and empty/stale for a new worktree — which is a *different file*
 from the canonical `.chump/state.db` at the main checkout root
-(`/home/jeff/Projects/chump/.chump/state.db`). The prior slice's `chump gap
+(`/home/operator/Projects/chump/.chump/state.db`). The prior slice's `chump gap
 ship` ran from inside the worktree, so it flipped the worktree-local copy
 (which nothing else reads) and never touched the canonical row — `sqlite3
 .chump/state.db ...` in that same slice's verification command was equally
@@ -1160,9 +1160,9 @@ worktree-relative, so the check "confirmed" a write that never reached the
 shared source of truth.
 
 **Fix applied this slice:** ran `chump gap ship INFRA-1655 --update-yaml
---why` with cwd set to the main checkout (`/home/jeff/Projects/chump`, not
+--why` with cwd set to the main checkout (`/home/operator/Projects/chump`, not
 the worktree), then verified against that same path:
-`sqlite3 /home/jeff/Projects/chump/.chump/state.db "SELECT id,status,closed_pr
+`sqlite3 /home/operator/Projects/chump/.chump/state.db "SELECT id,status,closed_pr
 FROM gaps WHERE id='INFRA-1655'"` → `INFRA-1655|done|`. Any future
 gap-registry mutation issued from a linked worktree should `cd` to the main
 checkout first (or otherwise target the canonical `.chump/state.db` path
@@ -1175,7 +1175,7 @@ gap-reopens-itself loop this section documents.
 Despite the two prior slices fixing the worktree-vs-main-checkout cwd bug and
 confirming `INFRA-1655` flipped to `done` (via `sqlite3 .../.chump/state.db`
 on that machine), this gap re-surfaced `open` and routed a *third* fleet-1
-dispatch — this time to a session on a different physical host (`closetjunky`,
+dispatch — this time to a session on a different physical host (`worker-node-01`,
 Linux) than the machine(s) those earlier fixes ran on.
 
 **Root cause: `state.db` is gitignored (`.chump/state.db` — see
@@ -1197,7 +1197,7 @@ gap-registry sync; each host's `chump gap reserve`/`chump gap ship` only ever
 mutates its own local file.
 
 **Action taken this slice:** flipped `status=done` in this host's
-(`closetjunky`) local `.chump/state.db` for `INFRA-1655`, from the main
+(`worker-node-01`) local `.chump/state.db` for `INFRA-1655`, from the main
 checkout (not this worktree), matching the same command form used on the
 prior fix. This closes the loop for *this* machine. Any other machine that
 has never locally shipped `INFRA-1655` will still show it `open` in its own

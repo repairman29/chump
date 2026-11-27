@@ -1,6 +1,6 @@
 # Fleet Node Architecture — the node contract
 
-> **Status:** DRAFT, 2026-08-09. Written from the closetjunky recovery the same night it
+> **Status:** DRAFT, 2026-08-09. Written from the worker-node-01 recovery the same night it
 > happened, while the evidence was still on the floor.
 >
 > **Thesis:** the fleet has excellent *work* coordination (gaps, leases, NATS routing,
@@ -12,7 +12,7 @@
 
 ## 0. Why this doc exists — the receipts
 
-closetjunky was moved to a new physical location. Recovering it took an evening of
+worker-node-01 was moved to a new physical location. Recovering it took an evening of
 console typing. Every step below was a real failure, not a hypothetical:
 
 | What happened | What it reveals |
@@ -81,7 +81,7 @@ presence:
 | No service on a public interface | `ss -tlnp` minus loopback minus tailnet |
 | Public-address exposure | probe **from another node**, not locally |
 
-**Today:** Helsinki holds all six. closetjunky held **none** for 17 days. Nothing
+**Today:** coordinator-node holds all six. worker-node-01 held **none** for 17 days. Nothing
 compares them. The `sshd_config.d` first-value-wins trap means a naive grep check
 would have reported PASS while the box was exposed.
 
@@ -118,8 +118,8 @@ Lease release, registry removal, tailnet key revocation, credential rotation.
 One file per node, generated at provision, verified continuously.
 
 ```yaml
-node_id: closetjunky
-hostname: closetjunky
+node_id: worker-node-01
+hostname: worker-node-01
 role: worker                 # worker | broker | hub | runner
 hardware:
   cores: 4
@@ -135,7 +135,7 @@ security_baseline:
   firewall: {state: active, default_in: deny, verified_at: ...}
   ssh_password_auth: {value: false, probe: "sshd -T", verified_at: ...}
   fail2ban: {state: active, verified_at: ...}
-  external_exposure: {probe_from: helsinki, result: blocked, verified_at: ...}
+  external_exposure: {probe_from: coordinator-node, result: blocked, verified_at: ...}
 runtime:
   supervisor: chumpd
   enabled_at_boot: true
@@ -162,7 +162,7 @@ for the runtime view.
 | Disk cost model + CLI | Shipped | **True** — `chump disk` works |
 | Disk inventory daemon | Wave 1 | **Absent** — no crate, no snapshot on any node |
 | Node identity | Referenced | **Absent** — no `node-id.txt` anywhere |
-| Security baseline | Implied by Helsinki | **Not enforced** — CJ unhardened 17 days |
+| Security baseline | Implied by coordinator-node | **Not enforced** — CJ unhardened 17 days |
 | Node liveness | Assumed via fleet health | **Absent** — 5-day outage unnoticed |
 | Node registry | — | **Does not exist** |
 | Wi-Fi provisioning | — | **Not in runbook** |

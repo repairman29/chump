@@ -192,7 +192,7 @@ when no `--gap` was given, or when the chump binary doesn't support
 ## Hard rules
 
 - **Default to haiku for routine project work (INFRA-369, 2026-05-03).** `.claude/settings.json` pins `"model": "claude-haiku-4-5"` + `"effortLevel": "medium"` for this repo. Rationale: opus-4-7 high is ~50× haiku per token; one fleet session burned $92 of workspace credit + maxed the $20/mo subscription cap. For routine ship-a-gap work haiku is plenty. Override per-session via `/model` in the Claude Code app for genuinely hard tasks. Per-fleet override: `FLEET_MODEL=sonnet scripts/dispatch/run-fleet.sh` (INFRA-364).
-- **Never push directly to `main`.** Branch + worktree naming follow [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01) (canonical: `chump/<codename>` branch, `.chump/worktrees/<name>` worktree). Existing `claude/*` branches and `.claude/worktrees/` paths are accepted by tooling for backward compat — new work uses the `chump/` prefix so the project owns the namespace, not whichever tool is running this session.
+- **Never push directly to `main`.** Branch + worktree naming follow AGENTS.md → Naming conventions (`./AGENTS.md#naming-conventions-infra-186-2026-05-01`) (canonical: `chump/<codename>` branch, `.chump/worktrees/<name>` worktree). Existing `claude/*` branches and `.claude/worktrees/` paths are accepted by tooling for backward compat — new work uses the `chump/` prefix so the project owns the namespace, not whichever tool is running this session.
 - **Always work in a linked worktree, never in the main repo root.** `chump claim` refuses to run from the main repo root — use a linked worktree under `.chump/worktrees/<name>/` (canonical) or `.claude/worktrees/<name>/` (legacy, accepted). Override with `CHUMP_ALLOW_MAIN_WORKTREE=1` only for bootstrapping.
 - **Never start work on a gap without running `chump gap preflight <GAP-ID>` first.** It takes 3 seconds and prevents hours of wasted work.
 - **Never leave a lease file behind.** Delete `.chump-locks/<session_id>.json` or call `chump --release` when done.
@@ -485,12 +485,12 @@ the INFRA-275 syspolicyd binary wedge.
 
 1. **Every Agent-tool prompt MUST include the standard shipping
    epilogue.** Verbatim copy from
-   [`scripts/dispatch/subagent-shipping-epilogue.md`](scripts/dispatch/subagent-shipping-epilogue.md).
+   `scripts/dispatch/subagent-shipping-epilogue.md` (`scripts/dispatch/subagent-shipping-epilogue.md`).
    The epilogue covers: bot-merge canonical path, `chump-binary-unwedge.sh`
    heal, manual `git push + gh pr create + gh pr merge` fall-back path,
    forbidden anti-patterns (silent YAML fallback, `--no-verify`),
    and the final-report format. Full context and anti-patterns are in
-   [`docs/process/SUBAGENT_DISPATCH.md`](docs/process/SUBAGENT_DISPATCH.md).
+   `docs/process/SUBAGENT_DISPATCH.md` (`docs/process/SUBAGENT_DISPATCH.md`).
    The single subagent in this session that did self-ship was the one
    whose briefing included these explicit fall-back instructions.
 
@@ -501,7 +501,7 @@ the INFRA-275 syspolicyd binary wedge.
    `Agent` to check on an existing subagent** — you waste a slot and
    get a "fresh session, no context" response. (Mistake observed
    2026-05-02 in the very session that produced this rule.) See
-   [`docs/gaps/DOC-015.yaml`](docs/gaps/DOC-015.yaml).
+   `docs/gaps/DOC-015.yaml` (`docs/gaps/DOC-015.yaml`).
 
 When you write a subagent prompt: think of it as briefing a smart
 colleague who just walked into the room — they haven't seen the
@@ -1043,7 +1043,7 @@ fail on what reads like a runner-state issue. Initially diagnosed as
 INFRA-2082 silent-build-failure class.
 
 **Actual root cause (INFRA-2096 retro):** the self-hosted runner
-sets `CARGO_TARGET_DIR=/Users/jeffadkins/.cache/chump-runner/cargo-target`
+sets `CARGO_TARGET_DIR=/Users/developer/.cache/chump-runner/cargo-target`
 per INFRA-1540 (shared cargo cache across jobs). `cargo build` correctly
 writes the binary there. Scripts that hardcoded
 `$ROOT/target/debug/<binary>` instead of honoring the env var looked
@@ -1185,13 +1185,13 @@ to push from the wrong branch, pre-commit hooks to operate on wrong files, and
 ```bash
 # Set explicit GIT_DIR + GIT_WORK_TREE for all git operations in the worktree.
 # Replace chump-infra-918 with your worktree name.
-GIT_DIR=/Users/jeffadkins/Projects/Chump/.git/worktrees/chump-infra-918 \
+GIT_DIR=/Users/developer/Projects/Chump/.git/worktrees/chump-infra-918 \
 GIT_WORK_TREE=/private/tmp/chump-infra-918 \
   git <cmd>
 
 # For bot-merge, pass env vars before the invocation:
 cd /private/tmp/chump-infra-918
-GIT_DIR=/Users/jeffadkins/Projects/Chump/.git/worktrees/chump-infra-918 \
+GIT_DIR=/Users/developer/Projects/Chump/.git/worktrees/chump-infra-918 \
 GIT_WORK_TREE=/private/tmp/chump-infra-918 \
   bash scripts/coord/bot-merge.sh --gap INFRA-918 --auto-merge
 ```
@@ -1200,7 +1200,7 @@ GIT_WORK_TREE=/private/tmp/chump-infra-918 \
 `chump claim` now runs `git worktree repair` after `git worktree add` to fix the
 gitdir back-pointer. If you create worktrees manually, run:
 ```bash
-git -C /Users/jeffadkins/Projects/Chump worktree repair
+git -C /Users/developer/Projects/Chump worktree repair
 ```
 
 **Diagnosis:**
@@ -2063,11 +2063,11 @@ The dangerous part: per-daemon metrics look individually fine (each daemon ran, 
 
 ```bash
 # 1. Confirm which branch your main checkout is on:
-git -C /Users/jeffadkins/Projects/Chump branch --show-current
+git -C /Users/developer/Projects/Chump branch --show-current
 
 # 2. If stale, switch to main and pull:
-git -C /Users/jeffadkins/Projects/Chump checkout main
-git -C /Users/jeffadkins/Projects/Chump pull origin main
+git -C /Users/developer/Projects/Chump checkout main
+git -C /Users/developer/Projects/Chump pull origin main
 
 # 3. Restart dead daemons:
 launchctl list | grep -E '(com|dev)\.chump\.'

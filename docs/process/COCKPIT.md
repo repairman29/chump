@@ -108,7 +108,7 @@ Honest correction to the "13 orphans" brief: `grep -ilE "prime operating state|t
 
 **Just drop (retire as surfaces):** `web/v2/` as a *web* surface (keep as Tauri desktop app), `web/cockpit/*` (phantom-backend panels), `web/fleet-scrubber/` (fixture demo; its `/scrubber` mount is dead), `docs/landing/` (marketing), `~/Projects/Chump/docs-site/` built HTML, and any `visuals/html/*` / `scratchpad_*.html` / `content/launch-console.html`.
 
-**Root-cause fix (helsinki decay, `helsinki-DECOMMISSIONED` + `fleet-stall-musher-stale-source`):** `scripts/coord/board-tick.sh` is hardcoded `HOME=/home/jeff` + `cd ~/Projects/chump` — dead paths on cuphead (`ubuntu@:~/chump`). The daily instrument runs against a nonexistent path today. File a gap to make it host-agnostic (`~/chump`); this is the roster-decay class to kill.
+**Root-cause fix (coordinator-node decay, `coordinator-node-DECOMMISSIONED` + `fleet-stall-musher-stale-source`):** `scripts/coord/board-tick.sh` is hardcoded `HOME=/home/operator` + `cd ~/Projects/chump` — dead paths on cuphead (`ubuntu@:~/chump`). The daily instrument runs against a nonexistent path today. File a gap to make it host-agnostic (`~/chump`); this is the roster-decay class to kill.
 
 ## 7. Build plan
 
@@ -130,4 +130,4 @@ Phase 1 adds **zero new backend beyond the static mount** — every tile is a li
 
 **Test to hold it to:** delete the page — did you lose any truth? If yes, it stored state it shouldn't. If no, it's a real instrument, and you'll open it every morning.
 
-**Key receipts:** `crates/chump-fleet-server/src/{routes.rs,main.rs,dashboard.rs,gap_write.rs}` · `web/v2/{index.html,cockpit.js}` (tokens + grid, salvage only) · `scripts/ops/render-vital-signs.sh` + `render-third-peer.sh` (contract to lift) · `scripts/coord/board-tick.sh` (helsinki path bug) · `scripts/coord/pr-book.sh` (`kind=pr_book_odds` in ambient) · gap store `~/chump/.chump/state.db` · events `~/chump/.chump/fleet_events.db` · live server `127.0.0.1:7070` on cuphead (`/api/dashboard-summary` real, `/api/mission` empty, `/api/fleet/nodes` = 1 of 3). New file to create: `~/chump/web/cockpit-live/index.html`.
+**Key receipts:** `crates/chump-fleet-server/src/{routes.rs,main.rs,dashboard.rs,gap_write.rs}` · `web/v2/{index.html,cockpit.js}` (tokens + grid, salvage only) · `scripts/ops/render-vital-signs.sh` + `render-third-peer.sh` (contract to lift) · `scripts/coord/board-tick.sh` (coordinator-node path bug) · `scripts/coord/pr-book.sh` (`kind=pr_book_odds` in ambient) · gap store `~/chump/.chump/state.db` · events `~/chump/.chump/fleet_events.db` · live server `127.0.0.1:7070` on cuphead (`/api/dashboard-summary` real, `/api/mission` empty, `/api/fleet/nodes` = 1 of 3). New file to create: `~/chump/web/cockpit-live/index.html`.

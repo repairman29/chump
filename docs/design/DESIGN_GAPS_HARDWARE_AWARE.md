@@ -11,8 +11,8 @@ the bottom.
 
 The through-line: **the fleet is role-DECLARED and host-PATCHED, not
 hardware-DISCOVERED and self-organizing.** It hardcodes the shape of one machine
-(helsinki) and breaks whenever the hardware changes. Tonight's entire class of
-failures — `/home/ubuntu/Projects/chump` helsinki paths killing organs at CHDIR,
+(coordinator-node) and breaks whenever the hardware changes. Tonight's entire class of
+failures — `/home/ubuntu/Projects/chump` coordinator-node paths killing organs at CHDIR,
 roster decay, the hardcoded "no cargo build on a 2-core box" rule, the fleet-server
 binary that couldn't rebuild on cuphead — are all symptoms of the same root: a
 system authored for one box that assumes its cores, its paths, and its role layout,
@@ -34,7 +34,7 @@ Shipped and load-bearing today:
 - **`scripts/dispatch/node-describe.sh`** (Node Fabric #1) — introspects THIS node
   (cores, RAM, disk, GPU/VRAM, always-on, `services_running`, `roles_fit`) and emits
   a JSON profile. Portable across Linux/macOS/termux. **The probe exists.**
-- **`docs/fleet/nodes/*.json`** — the node registry (cuphead/mugman/closetjunky/pixel),
+- **`docs/fleet/nodes/*.json`** — the node registry (cuphead/mugman/worker-node-01/pixel),
   with `hardware`, `capability.supported_task_classes`, `roles_fit`, `role_pin`,
   `role_assigned`. **The registry exists** — but it is git-committed static JSON,
   populated by a *manual* `node-describe.sh` run, with a **hand-set** `role_pin`
@@ -59,7 +59,7 @@ Shipped and load-bearing today:
   by bring-up. Static `role=` tags (brain/muscle/data/janitor/trust) and a
   `requires=SPEC` precondition field supporting `bin:`/`env:`/`dep:`/`file:` specs.
   **A requirements grammar exists** — with no hardware spec kinds, and a header that
-  still reads "desired systemd state on the PRIMARY node (helsinki)."
+  still reads "desired systemd state on the PRIMARY node (coordinator-node)."
 
 **The disconnect, verified:** `grep` of `scripts/setup/chump-node-install.sh` for
 `node-describe` / `node-role-assign` / `node-capacity` / `role_assigned` / `roles_fit`
@@ -93,7 +93,7 @@ re-probe, no `state.db` topology table, and no single served source of truth for
 "what hardware is in the fleet right now."
 
 **Receipt:** `cuphead.json` carries `"role_pin_reason": "topology decision 2026-09-07"`
-— a human sentence, not a reading. When hardware changes (helsinki decommissioned, CJ
+— a human sentence, not a reading. When hardware changes (coordinator-node decommissioned, CJ
 relocated, mugman joined), the registry only tracks it if someone re-runs the probe and
 commits the JSON. `GET /api/fleet/nodes` serves organ *liveness*, not this topology, so
 the machine has no live mirror of its own substrate. (This is the substrate half of
@@ -102,7 +102,7 @@ the machine has no live mirror of its own substrate. (This is the substrate half
 ### Gap 3 — Organs are placed by static role tags, not capability requirements
 
 Organ placement runs off `organ-manifest.txt`'s static `role=` tags, whose header
-still names "the PRIMARY node (helsinki)." An organ says `role=brain`; it does not say
+still names "the PRIMARY node (coordinator-node)." An organ says `role=brain`; it does not say
 *what it needs* (a GPU, N cores, root, a RAM floor). The `requires=` field understands
 `bin:`/`env:`/`dep:`/`file:` but **no hardware spec kinds.**
 
@@ -119,21 +119,21 @@ Worker *count* is capacity-derived per node (the RESILIENT-291 PLACE half), but 
 the only self-distribution that exists. Nothing routes an *organ* to a capable peer
 when its host dies or departs, and nothing pulls builds toward a joining builder.
 
-**Receipt:** the entire `NODE_FABRIC.md` origin story — killing closetjunky's and
-helsinki's ollama blind because "there is no registry of what runs where and what
+**Receipt:** the entire `NODE_FABRIC.md` origin story — killing worker-node-01's and
+coordinator-node's ollama blind because "there is no registry of what runs where and what
 depends on it," and this session's fleet-server that went stale on cuphead because a
 2-core rebuild is forbidden and no peer builder was routed the work. When a node's
 capability changes, its workload does not move; a human moves it.
 
-### Gap 5 — The manifest is helsinki-shaped
+### Gap 5 — The manifest is coordinator-node-shaped
 
 The roster is authored for one machine. `organ-manifest.txt`'s own header reads
-"desired systemd state on the PRIMARY node (helsinki)"; helsinki is decommissioned.
-Role tags encode a helsinki-era brain/muscle split rather than a node-neutral,
+"desired systemd state on the PRIMARY node (coordinator-node)"; coordinator-node is decommissioned.
+Role tags encode a coordinator-node-era brain/muscle split rather than a node-neutral,
 capability-declared roster.
 
 **Receipt:** tonight's CHDIR incidents traced to `/home/ubuntu/Projects/chump` and
-`/home/jeff/...` paths baked in from the primary-node era, and roster decay because the
+`/home/operator/...` paths baked in from the primary-node era, and roster decay because the
 manifest describes a machine that no longer exists. A node-neutral roster would carry
 no host's home path and no host's name — only capability requirements and roles.
 
@@ -171,7 +171,7 @@ install path *asks* it rather than reading a manual arg.
 
 Organs declare **requirements** (`needs-gpu`, `no-cargo-build-under-N-cores`,
 `root-required`, `min-ram`); placement matches organs to *capable* nodes. This replaces
-the static helsinki role-tagged manifest and **folds the no-cargo-on-2-core guard in as
+the static coordinator-node role-tagged manifest and **folds the no-cargo-on-2-core guard in as
 a derived rule** rather than hardcoded prose.
 
 **Mine-before-build:** `organ-manifest.txt`'s `requires=SPEC` grammar already gates
@@ -192,15 +192,15 @@ is the seeded ATC-as-daemon; the Component-1 live registry is the cross-node wor
 the re-home decision reads. This is NODE_FABRIC #4 (per-node role-aware ATC) + #5
 (placement engine) made node-death-aware.
 
-### Component 5 — De-helsinki the manifest
+### Component 5 — De-coordinator-node the manifest
 
 The roster becomes **node-neutral and capability-declared**: no "PRIMARY node
-(helsinki)" header, no host home paths, no host names — only capability requirements
+(coordinator-node)" header, no host home paths, no host names — only capability requirements
 (Component 3) and roles (Component 2). A fresh box of any shape inherits the right
-roster because the roster describes *capabilities*, not *helsinki*.
+roster because the roster describes *capabilities*, not *coordinator-node*.
 
 **Mine-before-build:** `organ-manifest.txt` is the file to rewrite; every
-`/home/ubuntu/...` / `/home/jeff/...` / helsinki reference is a placement bug to convert
+`/home/ubuntu/...` / `/home/operator/...` / coordinator-node reference is a placement bug to convert
 into a `file:` or hardware requirement. This is the roster half of the
 `DESIGN_GAPS_SELF_RUNNING.md` Gap 5 self-model (RESILIENT-1113).
 
@@ -213,14 +213,14 @@ component reads; without it, roles are derived from stale JSON, organ requiremen
 nothing to match against, and re-homing is blind. Then **Component 2** (wire derivation
 into bring-up) and **Component 3** (capability requirements + fold in the 2-core guard),
 which together make a fresh box come up correctly. **Components 4 and 5** (re-homing and
-de-helsinki-ing) close the loop so the fleet re-organizes on hardware change rather than
+de-coordinator-node-ing) close the loop so the fleet re-organizes on hardware change rather than
 on a human noticing.
 
 ## Acceptance
 
 - **Fresh bare box, any shape, one command:** it probes itself, registers into the live
   topology, and comes up with the **correct role and organ set for its hardware** —
-  **zero hand-declared role, zero helsinki assumptions.** A 2-core box comes up as a
+  **zero hand-declared role, zero coordinator-node assumptions.** A 2-core box comes up as a
   worker/muscle floor that never attempts a local cargo build; a GPU box comes up
   serving embeds; an 8-core box comes up as a builder; an always-on coordinator comes up
   as brain — all without anyone passing `--role`.
@@ -237,7 +237,7 @@ on a human noticing.
   - **RESILIENT-006** — Capability-derived node roles (Component 2)
   - **RESILIENT-007** — Capability-aware organ placement (Component 3)
   - **RESILIENT-008** — Self-distribution + re-organization on node change (Component 4)
-  - **RESILIENT-009** — De-helsinki the organ manifest (Component 5)
+  - **RESILIENT-009** — De-coordinator-node the organ manifest (Component 5)
 
 Every gap references this doc (`docs/design/DESIGN_GAPS_HARDWARE_AWARE.md`) and names
 the umbrella (each sub-gap `depends_on` RESILIENT-004). This track is the substrate companion to `DESIGN_GAPS_SELF_RUNNING.md`

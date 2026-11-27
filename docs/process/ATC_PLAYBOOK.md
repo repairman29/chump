@@ -51,9 +51,9 @@ routes every fix to the fleet as a **productized upstream change — never a ban
 | Node unreachable / dark | T3 | node-level liveness (INFRA-3582); page only if no self-recovery |
 
 ## Fleet shape (current, 2026-08-10)
-- **M4 = ATC** (tower). **helsinki** (root, 4-core) + **closetjunky** (jeff, 4-core) = worker
+- **M4 = ATC** (tower). **coordinator-node** (root, 4-core) + **worker-node-01** (jeff, 4-core) = worker
   nodes, **1 worker each** (right-sized — one Sonnet worker peaks a 4-core box), **domain-
-  partitioned** (helsinki=INFRA/RESILIENT/ZERO-WASTE/CREDIBLE, closetjunky=EFFECTIVE/DOC/
+  partitioned** (coordinator-node=INFRA/RESILIENT/ZERO-WASTE/CREDIBLE, worker-node-01=EFFECTIVE/DOC/
   MISSION/META) as the interim dedup.
 - **Coordination spine** (turns two partitioned solo workers into a real fleet):
   RESILIENT-284 (shared NATS + cross-node claims → kills the partition), INFRA-3582 (node

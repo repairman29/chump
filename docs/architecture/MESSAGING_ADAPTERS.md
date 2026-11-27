@@ -1,97 +1,89 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
 ---
 
-# Messaging Platform Adapters
+# Optional Chat Platform Adapters
 
-Hermes Phase 1.5. Chump's core agent loop is platform-agnostic; messaging
-platforms plug in through the `PlatformAdapter` trait in `src/adapters/mod.rs`.
+Chump's core coordinator (`chump claim`, `chump hook`, `chump ship`, `chumpd`) and local surfaces (`chump --once`, `chump --web`, `chump --acp`) require **no chat account or bot token**.
 
-## Architecture
+For teams who also want mobile/chat notifications or remote tool-approval prompts, Chump includes optional adapters in `src/adapters/`, `src/slack.rs`, and `src/discord.rs`. Unconfigured adapters stay completely dormant and never block CLI or Web Cockpit startup.
+
+---
+
+## 1. Adapter Overview
 
 ```
-                    +-----------------------+
-                    |   Core Agent Loop     |
-                    |  (turns, tools, mem)  |
-                    +-----------+-----------+
-                                |
-                       PlatformAdapter (trait)
-                                |
-        +-----------+-----------+-----------+-------------+
-        |           |           |           |             |
-   discord.rs   telegram     matrix       slack         ...future
-   (legacy,    (V1: send-    (planned)   (planned)
-    not yet     only)
-    migrated)
+                     +----------------------------+
+                     |    Core Governed Agent     |
+                     | (turns, tools, approvals)  |
+                     +-------------+--------------+
+                                   |
+                          PlatformAdapter / Bot
+                                   |
+            +----------------------+----------------------+
+            |                      |                      |
+      Slack Socket Mode     Telegram Bot HTTP        Discord Bot
+      (chump --slack)     (CHUMP_TELEGRAM_ENABLED) (chump --discord)
 ```
 
-One agent core, many adapters. Each adapter normalizes inbound platform
-events into `InboundMessage` and sends `OutboundMessage` back out.
+| Adapter | Launch / Enable | Required Environment Variables | Capabilities |
+|---------|-----------------|--------------------------------|--------------|
+| **Slack** | `chump --slack` | `SLACK_APP_TOKEN` (`xapp-...`) + `SLACK_BOT_TOKEN` (`xoxb-...`) | Outbound WebSocket (Socket Mode—no public webhook URL needed), mentions, DMs, `thread_ts` replies, auto-reconnect |
+| **Telegram** | `CHUMP_TELEGRAM_ENABLED=1` | `TELEGRAM_BOT_TOKEN` | Outbound Bot HTTP notifications (`sendMessage`) and approval alerts |
+| **Discord** | `chump --discord` | `DISCORD_TOKEN` | Optional bot gateway (`--discord` flag required), DM / channel replies, and button-based tool approval prompts |
 
-## Current state
+---
 
-| Adapter  | Status                            | Module                  |
-|----------|-----------------------------------|-------------------------|
-| Discord  | Legacy full implementation        | `src/discord.rs`        |
-| Telegram | V1 send-only over Bot HTTP API    | `src/adapters/telegram.rs` |
-| Matrix   | Planned                           | —                       |
-| Slack    | Live — Socket Mode (COMP-004c)    | `src/slack.rs`          |
+## 2. Slack Socket Mode Setup (`chump --slack`)
 
-The Discord adapter predates this trait and is **not** migrated; it remains
-the reference of a fully wired adapter. New platforms implement
-`PlatformAdapter` directly.
+Slack Socket Mode connects outbound over TLS WebSockets, so your workstation or server does not need a public IP or inbound firewall port:
 
-## Configuration
+1. Create a Slack App with **Socket Mode** enabled (`SLACK_APP_TOKEN`, `xapp-...`).
+2. Grant `app_mentions:read`, `chat:write`, and `im:history` bot scopes (`SLACK_BOT_TOKEN`, `xoxb-...`).
+3. Start the adapter:
+   ```bash
+   SLACK_APP_TOKEN=xapp-... SLACK_BOT_TOKEN=xoxb-... chump --slack
+   ```
 
-Each adapter has an enable flag and a token. The enable flag follows the
-pattern `CHUMP_<NAME>_ENABLED=1`; the token is platform-specific.
+*(Optional: set `SLACK_API_BASE` when testing against a local mock server.)*
 
-| Adapter  | Enable flag                  | Credentials               |
-|----------|------------------------------|---------------------------|
-| Telegram | `CHUMP_TELEGRAM_ENABLED=1`   | `TELEGRAM_BOT_TOKEN`      |
-| Slack    | `chump --slack` (CLI flag)   | `SLACK_APP_TOKEN` (xapp-…) + `SLACK_BOT_TOKEN` (xoxb-…) |
+---
 
-Adapters that are enabled but fail to construct (missing token, etc.) are
-logged and skipped — they don't crash startup.
+## 3. Telegram Notifications (`CHUMP_TELEGRAM_ENABLED=1`)
 
-## Adding a new adapter
+Enable lightweight outbound notifications over the Telegram Bot HTTP API:
 
-1. Create `src/adapters/<name>.rs`.
-2. Define a struct holding any client/credentials it needs.
-3. `impl PlatformAdapter for YourAdapter` — implement `name`, `start`,
-   `send`, and `request_approval`.
-4. Add a constructor (e.g. `from_env`) that reads its credentials.
-5. Wire it into `available_adapters()` in `src/adapters/mod.rs` behind
-   `adapter_enabled("<name>")`.
-6. Document the env vars in this file.
-7. Add tests for construction and trait object-safety.
+```bash
+export CHUMP_TELEGRAM_ENABLED=1
+export TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+```
 
-## Telegram V1 details
+---
 
-V1 is **send-only**. Outbound messages POST to
-`https://api.telegram.org/bot<token>/sendMessage` via `reqwest`. No new
-crate dependency was added for V1. Long-poll / webhook intake (V2) will
-gate richer behavior behind the `telegram` cargo feature.
+## 4. Discord Bot Mode (`chump --discord`)
 
-`request_approval` synthesizes a human prompt and sends it; correlating
-the reply back to the request id requires inbound polling, which lands
-with V2.
+When explicitly launched with `chump --discord`:
 
-## Slack Socket Mode details
+```bash
+DISCORD_TOKEN=<your-discord-bot-token> chump --discord
+```
 
-Start with `chump --slack`. Uses a persistent WebSocket connection — no
-public URL or webhook endpoint needed. Two tokens are required:
+If `DISCORD_TOKEN` is unset during normal CLI, ACP, or `chump --web` usage, Discord remains disabled silently with zero warnings.
 
-- `SLACK_APP_TOKEN` (xapp-…) — Socket Mode token; grants the WSS URL.
-- `SLACK_BOT_TOKEN` (xoxb-…) — Bot OAuth token; used for `chat.postMessage` and other REST calls.
+---
 
-**What's live:** message events + app_mention, replies via `chat.postMessage`, thread replies using
-`thread_ts`, DMs, auto-reconnect with exponential back-off (ceiling 60s).
-Messages over 2990 chars are truncated to fit Slack's text field limit.
+## 5. Implementing a Custom `PlatformAdapter`
 
-**What's deferred (V2):** Block Kit interactive approval buttons, multi-workspace installs,
-slash command payloads, file attachment upload.
+1. Create `src/adapters/<platform>.rs` implementing `PlatformAdapter` (`name`, `start`, `send`, `request_approval`).
+2. Read credentials from environment variables without panicking when unset.
+3. Register the adapter behind `adapter_enabled("<platform>")` in `src/adapters/mod.rs` and add unit tests for message formatting and trait object safety.
 
-Override `SLACK_API_BASE` for local testing (default `https://slack.com/api`).
+---
+
+## Related Guides
+
+- [System Architecture](ARCHITECTURE.md)
+- [Editor Integration (ACP)](ACP.md)
+- [Web Cockpit (`/v2/`)](../PWA_USER_GUIDE.md)

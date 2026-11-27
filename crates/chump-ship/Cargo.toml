@@ -2,7 +2,7 @@
 name = "chump-ship"
 version = "1.0.0"
 edition = "2021"
-description = "Ship trait + ManualShipPath for Chump's ship pipeline (INFRA-1229 planner + INFRA-2001 Phase 2 executor); concrete impl with PID-locked single-instance fixing INFRA-1532 by construction"
+description = "Atomic branch verification, gate-file firewall, and single-instance pull-request ship pipeline for Chump"
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-ship"
 license = "AGPL-3.0-only"

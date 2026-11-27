@@ -1,24 +1,35 @@
-# CLI Exit Code Convention (CREDIBLE-017)
+---
+doc_tag: canonical
+owner_gap: CREDIBLE-017
+last_audited: 2026-11-27
+---
 
-All `chump` CLI commands follow a consistent exit code convention:
+# CLI Exit Codes
 
-| Exit code | Meaning       | When used                                           |
-|-----------|---------------|-----------------------------------------------------|
-| `0`       | Success       | Command completed successfully                      |
-| `1`       | Runtime error | I/O error, server unreachable, operation failed     |
-| `2`       | Usage error   | Missing/invalid arguments, unknown subcommand       |
+All `chump` CLI commands follow a deterministic Unix exit-code contract so shell scripts, git hooks, and CI pipelines can distinguish runtime failures from invalid CLI invocations:
 
-## Rationale
+| Exit Code | Meaning | Typical Causes |
+|:---------:|---------|----------------|
+| `0` | **Success** | Command completed cleanly; validation or preflight passed |
+| `1` | **Runtime / Gate Failure** | Lease collision detected, secret pattern blocked, model/server unreachable, or validation failed |
+| `2` | **Usage Error** | Unknown subcommand, missing required flag, or invalid argument syntax |
 
-Standard exit codes make `chump` composable with shell scripts, CI pipelines,
-and monitoring systems. The convention mirrors common Unix practice (EXIT_FAILURE=1)
-and adds `exit(2)` to distinguish user mistakes from system failures.
+---
 
-## Maintenance
+## Scripting Example
 
-- `exit(0)`: only at the end of successful `fn main()` or explicit success paths
-- `exit(1)`: any error that isn't a usage mistake — file not found, API error, etc.
-- `exit(2)`: errors that indicate the caller used the wrong syntax — missing args,
-  unknown subcommand, invalid flag combination
+```bash
+chump config validate
+case $? in
+  0) echo "Configuration valid" ;;
+  1) echo "Configuration schema or credential check failed" >&2; exit 1 ;;
+  2) echo "CLI invocation syntax error" >&2; exit 2 ;;
+esac
+```
 
-All 134 `std::process::exit()` calls across the codebase were audited in CREDIBLE-017.
+---
+
+## Related Guides
+
+- [CLI Flags](CLI_FLAGS.md)
+- [File Leases & Worktrees](process/AGENT_COORDINATION.md)

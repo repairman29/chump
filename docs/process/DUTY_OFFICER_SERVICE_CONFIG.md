@@ -70,7 +70,7 @@ The fallback was added because the original `chump-duty-officer.service` hardcod
 
 ### Default Setup (systemd service file)
 
-The `chump-duty-officer.service` file (in `scripts/dispatch/`) uses the helsinki convention (written for `/root`). When installed via `chump-node-install.sh`, the unit is rewritten to match the actual run-user:
+The `chump-duty-officer.service` file (in `scripts/dispatch/`) uses the coordinator-node convention (written for `/root`). When installed via `chump-node-install.sh`, the unit is rewritten to match the actual run-user:
 
 ```ini
 [Unit]

@@ -1,6 +1,6 @@
 # No-passwordless-sudo nodes — maintain via root organs only (INFRA-8058)
 
-**Applies to:** closetjunky (CJ, role=gpu-embed, user=jeff) and any node without passwordless sudo.
+**Applies to:** worker-node-01 (CJ, role=gpu-embed, user=jeff) and any node without passwordless sudo.
 Verified 2026-10-02: `sudo -n systemctl disable --now chump-armed-rebaser.timer` →
 `sudo: interactive authentication is required`.
 

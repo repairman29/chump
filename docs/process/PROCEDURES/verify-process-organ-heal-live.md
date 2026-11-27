@@ -1,11 +1,11 @@
-# Verify process-organ-heal LIVE tier on closetjunky — Operator Procedure
+# Verify process-organ-heal LIVE tier on worker-node-01 — Operator Procedure
 
 **Filed under:** `docs/process/PROCEDURES/` — INFRA-3650 (PEER-HEAL-03, MISSION-010)
 **Source scripts:** `scripts/ops/process-organ-heal.sh`, `scripts/ops/check-process-organ-heal-live.sh`, `scripts/setup/chump-node-install.sh`
 
 ---
 
-## Status: LIVE ✓ confirmed on closetjunky (2026-08-22, re-confirmed same day closing INFRA-3650)
+## Status: LIVE ✓ confirmed on worker-node-01 (2026-08-22, re-confirmed same day closing INFRA-3650)
 
 INFRA-3650 shipped the process-organ heal loop (revives unsupervised bash
 procs like `almanac-vision-keeper.sh` that aren't wrapped as systemd units)
@@ -16,9 +16,9 @@ CI coverage (`scripts/ci/test-process-organ-heal.sh`) — was shipped first and
 was already green.
 
 The **LIVE tier** (AC1/AC4: proving the loop is actually running on
-`closetjunky` itself, not just merged) turned out to be verifiable in this
+`worker-node-01` itself, not just merged) turned out to be verifiable in this
 session, once it became clear the session's worktree host **is**
-closetjunky (`hostname` → `closetjunky`) — the earlier remote-access attempts
+worker-node-01 (`hostname` → `worker-node-01`) — the earlier remote-access attempts
 below were all trying to SSH into itself with the wrong keys, not a real
 external-access problem:
 
@@ -36,7 +36,7 @@ That first run required a manual `CHUMP_AMBIENT_LOG` override, which
 surfaced a real bug: the script's hardcoded default
 (`$HOME/.chumpnode/repo/.chump-locks/ambient.jsonl`) does not match how
 `chump-process-organ-heal.service` actually deploys on CJ — its systemd
-drop-in sets `CHUMP_REPO_ROOT=/home/jeff/Projects/chump`, not
+drop-in sets `CHUMP_REPO_ROOT=/home/operator/Projects/chump`, not
 `$HOME/.chumpnode/repo`. The script was silently reporting a false NOT-LIVE
 verdict even though the loop was genuinely live. Fixed in this same PR: the
 script now discovers its own checkout's `.chump-locks/ambient.jsonl` by
@@ -51,16 +51,16 @@ Before this session confirmed the host, remote-access attempts from a
 regular (non-CJ) Claude Code worktree all failed, which is still true for
 *other* fleet sessions that are not physically running on CJ:
 
-- `ssh closetjunky` / `ssh <CJ-TAILNET-IP>` → `Permission denied (publickey)` (no key for this box in a non-CJ worktree)
-- `tailscale ssh closetjunky` → fails at host-key verification (CJ's sshd isn't Tailscale-SSH-enabled)
-- `ssh -o ProxyCommand="tailscale nc %h %p" closetjunky` (routes over the tailnet, bypassing the tailscale-ssh wrapper) → still `Permission denied (publickey)` — confirms it's a real auth gap for remote sessions, not a routing issue
+- `ssh worker-node-01` / `ssh <CJ-TAILNET-IP>` → `Permission denied (publickey)` (no key for this box in a non-CJ worktree)
+- `tailscale ssh worker-node-01` → fails at host-key verification (CJ's sshd isn't Tailscale-SSH-enabled)
+- `ssh -o ProxyCommand="tailscale nc %h %p" worker-node-01` (routes over the tailnet, bypassing the tailscale-ssh wrapper) → still `Permission denied (publickey)` — confirms it's a real auth gap for remote sessions, not a routing issue
 - No GitHub Actions self-hosted runner is registered on CJ (`gh api repos/repairman29/chump/actions/runners` shows only `chumpd-eu-runner`, a different host, and it's offline) — so there's no CI-driven remote path either
 
 **Lesson for future sessions:** check `hostname` before concluding a target
 node is unreachable — a fleet worker dispatched with a node-scoped worktree
 may already *be* the target node.
 
-## Steps (run ON closetjunky, or via SSH from a session that has the key)
+## Steps (run ON worker-node-01, or via SSH from a session that has the key)
 
 **1. Confirm the organ is installed (idempotent — safe to re-run):**
 ```bash
@@ -85,7 +85,7 @@ checkout root) for spawn errors.
 
 ## Closing re-confirmation (2026-08-22, INFRA-3650 ship)
 
-Re-ran `scripts/ops/check-process-organ-heal-live.sh` on closetjunky at gap
+Re-ran `scripts/ops/check-process-organ-heal-live.sh` on worker-node-01 at gap
 close time, from a fresh fleet worktree, with `CHUMP_REPO_ROOT` set the same
 way `chump-process-organ-heal.service`'s drop-in sets it:
 
@@ -105,7 +105,7 @@ way `chump-process-organ-heal.service`'s drop-in sets it:
   `scripts/ci/test-process-organ-heal.sh`) — shipped in #4115/#4116, green
   since.
 - **LIVE tier** (AC1/AC3/AC4: proof the loop and `almanac-vision-keeper` are
-  actually running on closetjunky, not just merged) — confirmed in
+  actually running on worker-node-01, not just merged) — confirmed in
   #4118/#4120, and the false-negative in the checker itself fixed in #4123.
   Re-confirmed clean above at close time.
 - **Named remaining gap** (not in this gap's scope, tracked separately): the

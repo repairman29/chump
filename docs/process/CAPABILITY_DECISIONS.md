@@ -123,7 +123,7 @@ gate was cautious is as load-bearing as the gate itself.
   manifest, stale manifest, no machine field), silently fall back to probing
   `systemctl` on the **local** host. That fallback was the exact
   "assume localhost" anti-pattern this gap exists to remove: a proof-AC
-  bullet naming a unit that lives on a different node (e.g. `closetjunky`)
+  bullet naming a unit that lives on a different node (e.g. `worker-node-01`)
   could be "verified" by checking the wrong box entirely. Unresolvable
   targets now fail CLOSED with `"target node unresolved for <unit>"` instead.
   Resolving to a non-current host now always runs `ssh <node> systemctl

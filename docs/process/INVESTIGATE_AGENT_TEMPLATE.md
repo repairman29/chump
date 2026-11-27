@@ -148,7 +148,7 @@ Specifically check:
 
 DURATION: max 15 min wall-clock. Stop and write findings even if incomplete.
 
-OUTPUT: write to /Users/jeffadkins/Projects/Chump/docs/investigations/fix-trunk-dispatcher-silent-20260601T060000Z.md
+OUTPUT: write to /Users/developer/Projects/Chump/docs/investigations/fix-trunk-dispatcher-silent-20260601T060000Z.md
 using the structure from docs/process/INVESTIGATE_AGENT_TEMPLATE.md.
 
 CONSTRAINTS (HARD):

@@ -1,17 +1,17 @@
 # COTG — the "installed node" experience
 
 **Goal (Jeff, 2026-08-17):** make "installed" a real, reproducible experience, not the
-hand-assembly helsinki (and the current Pixel) grew into. One command turns an OWNED box
+hand-assembly coordinator-node (and the current Pixel) grew into. One command turns an OWNED box
 into a clean, self-supervising, self-testing ChumpOS node — host-agnostic (Termux / systemd
 Linux / macOS). This is what RESILIENT-318 actually is.
 
 ## Why this exists
-The 2026-08-17 helsinki teardown proved helsinki was ~half *installed* (reproducible from
+The 2026-08-17 coordinator-node teardown proved coordinator-node was ~half *installed* (reproducible from
 `install-helsinki-atc.sh`) and ~half *built* — 11 load-bearing organs (worker@, keep-mergeable,
 discord-gateway, electrician, …) were hand-placed with no installer, so a rebuild couldn't
 reproduce them. The Pixel is the same disease one layer down: a RESILIENT-336 node accumulated
 across `~/chump` (binary + junk), `~/chump-repo`, `~/chump-brain`, a boot supervisor, an
-organs runner, and a now-dead-helsinki witness — none of it reproducible, half of it obsolete.
+organs runner, and a now-dead-coordinator-node witness — none of it reproducible, half of it obsolete.
 "Installed" must mean: **fresh box + one command + green self-test → a node that runs.**
 
 ## The one command
@@ -61,7 +61,7 @@ chump-node-install.sh --role brain|muscle|all [--home DIR] [--self-test-only]
 
 ## Non-negotiable: reproducible, not bespoke
 Every organ is installed from the manifest by the installer. If an organ runs, an installer
-created it — no hand-placed unit/service ever again. That is the one lesson from the helsinki
+created it — no hand-placed unit/service ever again. That is the one lesson from the coordinator-node
 teardown, encoded.
 
 ## Standing proof: the cold-install FTUE harness (RESILIENT-1050)

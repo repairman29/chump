@@ -4,7 +4,7 @@
 
 Chump is a local-first Rust multi-agent coordinator, pre-commit file-lease firewall, and 40-slot model failover router for **macOS, Linux, and Windows**. Bring the coding agents you already use (**Claude Code**, **Codex CLI**, **OpenCode**, **Aider**, **goose**, or manual git commits) or run **100% offline on local Ollama / vLLM**. Runs on hardware you own—zero seat fees, zero token markup, zero cloud middleman.
 
-**Product Site & Interactive Tools:** [repairman29.github.io/chump](https://repairman29.github.io/chump/) · **Documentation:** [repairman29.github.io/chump/docs](https://repairman29.github.io/chump/docs/) · **Offline Ollama Guide:** [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) · **License:** AGPL-3.0 (binaries) + Apache-2.0 (13 library crates; see [NOTICE](NOTICE))
+**Product Site & Interactive Tools:** [repairman29.github.io/chump](https://repairman29.github.io/chump/) · **Quickstart:** [repairman29.github.io/chump/docs](https://repairman29.github.io/chump/docs/) · **Searchable Reference:** [repairman29.github.io/chump/reference](https://repairman29.github.io/chump/reference/) · **Offline Ollama Guide:** [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) · **License:** AGPL-3.0 (binaries) + Apache-2.0 (13 library crates; see [NOTICE](NOTICE))
 
 ---
 
@@ -22,7 +22,7 @@ Running one coding agent inside one terminal is solved. Running five in parallel
 Chump ships two independent, composable layers in one binary:
 
 - **1. The Coordinator (works with any coding agent):** SQLite WAL task queue (`.chump/state.db`), path and symbol-region file leases (`.chump-locks/`), isolated git worktrees, an `ambient.jsonl` event stream, native Rust `pre-commit` / `pre-push` guards (`chump hook`), and a gate-guarded PR shipper (`chump ship`).
-- **2. The Built-in Local Agent (optional):** Connects directly to Ollama, LM Studio, llama.cpp, vLLM, or your configured provider cascade, keeps persistent SQLite FTS5 + graph memory, exposes 30+ approval-gated tools, and speaks CLI, web cockpit (`/v2/`), Discord, or [Agent Client Protocol (`chump --acp`)](docs/architecture/ACP.md) for Zed and JetBrains.
+- **2. The Built-in Local Agent (optional):** Connects directly to Ollama, LM Studio, llama.cpp, vLLM, or your configured provider cascade, keeps persistent SQLite FTS5 + graph memory, exposes 30+ approval-gated tools, and speaks CLI, web cockpit (`/v2/`), [Agent Client Protocol (`chump --acp`)](docs/architecture/ACP.md) for Zed and JetBrains, or [optional chat adapters](docs/architecture/MESSAGING_ADAPTERS.md).
 
 ---
 
@@ -37,7 +37,10 @@ brew tap repairman29/chump && brew install chump
 # Linux (POSIX shell binary installer — x86_64 & aarch64)
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh
 
-# Windows or Cargo from source (macOS / Linux / Windows)
+# Windows (PowerShell pre-built binary installer — x86_64)
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/repairman29/chump/releases/latest/download/chump-installer.ps1 | iex"
+
+# Any OS from source via Cargo (macOS / Linux / Windows)
 cargo install --git https://github.com/repairman29/chump chump --locked
 ```
 
