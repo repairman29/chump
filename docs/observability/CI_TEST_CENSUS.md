@@ -1,6 +1,6 @@
 ---
 doc_tag: log
-last_audited: 2026-11-26
+last_audited: 2026-11-27
 ---
 
 # scripts/ci test census
@@ -13,28 +13,39 @@ Rule: a new scripts/ci test is wired or it is deleted. The shrink-only gate
 (`scripts/ci/test-census-shrink-only.sh`) fails any PR that adds an unwired
 test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 
-- Run date: 2026-11-26 (generated 2026-11-26T19:30:15Z)
-- Mode: partial on darwin; tests run this time: 70
+- Run date: 2026-11-27 (generated 2026-11-27T14:20:15Z)
+- Mode: full on linux; tests run this time: 480
 - Per-test timeout: 240s; jobs: 6
 
 | total | wired | unwired | red | pass | fail | timeout | skip | not run |
 |---|---|---|---|---|---|---|---|---|
-| 480 | 480 | 0 | 0 | 480 | 0 | 0 | 0 | 0 |
+| 480 | 480 | 0 | 12 | 468 | 11 | 1 | 0 | 0 |
 
 | | green | red |
 |---|---|---|
-| wired | 480 | 0 |
+| wired | 468 | 12 |
 | unwired | 0 | 0 |
 
-## wired-red (0)
+## wired-red (12)
 
-(none)
+- `test-bot-merge-watchdog.sh` (fail, exit 1, run:linux)
+- `test-capabilities-registry.sh` (fail, exit 1, run:linux)
+- `test-cargo-target-reaper-class-d-open-idle.sh` (timeout, exit 124, run:linux)
+- `test-cli-version-debug.sh` (fail, exit 1, run:linux)
+- `test-docs-delta-commit-msg.sh` (fail, exit 1, run:linux)
+- `test-error-path-coverage.sh` (fail, exit 1, run:linux)
+- `test-fleet-kill-switch.sh` (fail, exit 1, run:linux)
+- `test-mock-services-integration.sh` (fail, exit 125, run:linux)
+- `test-mock-services.sh` (fail, exit 125, run:linux)
+- `test-pr-stuck-auto-respawn.sh` (fail, exit 1, run:linux)
+- `test-pre-push-rebase-allow.sh` (fail, exit 1, run:linux)
+- `test-run-fleet-cross-repo.sh` (fail, exit 1, run:linux)
 
 ## unwired-red (0)
 
 (none)
 
-## wired-green (480)
+## wired-green (468)
 
 - `test-a2a-rpc-observability.sh`
 - `test-acp-real-clients.sh`
@@ -94,7 +105,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-bot-merge-recovery-pr-create.sh`
 - `test-bot-merge-rest-direct.sh`
 - `test-bot-merge-stacked-rebase.sh`
-- `test-bot-merge-watchdog.sh`
 - `test-bounced-pr-detector.sh`
 - `test-branch-protection-gate.sh`
 - `test-broad-canary-coverage.sh`
@@ -102,10 +112,8 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-bypass-line-required.sh`
 - `test-cache-event-emission.sh`
 - `test-cache-mergestatestatus.sh`
-- `test-capabilities-registry.sh`
 - `test-cargo-mutex-isolation.sh`
 - `test-cargo-target-no-worktree-default.sh`
-- `test-cargo-target-reaper-class-d-open-idle.sh`
 - `test-cargo-target-reaper-class-d.sh`
 - `test-cargo-target-reaper.sh`
 - `test-cascade-cancellation-status-description.sh`
@@ -145,7 +153,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-cli-integration.sh`
 - `test-cli-output-format.sh`
 - `test-cli-product-surface.sh`
-- `test-cli-version-debug.sh`
 - `test-cockpit-wake-fleet.sh`
 - `test-code-reviewer-authskip.sh`
 - `test-cog-043-action-telemetry.sh`
@@ -183,14 +190,12 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-dispatch-work-stranded.sh`
 - `test-doc-freshness.sh`
 - `test-doc-only-clippy-skip.sh`
-- `test-docs-delta-commit-msg.sh`
 - `test-docs-delta-guard.sh`
 - `test-doctrine-seam-finder.sh`
 - `test-doctrine-weave-detectors.sh`
 - `test-edit-replay.sh`
 - `test-effective-010-completion.sh`
 - `test-env-var-coverage.sh`
-- `test-error-path-coverage.sh`
 - `test-event-registry-audit-regression.sh`
 - `test-event-registry-coverage.sh`
 - `test-event-registry-effect-metric.sh`
@@ -212,7 +217,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-fleet-doctor-canonical-dirty.sh`
 - `test-fleet-fanout.sh`
 - `test-fleet-health-sentinel.sh`
-- `test-fleet-kill-switch.sh`
 - `test-fleet-metrics-snapshot.sh`
 - `test-fleet-pause-autolift.sh`
 - `test-fleet-race-loss.sh`
@@ -324,8 +328,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-migration-pipeline-gates.sh`
 - `test-mission-picker-worker.sh`
 - `test-mission-picker.sh`
-- `test-mock-services-integration.sh`
-- `test-mock-services.sh`
 - `test-model-registry.sh`
 - `test-no-anthropic-smoke.sh`
 - `test-no-claude-leak.sh`
@@ -395,7 +397,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-pr-rescue-audit-handler.sh`
 - `test-pr-rescue-noci.sh`
 - `test-pr-scope-title-fallback.sh`
-- `test-pr-stuck-auto-respawn.sh`
 - `test-pr-stuck-cluster-detection.sh`
 - `test-pr-stuck-cluster-observability.sh`
 - `test-pr-terminal-state.sh`
@@ -407,7 +408,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-pre-commit-gap-guard-perf.sh`
 - `test-pre-push-force-lease-guard.sh`
 - `test-pre-push-preflight-hook.sh`
-- `test-pre-push-rebase-allow.sh`
 - `test-pre-push-test-gate.sh`
 - `test-precommit-guard-audit.sh`
 - `test-precommit-strict-replay.sh`
@@ -463,7 +463,6 @@ test or grows the red count. See docs/process/CI_GATES_INVENTORY.md.
 - `test-ruleset-doc-only-pr.sh`
 - `test-run-consolidation.sh`
 - `test-run-fleet-core-cap.sh`
-- `test-run-fleet-cross-repo.sh`
 - `test-runner-autoscale-max-default.sh`
 - `test-sandbox-isolation.sh`
 - `test-schema-version-assert.sh`
