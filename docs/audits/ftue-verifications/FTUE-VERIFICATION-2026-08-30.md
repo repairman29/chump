@@ -41,7 +41,7 @@ promise, and they cover **different, non-overlapping** organ sets:
 
 **Finding F1 — "one command" does not install the factory.**
 `chump-node-install.sh` **never calls** `install-helsinki-atc.sh`
-(confirmed: `grep -n helsinki-atc scripts/setup/chump-node-install.sh` → no
+(confirmed: `grep -n coordinator-node-atc scripts/setup/chump-node-install.sh` → no
 match). The 16 ATC-roster organs that make the box an actual *shipping
 factory* (lander, farmer, integrator, drain, merge-flow) come **only** from
 the root-privileged ATC installer. The auto-path that would run it
@@ -173,7 +173,7 @@ wall.
 
 ## 5. The box problem
 
-**A LIVE fresh-box proof cannot honestly be run on CJ.** CJ (`closetjunky`)
+**A LIVE fresh-box proof cannot honestly be run on CJ.** CJ (`worker-node-01`)
 *is* the reference node — it already has `~/.chumpnode`, `~/.chump`, the ATC
 roster in `/etc/systemd/system`, a live PostgREST, and a running almanac. A
 `chump-node-install.sh` run on CJ would collide with the existing install and

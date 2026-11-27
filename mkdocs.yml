@@ -1,5 +1,6 @@
-site_name: Chump Documentation
-site_description: Operator guide, CLI reference, multi-agent file leases, model cascade, and Rust architecture for Chump v1.0.
+site_name: Chump Reference Documentation
+site_description: Operator guide, CLI reference, multi-agent file leases, 40-slot model failover, and Rust architecture for Chump v1.0 on macOS, Linux, and Windows.
+site_url: https://repairman29.github.io/chump/reference/
 repo_url: https://github.com/repairman29/chump
 docs_dir: docs
 site_dir: site
@@ -28,7 +29,6 @@ theme:
 
 plugins:
   - search
-  - awesome-pages
 
 markdown_extensions:
   - admonition
@@ -38,23 +38,57 @@ markdown_extensions:
   - fenced_code
   - pymdownx.superfences
 
+# Strict allowlist: exclude all internal maintainer/design/eval notes by default
+# and explicitly un-ignore ONLY the 22 curated public v1.0 reference pages below.
 exclude_docs: |
-  proprietary/**
-  gaps/**
-  archive/**
-  audits/**
-  audit/**
-  investigations/**
-  syntheses/**
-  baselines/**
-  test-fixtures/**
-  design-pass/**
-  outreach/**
-  marketing/**
-  RED_LETTER.md
-  operations/OOPS.md
-  *-NOTES.md
-  *-NOTES-*.md
-  *_design.md
-  *_score.md
-  _inventory.csv
+  *
+  !/README.md
+  !/USER_GUIDE.md
+  !/QUICKSTART_OFFLINE.md
+  !/PWA_USER_GUIDE.md
+  !/CLI_FLAGS.md
+  !/CLI_EXIT_CODES.md
+  !/ROADMAP.md
+  !/process/EXTERNAL_GOLDEN_PATH.md
+  !/process/AGENT_COORDINATION.md
+  !/process/CHUMP_CURSOR_FLEET.md
+  !/process/CANONICAL_SERVICES.md
+  !/architecture/PROVIDER_CASCADE.md
+  !/architecture/EXECUTION_BACKENDS.md
+  !/architecture/ACP.md
+  !/architecture/ARCHITECTURE.md
+  !/architecture/RUST_MODULE_MAP.md
+  !/architecture/MESSAGING_ADAPTERS.md
+  !/operations/INFERENCE_PROFILES.md
+  !/operations/INFERENCE_STABILITY.md
+  !/operations/OPERATIONS.md
+  !/operations/STORAGE_AND_ARCHIVE.md
+  !/api/WEB_API_REFERENCE.md
+
+nav:
+  - Overview: README.md
+  - Getting Started:
+      - User Guide: USER_GUIDE.md
+      - 5-Minute Clean Setup: process/EXTERNAL_GOLDEN_PATH.md
+      - Offline Local Models: QUICKSTART_OFFLINE.md
+  - Coordination & Git Firewall:
+      - File Leases & Worktrees: process/AGENT_COORDINATION.md
+      - IDE & Terminal Workflows: process/CHUMP_CURSOR_FLEET.md
+      - Shared Services: process/CANONICAL_SERVICES.md
+  - Model Routing & Operations:
+      - Provider Cascade & OAuth: architecture/PROVIDER_CASCADE.md
+      - Execution Backends: architecture/EXECUTION_BACKENDS.md
+      - Hardware & RAM Profiles: operations/INFERENCE_PROFILES.md
+      - Inference Stability: operations/INFERENCE_STABILITY.md
+      - Daemon & Service Operations: operations/OPERATIONS.md
+      - Storage & Worktree Hygiene: operations/STORAGE_AND_ARCHIVE.md
+  - Interfaces & Reference:
+      - Web Cockpit (/v2/): PWA_USER_GUIDE.md
+      - Editor Integration (ACP): architecture/ACP.md
+      - CLI Flags: CLI_FLAGS.md
+      - CLI Exit Codes: CLI_EXIT_CODES.md
+      - HTTP & SSE API: api/WEB_API_REFERENCE.md
+      - System Architecture: architecture/ARCHITECTURE.md
+      - Workspace Module Map: architecture/RUST_MODULE_MAP.md
+      - Product Roadmap: ROADMAP.md
+      - Optional Chat Adapters: architecture/MESSAGING_ADAPTERS.md

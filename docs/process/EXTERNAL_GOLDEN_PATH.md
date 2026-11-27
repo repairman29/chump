@@ -1,197 +1,131 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
 ---
 
-# External golden path (minimal first success)
+# 5-Minute Clean Setup (External Golden Path)
 
-**Goal:** From a cold clone, get **inference + one surface + a health check** without Discord, fleet, or `chump-brain/`. Time target: **under 30 minutes** on a fast connection (Rust + model pull dominate).
-
-**Discord:** Optional. This path uses the **web PWA** as the default first surface; add Discord later if you want. Fleet (Pixel/Mabel) is a natural next step after first success.
-
-**Not in this path:** Mabel/Pixel, provider cascade, ship heartbeat, launchd roles. For the full stack, see [`docs/architecture/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/FLEET_ROLES.md) and the Operations chapter (`./operations.md`).
+This guide walks any developer on a clean **macOS, Linux, or Windows** machine from zero to a verified Chump `v1.0` installation: configuration validated, pre-commit lease firewall installed, web cockpit live on `127.0.0.1`, and health endpoints green.
 
 ---
 
 ## Prerequisites
 
-| Requirement | Notes |
-|-------------|--------|
-| **Rust** | Stable toolchain (`rustup`, `cargo`). Edition 2021 per `Cargo.toml`. |
-| **Git** | Clone this repository. |
-| **Ollama** | [ollama.com](https://ollama.com) — local OpenAI-compatible API on `http://localhost:11434`. |
-| **OS** | macOS or Linux primary; Windows may work via WSL (not regularly tested here). |
-
-### Daily driver profile (recommended first stack)
-
-Keep **one** inference profile until you intentionally switch (see [`.env.example`](https://github.com/repairman29/chump/blob/main/.env.example) header):
-
-| Variable | Typical value |
-|----------|----------------|
-| `OPENAI_API_BASE` | `http://localhost:11434/v1` (Ollama) |
-| `OPENAI_API_KEY` | `ollama` |
-| `OPENAI_MODEL` | e.g. `qwen2.5:14b` (must be pulled: `ollama pull …`) |
-
-After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/ci/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See the Operations chapter (`./operations.md`) **Preflight**.
+- **OS:** macOS 13+ (Apple Silicon or Intel), Linux (`x86_64` or `aarch64`), or Windows 10/11 (`x86_64`)
+- **Git:** `git` 2.30+ on `PATH` (for worktrees and pre-commit hooks)
+- **Model backend (pick any one):**
+  - Local [Ollama](https://ollama.com/), LM Studio, `llama.cpp`, or `vLLM` (no API key needed), **or**
+  - Any OpenAI/Anthropic/Gemini API key or signed-in CLI harness (`claude`, `codex`, `opencode`, `aider`)
 
 ---
 
-## Steps
+## 1. Install `chump`
 
-### 1. Clone and enter the repo
+### Option A — Prebuilt Release Binary (~25 seconds)
 
 ```bash
-git clone <your-fork-or-upstream-url> chump
+# macOS (Homebrew)
+brew tap repairman29/chump && brew install chump
+
+# Linux (POSIX shell installer)
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/repairman29/chump/releases/latest/download/chump-installer.ps1 | iex"
+```
+
+### Option B — Build from Source with Rust Cargo
+
+```bash
+git clone https://github.com/repairman29/chump.git
 cd chump
+cargo build --release --bin chump
 ```
 
-### 2. Create a minimal `.env`
-
-```bash
-./scripts/setup/setup-local.sh
-```
-
-Then edit `.env`:
-
-- For **web or CLI only**, **comment out** `DISCORD_TOKEN` or set it empty so the config summary does not treat Discord as configured.
-- You do **not** need `TAVILY_API_KEY`, `GITHUB_TOKEN`, or cascade keys for this path.
-
-**Minimal variables for Ollama (can also rely on `run-local.sh` defaults):**
-
-```bash
-OPENAI_API_BASE=http://localhost:11434/v1
-OPENAI_API_KEY=ollama
-OPENAI_MODEL=qwen2.5:14b
-```
-
-**Keep your real `.env` aligned with one stack:** If you also set Hugging Face model ids, vLLM bases, or `CHUMP_INFERENCE_BACKEND=mistralrs`, Chump may still talk to Ollama with the wrong model name. For Week 1–2, use **only** the three lines above for `OPENAI_*` and leave mistral / MLX / cascade lines commented until you need them (see [`docs/operations/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/operations/INFERENCE_PROFILES.md)). [`.env.example`](https://github.com/repairman29/chump/blob/main/.env.example) starts with the same Ollama block.
-
-**One-shot overrides (optional):** If `.env` still points at another profile but you want to force this path for a single command:
-
-| Variable | When to use |
-|----------|-------------|
-| `CHUMP_GOLDEN_PATH_OLLAMA=1` | After sourcing `.env`, forces `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `OPENAI_MODEL` to the Ollama values above for **that process only**. |
-| `CHUMP_USE_RELEASE=1` | Makes `./run-local.sh` run `cargo run --release --bin chump` (after `cargo build --release --bin chump`). |
-
-Example: `CHUMP_USE_RELEASE=1 CHUMP_GOLDEN_PATH_OLLAMA=1 ./run-local.sh -- --check-config`
-
-### 3. Start Ollama and pull a model
-
-**Recommended on macOS (Homebrew Ollama):** run the daemon under `launchd` so it survives crashes and restarts quickly:
-
-```bash
-brew services start ollama
-ollama pull qwen2.5:14b
-```
-
-After `killall ollama`, `GET http://127.0.0.1:11434/api/tags` should return **200** again within about **10 seconds** (typical respawn a few seconds). Repeat anytime: [`scripts/ci/verify-ollama-respawn.sh`](https://github.com/repairman29/chump/blob/main/scripts/ci/verify-ollama-respawn.sh). **Alternative:** [ChumpMenu](https://github.com/repairman29/chump/blob/main/ChumpMenu/README.md) can start/stop Ollama from the menu bar if you use the menu app daily. Avoid relying on a one-off `nohup ollama serve` in a shell profile unless you accept restarts when that shell exits.
-
-**Manual / dev:** `ollama serve` in a terminal is fine for a session; use another terminal for `ollama pull …`.
-
-### 4. Build (first time)
-
-```bash
-cargo build
-```
-
-Release is optional for trying the app: `cargo build --release` for production-like latency.
-
-### 5. Verify health (web path — **recommended** for external users)
-
-Start the web server (PWA + API):
-
-```bash
-./run-web.sh
-# or: ./run-local.sh -- --web --port 3000
-```
-
-Check JSON health:
-
-```bash
-curl -s http://127.0.0.1:3000/api/health | head -c 500
-```
-
-You should see JSON with status fields (model, version, etc.). **Note:** This is **`GET /api/health`** on the **web port** (default 3000). A separate sidecar **`GET /health`** exists only when `CHUMP_HEALTH_PORT` is set (typically with Discord); do not confuse the two.
-
-Open the UI: **http://127.0.0.1:3000** — use the PWA chat if the model is up.
-
-### 6. Optional: CLI one-shot (no browser)
-
-```bash
-./run-local.sh -- --chump "Reply in one sentence: what is 2+2?"
-```
-
-Expect a short model reply on stdout. Uses the same Ollama env defaults as `run-local.sh` (and strips a stray `--` before `cargo run` so `--check-config` / `--chump` are parsed correctly).
-
-**Latency:** The first `--chump` run after Ollama starts may take **minutes** on a 14B model (load into GPU/RAM). A **second** run with the same model is usually much faster but may still be **tens of seconds** on 14B Apple Silicon depending on load and keep-alive. If warm runs stay very slow, treat it as a performance follow-up (model size, `OLLAMA_KEEP_ALIVE`, MLX/vLLM profile, etc.).
-
-### 7. Optional: Discord
-
-Requires a real bot token and intents — [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md), `./scripts/ci/check-discord-preflight.sh`, then `./run-discord-ollama.sh` or `./run-discord.sh`.
+> **Automated no-model smoke check (source checkouts):** Run `./scripts/ci/verify-external-golden-path.sh` (and optional timing helper `./scripts/ci/golden-path-timing.sh`) to verify binary compilation, config validation, and static assets without requiring a live model key.
 
 ---
 
-## Advanced (defer until golden path works)
+## 2. Initialize Configuration & Repository Guards
 
-| Topic | Doc |
-|--------|-----|
-| vLLM-MLX on port 8000 | [`docs/operations/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/operations/INFERENCE_PROFILES.md), [`docs/operations/STEADY_RUN.md`](https://github.com/repairman29/chump/blob/main/docs/operations/STEADY_RUN.md) |
-| Brain wiki + `memory_brain` | [`docs/architecture/CHUMP_BRAIN.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/CHUMP_BRAIN.md) |
-| Fleet / Mabel / Pixel | [`docs/architecture/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/FLEET_ROLES.md), the Operations chapter (`./operations.md#keeping-the-stack-running-farmer-brown--mabel`) |
-| Provider cascade + privacy | [`docs/architecture/PROVIDER_CASCADE.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/PROVIDER_CASCADE.md) |
-| Tool approval / risk | [`docs/operations/TOOL_APPROVAL.md`](https://github.com/repairman29/chump/blob/main/docs/operations/TOOL_APPROVAL.md) |
-| Disk / archives | [`docs/operations/STORAGE_AND_ARCHIVE.md`](https://github.com/repairman29/chump/blob/main/docs/operations/STORAGE_AND_ARCHIVE.md) |
-
----
-
-## Troubleshooting (common)
-
-| Symptom | Check |
-|---------|--------|
-| `connection refused` on chat | Ollama running? `curl -s http://127.0.0.1:11434/api/tags` |
-| Web serves blank or 404 static | `CHUMP_HOME` / repo root so `web/` exists; see [`run-web.sh`](https://github.com/repairman29/chump/blob/main/run-web.sh) |
-| `cargo` errors | `rustc --version`; run `rustup update` |
-| Config warnings on stderr | Expected if Discord/brain/tavily unset; see [`src/config_validation.rs`](https://github.com/repairman29/chump/blob/main/src/config_validation.rs) |
-
----
-
-## Next: autonomy and fleet
-
-After §5–6 succeed, the natural progressions are:
-
-- **Task API:** Try `POST /api/tasks` to create a task and watch it process in the next heartbeat round. See [`docs/api/WEB_API_REFERENCE.md`](https://github.com/repairman29/chump/blob/main/docs/api/WEB_API_REFERENCE.md) for the full API surface.
-- **Discord:** Add the Discord bot for ambient interaction — set `DISCORD_TOKEN` and run `./run-discord.sh`. See [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md).
-- **Fleet / Mabel:** For multi-node operation (Mac + Pixel), see [`docs/architecture/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/FLEET_ROLES.md) and the "Keeping the stack running" section in [`docs/operations/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/operations/OPERATIONS.md).
-
----
-
-## Automated smoke (CI / maintainers)
-
-From repo root (does not start Ollama or the web server):
+Inside any git repository you want Chump to coordinate:
 
 ```bash
-./scripts/ci/verify-external-golden-path.sh
+# 1. Create ~/.chump/config.toml (0600 permissions on Unix) and validate schema
+chump config init
+chump config validate
+
+# 2. Initialize .chump/state.db (SQLite WAL) in the target repository
+chump init --yes
+
+# 3. Install native Rust pre-commit & pre-push guards
+chump hook install
+chump hook status
 ```
 
-Runs `cargo build` and checks that golden-path files exist. Used in **GitHub Actions** after `cargo test`.
+Expected output from `chump hook status`: both `pre-commit` and `pre-push` hooks report `installed` and active.
 
-### Timing regression
+---
 
-To record how long **cargo build** (and optionally **GET /api/health**) take for cold-start tracking:
+## 3. Connect Your Model Backend
+
+Edit `~/.chump/config.toml` (`chump config path` prints the exact file path for your OS):
+
+- **Local Ollama (`$0` offline):** ensure `ollama serve` is running (`ollama pull qwen2.5-coder:7b`) and keep a `tier = "local"` `[[providers]]` entry pointing at `http://127.0.0.1:11434/v1`.
+- **Cloud API or Subscription OAuth:** set `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN` in your environment and reference the variable name via `api_key_env` in `[[providers]]` (secrets stay in env vars or OS keychains, never hardcoded in `config.toml`).
+
+Re-validate after editing:
 
 ```bash
-./scripts/ci/golden-path-timing.sh
-GOLDEN_TIMING_HIT_HEALTH=1 ./scripts/ci/golden-path-timing.sh   # web must already be up
+chump config validate
 ```
 
-Logs append to **`logs/golden-path-timing-YYYY-MM-DD.jsonl`**. If **`cargo build`** exceeds **`GOLDEN_MAX_CARGO_BUILD_SEC`** (default 900), the script exits **1**.
+---
 
-**CI:** GitHub Actions runs this after `verify-external-golden-path.sh` with **`GOLDEN_MAX_CARGO_BUILD_SEC=1800`** and uploads **`logs/golden-path-timing-*.jsonl`** as a workflow artifact (see `.github/workflows/ci.yml`).
+## 4. Launch the Web Cockpit & Run Preflight
 
-## Related
+Start the local web server in one terminal:
 
-- [Operations](./operations.md) — run modes, env vars, heartbeats, roles
-- [`docs/operations/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/operations/INFERENCE_PROFILES.md) — Ollama, vLLM-MLX, mistral.rs configuration
-- [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md) — Discord bot setup
-- [`docs/briefs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/briefs/CHUMP_PROJECT_BRIEF.md) — project focus, conventions, and agent guidance
+```bash
+chump --web --port 3847
+```
+
+Open **http://127.0.0.1:3847/v2/** in your browser to view the Sovereign Operator Cockpit, or **http://127.0.0.1:3847/site/** to use the interactive Config Doctor and Fleet Simulator locally.
+
+### Preflight Verification
+
+Verify health and inference readiness from a second terminal:
+
+```bash
+curl -fsS http://127.0.0.1:3847/api/health
+curl -fsS http://127.0.0.1:3847/api/stack-status
+```
+
+- `GET /api/health` returns `{"status":"ok","service":"chump-web","binary_version":"1.0.0",...}`.
+- `GET /api/stack-status` reports `inference.models_reachable: true` when your configured local or cascade model endpoint responds cleanly.
+- Before pushing code changes in a repository managed by Chump, run `chump preflight` to execute formatting, `clippy -D warnings`, compile checks, and scoped tests locally.
+
+---
+
+## 5. Optional: Enable Background Supervision (`chumpd`)
+
+To keep worker pools, OAuth credential refresh, and expired-lease reaping running automatically in the background:
+
+```bash
+chump service install
+chump up
+chump service status
+```
+
+See [Daemon & Service Operations](../operations/OPERATIONS.md) for `LaunchAgents` (macOS), `systemd --user` (Linux), and `ChumpDaemon` (Windows) details.
+
+---
+
+## Next Steps
+
+- [User Guide](../USER_GUIDE.md) — Reserve gaps, claim worktrees, and ship PRs
+- [File Leases & Worktrees](AGENT_COORDINATION.md) — How parallel sessions stay collision-free
+- [Provider Cascade & OAuth](../architecture/PROVIDER_CASCADE.md) — Multi-slot routing and rate-limit protection
+- [Optional Chat Adapters](../architecture/MESSAGING_ADAPTERS.md) — Opt-in Slack, Telegram, or Discord notifications

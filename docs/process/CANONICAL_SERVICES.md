@@ -1,75 +1,57 @@
-# Canonical services registry (INFRA-3463)
+---
+doc_tag: canonical
+owner_gap: INFRA-3463
+last_audited: 2026-11-27
+---
 
-**Prefer the shared substrate over building in silos.** When a capability already
-has a canonical shared service in this codebase, new code should route through it
-rather than hand-rolling its own client, auth, retries, and fallback. Silos
-duplicate logic, drift, and reproduce bugs the shared service already solved — the
-canonical example being the OAuth-only reviewer bug (INFRA-3457): a hand-rolled
-`curl` + `x-api-key` that broke for subscription/OAuth-only users because it
-bypassed the shared LLM service that already handled the auth ladder.
+# Shared Services Registry
 
-This file is the **source of truth** consumed by:
-- the **Shared-Service-Bypass gate** (`scripts/git-hooks/pre-commit-shared-service.sh`),
-  which surfaces new bespoke calls at commit time; and
-- the **comprehension organs** (WIRING), which steer agents toward the shared
-  service by reflex (INFRA-3458/3459).
+**Prefer canonical shared services over hand-rolled silos.** When a capability already has a shared implementation in Chump, new modules and scripts route through it rather than duplicating HTTP clients, authentication ladders, retry backoff, and circuit breakers.
 
-Steer (comprehension) + prevent (gate) = the contract.
+---
 
-## Registry
+## Canonical Service Table
 
-| Capability class | Canonical shared service | Sanctioned entry points | Bespoke-call signals the gate watches |
-|---|---|---|---|
-| **LLM completion** | `ProviderCascade` (`src/provider_cascade.rs`) — auth ladder incl. OAuth, 429 backoff, slot cascade/fallback, model-class routing, privacy tiers | **Rust:** `provider_cascade::build_provider().complete(...)`. **Shell / external:** `chump llm-complete [--model <class>] [--system <t>] [--max-tokens <n>]` (INFRA-3461/3462), which routes through the same cascade | `api.anthropic.com`, `api.openai.com`, `x-api-key`, hand-rolled `/v1/messages` or `/v1/chat/completions` POSTs |
+| Capability Class | Canonical Shared Service | Sanctioned Entry Points | Bespoke Signals Watched by Pre-Commit Gate |
+|------------------|--------------------------|-------------------------|--------------------------------------------|
+| **LLM Completion** | `ProviderCascade` (`src/provider_cascade.rs`) — subscription OAuth ladder, 40-slot failover, HTTP 429 RPM headroom, model-tier routing, and privacy boundaries | **Rust:** `provider_cascade::build_provider().complete(...)`<br>**Shell / CLI:** `chump llm-complete [--model <class>] [--system <t>] [--max-tokens <n>]` | Raw HTTP calls to `api.anthropic.com` / `api.openai.com`, `x-api-key` headers, or bespoke `/v1/messages` and `/v1/chat/completions` POSTs |
 
-_Add a row per capability class as canonical services are established (e.g.
-GitHub reads → the local cache; canonical state → the gap store)._
+---
 
-## Legitimately-direct sites (NOT silos)
+## Why This Matters
 
-Some direct calls are correct and must not be flagged. The gate allowlists them by
-path; keep this list and the gate's allowlist in sync:
+Routing every completion through `ProviderCascade` guarantees that:
 
-- **The shared layer itself:** `src/provider_cascade.rs`, `src/local_openai.rs`.
-- **Credential-validity probes** (must hit the raw endpoint to test *that* key):
-  `scripts/coord/auth-status.sh`, `src/web_server.rs` (`probe_secret`),
-  `src/model_probe.rs`, `src/routes/health.rs`.
-- **Standalone research / eval harnesses** whose whole point is to hit providers
-  directly: `scripts/ab-harness/**`, `scripts/eval/cross-judge.sh`.
-- **Liveness/readiness probes:** `scripts/ci/check-providers.sh`,
-  `scripts/ci/check-heartbeat-preflight.sh`, and similar `/models` pings.
-- **Audited intentional-direct call sites** (INFRA-3465, resolved by the
-  2026-07-28 fragmentation audit as allowlist-not-migrate — see
-  [`SHARED_LLM_SERVICE_INTEGRATION.md`](../design/SHARED_LLM_SERVICE_INTEGRATION.md)):
-  `src/adversary_llm.rs` (adversarial-critique use case; a same-signature
-  swap to `provider_cascade::build_provider()` was considered and rejected
-  as unnecessary churn — the direct call is already scoped and audited) and
-  `src/screen_vision_tool.rs` (vision/image input — `ProviderCascade::complete()`
-  is text-only today, so this is a capability gap, not a routing bug; direct
-  is correct until an image-input variant exists).
+1. **Subscription OAuth works everywhere:** Users running on OAuth tokens (`[auth] mode = "auto"`) never hit unexpected `x-api-key missing` failures in auxiliary tools such as automated diff review or task decomposition.
+2. **Rate-limit and circuit state is shared:** When one slot returns HTTP `429` or `503`, every caller immediately fails over to the next healthy slot in `~/.chump/config.toml`.
+3. **Privacy boundaries hold:** Repositories or sessions marked local-only (`tier = "local"` or `CHUMP_AIR_GAP_MODE=1`) never leak prompts through a side-channel script.
 
-## Adding a new bespoke call anyway
+---
 
-If you have a genuine reason to bypass the shared service, add a commit trailer so
-it is **audited**, not silent (mirrors `Rust-First-Bypass`):
+## Legitimate Direct Call Sites (Allowlisted)
 
-```
-Shared-Service-Bypass: <one-sentence reason>
+A small set of low-level modules intentionally talk to raw endpoints and are allowlisted in `scripts/git-hooks/pre-commit-shared-service.sh`:
+
+- **The cascade transport layer itself:** `src/provider_cascade.rs` and `src/local_openai.rs`.
+- **Per-credential health probes** (which must test a specific slot or key directly): `src/model_probe.rs`, `src/routes/health.rs`, `src/web_server.rs` (`probe_secret`), and `scripts/ci/check-providers.sh`.
+- **Isolated benchmark harnesses:** `scripts/ab-harness/**` and `scripts/eval/cross-judge.sh`.
+- **Specialized multimodal / adversarial paths:** `src/screen_vision_tool.rs` (image-input payloads) and `src/adversary_llm.rs` (isolated critique client).
+
+---
+
+## Audited Bypass Trailer
+
+If a new integration has a genuine architectural reason to call a provider endpoint directly, record the rationale in the git commit trailer so it remains auditable:
+
+```text
+Shared-Service-Bypass: <one-sentence architectural reason>
 ```
 
-## Enforcement level
+By default `pre-commit-shared-service.sh` emits a warning nudge in local development and can be configured to hard-enforce in strict CI environments.
 
-The gate **warns by default** (per the anti-friction doctrine that softened the
-rust-first gate, INFRA-2522 / `docs/strategy/COMMIT_MERGE_AUDIT_2026-06-03.md`) —
-a heuristic nudge, not a hard wall. To hard-enforce (block unless the bypass
-trailer is present), set `CHUMP_SHARED_SERVICE_BLOCK=1`. Disable entirely with
-`CHUMP_SHARED_SERVICE_CHECK=0`.
+---
 
-## Current debt (migrate through the shared service over time)
+## Related Guides
 
-Per the 2026-07-28 audit (memory `llm-service-fragmentation-audit`), 5 product-path
-bespoke LLM calls exist; the reviewer (#1) is migrated (INFRA-3462), and
-`src/adversary_llm.rs` + `src/screen_vision_tool.rs` are resolved as audited
-allowlist entries (INFRA-3465, see "Legitimately-direct sites" above — not
-migration debt). Remaining: `code-reviewer-agent.sh:288` (Tier-1),
-`src/main.rs` (`gap decompose --verify`).
+- [Provider Cascade & OAuth](../architecture/PROVIDER_CASCADE.md)
+- [File Leases & Worktrees](AGENT_COORDINATION.md)

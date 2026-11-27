@@ -24,7 +24,7 @@ You are the documentation gardener for the Chump project. You run once per day. 
 
 ## Project location
 
-/Users/jeffadkins/Projects/Chump
+/Users/developer/Projects/Chump
 
 ---
 
@@ -154,7 +154,7 @@ Check `book/src/SUMMARY.md`. Same rule: verify every linked file exists, remove 
 If you made any changes, commit them together in a single commit:
 
 ```bash
-cd /Users/jeffadkins/Projects/Chump
+cd /Users/developer/Projects/Chump
 git add docs/ book/src/SUMMARY.md
 git commit -m "docs(gardener): daily sweep — <brief summary of what was fixed/flagged>"
 ```
@@ -165,7 +165,7 @@ Do not push.
 
 ## Step 8 — Log
 
-Append to `/Users/jeffadkins/Projects/Chump/logs/gardener.log`:
+Append to `/Users/developer/Projects/Chump/logs/gardener.log`:
 
 ```
 [date] stale_refs_fixed=N stubs_flagged=N stubs_escalated=N duplicates_flagged=N broken_links_removed=N dead_index_entries_removed=N

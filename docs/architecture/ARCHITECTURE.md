@@ -1,104 +1,57 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-11-18
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
 ---
 
-# Architecture
+# System Architecture
 
-## Universal v1.0 Multi-OS Architecture
+## 1. Universal v1.0 Multi-OS Control Plane
 
-Chump v1.0 runs natively on **macOS, Windows, and Linux** as a pure-Rust control plane and optional governed agent, eliminating bash, `tmux`, `launchd`-only scripts, and Unix-domain socket assumptions from the core execution path:
+Chump v1.0 runs natively on **macOS, Linux, and Windows** as a pure-Rust multi-agent coordinator and optional governed coding agent—requiring zero `tmux`, bash daemon wrappers, or Unix-only sockets:
 
-| Layer | Implementation | Role |
-|---|---|---|
-| **CLI & Agent Entrypoint (`chump`)** | `src/main.rs` (<500 LOC crate root) + `src/cli_dispatch/{mod,helpers,eval_modes,ship_modes,store_modes}.rs` | Unified switchboard for gap coordination, built-in agent, `chump config`, `chump hook`, `chump ship`, `chump up`, `chump service`, Web PWA, and ACP stdio server. |
-| **Supervisor Daemon (`chumpd`)** | `crates/chumpd` (`main.rs`, `worker_loop.rs`, `oauth_sync.rs`, `lease_reaper.rs`) | Self-contained multi-OS worker pool supervisor with loopback TCP control plane, 5-minute OAuth credential refresh (`0o600` atomic write + `sk-ant-oat*` pinning), dead-PID/expired `.chump-locks/*.json` reaper, and native Rust worker loop (`@native-chump-worker-tick` → `chump --worker-tick`) emitting RFC3339 UTC `ambient.jsonl` telemetry. |
-| **OS Abstraction Layer** | `crates/chump-pal` (`host`, `process`, `signal`, `paths`, `shell`, `ipc`, `win32`) | OS-native host RAM/CPU/disk probing, Win32 Job Objects / Unix PGID process-tree lifecycle, loopback TCP `IpcEndpoint` (`127.0.0.1:<port>` persisted in `.chump/chumpd.addr`), `CHUMP_HOME` → `HOME` → `USERPROFILE` → `temp_dir` path resolution, `cmd /C` vs `sh -c` shell dispatch, and multi-OS single-instance lockfiles. |
-| **Unified Config & 4-Lane BYO-LLM** | `crates/chump-config` + `src/auth.rs` + `src/provider_cascade.rs` | Validated `~/.chump/config.toml` (`chump config <init\|show\|validate\|path>`) + `CHUMP_*` env overrides powering four inference lanes: (1) **Subscription OAuth** (`CLAUDE_CODE_OAUTH_TOKEN`, macOS Keychain, `~/.claude/.credentials.json` / `%USERPROFILE%\.claude\.credentials.json`, `~/.chump/oauth-token.json`), (2) **40-Slot API-Key Cascade** (`[[providers]]` / `CHUMP_PROVIDER_{1..40}_*` with circuit breakers, RPD caps, and `BanditRouter`), (3) **BYO Harnesses** (`claude`, `opencode`, `codex`, `aider`), and (4) **Local Zero-Key Endpoints** (`Ollama`, `LM Studio`, `llama.cpp`, `vLLM`). |
-| **Rust Ship & Hook Firewall** | `crates/chump-ship` + `crates/chump-git-hooks` | `chump ship` (`ManualShipPath` + `BotMergePath` + `CREDIBLE-1576` gate-file auto-merge refusal) and `chump hook <install\|status\|pre-commit\|pre-push>` (`LeaseCollisionGuard`, `SecretPatternGuard`, `SubmoduleSanityGuard`, `BookSyncGuard`, `RustFmtGuard`, `ProtectedBranchGuard`, `BotMergeRequiredGuard`), retiring 10K+ LOC of legacy bash scripts preserved under `legacy/unwired-ci/`. |
-| **Deterministic Cognition Gate** | `src/cognition_gate.rs` (`--features experimental-cognition` / `CHUMP_COGNITION_ENABLED=1`) | Default builds execute deterministic, zero-surprisal no-op cognition hooks in `src/agent_loop/` while keeping all nine research cognitive modules (`blackboard`, `precision_controller`, `phi_proxy`, `neuromodulation`, `belief_state`, `counterfactual`, `consciousness_traits`, etc.) 100% intact and opt-in at compile time or runtime. |
-| **Surfaces & Dual-Authority Coord** | `src/acp_server.rs`, `src/web_server.rs`, `crates/chump-gap-store`, NATS | Editor-native JSON-RPC stdio (`chump --acp`), `axum` Web PWA + SSE cockpit (`http://127.0.0.1:3000`), and dual-authority coordination combining canonical local SQLite (`.chump/state.db`) with append-only `ambient.jsonl` and NATS `chump.events.*` fan-out. |
+| Subsystem | Workspace Crates & Modules | Architectural Role |
+|-----------|----------------------------|--------------------|
+| **CLI & Dispatch Switchboard (`chump`)** | `src/main.rs` + `src/cli_dispatch/*` | Single binary entrypoint for task coordination (`gap`, `claim`, `preflight`, `ship`), configuration (`config`), git firewall (`hook`), service supervision (`service`, `up`, `fleet`), Web Cockpit (`--web`), and ACP (`--acp`). |
+| **Background Supervisor (`chumpd`)** | `crates/chumpd` (`main.rs`, `worker_loop.rs`, `oauth_sync.rs`, `lease_reaper.rs`) | Cross-platform worker-pool supervisor with loopback TCP IPC (`127.0.0.1:<port>` in `.chump/chumpd.addr`), 5-minute atomic `0600` OAuth credential refresh, dead-PID/expired `.chump-locks/*.json` reaper, and RFC3339 `ambient.jsonl` telemetry. |
+| **Platform Abstraction Layer** | `crates/chump-pal` (`host`, `process`, `signal`, `paths`, `shell`, `ipc`, `win32`) | Host RAM/CPU/disk probing, Unix PGID and Win32 Job Object process-tree cleanup, cross-OS home/config path resolution (`CHUMP_HOME` / `HOME` / `USERPROFILE`), `sh -c` vs `cmd /C` execution, and single-instance lockfiles. |
+| **Config & 4-Lane Model Router** | `crates/chump-config`, `src/auth.rs`, `src/provider_cascade.rs`, `src/local_openai.rs` | Schema-validated `~/.chump/config.toml` + env overrides uniting (1) Subscription OAuth, (2) 40-slot API-key cascade with RPM headroom, circuit breakers, and `BanditRouter`, (3) BYO CLI harnesses (`claude`, `opencode`, `codex`, `aider`, `goose`), and (4) `$0` local endpoints (`Ollama`, `LM Studio`, `llama.cpp`, `vLLM`, optional in-process `mistral.rs`). |
+| **Git Hook & Ship Firewall** | `crates/chump-git-hooks`, `crates/chump-ship`, `crates/chump-verify` | Sub-2ms `pre-commit` / `pre-push` guards (`LeaseCollisionGuard`, `SecretPatternGuard`, `SubmoduleSanityGuard`, `RustFmtGuard`, `ProtectedBranchGuard`) plus single-instance `chump ship` with compile-time gate-file `--auto-merge` refusal and external base-vs-head test verification. |
+| **Task Ledger & Coordination Bus** | `crates/chump-gap-store`, `crates/chump-coord`, `.chump/state.db`, `.chump-locks/` | SQLite WAL task queue paired with filesystem path/symbol leases, `ambient.jsonl` event logs, and optional NATS `chump.events.*` fan-out for multi-host teams. |
+| **Interactive Surfaces** | `src/web_server.rs`, `src/acp_server.rs`, `src/adapters/*` | `axum` HTTP + SSE Web Cockpit (`/v2/`), Agent Client Protocol stdio server (`--acp`), and opt-in chat adapters (`Slack`, `Telegram`, `Discord`). |
 
-## What Chump is
+---
 
-Single local agent (Rust + AxonerAI): one orchestrator, optional delegate workers. Tools: run*cli (allowlist/blocklist, timeout, cap, middle-trim for long output), memory (SQLite FTS5 + optional semantic RRF), calculator, wasm_calc, wasm_text, delegate (summarize, extract, classify, validate), web_search (Tavily). Repo tools when CHUMP_REPO set: read_file (auto-summary for large files), list_dir, write_file, patch_file (unified diff); optional git*_, gh\__, diff_review. Brain when state DB available: task, schedule, ego, episode, memory_brain, notify. Discord + CLI; session per channel; proactive memory recall before each turn. Context: system prompt is ordered for small-model primacy/recency (hard rules first, tool examples, routing, round-filtered assemble_context, soul/brain last). When message history exceeds token threshold, oldest messages are summarized via delegate and replaced with one summary block (CHUMP_CONTEXT_SUMMARY_THRESHOLD, CHUMP_CONTEXT_MAX_TOKENS).
+## 2. Governed Built-In Agent Engine (`src/agent_loop/`)
 
-## Soul and purpose
+When running `chump --once`, `chump --web`, `chump --acp`, or `--harness chump-local`, turns execute through a modular seven-part pipeline in `src/agent_loop/`:
 
-System prompt defines personality (dev buddy, curious, opinions). Override with `CHUMP_SYSTEM_PROMPT`. When state DB is present, prompt gains continuity/agency: use brain and ego, write things down, act without being asked. Task/schedule/diff_review/notify are called out in soul so Chump uses them.
+| Module | Responsibility |
+|--------|----------------|
+| `orchestrator.rs` | `ChumpAgent::run` entrypoint: loads session history, runs structured perception, assembles prompt context, invokes `IterationController`, and persists state. |
+| `perception_layer.rs` | Classifies task intent (`code_edit`, `debug`, `research`, `question`), extracts file/version constraints, flags destructive or auth risk indicators, and scores prompt ambiguity. |
+| `prompt_assembler.rs` | Orders system rules, active lease boundaries, tool schemas, and retrieved memory for high adherence across both frontier and small local models. |
+| `iteration_controller.rs` | Drives the bounded `ToolUse` → `EndTurn` loop, enforces maximum turn iterations, and retries narrated non-calls cleanly. |
+| `tool_runner.rs` | Executes native and structured tool batches with timeout wrappers, middle-trimmed CLI output, and post-write `ToolVerification` checks. |
+| `context.rs` & `types.rs` | Strongly typed `AgentSession`, `AgentLoopContext`, streaming `AgentEvent` emitters, and context-window summarization triggers. |
 
-## Memory
+### Deterministic Default vs. Experimental Cognition
 
-SQLite `sessions/chump_memory.db` with FTS5; fallback `sessions/chump_memory.json`. Optional embed server (port 18765) or `--features inprocess-embed` for semantic recall; RRF merges keyword + semantic when both available. State/episodes/tasks/schedule in same DB (chump_state, chump_episodes, chump_tasks, chump_scheduled).
+By default in v1.0, `src/cognition_gate.rs` runs deterministic, zero-overhead no-op hooks so production builds remain fast and predictable. Researchers studying active-inference telemetry (`blackboard`, `precision_controller`, `neuromodulation`, `belief_state`, `counterfactual`) can opt in via `--features experimental-cognition` or `CHUMP_COGNITION_ENABLED=1`.
 
-## Resilience and safety
+---
 
-Model: retries with backoff (configurable via `CHUMP_LLM_RETRY_DELAYS_MS`), optional `CHUMP_FALLBACK_API_BASE`, circuit breaker after 3 failures. Kill switch: `logs/pause` or `CHUMP_PAUSED=1`. Input caps: `CHUMP_MAX_MESSAGE_LEN`, `CHUMP_MAX_TOOL_ARGS_LEN`. Optional rate limit and concurrent-turn cap. Secrets redacted in logs. Executive mode (`CHUMP_EXECUTIVE_MODE=1`) disables allowlist for run_cli; audit in chump.log.
+## 3. Tool Governance & Memory
 
-### Tool policy (allow / deny / ask)
+- **Allow / Deny / Ask Tool Policy (`src/tool_policy.rs`):** Tools listed in `CHUMP_TOOLS_ASK` pause before execution, compute heuristic command risk without an LLM call, emit a `ToolApprovalRequest` (to Web Cockpit, ACP editor prompt, or chat adapter), and record every decision to `logs/chump.log` (`tool_approval_audit`).
+- **Hybrid Persistent Memory (`src/memory_db.rs`):** SQLite `sessions/chump_memory.db` with FTS5 keyword search, confidence/TTL metadata, and optional Reciprocal Rank Fusion (RRF) semantic retrieval (`--features inprocess-embed`).
+- **Machine-Readable Capability Discovery:** `docs/CAPABILITIES_REGISTRY.json` (validated against `docs/schemas/capabilities-registry.schema.json`) indexes CLI subcommands, workspace crate APIs, MCP servers, and `ambient.jsonl` event schemas for external orchestrators.
 
-Tools can be in an "ask" set (env **CHUMP_TOOLS_ASK**, comma-separated names). When the agent is about to run a tool in that set, it does not execute immediately: it emits a **ToolApprovalRequest** event and waits for a resolution (allow, deny, or timeout). Heuristic risk (e.g. for run_cli: `rm -rf /`, sudo, chmod 777, DROP TABLE, credential-like args) is computed without an LLM and included in the request. One approval UX is required: **Discord** (message with Allow/Deny buttons), **Web** (POST /api/approve or in-chat approval card), or **ChumpMenu** (Chat tab streams SSE and posts Allow/Deny to `/api/approve`). Resolutions are passed back via **approval_resolver** (in-process map keyed by request_id). All approval outcomes are audit-logged to chump.log (event `tool_approval_audit`).
+---
 
-## Perception layer
+## Related Guides
 
-`src/perception.rs`: structured pre-reasoning pass before the main model call. Classifies `TaskType` (code_edit, question, research, debug, creative, admin), extracts named entities, detects constraints (deadlines, file paths, version pins), flags risk indicators (destructive ops, auth, external calls), and scores ambiguity (0.0–1.0). Wired into `src/agent_loop/perception_layer.rs` — perception result is injected into context so the model sees structured input, not just raw text. Ambiguity score feeds escalation decisions; risk indicators feed tool approval heuristics.
-
-## Agent loop module structure
-
-`src/agent_loop/` (was a 1328-line `src/agent_loop.rs` monolith pre-refactor): the per-turn execution engine, split into seven focused submodules:
-
-| Submodule | Role |
-|---|---|
-| `mod.rs` | pub-use surface (`ChumpAgent`, types, helpers, re-exports `AgentEvent` / `EventSender`) |
-| `types.rs` | `AgentSession`, `AgentRunOutcome`, parse helpers (`parse_text_tool_calls`, `rescue_raw_diff_as_patch`), routing heuristics (`message_likely_needs_tools_neuromod`, `response_wanted_tools`), formatters, plus `compact_tools_for_light` |
-| `context.rs` | `AgentLoopContext { request_id, turn_start, session, event_tx, light }` with `.send()` helper |
-| `perception_layer.rs` | Wraps `crate::perception::perceive` + posts risk indicators to the blackboard + nudges belief-state trajectory on high ambiguity |
-| `prompt_assembler.rs` | Builds the effective system prompt from base + planner block + perception context; separate `assemble_no_tools_guard` adds the anti-hallucination guard for tool-free rounds |
-| `tool_runner.rs` | `run_synthetic_batch` (text-parsed tool calls), `run_native_batch` (provider-emitted tool calls with EFE ordering + speculative-execution snapshot/rollback), `handle_schema_failures`, `handle_speculative_resolution` |
-| `iteration_controller.rs` | The per-iter while-loop over `StopReason::{EndTurn, ToolUse, ...}`. Owns the max-iteration cap and the narration-detection retry. |
-| `orchestrator.rs` | `ChumpAgent::run` entry point: load session, spawn perception, assemble prompt, hand off to `IterationController::execute`, save session on completion. |
-
-The split was driven by JetBrains during integration testing — the monolith had grown to the point that adding a single feature touched too many concerns. Net change at split time: -358 lines of dead code on the way through.
-
-## Action verification
-
-`ToolVerification` struct in `tool_middleware.rs`. After write-tool execution, a post-verification step checks the tool's effect (e.g. file exists, expected content, command exit code). Emits `ToolVerificationResult` SSE event to web/PWA clients. Verification pass/fail is logged alongside the tool outcome.
-
-## Eval framework
-
-`src/eval_harness.rs`: property-based eval with `EvalCase`, `EvalCategory`, `ExpectedProperty` types. DB tables `chump_eval_cases` and `chump_eval_runs` track cases and results. Property checking (contains, not_contains, json_path, regex, custom) with regression detection. Wired into `battle_qa` for automated quality gates.
-
-## Enriched memory
-
-`chump_memory` table extended with `confidence` (0.0–1.0), `verified` (bool), `sensitivity` (public/internal/secret), `expires_at` (optional TTL), `memory_type` (fact/preference/episode/skill/context). Memory tool accepts `confidence`, `memory_type`, `expires_after_hours` params. Retrieval pipeline: RRF merge weighted by freshness decay and confidence; query expansion via memory graph; context compression to 4K char budget.
-
-## Delegate
-
-When `CHUMP_DELEGATE=1`, delegate tool runs summarize, extract, classify (message routing), and validate (output quality guard) via a worker (same or smaller model). `CHUMP_WORKER_API_BASE` / `CHUMP_WORKER_MODEL` for separate worker. diff_review uses same worker with code-review prompt. read_file and run_cli use tool-side intelligence (auto-summary for files over CHUMP_READ_FILE_MAX_CHARS; middle-trim for long CLI output).
-
-## A2A two-way operator communications
-
-Bidirectional operator ↔ fleet messaging layer. Operator identity (`operator-<machine-id>`, persisted across browser tabs), urgency/severity schema (`now | hours | digest`), reach hierarchy (inbox → toast → push → Discord → digest), and operator filter rules (`.chump/operator-rules.yaml`). Built on the `correlation_id` reply contract from INFRA-1255 so every INTENT→STUCK→HANDOFF→DONE chain is traceable and auto-reaped from the inbox.
-
-Implementation chain: INFRA-1296 (POST /api/broadcast), INFRA-1297 (stable identity), INFRA-1298 (inbox API), INFRA-1299 (urgency fields + reach-classifier), INFRA-1300 (filter rules), INFRA-1301 (Web Push), INFRA-1302 (digest cron), PRODUCT-103..105 (PWA components). Full spec: [A2A_TWO_WAY_COMMS.md](A2A_TWO_WAY_COMMS.md).
-
-## ACP adapter
-
-`src/acp.rs` (types) and `src/acp_server.rs` (JSON-RPC stdio server). Launched via `chump --acp` or `chump acp`. Makes Chump discoverable from any [Agent Client Protocol](https://agentclientprotocol.com) client (Zed, JetBrains IDEs, ACP Registry members). Full V1 spec: initialize + session/{new, load, list, prompt, cancel, set_mode, set_config_option, request_permission, update} + fs/{read, write}_text_file + terminal/{create, output, wait_for_exit, kill, release}. 79 unit tests. See [ACP.md](ACP.md) for method-level details.
-
-Bidirectional RPC: agent can initiate requests back to the client (permission prompts, filesystem delegation, shell delegation) via `AcpServer::send_rpc_request`. A `pending_requests` map keyed by monotonic u64 id routes client responses back to awaiting oneshots. Fail-closed on timeout / disconnect / malformed response.
-
-Cross-process persistence: each SessionEntry serialized to `{CHUMP_HOME}/acp_sessions/{session_id}.json` via atomic temp-file + rename on state change. `session/load` reconstitutes from disk when memory misses; `session/list` merges memory + disk without duplicates. Per-instance `persist_dir` set at `AcpServer::new_with_persist_dir` construction so tests can't race on env vars.
-
-V2.1 tool-middleware integration: `ToolTimeoutWrapper` calls `acp_permission_gate(name, input)` before write tools — when running under ACP with `permissions.request` capability, the editor prompts the user; sticky `AllowAlways` decisions cache on `SessionEntry`. `ReadFileTool` / `WriteFileTool` route through `fs/*` when `fs.read` / `fs.write` declared; `CliTool` routes through `terminal/*` when `terminal.create` declared. Non-ACP launches (standalone CLI, web, Discord) are untouched — the helpers return `None` and tools fall through to local execution.
-
-## Discovery surface — CAPABILITIES_REGISTRY.json (INFRA-1729)
-
-[`docs/CAPABILITIES_REGISTRY.json`](../CAPABILITIES_REGISTRY.json) is the canonical machine-readable inventory of repo primitives — CLI commands, ambient event kinds, public crate APIs, MCP tools, skills. External agents (Cannon for cross-repo fan-out, Choreographer for orchestration, Content Bots) declare this file as their tool-discovery input, replacing the previous grep-and-pray pattern.
-
-The schema (draft 2020-12) is published at [`docs/schemas/capabilities-registry.schema.json`](../schemas/capabilities-registry.schema.json) so external repos and validation harnesses can verify the contract.
-
-Regenerated by `scripts/dev/build-capabilities-registry.sh` (auto-discovers `chump --help` recursively, parses `docs/observability/EVENT_REGISTRY.yaml`, AST-crawls `crates/*/src/lib.rs`, reads `chump-mcp.json` + `#[chump_tool]` macro sites). Hand-curated `when_to_use` strings live in [`docs/CAPABILITIES_OVERLAY.yaml`](../CAPABILITIES_OVERLAY.yaml) and are merged on top of the auto-detected entries — overlay always wins on collision.
-
-The Column A `chump ingest` demo invokes `scripts/ops/generate-capabilities-registry.sh <repo-path>` to produce the same artifact for an arbitrary target repo — that's the Quartermaster persona output of the multi-agent-factory ingestion pipeline. The script emits `kind=capabilities_registry_refreshed` to ambient with `delta_count` so dashboards can react when a new primitive surfaces.
+- [Workspace Module Map](RUST_MODULE_MAP.md)
+- [File Leases & Worktrees](../process/AGENT_COORDINATION.md)
+- [Provider Cascade & OAuth](PROVIDER_CASCADE.md)
+- [Editor Integration (ACP)](ACP.md)

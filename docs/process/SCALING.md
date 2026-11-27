@@ -58,7 +58,7 @@ grep "integration_cycle" .chump-locks/ambient.jsonl | tail -20
 scripts/setup/install-integrator-daemon.sh
 ```
 
-**Linux primary node — helsinki (systemd):**
+**Linux primary node — coordinator-node (systemd):**
 
 ```bash
 sudo bash scripts/setup/install-integrator-daemon-systemd.sh
@@ -106,7 +106,7 @@ merge. Before flipping:
    scripts/setup/install-integrator-daemon.sh --live
    ```
 
-   Linux (systemd, helsinki) — one command, installs a `CHUMP_INTEGRATOR_LIVE=1`
+   Linux (systemd, coordinator-node) — one command, installs a `CHUMP_INTEGRATOR_LIVE=1`
    drop-in over the tracked dry-run unit:
    ```bash
    sudo bash scripts/setup/install-integrator-daemon-systemd.sh --live

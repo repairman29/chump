@@ -90,7 +90,7 @@ self-hosted macOS fleet, off the contended GH pool.
   historical CI-rot tax (rustup conflicts, tauri corruption, runner-binary
   refresh failures — DOC-063 14-day post-mortem, INFRA-2117). Re-enabling trades
   a capacity problem for a reliability problem unless the runner is kept healthy.
-  Never route onto **cuphead** (the build node) or **helsinki** (the broker).
+  Never route onto **cuphead** (the build node) or **coordinator-node** (the broker).
 
 ### Option B — a Linux self-hosted runner on a cheap VPS
 
@@ -103,7 +103,7 @@ via the existing `vars.*` toggles.
   VPS. Durable capacity, not a plan upgrade you re-pay monthly per-minute.
 - **Cons:** one more host to provision, patch, and monitor (ghost-online is a
   real failure mode — see `infra-watcher`); a single VPS is a single point of
-  contention if the queue is deep. **Never cuphead (build node); never helsinki
+  contention if the queue is deep. **Never cuphead (build node); never coordinator-node
   (broker).**
 
 ### Option C — GitHub Team plan

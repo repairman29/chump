@@ -9,7 +9,7 @@ MVP completed in this same session (PRs #137, #141, #145, #152, #156, #158).
 Single command from the operator terminal:
 
 ```bash
-cd /Users/jeffadkins/Projects/Chump
+cd /Users/developer/Projects/Chump
 ./target/release/chump-orchestrator \
   --backlog docs/gaps.yaml \
   --max-parallel 1 \

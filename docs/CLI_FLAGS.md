@@ -1,75 +1,82 @@
-# chump CLI flags reference
+---
+doc_tag: canonical
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
+---
 
-## `--why`
+# CLI Flags & Subcommands Reference
 
-Adds a one-line transparency annotation to stderr after any action, explaining the non-obvious
-choice the CLI just made. Useful for operators and fleet agents tracing routing decisions.
+Run `chump --help` (or `chump <subcommand> --help`) at any time to inspect the full command tree compiled into your binary.
 
-**Supported commands:**
+---
 
-| Command | Example output |
-|---|---|
-| `chump gap reserve --why` | `reserved INFRA-042 — why: collision-free atomic ID pick from domain INFRA pool (INFRA-216 verification window)` |
-| `chump gap claim <ID> --why` | `claimed INFRA-042 — why: gap open and unclaimed, session=my-session, TTL=3600s` |
-| `chump gap ship <ID> --why` | `shipped INFRA-042 — why: status flipped to done, closed-pr=#1234, session=my-session` |
-| `chump --once --why` | `cascade chose slot=cerebras — why: bandit selection, RPD 28% used, priority=10` |
+## Core Subcommands Overview
 
-**Format:** `<action> <ID> — why: <one-line rationale>`
+| Subcommand | Purpose |
+|------------|---------|
+| `chump init [--yes]` | Initialize `.chump/state.db` and verify model readiness in a repository |
+| `chump config <init\|show\|validate\|path>` | Manage and schema-validate `~/.chump/config.toml` |
+| `chump hook <install\|status\|pre-commit\|pre-push>` | Install and run the native Rust git lease & secret firewall |
+| `chump gap <reserve\|list\|show\|preflight\|ship>` | Reserve, query, and transition tasks in `.chump/state.db` |
+| `chump claim <GAP-ID> --paths "<globs>"` | Atomically acquire a file/symbol lease and create a linked git worktree |
+| `chump preflight` | Run `cargo fmt --check`, `clippy -D warnings`, `check`, and scoped tests locally |
+| `chump ship --gap <GAP-ID> --mode <manual\|bot-merge>` | Push branch, open PR, and enforce gate-file auto-merge guards |
+| `chump service <install\|status\|uninstall> [--dry-run]` | Manage `chumpd` on macOS `LaunchAgents`, Linux `systemd --user`, or Windows `ChumpDaemon` |
+| `chump up [--foreground\|--status]` | Launch or query the `chumpd` supervisor directly |
+| `chump fleet <status\|doctor\|level N>` | Inspect worker health, verify auth, or adjust autonomy level (`0` = immediate stop) |
+| `chump onboard <owner/repo> [--apply]` | Scan an external repository and seed grounded tasks with `file:line` citations |
+| `chump improve <owner/repo> [--apply]` | Run autonomous task pick, worktree edit, test, and PR loop on an external repo |
+| `chump external verify-merge --pr <N> --repo <owner/repo>` | Verify GitHub CI and prove new tests fail on base and pass on head |
+| `chump llm-complete [--model <tier>] "<prompt>"` | Send a prompt through the shared `ProviderCascade` from scripts |
 
-All `--why` output goes to **stderr** so stdout remains parseable (bare gap IDs, JSON, etc.).
+---
 
-## `--once`
+## Global & Cross-Cutting Flags
 
-Alias for `--autonomy-once`. Runs one autonomy round and exits. Combine with `--why` to see
-which cascade slot was selected before the round begins:
+### `--why`
+
+Appends a single-line rationale to **`stderr`** explaining routing or coordination decisions while keeping **`stdout`** machine-parseable:
+
+| Command | Example `stderr` Output |
+|---------|-------------------------|
+| `chump gap reserve --domain INFRA --title "..." --why` | `reserved INFRA-042 — why: atomic ID allocation from INFRA sequence` |
+| `chump claim INFRA-042 --why` | `claimed INFRA-042 — why: gap open and unclaimed, TTL=14400s` |
+| `chump --once "Summarize changes" --why` | `cascade chose slot=gemini-primary — why: priority=10, circuit=closed` |
+
+### `--once "<prompt>"`
+
+Runs a single agent turn in the terminal and exits cleanly (`0` on success).
+
+### `--web [--port <PORT>]`
+
+Starts the local HTTP + SSE operator cockpit and product tool suite (default port `3000`).
+
+### `--acp`
+
+Starts the Agent Client Protocol JSON-RPC 2.0 server over `stdin`/`stdout` for Zed and JetBrains IDEs.
+
+### `--format <human|json|csv>` (and `--json`)
+
+Selects structured output formatting on list and status commands:
 
 ```bash
-chump --once --why
+chump gap list --status open --format json | jq '.[].id'
+chump gap list --status open --format csv > open-gaps.csv
 ```
 
-## `--quiet`
+### `--quiet`
 
-Suppresses all output on success; exits 0 with no stdout. Useful for scripting where you want
-to know if a command succeeded without noisy progress lines.
-
-**Supported commands:** (EFFECTIVE-008)
-
-| Command | Behavior |
-|---|---|
-| `chump gap reserve --quiet` | No output; bare gap ID is suppressed. Use `--json` instead if you need the ID. |
-| `chump gap list --quiet` | No output; exits 0 if query succeeded. |
+Suppresses informational `stdout` output on success, returning exit code `0` or `1` for shell `if` conditions:
 
 ```bash
-# Scripting example: check if there are open gaps without displaying them
 if chump gap list --status open --quiet; then
-  echo "Gap store reachable"
+  echo "Task store healthy"
 fi
 ```
 
-## `--format`
+---
 
-Selects the output format for commands that support multiple rendering modes.
-(EFFECTIVE-008)
+## Related Guides
 
-**Supported values:** `human` (default), `json`, `csv`
-
-**Supported commands:**
-
-| Command | Example |
-|---|---|
-| `chump gap list --format json` | JSON array of gap objects (same as `--json`) |
-| `chump gap list --format csv` | CSV with header: `id,domain,status,priority,effort,title` |
-| `chump gap list --format human` | Default human-readable `[status] ID — title (P/e)` lines |
-
-```bash
-# CSV output for spreadsheet import
-chump gap list --status open --format csv > gaps.csv
-
-# JSON for jq scripting
-chump gap list --json | jq '.[] | .id'
-# or equivalently:
-chump gap list --format json | jq '.[] | .id'
-```
-
-**Note:** `--json` and `--format json` are equivalent. `--format` takes precedence when both
-are given.
+- [CLI Exit Codes](CLI_EXIT_CODES.md)
+- [User Guide](USER_GUIDE.md)

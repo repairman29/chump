@@ -167,7 +167,7 @@ Status table (2026-05-24):
 | orchestrator | ✅ shipped (INFRA-1917) | ✅ shipped (INFRA-1917) | ✅ shipped (INFRA-1917) | **shipped** |
 
 The 5 self-contributed acceptance-criteria per role live at
-[`docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md).
+`docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md` (`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`).
 
 ### Missing (not even gap'd)
 
@@ -231,7 +231,7 @@ Tracked under META-127 (curator-suite umbrella).
 `.claude/agents/*.md` appears in this roster — so shelfware-by-omission becomes
 mechanically impossible, the same closed-loop discipline as the event-registry
 coverage gate. INFERRED AC sources for the wired roles live in
-[`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md).
+`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md` (`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`).
 
 ## Anti-patterns (learned the hard way)
 
@@ -261,7 +261,7 @@ coverage gate. INFERRED AC sources for the wired roles live in
 
 1. Open the right Chump worktree:
    ```bash
-   cd /Users/jeffadkins/Projects/Chump
+   cd /Users/developer/Projects/Chump
    git fetch origin main --quiet
    git worktree add .claude/worktrees/<your-codename> -b claude/<your-codename> origin/main
    cd .claude/worktrees/<your-codename>

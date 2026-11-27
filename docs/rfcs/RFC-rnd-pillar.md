@@ -86,7 +86,7 @@ failures. Under R&D they are the product: a fast NO-GO is a successful run.
    at 0% and read as neglect — the exact trap the LIGHTHOUSE outcomes are sitting in.
 4. **Budget = free tier + sunk-cost local inference**, metered by the existing
    `chump-cost-tracker` (`TAVILY_CALLS`/`TAVILY_CREDITS`, `CHUMP_SESSION_BUDGET_TAVILY`,
-   `CHUMP_COST_CEILING_USD`). helsinki and Ollama are already paid for at zero marginal
+   `CHUMP_COST_CEILING_USD`). coordinator-node and Ollama are already paid for at zero marginal
    cost per token. **R&D therefore cannot starve correctness work, because it is not
    competing for the same dollars** — which dissolves the governance problem a reserved
    budget would have created.

@@ -241,7 +241,7 @@ D and E are standalone one-file fixes with no dependency on A/B/C.
   build, `flock`-serialized chump-build → almanac-build, `nice`/`ionice`
   floor.
 - **D** — fix `chump-mcp.json`'s hardcoded
-  `/Users/jeffadkins/Projects/almanac/target/release/almanac-mcp` path so a
+  `/Users/developer/Projects/almanac/target/release/almanac-mcp` path so a
   fresh non-Jeff, non-macOS box doesn't get a dead almanac MCP entry.
 - **E** — `chump-node-install.sh`'s `CHUMP_STORE_BACKEND` defaults new
   nodes to `postgrest` (line 461), a backend confirmed broken

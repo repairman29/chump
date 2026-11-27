@@ -6,7 +6,7 @@ last_audited: 2026-09-16
 
 # Fleet Roles — Chump + Mabel + Scout
 
-Summary of the Fleet Roles proposal: turning the agent fleet from "agents that build agents" into a **personal operations team** that does real work. Full proposal text: [PROPOSAL_FLEET_ROLES.md](PROPOSAL_FLEET_ROLES.md).
+Summary of the Fleet Roles proposal: turning the agent fleet from "agents that build agents" into a **personal operations team** that does real work. Full proposal text: PROPOSAL_FLEET_ROLES.md (`PROPOSAL_FLEET_ROLES.md`).
 
 ---
 
@@ -14,9 +14,9 @@ Summary of the Fleet Roles proposal: turning the agent fleet from "agents that b
 
 > This section is authoritative for **which node coordinates the fleet** and
 > supersedes the older Mac/Pixel/iPhone ("Chump/Mabel/Scout") proposal below,
-> which predates the move onto owned iron (helsinki decommissioned 2026-08-17).
+> which predates the move onto owned iron (coordinator-node decommissioned 2026-08-17).
 
-**CJ (`closetjunky`) is the SINGLE coordination home.** It is co-located with
+**CJ (`worker-node-01`) is the SINGLE coordination home.** It is co-located with
 the LIVE canonical gap store (`~/chump/.chump/state.db`) and the worker, so the
 node that decides merges and pages reads the same state the fleet actually
 writes. The coordination organs run **only on CJ**:
@@ -109,9 +109,9 @@ Cross-cutting: **shared brain** (`research/`, `watch/`, `capture/`, `projects/`,
 
 **Mac behavior when sentinel is stale:** When the Mac has **not** heard from Mabel (or last-seen exceeds a threshold), treat **sentinel-delegated repair** as **paused or degraded** — log a single clear reason, **notify** once, and **do not** loop forever on SSH-based fixes that assume the Pixel path is live. Detailed scheduling lives with Mabel patrol / heartbeat scripts; this doc captures the **contract**: outbound liveness complements inbound SSH.
 
-**Non-goals for the spike:** Replacing SSH entirely on day one; multi-tenant broker in the cloud. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) for the same note in the Mabel roadmap.
+**Non-goals for the spike:** Replacing SSH entirely on day one; multi-tenant broker in the cloud. See ROADMAP_MABEL_DRIVER.md (`ROADMAP_MABEL_DRIVER.md`) for the same note in the Mabel roadmap.
 
-**Concrete spike steps:** [FLEET_WS_SPIKE_RUNBOOK.md](FLEET_WS_SPIKE_RUNBOOK.md) and `./scripts/dev/fleet-ws-spike.sh` (requires `websocat` on PATH).
+**Concrete spike steps:** FLEET_WS_SPIKE_RUNBOOK.md (`FLEET_WS_SPIKE_RUNBOOK.md`) and `./scripts/dev/fleet-ws-spike.sh` (requires `websocat` on PATH).
 
 ## Mutual supervision (FLEET-001)
 
@@ -160,9 +160,9 @@ scripts/dev/fleet-health.sh
 
 ## Relation to existing roadmaps
 
-- **Chump:** [ROADMAP.md](ROADMAP.md) — Fleet expansion (external work, research rounds, review round) is the next horizon after current unchecked items.
-- **Mabel:** [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) — Extends with watch rounds (deal_watch, finance_watch, github_watch, news_brief) and Scout/PWA as primary UI.
-- **Long-term technical vision** (in-process inference, eBPF, browser, task decomposition, WASM): [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md).
+- **Chump:** ROADMAP.md (`ROADMAP.md`) — Fleet expansion (external work, research rounds, review round) is the next horizon after current unchecked items.
+- **Mabel:** ROADMAP_MABEL_DRIVER.md (`ROADMAP_MABEL_DRIVER.md`) — Extends with watch rounds (deal_watch, finance_watch, github_watch, news_brief) and Scout/PWA as primary UI.
+- **Long-term technical vision** (in-process inference, eBPF, browser, task decomposition, WASM): ROADMAP_UNIVERSAL_POWER.md (`ROADMAP_UNIVERSAL_POWER.md`).
 
 ---
 

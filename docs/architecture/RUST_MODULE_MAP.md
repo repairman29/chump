@@ -1,152 +1,75 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
 ---
 
-# Rust module map
+# Workspace Crate & Module Map
 
-Map of `src/*.rs` and the `chump-tool-macro` crate to responsibility. Use this for the implementation section of the dossier and for navigating the codebase.
+Chump is organized as a Rust 2021 workspace pairing reusable infrastructure crates under `crates/` with the unified `chump` binary under `src/`.
 
-## Binary and entry
+---
 
-| Module | Responsibility |
-|--------|----------------|
-| `src/main.rs` | Entry point: load_dotenv, CLI flags (--check-config, --notify, --chump-due, --warm-probe, --web, --discord, --chump, --acp), dispatch to web_server, discord, agent_loop, or acp_server. |
+## 1. Key Workspace Crates (`crates/`)
 
-## Agent loop and context
+| Crate | License | Responsibility |
+|-------|---------|----------------|
+| `crates/chump-pal` | Apache-2.0 | Platform Abstraction Layer: host CPU/RAM/disk probing, Unix PGID & Win32 Job Object process trees, loopback TCP IPC, and OS paths. |
+| `crates/chump-config` | Apache-2.0 | Schema-validated `~/.chump/config.toml` parser, validator, and environment override merger. |
+| `crates/chump-git-hooks` | AGPL-3.0 | Native Rust `pre-commit` and `pre-push` firewall (`LeaseCollisionGuard`, `SecretPatternGuard`, `RustFmtGuard`, `ProtectedBranchGuard`). |
+| `crates/chump-ship` | AGPL-3.0 | Single-instance PR shipper (`ManualShipPath`, `BotMergePath`, and compile-time gate-file `--auto-merge` refusal). |
+| `crates/chumpd` | AGPL-3.0 | Cross-platform background supervisor daemon managing worker pools, 5-minute OAuth token sync, and stale lease reaping. |
+| `crates/chump-gap-store` | AGPL-3.0 | SQLite WAL task registry (`.chump/state.db`), atomic ID reservation, and PR status tracking. |
+| `crates/chump-preflight` | AGPL-3.0 | Scoped local CI runner (`fmt`, `clippy -D warnings`, `check`, and diff-matched test suites) with RAM-aware `CARGO_BUILD_JOBS` throttling. |
+| `crates/chump-verify` | AGPL-3.0 | Commit, diff, and acceptance-criteria verification policies (`chump verify` and `external verify-merge`). |
+| `crates/chump-coord` | Apache-2.0 | Lease overlap geometry, coordination messages, and NATS / local event transport primitives. |
+| `crates/chump-orchestrator` | Apache-2.0 | Thompson-sampling candidate selection and multi-worker task orchestration primitives. |
+| `crates/chump-cost-ledger` | Apache-2.0 | Token and USD spend accounting with configurable session and daily budget ceilings. |
+| `crates/chump-mcp-lifecycle` | Apache-2.0 | Model Context Protocol (MCP) stdio server lifecycle and health management. |
+| `crates/chump-tool-macro` | Apache-2.0 | Procedural macro `#[chump_tool(...)]` generating typed JSON-Schema tool registrations. |
 
-| Module | Responsibility |
-|--------|----------------|
-| `agent_loop/mod.rs` | pub-use surface for the split agent_loop module; re-exports `AgentEvent` / `EventSender` for back-compat with pre-split call sites. |
-| `agent_loop/orchestrator.rs` | `ChumpAgent::run` entry point: load session, perceive, assemble prompt, dispatch to controller, save. |
-| `agent_loop/iteration_controller.rs` | The per-iter while-loop over `StopReason::{EndTurn, ToolUse, ...}`; max-iter cap; narration-detection retry. |
-| `agent_loop/tool_runner.rs` | `run_synthetic_batch` (text-parsed tool calls), `run_native_batch` (provider-emitted with EFE ordering + speculative snapshot/rollback), schema-failure + spec-resolution helpers. |
-| `agent_loop/context.rs` | `AgentLoopContext` struct + `.send()` helper. |
-| `agent_loop/perception_layer.rs` | Wraps `crate::perception::perceive`; posts risk indicators to blackboard; nudges belief-state trajectory on high ambiguity. |
-| `agent_loop/prompt_assembler.rs` | Builds effective system prompt (base + planner + perception); `assemble_no_tools_guard` adds anti-hallucination guard for tool-free rounds. |
-| `agent_loop/types.rs` | `AgentSession`, `AgentRunOutcome`, parse helpers, routing heuristics, formatters, `compact_tools_for_light`. |
-| `session.rs` | Session state and message history. |
-| `context_assembly.rs` | Assemble system + round-filtered context (soul, brain, portfolio, playbook). |
-| `context_window.rs` | Token window and summarization threshold. |
-| `stream_events.rs` | Streaming event handling. |
-| `acp.rs` | Agent Client Protocol type definitions (request/response shapes for V1 spec). |
-| `acp_server.rs` | ACP JSON-RPC stdio server (V1 + V2 persistence + V2.1 tool middleware integration). |
+*(See repository root `NOTICE` for the complete list of Apache-2.0 reusable library crates vs. AGPL-3.0 application binaries.)*
 
-## Provider and model
+---
 
-| Module | Responsibility |
-|--------|----------------|
-| `local_openai.rs` | OpenAI-compatible API client (single provider). |
-| `streaming_provider.rs` | Streaming chat completion. |
-| `provider_cascade.rs` | Multi-slot cascade: priority, fallbacks, warm_probe_all. |
-| `provider_quality.rs` | Provider quality / sanity checks. |
+## 2. Primary Binary Modules (`src/`)
 
-## Discord
+### Entrypoint, Config & Routing
 
 | Module | Responsibility |
 |--------|----------------|
-| `discord.rs` | Serenity client, message handling, @mention and DM routing. |
-| `discord_dm.rs` | Send DM (e.g. notify, ready DM). |
+| `src/main.rs` & `src/cli_dispatch/*` | CLI flag parsing and subcommand dispatch across coordinator, web, ACP, and agent modes |
+| `src/config_validation.rs` | Startup environment and feature summary with secret-safe logging |
+| `src/auth.rs` | Subscription OAuth and API-key credential discovery ladder |
+| `src/provider_cascade.rs` | 40-slot priority & Thompson-sampling router, RPM headroom, and per-slot circuit breakers |
+| `src/local_openai.rs` | OpenAI-compatible HTTP client with retry backoff and connection-vs-5xx circuit classification |
+| `src/streaming_provider.rs` | Incremental SSE token and `<think>` block stream parser |
 
-## Web server and PWA
-
-| Module | Responsibility |
-|--------|----------------|
-| `web_server.rs` | Axum router, API routes, static serving, CORS. |
-| `web_sessions_db.rs` | Session CRUD for web UI. |
-| `web_uploads.rs` | File upload and serve. |
-| `web_brain.rs` | Brain API: research, watch, projects, briefing, ingest. |
-
-## Tool infrastructure
+### Agent Loop, Tools & Verification
 
 | Module | Responsibility |
 |--------|----------------|
-| `tool_routing.rs` | Route tool name to tool implementation. |
-| `tool_inventory.rs` | Tool registration (inventory). |
-| `tool_middleware.rs` | Middleware (e.g. output trimming). |
-| `tool_policy.rs` | Allow/deny/ask policy; risk heuristics. |
-| `tool_health_db.rs` | Tool health / circuit state. |
-| `toolkit_status_tool.rs` | Toolkit status tool implementation. |
+| `src/agent_loop/*` | Seven-submodule turn engine (`orchestrator`, `perception_layer`, `prompt_assembler`, `iteration_controller`, `tool_runner`, `context`, `types`) |
+| `src/tool_inventory.rs` & `src/tool_routing.rs` | Compile-time tool registration and runtime tool dispatch |
+| `src/tool_policy.rs` & `src/approval_resolver.rs` | Allow / Deny / Ask risk gating and interactive approval resolution |
+| `src/tool_middleware.rs` | Timeouts, output trimming, and post-write `ToolVerification` checks |
+| `src/execution/*` | Pluggable `local`, `docker`, and `ssh` command execution backends |
+| `src/repo_tools.rs`, `src/git_tools.rs`, `src/gh_tools.rs` | Repository file read/write/patch and allowlisted Git / GitHub operations |
+| `src/onboard.rs` & `src/improve.rs` | External repository onboarding (`chump onboard`) and autonomous improvement loops (`chump improve`) |
 
-## Repo and git tools
-
-| Module | Responsibility |
-|--------|----------------|
-| `repo_tools.rs` | read_file, list_dir, write_file, patch_file. |
-| `repo_path.rs` | CHUMP_REPO/CHUMP_HOME resolution, runtime_base. |
-| `repo_allowlist.rs` | Repo allowlist for git/gh. |
-| `repo_allowlist_tool.rs` | Repo allowlist tool. |
-| `set_working_repo_tool.rs` | set_working_repo tool. |
-| `onboard_repo_tool.rs` | onboard_repo tool. |
-| `git_tools.rs` | git_* tools. |
-| `gh_tools.rs` | gh_* CLI tools. |
-| `github_tools.rs` | github_* API tools. |
-
-## Memory and state
+### Memory, Surfaces & Adapters
 
 | Module | Responsibility |
 |--------|----------------|
-| `memory_tool.rs` | memory store/recall tool. |
-| `memory_db.rs` | SQLite FTS5 memory; optional semantic RRF. |
-| `memory_brain_tool.rs` | memory_brain wiki tool. |
-| `state_db.rs` | chump_state DB. |
-| `episode_db.rs` | chump_episodes. |
-| `episode_tool.rs` | episode tool. |
-| `task_db.rs` | chump_tasks. |
-| `task_tool.rs` | task tool. |
-| `schedule_db.rs` | chump_scheduled. |
-| `schedule_tool.rs` | schedule tool. |
-| `ego_tool.rs` | ego (inner state) tool. |
+| `src/memory_db.rs` & `src/state_db.rs` | SQLite FTS5 memory, RRF hybrid recall, sessions, episodes, and DAG tasks |
+| `src/web_server.rs` & `src/routes/*` | `axum` HTTP + SSE server powering `/v2/`, `/site/`, and `/api/*` |
+| `src/acp.rs` & `src/acp_server.rs` | Agent Client Protocol JSON-RPC 2.0 server (`chump --acp`) |
+| `src/adapters/*`, `src/slack.rs`, `src/discord.rs` | Optional messaging platform adapters (Slack Socket Mode, Telegram HTTP, Discord) |
 
-## Other tools
+---
 
-| Module | Responsibility |
-|--------|----------------|
-| `calc_tool.rs` | calculator. |
-| `cli_tool.rs` | run_cli (allowlist/blocklist, timeout, cap). |
-| `delegate_tool.rs` | delegate (summarize, extract, classify, validate). |
-| `tavily_tool.rs` | web_search (Tavily). |
-| `diff_review_tool.rs` | diff_review. |
-| `battle_qa_tool.rs` | run_battle_qa. |
-| `run_test_tool.rs` | run_test. |
-| `test_aware.rs` | Test-aware editing support. |
-| `spawn_worker_tool.rs` | spawn_worker. |
-| `notify_tool.rs` | notify (DM owner). |
-| `read_url_tool.rs` | read_url. |
-| `codebase_digest_tool.rs` | codebase_digest. |
-| `decompose_task_tool.rs` | decompose_task. |
-| `introspect_tool.rs` | introspect. |
-| `a2a_tool.rs` | message_peer (agent-to-agent). |
-| `adb_tool.rs` | ADB tool (Pixel/Termux). |
-| `ask_jeff_tool.rs` | ask_jeff. |
-| `ask_jeff_db.rs` | ask_jeff persistence. |
-| `wasm_calc_tool.rs` | wasm_calc. |
-| `wasm_text_tool.rs` | wasm_text. |
-| `wasm_runner.rs` | WASM runner (wasmtime CLI). |
+## Related Guides
 
-## Infrastructure
-
-| Module | Responsibility |
-|--------|----------------|
-| `db_pool.rs` | r2d2 SQLite pool. |
-| `chump_log.rs` | Logging, redaction. |
-| `limits.rs` | Message/tool input caps. |
-| `approval_resolver.rs` | Tool approval request/resolution map. |
-| `config_validation.rs` | validate_config at startup. |
-| `version.rs` | chump_version(). |
-| `health_server.rs` | Health HTTP server (CHUMP_HEALTH_PORT). |
-| `file_watch.rs` | File watching. |
-| `cost_tracker.rs` | Cost tracking. |
-
-## Optional / feature-gated
-
-| Module | Responsibility |
-|--------|----------------|
-| `embed_inprocess.rs` | In-process embeddings (feature `inprocess-embed`). |
-
-## Proc-macro crate
-
-| Crate / module | Responsibility |
-|----------------|----------------|
-| `chump-tool-macro` | Proc macro `#[chump_tool(name, description, schema)]` for Tool impl: expands to name, description, input_schema, execute. |
+- [System Architecture](ARCHITECTURE.md)
+- [HTTP & SSE API](../api/WEB_API_REFERENCE.md)
+- [Editor Integration (ACP)](ACP.md)

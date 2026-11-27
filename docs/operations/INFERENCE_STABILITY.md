@@ -1,111 +1,90 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: PRODUCT-375
+last_audited: 2026-11-27
 ---
 
-# Local inference stability (Mac)
+# Inference Stability & Failover Recovery
 
-Operational playbook when **vLLM-MLX (port 8000)** or **Ollama (11434)** crashes, OOMs, or leaves the Discord bot saying *Model server isn't responding*.
+Operational runbook when a local model server (`Ollama` on `:11434`, `vLLM` on `:8000`, `llama-server` on `:8080`) or upstream cloud API experiences timeouts, OOM crashes, or HTTP `429` rate limits.
 
-## Quick triage
+---
 
-1. **Farmer Brown / Sentinel** — Check `logs/sentinel-alert.txt` and `logs/farmer-brown.log` for `Model (8000): down` or similar.
-2. **Process** — `lsof -i :8000` (vLLM) or `lsof -i :11434` (Ollama). If nothing listens, the model server is down; restart it before restarting Chump.
-3. **Chump** — After the model is healthy, restart the bot (`scripts/setup/self-reboot.sh` or your launchd job). The bot’s preflight only validates the model at startup intervals; it does not replace a dead inference server.
+## 1. Fast Triage Checklist
 
-## OOM and crash loops
+1. **Probe the model endpoint directly:**
+   ```bash
+   # Ollama default:
+   curl -fsS -m 5 http://127.0.0.1:11434/v1/models
+   # vLLM / custom OPENAI_API_BASE:
+   curl -fsS -m 5 "${OPENAI_API_BASE%/v1}/v1/models"
+   ```
+   If `curl` fails or times out, restart the model server first—Chump's HTTP client will automatically reconnect once `/v1/models` is healthy.
+2. **Inspect Chump's live view of the stack:**
+   ```bash
+   curl -fsS http://127.0.0.1:3847/api/stack-status
+   curl -fsS http://127.0.0.1:3847/api/cascade-status
+   ```
+   Check `inference.models_reachable`, `inference.error`, and per-slot `circuit_state`.
+3. **Validate configuration schema:**
+   ```bash
+   chump config validate
+   ```
 
-Symptoms: many `logs/oom-context-*.txt`, vLLM log shows load → `GET /v1/models` → immediate shutdown.
+---
 
-**Mitigations (pick what fits your machine):**
+## 2. Preventing Local OOM & Swap Thrashing
 
-- Reduce model size or use a **quantization** that fits unified memory.
-- Lower **parallelism**: e.g. vLLM-MLX `max_num_seqs=1` (many scripts already use this).
-- **Smaller context** / default max tokens if the stack exposes them.
-- **Stagger roles** so Farmer Brown is not hammering the model with health checks during a fragile boot (increase interval temporarily).
+Symptoms of memory exhaustion:
+- Local replies jump from `3s` to `>90s` while disk swap climbs.
+- `vLLM` or `Ollama` exits unexpectedly right after loading weights.
+- Parallel `cargo test` + LLM inference wedges an 8–16 GB laptop.
 
-Deep tuning: [GPU_TUNING.md](GPU_TUNING.md), [OLLAMA_SPEED.md](OLLAMA_SPEED.md) (see **§6** for MacBook Air M4 **24 GB** + `./scripts/setup/ollama-serve-m4-air-24g.sh`).
+Mitigations:
+- **Step down one quantization or parameter tier:** e.g. `qwen2.5-coder:14b` → `qwen2.5-coder:7b` (`Q4_K_M`). See [Hardware & RAM Profiles](INFERENCE_PROFILES.md).
+- **Bound server sequence parallelism:** set `OLLAMA_NUM_PARALLEL=1` (or `vLLM` `--max-num-seqs 1`) on `≤ 16 GB` machines.
+- **Cap Rust compile concurrency:** set `CARGO_BUILD_JOBS = 2` under `[settings]` in `~/.chump/config.toml` so compiler linker spikes never compete with GPU/unified memory.
 
-## Profiles
+---
 
-Canonical ports and env: [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md).  
-Steady-run and retry scripts: [STEADY_RUN.md](STEADY_RUN.md).
+## 3. Built-In HTTP Retry & Circuit-Breaker Behavior (`local_openai.rs`)
 
-## Cloud / cascade fallback
+Chump's OpenAI-compatible client wraps every completion request in deterministic resilience guards:
 
-If local inference is down but **provider cascade** is enabled, heartbeats and some paths can still use cloud slots. See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and `scripts/dev/heartbeat-cloud-only.sh` for headless/cloud-only mode.
+| Mechanism | Default | Tuning Knob | Behavior |
+|-----------|---------|-------------|----------|
+| **Transient Retries** | `0s, 1s, 2s, 5s` | `CHUMP_LLM_RETRY_DELAYS_MS` | Retries HTTP `429`, `502`, `503`, `504`, and transient stream resets; adds one `15s` warm-up retry if the server reports `"model loading"`. |
+| **Circuit Breaker** | `3` failures → `30s` open | `CHUMP_CIRCUIT_FAILURE_THRESHOLD`, `CHUMP_CIRCUIT_COOLDOWN_SECS` | Opens the slot circuit so subsequent turns fail over immediately to the next `[[providers]]` slot instead of stalling. |
+| **Request Timeout** | `300s` (`45s` connect) | `CHUMP_MODEL_REQUEST_TIMEOUT_SECS`, `CHUMP_OPENAI_CONNECT_TIMEOUT_SECS` | Prevents hung TCP sockets from wedging background workers. |
+| **Fallback Base URL** | _(optional)_ | `CHUMP_FALLBACK_API_BASE` | Secondary OpenAI-compatible endpoint tried automatically when the primary base exhausts retries. |
 
-## Model flap drill (reliability acceptance)
+---
 
-**Goal:** Prove Chump and roles **recover** after inference goes away and returns—market expectation under “reliability under real ops.”
+## 4. Web Cockpit Degraded-Mode Signals
 
-**You will need:** Two terminals; local Ollama on `11434` (or vLLM on `8000` per [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)).
+When `chump --web` detects an inference issue, the cockpit surfaces actionable diagnostics immediately without requiring log inspection:
 
-**Script (Ollama example):**
+| Condition | Cockpit Signal | Recommended Action |
+|-----------|----------------|--------------------|
+| `OPENAI_API_BASE` unset and no cascade slots configured | Setup banner in **Providers** view | Run `chump config init` and follow [5-Minute Clean Setup](../process/EXTERNAL_GOLDEN_PATH.md) |
+| Local `/v1/models` unreachable (`models_reachable: false`) | Warning badge + `inference.error` detail | Start `ollama serve` / `vLLM`, or enable a cloud fallback slot in `~/.chump/config.toml` |
+| Primary backend is `mistralrs` (`§2b`) | `probe: "mistralrs_in_process"` | Normal for in-process `mistral.rs`; see [Hardware & RAM Profiles](INFERENCE_PROFILES.md) |
+| Upstream `401` / `429` / circuit open during chat | SSE `turn_error` with remediation hint | Check API key env var, raise `CHUMP_CASCADE_RPM_HEADROOM` safety margin, or add a local fallback slot |
 
-1. Start web or Discord Chump with a working model; confirm `curl -s http://127.0.0.1:11434/api/tags` succeeds.
-2. In terminal A, run `./run-web.sh` (or Discord) and confirm chat or `/api/health` OK.
-3. **Stop Ollama** (`Ctrl+C` on `ollama serve` or `killall ollama`). Send one chat or `curl` that hits the model — expect **clear error** (no silent hang).
-4. **Restart Ollama** and `ollama pull` your model if needed.
-5. Retry chat or health — record **wall seconds until first success** after restart.
-6. If using **Farmer Brown / Sentinel**, check `logs/farmer-brown.log` for down/up transitions.
+---
 
-**Pass criteria (pilot):** Second successful model response within **5 minutes** of restart without editing `.env`; no zombie process requiring full OS reboot.
+## 5. Recovery Drill (Verifying Zero-Restart Failover)
 
-**Failure actions:** See **Quick triage** above; tighten [OLLAMA_SPEED.md](OLLAMA_SPEED.md) `keep_alive` if cold starts dominate.
+To verify your setup recovers cleanly from a local server restart:
 
-## Degraded mode playbook (strategic alignment)
+1. Start `ollama serve` and `chump --web --port 3847`; confirm `curl -fsS http://127.0.0.1:3847/api/health` returns `status: "ok"`.
+2. Stop `ollama` (`pkill -f "ollama serve"` or stop the service) and trigger one prompt—confirm Chump either fails over to your cloud slot or returns a clear, bounded error (no infinite hang).
+3. Restart `ollama serve` and send another prompt—confirm normal responses resume automatically without restarting `chump` or editing `config.toml`.
 
-Use this when the PWA **Providers** tab shows **local inference not reachable**, chat hangs on “Thinking…”, or `/api/stack-status` reports `inference.models_reachable: false`.
+---
 
-| Step | Action |
-|------|--------|
-| 1 | **Confirm the probe:** `curl -sS -m 5 "$(echo $OPENAI_API_BASE | sed 's|/v1||')/models"` (or your base + `/models`). If it fails, the orchestrator cannot complete turns—fix the server before blaming Chump. |
-| 2 | **MLX / vLLM OOM or crash loop** — See **OOM and crash loops** above; reduce model size, `max_num_seqs`, or context. Check `logs/oom-context-*.txt` and the vLLM/MLX process log. |
-| 3 | **Fallback to Ollama (dev / rescue)** — Point `OPENAI_API_BASE=http://127.0.0.1:11434/v1`, `OPENAI_API_KEY=ollama`, pull a smaller model (`ollama pull qwen2.5:14b`), restart `./run-web.sh` or `./run-local.sh`. See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md). |
-| 4 | **Farmer Brown** — When `.env` targets **8000**, [scripts/dev/farmer-brown.sh](../scripts/dev/farmer-brown.sh) (via launchd or Mabel patrol) runs `keep-chump-online` / `restart-vllm-if-down.sh`. It is a **recovery** layer, not a substitute for a stable model config—tune the stack per **Quick triage** first. |
-| 5 | **Cloud-only heartbeat** — If the Mac GPU stack must stay down, use [OPERATIONS.md](OPERATIONS.md) **Mode B: Cloud-Only Heartbeat** (`heartbeat-cloud-only.sh`) with cascade keys. |
-| 6 | **Defense / pilot demos** — Prefer a **known-good** profile documented in [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md); avoid first-time MLX tuning during a sponsor call. |
+## Related Guides
 
-**UX:** In the PWA sidecar **Providers** tab, Chump surfaces `stack-status.inference.error` when local `/v1/models` is unreachable so you do not have to dig in logs first.
-
-Alignment context: [EXTERNAL_PLAN_ALIGNMENT.md](EXTERNAL_PLAN_ALIGNMENT.md). For mistral.rs–centric phases and WPs (optional in-process backend), see [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) §7.
-
-## PWA / web degraded UX matrix (universal power P1)
-
-Use this when tuning **what the user sees** before opening logs. Surfaces should always point at **Degraded mode playbook** above or [OPERATIONS.md](OPERATIONS.md).
-
-| Condition | User-visible signal | Next step (docs) |
-|-----------|---------------------|------------------|
-| `OPENAI_API_BASE` unset, primary **openai_compatible** | Top **inference banner** + Providers copy | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), `.env.example` |
-| Local `/v1/models` fails (`models_reachable: false`) | Banner + Providers **warn** + `stack-status.inference.error` snippet | **Degraded mode playbook** §1–3 |
-| Remote base (`probe: skipped_non_local`) | Providers note “probe skipped”; banner usually hidden | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) |
-| Primary **mistralrs** | No HTTP banner for local models; optional sidecar error if HTTP sidecar set | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b |
-| Chat stream ends with no text | Assistant bubble: empty-stream hint | `web/index.html`; check `chump --web` logs |
-| Turn fails inside agent | SSE **`turn_error`** + doc hints (timeout, 401, 429, context, circuit, SQLite, cascade) | [OPERATIONS.md](OPERATIONS.md), `src/user_error_hints.rs`, `src/web_server.rs` |
-
-## OpenAI-compatible HTTP client (`local_openai.rs`) — retries and circuit (P1)
-
-The **local / HTTP** provider (Ollama, vLLM-MLX, etc.) uses a small reliability layer:
-
-- **Retries:** Up to four attempts with delays **0, 1s, 2s, 5s** between tries. Transient errors retry; non-transient errors fail immediately. After failures, if the message looks like **“model not loaded”**, one **extra** attempt runs after **15s** (warm-up race).
-- **Circuit breaker:** After **`CHUMP_CIRCUIT_FAILURE_THRESHOLD`** consecutive failures (default **3**), the base URL is **open** (blocked) for **`CHUMP_CIRCUIT_COOLDOWN_SECS`** (default **30**). **Pure connection** errors (refused / closed while vLLM restarts) do **not** increment the circuit. **`try_one_request`** returns early with *circuit open* while cooldown is active — user-visible errors may include “circuit open”; see the degraded UX matrix and **`append_agent_error_hints`** in `src/user_error_hints.rs`.
-- **Fallback URL:** Optional **`CHUMP_FALLBACK_API_BASE`** is tried after the primary exhausts retries.
-- **Timeouts:** Request timeout **`CHUMP_MODEL_REQUEST_TIMEOUT_SECS`** (default 300s); connect **`CHUMP_OPENAI_CONNECT_TIMEOUT_SECS`** (default 45s).
-- **Observability:** Health port JSON includes **`model_circuit`** (`open` / `closed`) when a model base is configured; cascade status rows include **`circuit_state`** per slot. Use that plus preflight / `stack-status` for “degraded but process up.”
-
-**Automation:** [`scripts/ci/chump-preflight.sh`](../scripts/ci/chump-preflight.sh) or `./target/debug/chump --preflight` after `chump --web` is up — fails if health or `stack-status` is bad or (by default) local inference is degraded.
-
-## Soak (overnight / 72h)
-
-**Roadmap:** **Architecture vs proof → Overnight / 72h soak** (item shipped, per `docs/archive/strategy-2026-04/ROADMAP-superseded.md`; current work tracked in [`docs/ROADMAP.md`](https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md)).
-
-Use [DAILY_DRIVER_95_STEPS.md](DAILY_DRIVER_95_STEPS.md) **Day 13** (#81–87) as the daily rhythm; for a **72h** window, add checkpoints at **+24h / +48h / +72h** and capture **pre/post** SQLite size, WAL behavior, model server restarts, `logs/` growth, and `GET /api/stack-status` samples.
-
-**Template:** append dated runs to [SOAK_72H_LOG.md](SOAK_72H_LOG.md) or [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) **Soak runs**.
-
-## Related
-
-- `docs/operations/OPERATIONS.md` — roles, logs, battle QA, degraded inference summary  
-- `docs/operations/DISCORD_TROUBLESHOOTING.md` — “Model server isn’t responding”
+- [Hardware & RAM Profiles](INFERENCE_PROFILES.md)
+- [Provider Cascade & OAuth](../architecture/PROVIDER_CASCADE.md)
+- [Daemon & Service Operations](OPERATIONS.md)

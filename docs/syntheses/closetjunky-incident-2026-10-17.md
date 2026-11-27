@@ -1,4 +1,4 @@
-# Closetjunky node wedge incident — 2026-10-17
+# worker-node-01 node wedge incident — 2026-10-17
 
 **Date:** 2026-10-17T02:10Z  
 **Gap:** RESILIENT-1611  
@@ -7,7 +7,7 @@
 
 ## What happened
 
-Closetjunky (4-core, 8GB fleet coordinator node) became SSH-unresponsive at 02:10Z when:
+worker-node-01 (4-core, 8GB fleet coordinator node) became SSH-unresponsive at 02:10Z when:
 1. A Sonnet dispatch ran `cargo fix --workspace --all-targets` (cost: 62% CPU, 900s)
 2. A second `claude -p` process was spawned for a different gap
 3. Load spiked to 14.1 on 4 cores (3.5x threshold); system entered memory thrash
@@ -31,7 +31,7 @@ The fleet had off-node monitoring (`scripts/ops/offnode-deadman-watch.sh`, RESIL
 
 ### 3. Tailscale SSH not enabled
 
-Closetjunky had no Tailscale SSH fallback (`tailscale set --ssh`), so when sshd became unresponsive, the operator had to physically power-cycle from the cabinet.
+worker-node-01 had no Tailscale SSH fallback (`tailscale set --ssh`), so when sshd became unresponsive, the operator had to physically power-cycle from the cabinet.
 
 ## Fixes shipped (RESILIENT-1611)
 
@@ -86,7 +86,7 @@ This document records the incident as class 21 with full root-cause analysis, fi
 
 ## Recovery
 
-**Immediate (2026-10-17T03:04:50Z):** Operator power-cycled closetjunky from the cabinet.
+**Immediate (2026-10-17T03:04:50Z):** Operator power-cycled worker-node-01 from the cabinet.
 
 **Short-term (this PR):** Deploy admission ceiling fix, node dead-man, and Tailscale SSH to all owned nodes.
 

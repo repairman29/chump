@@ -13,7 +13,7 @@ questions go to Almanac BEFORE grep or agent fan-outs.
 1. **CLI (harness-neutral, canonical):** `~/Projects/almanac/target/release/almanac`
    — subcommands `search`, `search-fleet`, `api`, `impact`, `architecture`,
    `neighbors`, `stats`, `repos`, `coverage`, `usage`, `gc`. Bare runs resolve
-   inference via the `~/.almanac` machine config (helsinki as of 2026-08-01;
+   inference via the `~/.almanac` machine config (coordinator-node as of 2026-08-01;
    env overrides). `--help` on any subcommand.
 2. **MCP server `almanac`** (wired via `chump-mcp.json`, for MCP-capable
    harnesses): `almanac_search_fleet`, `almanac_search`, `almanac_api`,

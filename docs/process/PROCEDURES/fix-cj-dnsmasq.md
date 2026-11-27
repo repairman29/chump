@@ -7,7 +7,7 @@
 
 ## Background
 
-`dnsmasq.service` has been in `failed` state on closetjunky (CJ) since at
+`dnsmasq.service` has been in `failed` state on worker-node-01 (CJ) since at
 least 2026-09-26 (surfaced during a CJ health check). The fleet does not use
 dnsmasq — it's a leftover, likely conflicting with `systemd-resolved` — so
 the fix is disable+mask, not a config debug.
@@ -29,7 +29,7 @@ reach CJ over SSH from off-box (see the confirmed access gap recorded in
 unless the session's worktree happens to physically be running on CJ itself
 (check `hostname` first).
 
-## Steps (run ON closetjunky, by the operator or a session physically on CJ)
+## Steps (run ON worker-node-01, by the operator or a session physically on CJ)
 
 **1. Diagnose:**
 ```bash

@@ -20,7 +20,7 @@ Before auto-converge, merged bash-only fixes (e.g., `scripts/ops/rot-reaper.sh` 
 2. **Bash-only merges don't bump binary SHA** — A merged edit to `scripts/ops/foo.sh` doesn't change the build artifact SHA, so node-refresh treats the node as "already current" and leaves the checkout stale for hours/days.
 3. **Organs run stale scripts** — Every systemd ExecStart that runs `bash scripts/coord/bar.sh` pulls from the stale tree, executing yesterday's code.
 
-Real-world example: CJ's `/home/jeff/Projects/Chump` had to be hand `git reset --hard origin/main` to surface the rot-reaper fix (#4637).
+Real-world example: CJ's `/home/operator/Projects/Chump` had to be hand `git reset --hard origin/main` to surface the rot-reaper fix (#4637).
 
 ---
 

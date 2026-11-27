@@ -7,7 +7,7 @@
 
 ## 1. Host & Constraint Overview
 
-On the 2-host topology (`RESILIENT-1691`), `slim` (`ubuntu@100.75.43.55`) serves as the dedicated thinking/supervision node with **3.7 GiB usable system RAM** (4 GB physical class).
+On the 2-host topology (`RESILIENT-1691`), `slim` (`ubuntu@198.51.100.10`) serves as the dedicated thinking/supervision node with **3.7 GiB usable system RAM** (4 GB physical class).
 
 To keep `slim` (and user-scope thinking organs on `cuphead`) immune to OOM kills without starving kernel/OS services (`sshd`, `tailscaled`, `systemd --user`), all thinking organs must operate comfortably below 4 GB with enforced systemd cgroup bounds, bounded model inference, and zero direct canonical store (`state.db`) write contention.
 

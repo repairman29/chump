@@ -98,7 +98,7 @@ OPENAI_API_KEY=ollama
 OPENAI_MODEL=qwen2.5:7b
 CHUMP_THINKING=1
 CHUMP_CASCADE_ENABLED=0
-CHUMP_REPO=/Users/jeffadkins/Projects/Chump
+CHUMP_REPO=/Users/developer/Projects/Chump
 EOF
 ```
 

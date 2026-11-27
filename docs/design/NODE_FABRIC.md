@@ -18,15 +18,15 @@ runbook that "revs devs." Nodes may have different jobs; ATC runs on all of them
 Both happened in one ATC session, both because **there is no registry of what runs
 where and what depends on it**:
 
-1. Stopped **closetjunky's ollama** "to reclaim disk" — it was the GPU node already
+1. Stopped **worker-node-01's ollama** "to reclaim disk" — it was the GPU node already
    serving almanac embeddings (set up by another session). Proposed the embeddings
    as a *new* idea, blind to what was running.
-2. Stopped **helsinki's ollama** "to reclaim disk" — it was almanac's query-embed
+2. Stopped **coordinator-node's ollama** "to reclaim disk" — it was almanac's query-embed
    endpoint (`ALMANAC_EMBED_URL`). almanac's semantic search silently degraded to
    keyword-only until the next session noticed.
 
 A node registry with a `services_running` field would have stopped both cold:
-"helsinki:ollama = almanac embed endpoint — load-bearing, do not kill."
+"coordinator-node:ollama = almanac embed endpoint — load-bearing, do not kill."
 
 ## What already exists (mine-before-build receipts)
 
@@ -54,13 +54,13 @@ registry, and the placement loop that runs continuously.
 
 ## Findings from component #1 (first run, all three nodes)
 
-- **`roles_fit` ≠ `role_assigned`.** closetjunky reports `build-worker` as a *fit*
+- **`roles_fit` ≠ `role_assigned`.** worker-node-01 reports `build-worker` as a *fit*
   (46G free, 4 cores) — but it must **never** build (that disk is Jeff's data; builds
   wedged it to 198M free this session). Raw-hardware fit is necessary but not
   sufficient; the registry needs an **intended role (policy)** that can veto a fit.
   This is the #2 refinement, caught on run one.
 - The `services_running` guardrail is real and populated: the registry now shows
-  `closetjunky: ollama:embed` and `helsinki: (no ollama)` — the exact fact that was
+  `worker-node-01: ollama:embed` and `coordinator-node: (no ollama)` — the exact fact that was
   invisible when both ollamas got killed.
 
 ## Sequence
@@ -76,8 +76,8 @@ kernel and the registry as its world-model.
 Component #1 (`node-describe.sh`) + `capability.rs` DECLARE what a node IS. Nothing
 PLACED work against that declaration: worker counts were set by `AUTONOMY_LEVEL`
 (`run-fleet.sh` ~L245, an autonomy-only ceiling that is blind to cores) plus
-hand-written per-node scripts (`/home/jeff/cj-worker*.sh`). So no organ right-sized
-a box to its real cores/mem/GPU/load — closetjunky (4 cores) ran the orchestration
+hand-written per-node scripts (`/home/operator/cj-worker*.sh`). So no organ right-sized
+a box to its real cores/mem/GPU/load — worker-node-01 (4 cores) ran the orchestration
 farm (16 organs) + a CPU-bound ollama embed pair + build workers and sat pinned at
 load ~5 (142%/core), its orchestrator oscillating 1↔2 workers.
 
@@ -112,7 +112,7 @@ planner-derived, not a human starting `worker2`/`worker3` by hand.
 
 | node | cores | declared load | worker_budget | posture | GPU |
 |---|---|---|---|---|---|
-| closetjunky | 4 | 142%/core (saturated) | **1** (orch+embed reserve) | `oversubscribed` | `reserved-idle` — GTX 970 CC 5.2, ollama's bundled cuda_v12/v13 dropped Maxwell → embeds CPU-bound |
+| worker-node-01 | 4 | 142%/core (saturated) | **1** (orch+embed reserve) | `oversubscribed` | `reserved-idle` — GTX 970 CC 5.2, ollama's bundled cuda_v12/v13 dropped Maxwell → embeds CPU-bound |
 | cuphead | 2 | 11%/core | **1** (disk-brake) | not a sink (root 96%) | none |
 | mugman | 2 | 20%/core | **1** | **`capacity_sink`** (can take more) | none |
 

@@ -8,17 +8,18 @@ Thank you for improving Chump! Whether you're fixing a typo, adding a feature, o
 
 **Start here:**
 
-1. **[docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md)** — get Chump running locally (~30 min)
-2. **[book/src/dissertation.md](book/src/dissertation.md)** (or the [rendered site](https://repairman29.github.io/chump/dissertation.html)) — the authoritative architectural guide
-3. **Browse the [documentation site](https://repairman29.github.io/chump/)** for searchable docs
+1. **[docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md)** — get Chump running locally (~5 min)
+2. **[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)** — the authoritative v1.0 multi-OS architectural guide
+3. **Browse the [documentation site](https://repairman29.github.io/chump/docs/)** and **[searchable reference](https://repairman29.github.io/chump/reference/)**
 
-**Install the git hooks** (one-shot, ~1s):
+**Install the native Rust git hooks** (one-shot, ~1s):
 
 ```bash
-./scripts/setup/install-hooks.sh
+chump hook install
+chump hook status
 ```
 
-Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` files it changed. CI fails on fmt drift, so this catches it locally before push and avoids the 20-minute round trip. Skip a hook for one commit with `git commit --no-verify`.
+Installs native Rust `pre-commit` and `pre-push` guards (`LeaseCollisionGuard`, `SecretPatternGuard`, `RustFmtGuard`, `ProtectedBranchGuard`) so formatting drift, lease collisions, and accidental secrets are caught locally in milliseconds before pushing.
 
 **Good first contributions:**
 - Add eval cases to `src/eval_harness.rs` (see `seed_starter_cases()` for the pattern)
@@ -32,18 +33,27 @@ Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` fil
 
 | Audience | Start here |
 |----------|------------|
-| New contributors | [book/src/dissertation.md](book/src/dissertation.md), [docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md) |
-| Picking work items | [docs/strategy/ROADMAP.md](docs/strategy/ROADMAP.md), [docs/briefs/CHUMP_PROJECT_BRIEF.md](docs/briefs/CHUMP_PROJECT_BRIEF.md) |
+| New contributors | [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md), [docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md) |
+| Picking work items | [docs/ROADMAP.md](docs/ROADMAP.md), [AGENTS.md](AGENTS.md) |
 | Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/process/CHUMP_CURSOR_FLEET.md](docs/process/CHUMP_CURSOR_FLEET.md) |
-| Ops and heartbeats | [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) |
+| Ops and supervision | [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) |
 
 **Full doc catalog:** [docs/README.md](docs/README.md).
 
 ### Documentation site (GitHub Pages)
 
-The book at [repairman29.github.io/chump](https://repairman29.github.io/chump/) is built with [mdBook](https://rust-lang.github.io/mdBook/) from `book/`. Every push to `main` runs [.github/workflows/gh-pages.yml](.github/workflows/gh-pages.yml), which copies a fixed set of files from `docs/` into `book/src/` via [scripts/dev/sync-book-from-docs.sh](scripts/dev/sync-book-from-docs.sh), then runs `mdbook build book` and deploys `docs-site/`. Chapters that live only under `book/src/` (including [book/src/dissertation.md](book/src/dissertation.md) and [book/src/architecture.md](book/src/architecture.md)) are not overwritten by that sync.
+The public site at [repairman29.github.io/chump](https://repairman29.github.io/chump/) publishes two layers via [.github/workflows/docs-pages.yml](.github/workflows/docs-pages.yml):
 
-To preview locally after editing any file that this script mirrors from `docs/` (including `docs/process/RESEARCH_INTEGRITY.md`): install mdBook, run `./scripts/dev/sync-book-from-docs.sh`, then `mdbook serve book` from the repo root. Commit the resulting updates under `book/src/` when they drift so clones match what CI builds. To redeploy without a commit, use **Actions → Deploy mdBook to GitHub Pages → Run workflow**.
+1. **Warm-Stone Product & Quickstart Suite (`web/site/`)** — served at `/` and `/docs/` (and locally under `/site/` via `chump --web`).
+2. **Allowlist-only Searchable Reference ([mkdocs.yml](mkdocs.yml))** — built with `mkdocs build --strict -d _pages/reference` and served at `/reference/`. Only pages explicitly listed in `mkdocs.yml` (`exclude_docs` + `nav`) are published publicly.
+
+To verify documentation changes locally before opening a pull request:
+
+```bash
+mkdocs build --strict -d /tmp/mkdocs-verify
+bash scripts/ci/test-public-doc-privacy.sh
+bash scripts/ci/test-markdown-intra-doc-links.sh
+```
 
 ---
 
@@ -201,7 +211,7 @@ Optional: `bash scripts/ci/verify-external-golden-path.sh` (fast smoke; also run
 
 CI definition: [.github/workflows/ci.yml](.github/workflows/ci.yml) (includes `fmt`, Node checks for web, Playwright PWA, battle sim, golden path timing, clippy). See [docs/process/CI_GATES_INVENTORY.md](docs/process/CI_GATES_INVENTORY.md) (and [docs/ci/CI_GATES_INVENTORY.md](docs/ci/CI_GATES_INVENTORY.md)) for the **Scoped CI Path-Gate Contract (RESILIENT-1553)** when adding or modifying CI gates.
 
-**Ship and merge:** [docs/SHIP_AND_MERGE.md](docs/SHIP_AND_MERGE.md) — PR discipline, squash vs merge, branch protection, merge queue, post-merge ops.
+**Ship and merge:** [docs/process/AGENT_COORDINATION.md](docs/process/AGENT_COORDINATION.md) — lease lifecycle, `chump preflight`, and `chump ship` gate-file guards.
 
 **Superseded experiments (Git):** [docs/archive/SUPERSEDED_BRANCHES.md](docs/archive/SUPERSEDED_BRANCHES.md) — branches not to merge; tag-before-delete procedure.
 
@@ -224,8 +234,7 @@ Use the GitHub **Bug report** issue template when possible. Include **OS**, **Ru
 
 ## Roadmaps
 
-- **[docs/strategy/ROADMAP.md](docs/strategy/ROADMAP.md)** — checkboxes when work merges.
-- **[docs/strategy/ROADMAP_PRAGMATIC.md](docs/strategy/ROADMAP_PRAGMATIC.md)** — phased backlog order.
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — active v1.0 & v1.x product roadmap and four engineering pillars.
 
 ---
 

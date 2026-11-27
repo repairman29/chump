@@ -259,7 +259,7 @@ with the **golden-path runner**:
 ```
 WELCOME — let's get Chump ready.
 [✓] Detected: qwen2.5:14b at http://127.0.0.1:11434
-[✓] Detected: git repo /Users/jeff/projects/foo
+[✓] Detected: git repo /Users/developer/projects/foo
 [ ] Brain not initialized → [INIT BRAIN] one-click
 [ ] No ship heartbeat → [START AUTOPILOT] one-click
 [ ] No claimed gap yet → [BROWSE QUEUE]

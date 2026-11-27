@@ -1,7 +1,7 @@
-# Fleet load map — get ChumpOS off the Mac, split across Helsinki + CJ
+# Fleet load map — get ChumpOS off the Mac, split across coordinator-node + CJ
 
 > Ground-truthed 2026-08-10 from all three machines. The goal: the Mac stops being
-> load-bearing; Helsinki runs the OS; CJ is the GPU it calls.
+> load-bearing; coordinator-node runs the OS; CJ is the GPU it calls.
 
 ---
 
@@ -11,12 +11,12 @@ The three machines are **not interchangeable** — place each job by its dominan
 
 | Property of the job | Goes to | Why |
 |---|---|---|
-| Always-on, stable network, no GPU | **Helsinki** | Datacenter VM, fixed IP, never sleeps |
+| Always-on, stable network, no GPU | **coordinator-node** | Datacenter VM, fixed IP, never sleeps |
 | GPU / inference | **CJ** | The only accelerator in the fleet (GTX 970) |
 | Data-gravity (almanac index) | **Mac** (for now) | 111 repo DBs live here; moving them is its own project |
 | Interactive / dev | **Mac** | Your daily driver + Claude sessions |
 
-**CJ and Helsinki don't share load symmetrically — they complement.** Helsinki is the
+**CJ and coordinator-node don't share load symmetrically — they complement.** coordinator-node is the
 always-on brain (CPU, coordination); CJ is the GPU muscle it calls. CJ *cannot* take
 always-on infra (residential Wi-Fi + NAT, 8GB) — so it takes 0% of the broker/control
 plane. And CJ takes only the **small** slice of inference — its GTX 970 is 4GB.
@@ -66,8 +66,8 @@ owned than rented. Until then: CJ for small, serverless for medium, rent for one
 ```
 
 **Two things are actually broken right now:**
-1. **Broker split-brain.** `CHUMP_NATS_URL` → `100.120.232.0:4222`, which is dead
-   (not on the tailnet, unreachable). Mac and Helsinki each run a *separate* local
+1. **Broker split-brain.** `CHUMP_NATS_URL` → `198.51.100.10:4222`, which is dead
+   (not on the tailnet, unreachable). Mac and coordinator-node each run a *separate* local
    nats-server. Coordination is not going through one broker.
 2. **The Mac is single-point-of-failure** for auth + PR-cache + control plane, on a
    laptop that sleeps and moves. This is the root of every "lid-close killed the fleet."
@@ -96,49 +96,49 @@ owned than rented. Until then: CJ for small, serverless for medium, rent for one
 ## What's needed — phased, each phase independently shippable
 
 ### Phase 0 — Fix the broker (foundational, do first)
-- [ ] Identify/kill the dead `100.120.232.0` reference; pick **one** broker = Helsinki
-      (`100.101.188.30:4222`), stable tailnet IP, always-on.
-- [ ] Point every node's `CHUMP_NATS_URL` at Helsinki. Remove the Mac's nats-server.
+- [ ] Identify/kill the dead `198.51.100.10` reference; pick **one** broker = coordinator-node
+      (`198.51.100.10:4222`), stable tailnet IP, always-on.
+- [ ] Point every node's `CHUMP_NATS_URL` at coordinator-node. Remove the Mac's nats-server.
 - [ ] Verify `chump-coord watch` sees all nodes through the one broker.
 - **Risk:** low. **Unblocks:** everything else (coordination must be sane first).
 
-### Phase 1 — Auth → Helsinki
+### Phase 1 — Auth → coordinator-node
 - [ ] Run `oauth-refresh` + `token-tether` + `auth-floor-setenv` as systemd units on
-      Helsinki (workers there need a live token).
-- [ ] Verify `scripts/coord/auth-status.sh` is green on Helsinki.
-- **Risk:** medium (auth is load-bearing). **Test:** Helsinki ships a PR end-to-end.
+      coordinator-node (workers there need a live token).
+- [ ] Verify `scripts/coord/auth-status.sh` is green on coordinator-node.
+- **Risk:** medium (auth is load-bearing). **Test:** coordinator-node ships a PR end-to-end.
 
-### Phase 2 — PR-cache pipeline → Helsinki
+### Phase 2 — PR-cache pipeline → coordinator-node
 - [ ] Move `smee-tunnel` + `github-webhook-receiver` + `github-cache-reconcile` +
-      `github_cache.db` to Helsinki (new smee channel, receiver as systemd unit).
-- [ ] Fleet scripts read the cache from Helsinki (or a tailnet-shared path).
-- **Risk:** medium. **Test:** a real PR event lands in Helsinki's cache within seconds.
+      `github_cache.db` to coordinator-node (new smee channel, receiver as systemd unit).
+- [ ] Fleet scripts read the cache from coordinator-node (or a tailnet-shared path).
+- **Risk:** medium. **Test:** a real PR event lands in coordinator-node's cache within seconds.
 
-### Phase 3 — Control plane → Helsinki
+### Phase 3 — Control plane → coordinator-node
 - [ ] Port the ~30 reaper/watchdog/shepherd/curator/deliberator/conductor plists to
-      systemd units on Helsinki. Most act on local worktree/disk state → they belong
+      systemd units on coordinator-node. Most act on local worktree/disk state → they belong
       where the workers run.
 - [ ] Remove them from Mac launchd (archive, don't delete).
 - **Risk:** medium; do in small batches, watch ambient for gaps in coverage.
 
 #### Phase 3 cost-decision gate — cap workers before bumping RAM, measure before spending
 
-Helsinki RAM is a **recurring monthly cost** (~$13–15/mo ≈ $160–180/yr for CPX31→CPX41),
+coordinator-node RAM is a **recurring monthly cost** (~$13–15/mo ≈ $160–180/yr for CPX31→CPX41),
 unlike CJ's one-time $20 stick. So do NOT provision speculatively. Ground truth
-2026-08-10: Helsinki has **6.5GB free / 8GB swap barely touched** even with 7 workers +
+2026-08-10: coordinator-node has **6.5GB free / 8GB swap barely touched** even with 7 workers +
 cargo builds — the control-plane daemons are *light* (periodic scripts, ~200–400MB total),
 so migrating them should barely move the needle.
 
 The memory variable is **concurrent worker cargo builds**, not the daemons. Decision order:
 1. Migrate the control plane; watch peak memory + swap under real load for a few days
    (`free`, `journalctl` for OOM).
-2. If it gets tight, **cap Helsinki worker count** (7 → 4–5) first — workers are the
+2. If it gets tight, **cap coordinator-node worker count** (7 → 4–5) first — workers are the
    tunable, daemons are cheap. The 8GB swapfile already cushions spikes at $0.
 3. Bump the instance **only** if peak pushes swap hard *with workers already capped*.
 
-Cost-optimal architecture: keep Helsinki on the cheap tier by (a) using CJ's already-paid
-GPU for the small inference tier so Helsinki never holds a model, and (b) capping worker
-concurrency to fit 8GB. The $20 CJ stick + a worker cap beat $180/yr on Helsinki — spend
+Cost-optimal architecture: keep coordinator-node on the cheap tier by (a) using CJ's already-paid
+GPU for the small inference tier so coordinator-node never holds a model, and (b) capping worker
+concurrency to fit 8GB. The $20 CJ stick + a worker cap beat $180/yr on coordinator-node — spend
 there first. (Hetzner tier inferred from specs; confirm CPX31→CPX41 delta on the console.)
 
 ### Phase 4 — CJ inference, formalized (mostly done)
@@ -151,7 +151,7 @@ there first. (Hetzner tier inferred from specs; confirm CPX31→CPX41 delta on t
 - Index (111 repo DBs) lives on the Mac. Two options:
   - **(a) Keep on Mac**, run the summarize/embed crons on the Mac driving CJ's GPU.
     Simple, but the Mac must be awake for refreshes.
-  - **(b) Migrate the index to Helsinki** so it's always-on and Helsinki drives the
+  - **(b) Migrate the index to coordinator-node** so it's always-on and coordinator-node drives the
     drain against CJ with no Mac dependency. Cleaner; a real migration.
 - Recommend (a) now, (b) as a follow-on. Either way the summarize **driver runs
   once, durably** (a launchd/systemd unit) — not hand-launched (tonight's mistake).
@@ -160,10 +160,10 @@ there first. (Hetzner tier inferred from specs; confirm CPX31→CPX41 delta on t
 
 ## The honest constraints
 
-- **Helsinki is also 8GB.** Piling broker + workers + 30 daemons onto it risks the same
-  memory wall CJ hit. Phase 3 may force a Helsinki worker-count cap or a RAM bump.
+- **coordinator-node is also 8GB.** Piling broker + workers + 30 daemons onto it risks the same
+  memory wall CJ hit. Phase 3 may force a coordinator-node worker-count cap or a RAM bump.
   The fleet has *two* 8GB boxes doing heavy work — memory is the recurring ceiling.
-- **CJ is residential.** Fine for inference (Helsinki retries on a Wi-Fi blip); never
+- **CJ is residential.** Fine for inference (coordinator-node retries on a Wi-Fi blip); never
   put anything on CJ that others need 24/7 with zero tolerance.
 - **This is a multi-session migration.** Each phase is independently verifiable — do
   them in daylight, one at a time, watching ambient after each. Not a single big cutover.

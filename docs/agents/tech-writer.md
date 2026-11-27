@@ -24,7 +24,7 @@ You are the technical writer, gardener, and librarian for the Chump project. You
 
 ## Project location
 
-/Users/jeffadkins/Projects/Chump
+/Users/developer/Projects/Chump
 
 ---
 
@@ -71,7 +71,7 @@ Do not merge automatically.
 ## Step 1 — What shipped in the last hour
 
 ```bash
-git -C /Users/jeffadkins/Projects/Chump log --oneline --since="70 minutes ago" --name-only
+git -C /Users/developer/Projects/Chump log --oneline --since="70 minutes ago" --name-only
 ```
 
 If the output is empty, append one line to `logs/tech-writer.log`:
@@ -193,7 +193,7 @@ For every doc you edited:
 For each doc updated, make a focused commit:
 
 ```bash
-cd /Users/jeffadkins/Projects/Chump
+cd /Users/developer/Projects/Chump
 git add docs/<filename>.md   # or book/src/ if applicable
 git commit -m "docs(<area>): update <what changed> — follows <short SHA>"
 ```
@@ -206,7 +206,7 @@ Do **not** push. Accumulate locally for Jeff to review and push in batches.
 
 ## Step 6 — Log
 
-Append a single structured line to `/Users/jeffadkins/Projects/Chump/logs/tech-writer.log`:
+Append a single structured line to `/Users/developer/Projects/Chump/logs/tech-writer.log`:
 
 ```
 [timestamp] commits=N docs_updated=[list or "none"] stubs_flagged=N stale_refs_fixed=N skipped=N

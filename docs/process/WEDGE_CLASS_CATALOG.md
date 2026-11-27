@@ -67,7 +67,7 @@ shepherd-curator rescue or auto-retrigger. A wedge is the *aggregate*.
 
 **Manual override**:
 ```bash
-cargo install --path /Users/jeffadkins/Projects/Chump --bin chump --force
+cargo install --path /Users/developer/Projects/Chump --bin chump --force
 cp ~/.cargo/bin/chump /opt/homebrew/bin/chump
 chmod +x /opt/homebrew/bin/chump
 ```

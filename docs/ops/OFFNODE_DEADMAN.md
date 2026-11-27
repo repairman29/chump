@@ -1,7 +1,7 @@
 # Off-node dead-man's switch for CJ (RESILIENT-1247)
 
 ## The hole this closes
-On 2026-09-16 CJ (`closetjunky`) — the **single** fleet coordinator + worker —
+On 2026-09-16 CJ (`worker-node-01`) — the **single** fleet coordinator + worker —
 went dark for ~13h. Its worker log dir vanished, every dispatch failed `rc=1`,
 the fleet produced nothing, and **nothing paged**, because CJ's own
 duty-officer / discord-gateway runs *on CJ*: a CJ-wide failure has no off-node
@@ -31,7 +31,7 @@ section; it needs one step only you can do.
 
 ## Architecture (push-based dead-man over a GitHub gist)
 ```
-  CJ (closetjunky)                 GitHub (secret gist)            cuphead (muscle)
+  CJ (worker-node-01)                 GitHub (secret gist)            cuphead (muscle)
   cj-deadman-push.sh   --push-->   deadman.json          <--read-- offnode-deadman-watch.sh
    every 5m (systemd)              {pushed_epoch,                   every 10m (systemd)
    reads farmer-heartbeat          farmer_hb_epoch}                 grades freshness;
@@ -67,7 +67,7 @@ lives in `~/.chump/providers.env` on both nodes as `CHUMP_DEADMAN_GIST_ID=…`.
 The gist is secret and holds only a hostname + timestamps (zero secrets).
 
 ## Install
-On **CJ** (`ssh closetjunky`):
+On **CJ** (`ssh worker-node-01`):
 ```
 echo 'CHUMP_DEADMAN_GIST_ID=<id>' >> ~/.chump/providers.env
 cp scripts/ops/systemd/chump-cj-deadman-push.{service,timer} ~/.config/systemd/user/
