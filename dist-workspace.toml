@@ -71,3 +71,9 @@ github-build-setup = "../build-setup.yml"
 # current, BOTH this `allow-dirty` line AND the dependabot `ignore` block
 # can be reconsidered.
 allow-dirty = ["ci"]
+
+# GitHub retired `macos-14` (cargo-dist 0.31.0's built-in default for
+# aarch64-apple-darwin), causing tag release jobs on `macos-14` to cancel
+# immediately with 0 steps. Route Apple Silicon builds to `macos-latest` (arm64).
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-latest"

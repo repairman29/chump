@@ -101,6 +101,10 @@ within a few minutes.
 → Re-download the release binary, compute `sha256sum`, update the `sha256`
   field in `Formula/chump.rb`, commit and push to the tap.
 
+### `build-local-artifacts (aarch64-apple-darwin)` cancelled immediately on `macos-14`
+
+→ GitHub Actions retired `macos-14` (`cargo-dist 0.31.0`'s built-in default). Keep `[dist.github-custom-runners]` `aarch64-apple-darwin = "macos-latest"` in `dist-workspace.toml` (`INFRA-8656`).
+
 ## Post-release checklist
 
 - [ ] `brew install repairman29/chump/chump` installs the new version
