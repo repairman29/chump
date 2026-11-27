@@ -1002,28 +1002,36 @@ impl ProviderCascade {
                 let base = "https://generativelanguage.googleapis.com/v1beta/openai".to_string();
                 let auto_gemini = [
                     (
-                        "gemini-pro",
-                        "gemini-3.8-flash",
+                        "gemini-4-carbon",
+                        "gemini-4-carbon",
                         "opus",
-                        15u32,
-                        60u32,
-                        5000u32,
+                        12u32,
+                        300u32,
+                        50000u32,
                     ),
                     (
-                        "gemini-flash",
-                        "gemini-3.6-flash",
+                        "gemini-4-argon",
+                        "gemini-4-argon",
+                        "opus",
+                        14u32,
+                        600u32,
+                        50000u32,
+                    ),
+                    (
+                        "gemini-4-neon",
+                        "gemini-4-neon",
                         "sonnet",
-                        25u32,
-                        60u32,
-                        5000u32,
+                        22u32,
+                        1000u32,
+                        86400u32,
                     ),
                     (
-                        "gemini-flash-lite",
-                        "gemini-3.5-flash-lite",
+                        "gemini-4-hydrogen",
+                        "gemini-4-hydrogen",
                         "haiku",
-                        35u32,
-                        120u32,
-                        10000u32,
+                        32u32,
+                        2000u32,
+                        100000u32,
                     ),
                 ];
                 for (name, model, class, prio, rpm, rpd) in auto_gemini {
@@ -1467,6 +1475,7 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
     let is_gemini_tool_config_failure = lower.contains("function calling config is set without")
         || lower.contains("function_declarations")
         || lower.contains("function_declaration is required")
+        || lower.contains("thought_signature")
         || (lower.contains("tool_config")
             && (lower.contains("function_calling_config") || lower.contains("invalid")))
         || (lower.contains("400") && lower.contains("tools") && lower.contains("malformed"));
@@ -2555,14 +2564,14 @@ fn resolve_clean_install_cloud_fallback(
         return Some((
             "https://api.anthropic.com/v1".to_string(),
             k.to_string(),
-            "claude-sonnet-4-5".to_string(),
+            "claude-sonnet-4-6".to_string(),
         ));
     }
     if let Some(k) = gemini_key.map(str::trim).filter(|s| !s.is_empty()) {
         return Some((
             "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
             k.to_string(),
-            "gemini-3.6-flash".to_string(),
+            "gemini-4-neon".to_string(),
         ));
     }
     if let Some(k) = mistral_key.map(str::trim).filter(|s| !s.is_empty()) {
@@ -4654,7 +4663,7 @@ mod resilient_276_tests {
             Some((
                 "https://api.anthropic.com/v1".to_string(),
                 "sk-ant-api03-test".to_string(),
-                "claude-sonnet-4-5".to_string()
+                "claude-sonnet-4-6".to_string()
             ))
         );
         assert_eq!(
@@ -4662,7 +4671,7 @@ mod resilient_276_tests {
             Some((
                 "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
                 "gem-key".to_string(),
-                "gemini-3.6-flash".to_string()
+                "gemini-4-neon".to_string()
             ))
         );
         assert_eq!(
@@ -4674,5 +4683,11 @@ mod resilient_276_tests {
             ))
         );
         assert_eq!(resolve_clean_install_cloud_fallback(None, None, None), None);
+    }
+
+    #[test]
+    fn infra8655_thought_signature_error_triggers_cascade() {
+        let err = "Local API error 400 Bad Request: Function call is missing a thought_signature in functionCall parts.";
+        assert!(should_cascade_on_error_string(err));
     }
 }

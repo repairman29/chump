@@ -1666,21 +1666,44 @@ fn python_bin() -> String {
 fn test_command_specific(runner: &TestRunner, test_files: &[String]) -> Vec<String> {
     match runner {
         TestRunner::Cargo => {
-            // Cargo doesn't have per-file targeting, so use file-stem filter hints.
-            let filter = test_files
-                .iter()
-                .filter_map(|f| {
-                    Path::new(f)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s.to_string())
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-            if filter.is_empty() {
-                vec!["cargo".into(), "test".into()]
+            // INFRA-8655: In virtual Cargo `[workspace]` repos (e.g. almanac), `cargo test -- <stem>`
+            // only filters test function names on default lib targets (`running 0 tests`) and never
+            // builds/runs `crates/*/tests/<stem>.rs` integration binaries!
+            // When integration test files (`tests/<stem>.rs`) changed, pass `--workspace --test <stem>`
+            // so Cargo compiles and runs those exact integration test targets across the workspace.
+            let mut integration_stems: Vec<String> = Vec::new();
+            let mut unit_stems: Vec<String> = Vec::new();
+            for f in test_files {
+                let Some(stem) = Path::new(f).file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                if f.starts_with("tests/") || f.contains("/tests/") {
+                    if !integration_stems.iter().any(|s| s == stem) {
+                        integration_stems.push(stem.to_string());
+                    }
+                } else if !unit_stems.iter().any(|s| s == stem) {
+                    unit_stems.push(stem.to_string());
+                }
+            }
+            if !integration_stems.is_empty() && unit_stems.is_empty() {
+                let mut cmd = vec!["cargo".into(), "test".into(), "--workspace".into()];
+                for stem in integration_stems {
+                    cmd.push("--test".into());
+                    cmd.push(stem);
+                }
+                cmd
+            } else if let Some(first) = unit_stems.first() {
+                vec![
+                    "cargo".into(),
+                    "test".into(),
+                    "--workspace".into(),
+                    "--lib".into(),
+                    "--bins".into(),
+                    "--".into(),
+                    first.clone(),
+                ]
             } else {
-                vec!["cargo".into(), "test".into(), "--".into(), filter]
+                vec!["cargo".into(), "test".into(), "--workspace".into()]
             }
         }
         TestRunner::Npm => {
@@ -3767,6 +3790,29 @@ exit 0
         assert!(
             !super::is_pure_test_addition(dir, &base_sha, &head_mixed, &test_files_mixed).unwrap(),
             "commit touching prod file must NOT be treated as pure test addition"
+        );
+    }
+
+    #[test]
+    fn infra8655_cargo_test_command_targets_workspace_integration_and_unit_tests() {
+        let integration = vec!["crates/almanac-core/tests/ingest.rs".to_string()];
+        assert_eq!(
+            super::test_command_specific(&super::TestRunner::Cargo, &integration),
+            vec!["cargo", "test", "--workspace", "--test", "ingest"]
+        );
+
+        let unit = vec!["crates/almanac-core/src/parse_test.rs".to_string()];
+        assert_eq!(
+            super::test_command_specific(&super::TestRunner::Cargo, &unit),
+            vec![
+                "cargo",
+                "test",
+                "--workspace",
+                "--lib",
+                "--bins",
+                "--",
+                "parse_test"
+            ]
         );
     }
 }

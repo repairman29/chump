@@ -39,6 +39,8 @@ fn resolve_model() -> String {
     match std::env::var("FLEET_MODEL").ok().as_deref() {
         Some("haiku") => "claude-haiku-4-5-20251001".to_string(),
         Some("sonnet") => "claude-sonnet-4-6".to_string(),
+        Some("fable") => "claude-fable-5".to_string(),
+        Some("opus") => "claude-opus-4-7".to_string(),
         Some(other) if !other.is_empty() => other.to_string(),
         _ => "claude-opus-4-7".to_string(),
     }

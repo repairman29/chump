@@ -279,17 +279,19 @@ fn resolve_fleet_model(no_interactive: bool) -> Result<String> {
         }
     }
     if no_interactive {
-        return Ok("haiku".to_string());
+        return Ok("sonnet".to_string());
     }
     println!();
     println!("  FLEET_MODEL preference:");
-    println!("    1) haiku  — fast, cost-efficient (default for IDE sessions)");
-    println!("    2) sonnet — balanced (default for fleet workers)");
-    println!("    3) opus   — highest quality (~50x haiku cost)");
-    let choice = prompt("  Choose [1/2/3, default=2]: ")?;
+    println!("    1) haiku  — fast, cost-efficient");
+    println!("    2) sonnet — balanced primary coding (default)");
+    println!("    3) opus   — deep reasoning (claude-opus-4-7 / gemini-4-carbon)");
+    println!("    4) fable  — frontier flagship (claude-fable-5)");
+    let choice = prompt("  Choose [1/2/3/4, default=2]: ")?;
     let model = match choice.trim() {
         "1" => "haiku",
         "3" => "opus",
+        "4" => "fable",
         _ => "sonnet",
     };
     println!();
@@ -401,7 +403,7 @@ fn detect_model() -> ModelConfig {
             return ModelConfig {
                 api_base: None,
                 api_key: k,
-                model: Some("claude-sonnet-4-5".into()),
+                model: Some("claude-sonnet-4-6".into()),
                 source: "ANTHROPIC_API_KEY",
             };
         }
@@ -786,6 +788,15 @@ mod tests {
     fn resolve_fleet_model_default_no_interactive() {
         std::env::remove_var("FLEET_MODEL");
         let m = resolve_fleet_model(true).unwrap();
-        assert_eq!(m, "haiku");
+        assert_eq!(m, "sonnet");
+    }
+
+    #[test]
+    #[serial]
+    fn resolve_fleet_model_accepts_fable_from_env() {
+        std::env::set_var("FLEET_MODEL", "fable");
+        let m = resolve_fleet_model(true).unwrap();
+        assert_eq!(m, "fable");
+        std::env::remove_var("FLEET_MODEL");
     }
 }
