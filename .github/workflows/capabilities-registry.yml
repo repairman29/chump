@@ -103,17 +103,13 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "[before] content_sha256=${sha:-<none>} generated_at=${gen:-<none>} cli_count=${cli_count}"
 
-      - name: Install latest release chump binary for CLI inventory
-        continue-on-error: true
-        run: |
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh
-          {
-            echo "$HOME/.cargo/bin"
-            echo "$HOME/.local/bin"
-          } >> "$GITHUB_PATH"
-
       - name: Regenerate capabilities registry
-        run: bash scripts/dev/build-capabilities-registry.sh
+        run: |
+          if ! command -v chump >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -LsSf https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh || true
+            export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+          fi
+          bash scripts/dev/build-capabilities-registry.sh
 
       - name: Compare content hash
         id: after
