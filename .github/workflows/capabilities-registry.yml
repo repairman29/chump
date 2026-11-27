@@ -90,24 +90,41 @@ jobs:
           if [[ -f "$reg" ]]; then
             sha="$(python3 -c "import json;print(json.load(open('$reg')).get('content_sha256',''))")"
             gen="$(python3 -c "import json;print(json.load(open('$reg')).get('generated_at',''))")"
+            cli_count="$(python3 -c "import json;print(len(json.load(open('$reg')).get('cli_commands',[])))")"
           else
             sha=""
             gen=""
+            cli_count="0"
           fi
-          echo "sha=$sha"     >> "$GITHUB_OUTPUT"
-          echo "gen_at=$gen"  >> "$GITHUB_OUTPUT"
-          echo "[before] content_sha256=${sha:-<none>} generated_at=${gen:-<none>}"
+          {
+            echo "sha=$sha"
+            echo "gen_at=$gen"
+            echo "cli_count=$cli_count"
+          } >> "$GITHUB_OUTPUT"
+          echo "[before] content_sha256=${sha:-<none>} generated_at=${gen:-<none>} cli_count=${cli_count}"
+
+      - name: Install latest release chump binary for CLI inventory
+        continue-on-error: true
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/repairman29/chump/releases/latest/download/chump-installer.sh | sh
+          {
+            echo "$HOME/.cargo/bin"
+            echo "$HOME/.local/bin"
+          } >> "$GITHUB_PATH"
 
       - name: Regenerate capabilities registry
         run: bash scripts/dev/build-capabilities-registry.sh
 
       - name: Compare content hash
         id: after
+        env:
+          BEFORE_CLI_COUNT: ${{ steps.before.outputs.cli_count }}
         run: |
           set -euo pipefail
           reg="docs/CAPABILITIES_REGISTRY.json"
           sha="$(python3 -c "import json;print(json.load(open('$reg')).get('content_sha256',''))")"
           overlay="$(python3 -c "import json;print(json.load(open('$reg')).get('overlay_status',''))")"
+          cli_source="$(python3 -c "import json;print(json.load(open('$reg')).get('cli_source',''))")"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           if [[ -z "$sha" ]]; then
             echo "::error::generator produced no content_sha256 — refusing to commit"
@@ -120,6 +137,13 @@ jobs:
           if [[ "$overlay" != "applied" && "$overlay" != "absent" ]]; then
             echo "::error::overlay_status=$overlay — generation was degraded, refusing to commit"
             exit 1
+          fi
+          # INFRA-8657: Refuse degraded CLI inventory if chump binary was absent on PATH
+          # (prevents wiping 600+ lines of cli_commands as seen in PR #5921).
+          if [[ "$cli_source" == "none" && "${BEFORE_CLI_COUNT:-0}" -gt 0 ]]; then
+            echo "::warning::cli_source=none while existing registry has ${BEFORE_CLI_COUNT} cli_commands — skipping degraded commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if [[ "$sha" == "${{ steps.before.outputs.sha }}" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
