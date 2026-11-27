@@ -2510,23 +2510,50 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
             eprintln!("[improve] auth: using OAUTH token path for spawned claude");
         }
         c
-    } else if backend == "gemini" {
-        // INFRA-8655: First-class Google Ultra OAuth path via signed-in `gemini` CLI.
-        let gemini_model = std::env::var("GEMINI_MODEL")
+    } else if backend == "agy" || backend == "antigravity" || backend == "gemini" {
+        // INFRA-8660: First-class Google Ultra subscription path via `agy -p`
+        // (`~/.local/bin/agy`, replacing the retired individual `gemini` CLI),
+        // with graceful fallback to `gemini` only when `agy` is not installed.
+        let agy_bin = chump_orchestrator::dispatch::resolve_agy_bin();
+        let raw_model = std::env::var("AGY_MODEL")
+            .or_else(|_| std::env::var("GEMINI_MODEL"))
             .ok()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "gemini-4-carbon".to_string());
-        eprintln!(
-            "[improve] backend=gemini — spawning signed-in gemini CLI (model={gemini_model})"
-        );
-        let mut c = Command::new("gemini");
-        c.arg("-p")
-            .arg(std::fs::read_to_string(&prompt_file)?)
-            .arg("--yolo")
-            .args(["-m", &gemini_model])
-            .current_dir(&work_dir);
-        id.apply_git_env(&mut c);
-        c
+            .unwrap_or_else(|| "gemini-4-carbon-high".to_string());
+        let agy_available = std::path::Path::new(&agy_bin).is_file()
+            || Command::new(&agy_bin)
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok();
+        if agy_available {
+            let agy_model = chump_orchestrator::dispatch::normalize_agy_model(&raw_model);
+            eprintln!(
+                "[improve] backend={backend} — spawning signed-in agy CLI (model={agy_model})"
+            );
+            let mut c = Command::new(&agy_bin);
+            c.arg("-p")
+                .arg(std::fs::read_to_string(&prompt_file)?)
+                .arg("--dangerously-skip-permissions")
+                .arg("--disable-slash-commands")
+                .args(["--model", &agy_model])
+                .current_dir(&work_dir);
+            id.apply_git_env(&mut c);
+            c
+        } else {
+            eprintln!(
+                "[improve] backend={backend} — agy not found, falling back to gemini CLI (model={raw_model})"
+            );
+            let mut c = Command::new("gemini");
+            c.arg("-p")
+                .arg(std::fs::read_to_string(&prompt_file)?)
+                .arg("--yolo")
+                .args(["-m", &raw_model])
+                .current_dir(&work_dir);
+            id.apply_git_env(&mut c);
+            c
+        }
     } else {
         // DEFAULT (Principle 0): the OS's own runtime via `chump agent-run`.
         // Reads the prompt from --prompt-file, runs the chump-local agent in the
@@ -2653,6 +2680,8 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         && std::env::var_os("ANTHROPIC_API_KEY").is_none()
         && read_oauth_token_file().is_none();
     if backend != "claude"
+        && backend != "agy"
+        && backend != "antigravity"
         && backend != "gemini"
         && std::env::var("CHUMP_IMPLEMENT_ESCALATE_CLAUDE").as_deref() != Ok("0")
         && !byok_no_claude_auth

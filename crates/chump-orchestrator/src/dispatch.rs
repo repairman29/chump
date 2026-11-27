@@ -108,6 +108,10 @@ pub enum DispatchBackend {
     /// `claude -p <prompt>` via `scripts/coord/claude-retry.sh` — original AUTO-013
     /// baseline. Anthropic-only, costs ~$1-2/PR shipped.
     Claude,
+    /// `agy -p` (`--dangerously-skip-permissions --disable-slash-commands --model <id>`) —
+    /// Google Ultra / Antigravity CLI subscription harness (Gemini 4 Carbon/Argon/Neon/Hydrogen
+    /// and Claude 5.5 tiers).
+    Agy,
     /// `target/release/chump --execute-gap <GAP-ID>` — drives Chump's own
     /// multi-turn agent loop through whatever provider $OPENAI_API_BASE +
     /// $OPENAI_MODEL resolve to. Free-tier-capable.
@@ -128,13 +132,14 @@ impl DispatchBackend {
         {
             Some("") | None => DispatchBackend::Claude,
             Some("claude") => DispatchBackend::Claude,
+            Some("agy") | Some("antigravity") | Some("gemini") => DispatchBackend::Agy,
             Some("chump-local") | Some("chump_local") | Some("local") => {
                 DispatchBackend::ChumpLocal
             }
             Some(other) => {
                 eprintln!(
                     "[dispatch] WARN unknown CHUMP_DISPATCH_BACKEND={other:?}; \
-                     falling back to 'claude' (valid: claude | chump-local)"
+                     falling back to 'claude' (valid: claude | agy | chump-local)"
                 );
                 DispatchBackend::Claude
             }
@@ -145,6 +150,7 @@ impl DispatchBackend {
     pub fn label(self) -> &'static str {
         match self {
             DispatchBackend::Claude => "claude",
+            DispatchBackend::Agy => "agy",
             DispatchBackend::ChumpLocal => "chump-local",
         }
     }
@@ -170,19 +176,53 @@ impl DispatchBackend {
                 (b, format!("advisor:{why}"))
             }
             Some("claude") => (DispatchBackend::Claude, "env:claude".to_string()),
+            Some("agy") | Some("antigravity") | Some("gemini") => {
+                (DispatchBackend::Agy, "env:agy".to_string())
+            }
             Some("chump-local") | Some("chump_local") | Some("local") => {
                 (DispatchBackend::ChumpLocal, "env:chump-local".to_string())
             }
             Some(other) => {
                 eprintln!(
                     "[dispatch] WARN unknown CHUMP_DISPATCH_BACKEND={other:?}; \
-                     falling back to advisor (valid: claude | chump-local)"
+                     falling back to advisor (valid: claude | agy | chump-local)"
                 );
                 let (b, why) = select_backend_for_gap(priority, effort);
                 (b, format!("advisor-after-bad-env:{why}"))
             }
         }
     }
+}
+
+/// Normalize shorthand Gemini 4 / Google Ultra model names to exact `agy models` IDs.
+pub fn normalize_agy_model(raw: &str) -> String {
+    let trimmed = raw.trim();
+    match trimmed.to_ascii_lowercase().as_str() {
+        "" | "neon" | "gemini-4-neon" | "sonnet" => "gemini-4-neon-high".to_string(),
+        "carbon" | "gemini-4-carbon" => "gemini-4-carbon-high".to_string(),
+        "argon" | "gemini-4-argon" => "gemini-4-argon-high".to_string(),
+        "hydrogen" | "gemini-4-hydrogen" | "haiku" => "gemini-4-hydrogen-high".to_string(),
+        "opus" | "opus-5-5" | "claude-opus-5-5" => "claude-opus-5-5-high".to_string(),
+        "sonnet-5-5" | "claude-sonnet-5-5" => "claude-sonnet-5-5-high".to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
+/// Resolve the `agy` CLI binary (`CHUMP_AGY_BIN` override -> `~/.local/bin/agy` -> `"agy"`).
+pub fn resolve_agy_bin() -> String {
+    if let Ok(explicit) = std::env::var("CHUMP_AGY_BIN") {
+        let t = explicit.trim();
+        if !t.is_empty() {
+            return t.to_string();
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let candidate = std::path::Path::new(&home).join(".local/bin/agy");
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+    "agy".to_string()
 }
 
 /// COG-035 — derive the optional `task_class` for a gap from its id prefix.
@@ -419,7 +459,9 @@ pub fn select_backend_for_gap(priority: &str, effort: &str) -> (DispatchBackend,
         (DispatchBackend::ChumpLocal, _, _) => {
             "default → cheap tier (override via CHUMP_DISPATCH_BACKEND=claude)"
         }
-        (DispatchBackend::Claude, _, _) => "see docs/dispatch/routing.yaml",
+        (DispatchBackend::Claude, _, _) | (DispatchBackend::Agy, _, _) => {
+            "see docs/dispatch/routing.yaml"
+        }
     };
     (first.backend, why)
 }
@@ -567,6 +609,7 @@ impl Spawner for RealSpawner {
         // resolve to (Together free tier, mistral.rs, Ollama, hosted OpenAI).
         match backend {
             DispatchBackend::Claude => self.spawn_claude_cli(worktree, prompt),
+            DispatchBackend::Agy => self.spawn_agy_cli(worktree, prompt),
             DispatchBackend::ChumpLocal => self.spawn_chump_local(worktree, prompt),
         }
     }
@@ -714,6 +757,71 @@ impl RealSpawner {
                 })
                 .ok(); // best-effort — failing to spawn the tailer must
                        // not abort dispatch.
+        }
+
+        Ok((Some(child), Some(buf)))
+    }
+
+    /// INFRA-8660: First-class Google Ultra subscription harness via `agy -p`.
+    /// Pipes the prompt via stdin (safe for `---` YAML frontmatter), passes
+    /// `--dangerously-skip-permissions --disable-slash-commands --model <id>`,
+    /// and tails WARN/ERROR stderr lines identically to `spawn_claude_cli`.
+    fn spawn_agy_cli(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
+        let agy_bin = resolve_agy_bin();
+        let raw_model = std::env::var("AGY_MODEL")
+            .or_else(|_| std::env::var("CHUMP_DISPATCH_MODEL"))
+            .or_else(|_| std::env::var("GEMINI_MODEL"))
+            .unwrap_or_else(|_| "gemini-4-neon-high".to_string());
+        let model = normalize_agy_model(&raw_model);
+
+        let mut child = Command::new(&agy_bin)
+            .arg("-p")
+            .arg("--dangerously-skip-permissions")
+            .arg("--disable-slash-commands")
+            .args(["--model", &model])
+            .current_dir(worktree)
+            .env("CHUMP_DISPATCH_DEPTH", "1")
+            .env("CHUMP_DISPATCH_BACKEND_LABEL", "agy")
+            .env("GIT_AUTHOR_NAME", "Chump Dispatched")
+            .env("GIT_AUTHOR_EMAIL", "chump-dispatch@chump.bot")
+            .env("GIT_COMMITTER_NAME", "Chump Dispatched")
+            .env("GIT_COMMITTER_EMAIL", "chump-dispatch@chump.bot")
+            .stdin(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .with_context(|| format!("spawning agy CLI via {agy_bin} (model={model})"))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin
+                .write_all(prompt.as_bytes())
+                .context("writing dispatch prompt to agy stdin")?;
+        }
+
+        let buf: StderrTail = Arc::new(Mutex::new(Vec::new()));
+        if let Some(stderr) = child.stderr.take() {
+            let buf_thread = Arc::clone(&buf);
+            std::thread::Builder::new()
+                .name("orchestrator-agy-stderr-tail".into())
+                .spawn(move || {
+                    let reader = BufReader::new(stderr);
+                    for line in reader.lines().map_while(Result::ok) {
+                        let upper = line.to_uppercase();
+                        if upper.contains("ERROR")
+                            || upper.contains("WARN")
+                            || upper.contains("FAIL")
+                            || upper.contains("PANIC")
+                        {
+                            if let Ok(mut g) = buf_thread.lock() {
+                                if g.len() >= STDERR_TAIL_CAP {
+                                    g.remove(0);
+                                }
+                                g.push(line);
+                            }
+                        }
+                    }
+                })
+                .ok();
         }
 
         Ok((Some(child), Some(buf)))
@@ -1167,6 +1275,7 @@ fn resolve_route_for_gap(
     if let Some(raw) = env_raw {
         let backend = match raw.as_str() {
             "claude" => Some(DispatchBackend::Claude),
+            "agy" | "antigravity" | "gemini" => Some(DispatchBackend::Agy),
             "chump-local" | "chump_local" | "local" => Some(DispatchBackend::ChumpLocal),
             _ => None,
         };
@@ -1183,7 +1292,7 @@ fn resolve_route_for_gap(
         }
         eprintln!(
             "[dispatch] WARN unknown CHUMP_DISPATCH_BACKEND={raw:?}; \
-             falling back to cascade (valid: claude | chump-local)"
+             falling back to cascade (valid: claude | agy | chump-local)"
         );
     }
 
@@ -1598,6 +1707,83 @@ mod tests {
         match prev {
             Some(v) => std::env::set_var("CHUMP_CLAUDE_BIN", v),
             None => std::env::remove_var("CHUMP_CLAUDE_BIN"),
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn spawn_agy_cli_normalizes_google_ultra_models_and_pipes_stdin() {
+        assert_eq!(
+            normalize_agy_model("gemini-4-carbon"),
+            "gemini-4-carbon-high"
+        );
+        assert_eq!(normalize_agy_model("gemini-4-argon"), "gemini-4-argon-high");
+        assert_eq!(normalize_agy_model("gemini-4-neon"), "gemini-4-neon-high");
+        assert_eq!(
+            normalize_agy_model("gemini-4-hydrogen"),
+            "gemini-4-hydrogen-high"
+        );
+        assert_eq!(
+            normalize_agy_model("gemini-4-neon-xhigh"),
+            "gemini-4-neon-xhigh"
+        );
+        assert_eq!(normalize_agy_model("opus"), "claude-opus-5-5-high");
+
+        let tmp = tempfile::tempdir().unwrap();
+        let argv_log = tmp.path().join("agy-argv.log");
+        let stdin_log = tmp.path().join("agy-stdin.log");
+        let fake_agy = tmp.path().join("fake-agy.sh");
+        std::fs::write(
+            &fake_agy,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > {argv}\ncat > {stdin}\nexit 0\n",
+                argv = argv_log.display(),
+                stdin = stdin_log.display(),
+            ),
+        )
+        .unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&fake_agy, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let prev_bin = std::env::var("CHUMP_AGY_BIN").ok();
+        let prev_mod = std::env::var("AGY_MODEL").ok();
+        let prev_be = std::env::var("CHUMP_DISPATCH_BACKEND").ok();
+        std::env::set_var("CHUMP_AGY_BIN", &fake_agy);
+        std::env::set_var("AGY_MODEL", "gemini-4-carbon");
+        std::env::set_var("CHUMP_DISPATCH_BACKEND", "agy");
+        assert_eq!(DispatchBackend::from_env(), DispatchBackend::Agy);
+        assert_eq!(DispatchBackend::Agy.label(), "agy");
+
+        let prompt = "---\ndoc_tag: canonical\n---\n\nWorking on gap INFRA-8660.\n";
+        let spawner = RealSpawner;
+        let (child_opt, _tail) = spawner
+            .spawn_agy_cli(tmp.path(), prompt)
+            .expect("spawn_agy_cli must succeed against fake binary");
+        let status = child_opt.unwrap().wait().unwrap();
+        assert!(status.success());
+
+        let argv = std::fs::read_to_string(&argv_log).unwrap_or_default();
+        let stdin_seen = std::fs::read_to_string(&stdin_log).unwrap_or_default();
+        assert!(argv.contains("-p"));
+        assert!(argv.contains("--dangerously-skip-permissions"));
+        assert!(argv.contains("--disable-slash-commands"));
+        assert!(argv.contains("gemini-4-carbon-high"));
+        assert!(!argv.contains("INFRA-8660"));
+        assert_eq!(stdin_seen, prompt);
+
+        match prev_bin {
+            Some(v) => std::env::set_var("CHUMP_AGY_BIN", v),
+            None => std::env::remove_var("CHUMP_AGY_BIN"),
+        }
+        match prev_mod {
+            Some(v) => std::env::set_var("AGY_MODEL", v),
+            None => std::env::remove_var("AGY_MODEL"),
+        }
+        match prev_be {
+            Some(v) => std::env::set_var("CHUMP_DISPATCH_BACKEND", v),
+            None => std::env::remove_var("CHUMP_DISPATCH_BACKEND"),
         }
     }
 
