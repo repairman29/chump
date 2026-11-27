@@ -1437,7 +1437,12 @@ fn improve_implement_class() -> String {
 /// so the chump-local fix path escalates through the SAME strength progression
 /// (sonnet → opus) without ever naming claude.
 fn model_to_class(model: &str) -> &'static str {
-    if model.to_ascii_lowercase().contains("opus") {
+    let lower = model.to_ascii_lowercase();
+    if lower.contains("opus")
+        || lower.contains("fable")
+        || lower.contains("carbon")
+        || lower.contains("argon")
+    {
         "opus"
     } else {
         "sonnet"
@@ -2479,12 +2484,22 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         // CHUMP_IMPROVE_CLAUDE_BIN for tests).
         let claude_bin =
             std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
-        eprintln!("[improve] backend=claude (opt-in) — spawning external claude CLI");
+        let claude_model = match std::env::var("FLEET_MODEL").ok().as_deref() {
+            Some("sonnet") => "claude-sonnet-4-6".to_string(),
+            Some("opus") => "claude-opus-4-7".to_string(),
+            Some("fable") => "claude-fable-5".to_string(),
+            Some(m) if !m.trim().is_empty() && m != "haiku" => m.trim().to_string(),
+            _ => "claude-fable-5".to_string(),
+        };
+        eprintln!(
+            "[improve] backend=claude (opt-in) — spawning external claude CLI (model={claude_model})"
+        );
         let mut c = Command::new(&claude_bin);
         c.arg("-p")
             .arg(std::fs::read_to_string(&prompt_file)?)
             .arg("--dangerously-skip-permissions")
-            .args(["--model", "claude-sonnet-4-5"])
+            .args(["--model", &claude_model])
+            .args(["--fallback-model", "opus,sonnet"])
             .current_dir(&work_dir);
         // MISSION-063: author the agent's commits under its identity, not the token.
         id.apply_git_env(&mut c);
@@ -2494,6 +2509,23 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         if oauth_path {
             eprintln!("[improve] auth: using OAUTH token path for spawned claude");
         }
+        c
+    } else if backend == "gemini" {
+        // INFRA-8655: First-class Google Ultra OAuth path via signed-in `gemini` CLI.
+        let gemini_model = std::env::var("GEMINI_MODEL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "gemini-4-carbon".to_string());
+        eprintln!(
+            "[improve] backend=gemini — spawning signed-in gemini CLI (model={gemini_model})"
+        );
+        let mut c = Command::new("gemini");
+        c.arg("-p")
+            .arg(std::fs::read_to_string(&prompt_file)?)
+            .arg("--yolo")
+            .args(["-m", &gemini_model])
+            .current_dir(&work_dir);
+        id.apply_git_env(&mut c);
         c
     } else {
         // DEFAULT (Principle 0): the OS's own runtime via `chump agent-run`.
@@ -2542,7 +2574,7 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     // to a stronger (paid/Claude) provider. Gated off the claude backend (its own path
     // applies edits) and skippable via CHUMP_IMPLEMENT_FORCE_EDIT_TRIES=0.
     uncommit_agent_commits_onto_base(&work_dir, &base_branch);
-    if backend != "claude" {
+    if backend != "claude" && backend != "gemini" {
         let tries: u32 = std::env::var("CHUMP_IMPLEMENT_FORCE_EDIT_TRIES")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -2621,6 +2653,7 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         && std::env::var_os("ANTHROPIC_API_KEY").is_none()
         && read_oauth_token_file().is_none();
     if backend != "claude"
+        && backend != "gemini"
         && std::env::var("CHUMP_IMPLEMENT_ESCALATE_CLAUDE").as_deref() != Ok("0")
         && !byok_no_claude_auth
         && (landed_no_edit || landed_broken_edit)
@@ -2630,9 +2663,15 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         } else {
             "landed no edit"
         };
+        let claude_model = match std::env::var("FLEET_MODEL").ok().as_deref() {
+            Some("sonnet") => "claude-sonnet-4-6".to_string(),
+            Some("opus") => "claude-opus-4-7".to_string(),
+            Some("fable") => "claude-fable-5".to_string(),
+            _ => "claude-fable-5".to_string(),
+        };
         eprintln!(
             "[improve] EFFECTIVE-366 escalation: free/sub cascade {why} — \
-             escalating to the Claude final rung (sonnet/opus)"
+             escalating to the Claude Ultra final rung ({claude_model} -> opus -> sonnet)"
         );
         let claude_bin =
             std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
@@ -2640,7 +2679,8 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         c.arg("-p")
             .arg(&prompt)
             .arg("--dangerously-skip-permissions")
-            .args(["--model", "claude-sonnet-4-5"])
+            .args(["--model", &claude_model])
+            .args(["--fallback-model", "opus,sonnet"])
             .current_dir(&work_dir);
         id.apply_git_env(&mut c);
         let oauth_path = configure_claude_auth_env(&mut c);
@@ -3163,13 +3203,18 @@ pub(crate) fn fix_model_ladder() -> Vec<String> {
                 .collect::<Vec<String>>()
         })
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| vec!["claude-sonnet-4-5".to_string(), "opus".to_string()])
+        .unwrap_or_else(|| {
+            vec![
+                "claude-sonnet-4-6".to_string(),
+                "claude-opus-4-7".to_string(),
+            ]
+        })
 }
 
 /// Pick the model for a 0-based fix attempt, clamping to the last ladder rung.
 pub(crate) fn model_for_attempt(attempt: usize, ladder: &[String]) -> &str {
     if ladder.is_empty() {
-        return "claude-sonnet-4-5";
+        return "claude-sonnet-4-6";
     }
     &ladder[attempt.min(ladder.len() - 1)]
 }
@@ -5343,7 +5388,7 @@ mod tests {
 
     #[test]
     fn mission059_model_empty_ladder_has_safe_default() {
-        assert_eq!(model_for_attempt(0, &[]), "claude-sonnet-4-5");
+        assert_eq!(model_for_attempt(0, &[]), "claude-sonnet-4-6");
     }
 
     #[test]

@@ -1174,7 +1174,14 @@ impl Provider for LocalOpenAIProvider {
             }
         }
 
-        let promote_tool_history = tools.as_ref().is_some_and(|t| !t.is_empty());
+        // INFRA-8655: Gemini thinking models (Gemini 2.5/3.x/4 Carbon/Argon/Neon/Hydrogen)
+        // on Google's `/v1beta/openai` endpoint require encrypted `thought_signature` parts
+        // on historical `assistant.tool_calls` entries, which flat `axonerai::Message`
+        // history does not store. Keeping prior turns as plain role/content text for
+        // `generativelanguage.googleapis.com` avoids HTTP 400 `missing a thought_signature`
+        // on Turn 2+ while preserving live `tools` schemas on the current turn.
+        let promote_tool_history = tools.as_ref().is_some_and(|t| !t.is_empty())
+            && !self.base_url.contains("generativelanguage.googleapis.com");
         complete_message.extend(build_openai_chat_messages(&messages, promote_tool_history));
 
         let mut body = json!({
@@ -1933,6 +1940,10 @@ pub async fn auto_configure_context_window() {
     let is_ollama = base_url.contains("11434");
     let num_ctx: u32 = if is_ollama {
         probe_ollama_num_ctx(&base_url).await.unwrap_or(16_384)
+    } else if base_url.contains("generativelanguage.googleapis.com") {
+        1_000_000
+    } else if base_url.contains("api.anthropic.com") {
+        200_000
     } else {
         16_384 // non-Ollama fallback; INFRA-739 will add model_registry.yaml lookup
     };

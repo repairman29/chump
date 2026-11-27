@@ -3356,7 +3356,7 @@ fn validate_setting_value(key: &str, value: &str) -> bool {
             .parse::<u32>()
             .ok()
             .is_some_and(|n| (0..=64).contains(&n)),
-        "FLEET_MODEL" => matches!(value, "haiku" | "sonnet" | "opus"),
+        "FLEET_MODEL" => matches!(value, "haiku" | "sonnet" | "opus" | "fable"),
         "CHUMP_ROUND_PRIVACY" => matches!(value, "safe" | "dogfood"),
         "CHUMP_REPO" => value.is_empty() || value.starts_with('/'),
         // PRODUCT-118: throttle cap 1..600 calls/min (1 = effectively paused;

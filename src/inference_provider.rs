@@ -88,7 +88,7 @@ impl Provider {
 
         match name.trim().to_ascii_lowercase().as_str() {
             "anthropic" => Some(Provider::Anthropic {
-                model: model("claude-opus-4-5-20251101"),
+                model: model("claude-opus-4-7"),
                 api_key_env: "ANTHROPIC_API_KEY".to_string(),
             }),
             "openai" => Some(Provider::OpenAI {
