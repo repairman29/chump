@@ -188,7 +188,21 @@ class ChumpChat extends HTMLElement {
 
   connectedCallback() {
     this.#render();
+    this.#consumePendingPrompt();
     this.#checkModel();
+  }
+
+  #consumePendingPrompt() {
+    try {
+      const pending = sessionStorage.getItem('chump.pending_chat_prompt');
+      if (pending && this.#input) {
+        sessionStorage.removeItem('chump.pending_chat_prompt');
+        this.#input.value = pending;
+        this.#input.style.height = 'auto';
+        this.#input.style.height = Math.min(this.#input.scrollHeight, 140) + 'px';
+        setTimeout(() => this.#input?.focus(), 40);
+      }
+    } catch (_) {}
   }
 
   #render() {
@@ -220,9 +234,16 @@ class ChumpChat extends HTMLElement {
     fetch('/api/stack-status')
       .then((r) => r.json())
       .then((d) => {
-        const model = d.openai_model || d.openai_api_base || null;
-        this.#model = model;
-        if (!model && !d.openai_api_base) this.#showEmptyState();
+        const inf = d.inference || {};
+        const configured = Boolean(
+          d.cascade_enabled ||
+          d.openai_model ||
+          d.openai_api_base ||
+          d.primary_backend ||
+          (inf.configured && inf.models_reachable !== false)
+        );
+        this.#model = d.llm_last_completion?.label || d.primary_backend || d.openai_model || (configured ? 'cascade' : null);
+        if (!configured) this.#showEmptyState();
       })
       .catch(() => {
         this.#showEmptyState('offline');
@@ -367,7 +388,7 @@ class ChumpChat extends HTMLElement {
           if (done) { parser.push(dec.decode(new Uint8Array(), { stream: false })); parser.finish(); break; }
         }
         if (!fullText && !assistantEl.querySelector('.tool-card')) {
-          bubble.innerHTML = '<em style="color:var(--text-secondary,#8a8a8e)">No response received. Is the agent running?</em>';
+          bubble.innerHTML = '<em style="color:var(--text-secondary)">No response received. Is the agent running?</em>';
         }
       })
       .catch((err) => {
@@ -421,27 +442,27 @@ const PICKER_CSS = `
   :host { display: inline-block; }
   .model-btn {
     font-size: 11px; font-family: "SF Mono", monospace;
-    padding: 3px 8px; background: var(--bg-surface, #141414);
-    border: 1px solid var(--border, rgba(255,255,255,0.08));
-    border-radius: 6px; color: var(--text-secondary, #8a8a8e);
+    padding: 3px 8px; background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text-secondary);
     cursor: pointer; white-space: nowrap; max-width: 180px;
     overflow: hidden; text-overflow: ellipsis;
     transition: border-color 0.15s; line-height: 1.6;
   }
-  .model-btn:hover { border-color: var(--accent, #0a84ff); color: var(--text, #f0f0f0); }
+  .model-btn:hover { border-color: var(--accent); color: var(--text); }
   .model-btn .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-  .dot.ok { background: var(--success, #30d158); }
-  .dot.err { background: var(--error, #ff453a); }
+  .dot.ok { background: var(--success); }
+  .dot.err { background: var(--error); }
   dialog {
-    background: var(--bg-surface, #141414); border: 1px solid var(--border, rgba(255,255,255,0.08));
-    border-radius: 14px; padding: 20px; color: var(--text, #f0f0f0); max-width: 400px; width: 90vw;
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; color: var(--text); max-width: 400px; width: 90vw;
   }
-  dialog::backdrop { background: rgba(0,0,0,0.6); }
+  dialog::backdrop { background: var(--overlay-scrim); }
   h3 { font-size: 15px; margin: 0 0 12px; }
   .model-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-  label { font-size: 12px; color: var(--text-secondary, #8a8a8e); }
-  .model-info { font-family: "SF Mono", monospace; font-size: 13px; padding: 8px 12px; background: var(--bg-elevated, #1e1e1e); border-radius: 8px; }
-  .close-btn { margin-top: 8px; padding: 8px 16px; background: var(--bg-elevated, #1e1e1e); border: 1px solid var(--border, rgba(255,255,255,0.08)); color: var(--text, #f0f0f0); border-radius: 8px; cursor: pointer; font-size: 13px; }
+  label { font-size: 12px; color: var(--text-secondary); }
+  .model-info { font-family: "SF Mono", monospace; font-size: 13px; padding: 8px 12px; background: var(--bg-elevated); border-radius: 8px; }
+  .close-btn { margin-top: 8px; padding: 8px 16px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; font-size: 13px; }
 `;
 
 class ChumpModelPicker extends HTMLElement {

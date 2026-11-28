@@ -9,7 +9,7 @@
   <meta name="theme-color" content="stone">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <title>Chump — Sovereign Operator Cockpit</title>
+  <title>Chump — Parallel Coding Workspace</title>
   <style>
     /* ── Design tokens ──────────────────────────────────────────────────── */
     :root {
@@ -1689,6 +1689,83 @@
     body[data-active-view="cockpit"] > chump-quick-actions {
       display: none;
     }
+
+    /* PRODUCT-377: Focus Workspace (default simple mode) hides fleet-internal HUD chrome */
+    html[data-ui-mode="simple"] > body > chump-doctor-banner,
+    html[data-ui-mode="simple"] > body > chump-quick-actions,
+    html[data-ui-mode="simple"] > body > chump-status-footer {
+      display: none !important;
+    }
+    html[data-ui-mode="simple"]:not([data-welcome-force="1"]) > body > chump-first-run-wizard {
+      display: none !important;
+    }
+
+    chump-nav .nav-simple-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+      width: 100%;
+      min-width: 0;
+    }
+    @media (max-width: 560px) {
+      .hdr-btn-site, #header-theme-toggle { display: none; }
+      chump-heartbeat { display: none; }
+    }
+    chump-nav .nav-mode-spacer {
+      flex: 1;
+      min-width: 8px;
+    }
+    chump-nav .nav-mode-btn {
+      margin-left: auto;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background 0.14s, color 0.14s, border-color 0.14s;
+    }
+    chump-nav .nav-mode-btn:hover {
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: var(--bg-surface);
+    }
+    chump-nav .nav-mode-btn.is-advanced {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: var(--accent-dim);
+      font-weight: 600;
+    }
+
+    chump-repo-switcher .repo-profile-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 6px 0 10px 0;
+    }
+    chump-repo-switcher .repo-profile-btn {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+    }
+    chump-repo-switcher .repo-profile-btn:hover,
+    chump-repo-switcher .repo-profile-btn.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1705,6 +1782,21 @@
       } catch (_e) {
         document.documentElement.setAttribute('data-theme', 'light');
       }
+      try {
+        var params = new URLSearchParams(location.search);
+        if (params.get('welcome') === 'force') {
+          document.documentElement.setAttribute('data-welcome-force', '1');
+        }
+        var modeParam = params.get('mode');
+        var rawMode = localStorage.getItem('chump.prefs.ui_mode');
+        var storedMode = rawMode ? JSON.parse(rawMode) : null;
+        var mode = (modeParam === 'advanced' || modeParam === 'simple')
+          ? modeParam
+          : (params.has('cadence') ? 'advanced' : (storedMode === 'advanced' ? 'advanced' : 'simple'));
+        document.documentElement.setAttribute('data-ui-mode', mode);
+      } catch (_e2) {
+        document.documentElement.setAttribute('data-ui-mode', 'simple');
+      }
     })();
   </script>
 </head>
@@ -1719,14 +1811,14 @@
       <span class="brand-glyph" aria-hidden="true">C</span>
       <span>Chump</span>
       <span class="brand-divider" aria-hidden="true">/</span>
-      <span class="brand-sub">Operator Console</span>
+      <span class="brand-sub" id="header-brand-sub">Workspace</span>
     </span>
     <chump-repo-switcher></chump-repo-switcher>
     <chump-heartbeat></chump-heartbeat>
     <div class="header-utilities">
       <button type="button" class="hdr-btn" id="header-theme-toggle" title="Switch Warm-Stone / Obsidian theme" aria-label="Toggle color theme">Theme: Stone</button>
-      <button type="button" class="hdr-btn" id="settings-btn" data-view="settings" title="Settings &amp; Cascade" aria-label="Settings">Settings</button>
-      <a class="hdr-btn hdr-btn-site" href="/site/" title="Open Chump Product Suite &amp; Interactive Engineering Tools">Product &amp; Tools ↗</a>
+      <button type="button" class="hdr-btn" id="settings-btn" data-view="settings" title="Models &amp; Settings" aria-label="Settings">Settings</button>
+      <a class="hdr-btn hdr-btn-site" href="/site/" title="Open Chump Product Site &amp; Documentation">Docs &amp; Site ↗</a>
     </div>
   </header>
 
@@ -1746,44 +1838,44 @@
   <chump-notification-center></chump-notification-center>
   <chump-status-pill></chump-status-pill>
 
-  <script src="sse-hub.js?v=373" type="module"></script>
-  <script src="prefs.js?v=373" type="module"></script>
-  <script src="chat.js?v=373" type="module"></script>
-  <script src="app.js?v=373" type="module"></script>
-  <script src="cost-meter.js?v=373" type="module"></script>
-  <script src="pr-card.js?v=373" type="module"></script>
-  <script src="pr-list.js?v=373" type="module"></script>
-  <script src="workflow-timeline.js?v=373" type="module"></script>
-  <script src="ootb-wizard.js?v=373" type="module"></script>
-  <script src="inference-profile.js?v=373" type="module"></script>
-  <script src="fleet-sidebar.js?v=373" type="module"></script>
-  <script src="quick-actions.js?v=373" type="module"></script>
-  <script src="inbox-notifications.js?v=373" type="module"></script>
-  <script src="fleet-message.js?v=373" type="module"></script>
-  <script src="inbox.js?v=373" type="module"></script>
-  <script src="push-subscribe.js?v=373" type="module"></script>
-  <script src="cockpit.js?v=373" type="module"></script>
-  <script src="dashboard-tiles.js?v=373" type="module"></script>
-  <script src="pillar-health.js?v=373" type="module"></script>
-  <script src="notification-center.js?v=373" type="module"></script>
-  <script src="error-ux.js?v=373" type="module"></script>
-  <script src="operator-attention.js?v=373" type="module"></script>
-  <script src="stuck-items.js?v=373" type="module"></script>
-  <script src="autopilot-toggle.js?v=373" type="module"></script>
-  <script src="daemon-set-panel.js?v=373" type="module"></script>
-  <script src="wedge-watch.js?v=373" type="module"></script>
-  <script src="config-dials.js?v=373" type="module"></script>
-  <script src="pr-diff.js?v=373" type="module"></script>
-  <script src="daily-brief.js?v=373" type="module"></script>
-  <script src="impact.js?v=373" type="module"></script>
-  <script src="gap-list.js?v=373" type="module"></script>
-  <script src="approval.js?v=373" type="module"></script>
-  <script src="content-bots.js?v=373" type="module"></script>
+  <script src="sse-hub.js?v=374" type="module"></script>
+  <script src="prefs.js?v=374" type="module"></script>
+  <script src="chat.js?v=374" type="module"></script>
+  <script src="app.js?v=374" type="module"></script>
+  <script src="cost-meter.js?v=374" type="module"></script>
+  <script src="pr-card.js?v=374" type="module"></script>
+  <script src="pr-list.js?v=374" type="module"></script>
+  <script src="workflow-timeline.js?v=374" type="module"></script>
+  <script src="ootb-wizard.js?v=374" type="module"></script>
+  <script src="inference-profile.js?v=374" type="module"></script>
+  <script src="fleet-sidebar.js?v=374" type="module"></script>
+  <script src="quick-actions.js?v=374" type="module"></script>
+  <script src="inbox-notifications.js?v=374" type="module"></script>
+  <script src="fleet-message.js?v=374" type="module"></script>
+  <script src="inbox.js?v=374" type="module"></script>
+  <script src="push-subscribe.js?v=374" type="module"></script>
+  <script src="cockpit.js?v=374" type="module"></script>
+  <script src="dashboard-tiles.js?v=374" type="module"></script>
+  <script src="pillar-health.js?v=374" type="module"></script>
+  <script src="notification-center.js?v=374" type="module"></script>
+  <script src="error-ux.js?v=374" type="module"></script>
+  <script src="operator-attention.js?v=374" type="module"></script>
+  <script src="stuck-items.js?v=374" type="module"></script>
+  <script src="autopilot-toggle.js?v=374" type="module"></script>
+  <script src="daemon-set-panel.js?v=374" type="module"></script>
+  <script src="wedge-watch.js?v=374" type="module"></script>
+  <script src="config-dials.js?v=374" type="module"></script>
+  <script src="pr-diff.js?v=374" type="module"></script>
+  <script src="daily-brief.js?v=374" type="module"></script>
+  <script src="impact.js?v=374" type="module"></script>
+  <script src="gap-list.js?v=374" type="module"></script>
+  <script src="approval.js?v=374" type="module"></script>
+  <script src="content-bots.js?v=374" type="module"></script>
   <script src="lib/vendor/layout-base.js"></script>
   <script src="lib/vendor/cose-base.js"></script>
   <script src="lib/vendor/cytoscape-fcose.js"></script>
   <script src="lib/vendor/cytoscape.min.js"></script>
-  <script src="brain.js?v=373" type="module"></script>
+  <script src="brain.js?v=374" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
@@ -1797,12 +1889,22 @@
         const cur = document.documentElement.getAttribute('data-theme') || 'dark';
         btn.textContent = cur === 'light' ? 'Theme: Stone' : cur === 'high-contrast' ? 'Theme: Contrast' : 'Theme: Obsidian';
       }
+      function syncModeBrand() {
+        const brandSub = document.getElementById('header-brand-sub');
+        if (!brandSub) return;
+        const mode = document.documentElement.getAttribute('data-ui-mode') || 'simple';
+        brandSub.textContent = mode === 'advanced' ? 'Operator Console' : 'Workspace';
+      }
       syncThemeBtn();
+      syncModeBrand();
 
       if (typeof MutationObserver === 'function') {
-        new MutationObserver(syncThemeBtn).observe(document.documentElement, {
+        new MutationObserver(() => {
+          syncThemeBtn();
+          syncModeBrand();
+        }).observe(document.documentElement, {
           attributes: true,
-          attributeFilter: ['data-theme'],
+          attributeFilter: ['data-theme', 'data-ui-mode'],
         });
       }
 
@@ -1820,6 +1922,7 @@
 
       document.addEventListener('chump:pref-changed', (e) => {
         if (e.detail && e.detail.key === 'theme') syncThemeBtn();
+        if (e.detail && e.detail.key === 'ui_mode') syncModeBrand();
       });
 
       document.getElementById('settings-btn')?.addEventListener('click', () => {
@@ -1843,8 +1946,10 @@
       }
       const chatNav = document.querySelector('[data-view="chat"]');
       if (chatNav && !chatNav.id) chatNav.id = 'sessions-toggle';
-      const settingsNav = document.querySelector('[data-view="settings"]');
-      if (settingsNav && !settingsNav.id) settingsNav.id = 'settings-btn';
+      if (!document.getElementById('settings-btn')) {
+        const settingsNav = document.querySelector('[data-view="settings"]');
+        if (settingsNav && !settingsNav.id) settingsNav.id = 'settings-btn';
+      }
       return aliased;
     }
 
