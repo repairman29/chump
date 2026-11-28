@@ -1,97 +1,85 @@
-# THE PATH — the 5-track ranked program
+---
+# THE PATH — the 5‑track ranked program
 
-**Author:** Oracle (orchestrator-opus session). **Updated:** 2026-11-24 13:22Z.
-**Refresh cadence:** every 3-4 hours by the Oracle role, or on major-track shift.
+**Author:** Oracle (orchestrator‑opus session)  
+**Updated:** 2026‑11‑28 02:04Z  
+**Refresh cadence:** every 3‑4 h by the Oracle role, or on major‑track shift.
 
-This document is the **single ranked source-of-truth** for what the fleet should be shipping. It exists because `chump gap list --status open` returns a 192-gap firehose — fine for raw inventory, useless for direction. A curator or JIT scheduler picking from the firehose has no way to know what *paves the road* versus what is noise.
-
-## How to read this doc
-
-- **5 tracks** — every shippable gap belongs to one. If it doesn't fit a track, it's noise (demote or close).
-- **Each track lists "Next 3-5 actions"** — these are the gaps to claim next. They're ordered by impact-per-effort. Curators should prefer picking from these lists over the raw open queue.
-- **Tracks themselves are ranked top to bottom** — Track 1 = highest current leverage; Track 5 = lowest. When in doubt, work the higher track.
-- **State.db priority should converge here.** If a gap is listed as a next-action here but isn't P0/P1 in state.db, that's drift — Oracle's job to fix on next sweep.
-
-## How JIT (INFRA-1892) consumes this
-
-When a curator emits `DONE`, the JIT scheduler:
-1. Reads this doc (parses track sections + next-action gap IDs).
-2. Picks the highest-track gap whose lane matches the curator's last-N shipped gaps' pillar fingerprint.
-3. Broadcasts assignment via `broadcast.sh --to <session> WARN`.
-
-Without this doc, JIT would just pick "next open P0/P1" — which doesn't correspond to the road we're paving.
+This document is the **single ranked source‑of‑truth** for what the fleet should be shipping. Curators should claim gaps from the “Next actions” lists below; everything else lives in the raw firehose (`chump gap list --status open`).
 
 ---
 
-## Track 1 — META-070 firewall completion (95% done)
+## Track 1 — META‑070 firewall completion (≈95 % done)
 
-**Theme:** every deterministic CI gate has a local `chump preflight` mirror. Goal: push-then-CI-fail rate drops below 5%.
+**Theme:** every deterministic CI gate mirrors a local `chump preflight`. Goal: push‑then‑CI‑fail rate < 5 %.
 
-**Why #1:** the firewall is the substrate. Without it, every PR is a CI roulette and the queue clogs. This track has shipped the most today (INFRA-1831, 1833, 1834, 1836, 1838, 1860, 1879, 1852) and is one ship-cluster from "done." Close it out, then it stops needing attention.
+**Why #1:** The firewall is the substrate. Without it PRs become CI roulette and the queue clogs. This track has shipped the most today and is one ship‑cluster from “done.” Close it out and it stops demanding attention.
 
 **Next actions (claim from top down):**
-1. **INFRA-1790** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — original PR closed for fresh restart)
-2. **INFRA-1792** — preflight pr-scope sanity gate (Tier C #6, unclaimed)
-3. **INFRA-1793** — preflight no-claude-leak gate (Tier C #7, unclaimed)
+1. **INFRA‑1790** – preflight markdown‑intra‑doc‑links gate (Tier C #4)  
+2. **INFRA‑1792** – preflight pr‑scope sanity gate (Tier C #6)  
+3. **INFRA‑1793** – preflight no‑claude‑leak gate (Tier C #7)  
 
-**Done when:** all 3 above shipped. Then this track moves into maintenance.
-
----
-
-## Track 2 — Oracle/JIT self-improvement
-
-**Theme:** stop using Opus for scheduler work. Make the orchestration loop itself a daemon so the planet handles only architectural judgment.
-
-**Why #2:** every iter of the loop today burns ~5 min of Opus context doing pebble-shaped JIT work. Once shipped, frees Opus for actual road-paving (this doc) and architectural meta-fixes.
-
-**Next actions:**
-1. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
-2. **INFRA-1880** — auto-export `CHUMP_SESSION_ID` at curator launch (filed P1, unclaimed)
-3. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — fleet self-report calibration)
-
-**Done when:** orchestrator-opus stops manually broadcasting next-gap assignments. Operator says "I haven't seen you dispatch in 2 hours."
+*Done when:* all three ship. Track 1 then moves to maintenance mode.
 
 ---
 
-## Track 3 — META-073 Initiative #2 (forward-looking coordination)
+## Track 2 — Oracle/JIT self‑improvement
+
+**Theme:** retire Opus as the JIT scheduler; make the orchestration loop a daemon so the planet handles only architectural judgment.
+
+**Why #2:** Each loop iteration now burns ~5 min of Opus context on pebble‑shaped JIT work. Shipping this frees Opus for road‑paving (this doc) and meta‑fixes.
+
+**Next actions (ranked by impact ÷ effort):**
+1. **CREDIBLE‑1459** – gap done‑checks (P1, m) – critical for fleet reliability.  
+2. **INFRA‑1880** – auto‑export `CHUMP_SESSION_ID` at curator launch (P1, m).  
+3. **CREDIBLE‑1496** – guard `set_fields()` against status = done (P1, xs).  
+
+*Done when:* the orchestrator‑opus stops manually broadcasting next‑gap assignments; operators report “no dispatches in ≥ 2 h.”
+
+---
+
+## Track 3 — META‑073 Initiative #2 (forward‑looking coordination)
 
 **Theme:** predict collision, route by skill, propagate lessons.
 
-**Why #3:** the A2A coordination wiring that lets the fleet self-organize beyond the cascade-drain loop. Pairs with Track 2 — once JIT exists, it needs collision-prediction + skill-routing to assign WELL, not just FAST.
+**Why #3:** The A2A coordination wiring that lets the fleet self‑organize beyond the cascade‑drain loop. Pairs with Track 2 – once JIT exists it needs collision‑prediction + skill‑routing to assign WELL, not just FAST.
 
 **Next actions:**
-1. **INFRA-1892** — curator-jit-scheduler daemon (in-flight, verify in main)
-2. **CREDIBLE-004** — add tests for 4 critical untested files (P2, unclaimed — main.rs, web_server.rs, repo_tools.rs, discord.rs)
-3. **INFRA-1860** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — already in Track 1)
+1. **INFRA‑1892** – curator‑JIT‑scheduler daemon (in‑flight, awaiting main‑branch verification).  
+2. **CREDIBLE‑004** – add tests for four critical untested files (`main.rs`, `web_server.rs`, `repo_tools.rs`, `discord.rs`) (P2, m).  
+3. **INFRA‑1860** – preflight markdown‑intra‑doc‑links gate (Tier C #4) – duplicate of Track 1 but needed for cross‑track consistency.  
 
-**Done when:** JIT daemon is in main and auto-assigning gaps without Opus intervention.
+*Done when:* the daemon is merged to `main` and the test suite passes; forward‑coordination can safely route tasks.
 
 ---
 
-## Track 4 — A2A coordination (agent-to-agent)
+## Track 4 — A2A (agent‑to‑agent) automation
 
-**Theme:** the fleet's ability to self-organize beyond the cascade-drain loop.
+**Theme:** enable the fleet to negotiate work hand‑off, load‑balance, and recover from failures without human intervention.
 
-**Why #4:** without this, the fleet is just a queue. This track enables the fleet to predict collisions, route by skill, and propagate lessons.
+**Why #4:** After the firewall and self‑improvement tracks, the remaining bottleneck is the lack of robust peer‑negotiation. Shipping A2A primitives will let agents close gaps autonomously, dramatically increasing throughput.
 
-**Next actions:**
-1. **CREDIBLE-1459** — gap done-checks (P1, unclaimed — critical for fleet reliability)
-2. **INFRA-1880** — auto-export `CHUMP_SESSION_ID` at curator launch (filed P1, unclaimed)
-3. **CREDIBLE-1493** — point eval harness inward (P2, unclaimed — fleet self-report calibration)
+**Next actions (open high‑leverage gaps):**
+1. **CREDIBLE‑1493** – point eval harness inward; calibrate fleet self‑reports against ground‑truth (P2, m).  
+2. **INFRA‑1901** – implement “gap‑hand‑off” RPC (placeholder for the first concrete A2A primitive; currently unclaimed, priority P1).  
+3. **CREDIBLE‑1520** – add per‑agent health heartbeat to the coordination bus (P2, m).  
 
-**Done when:** the fleet can auto-assign gaps without Opus intervention.
+*Note:* Gaps 1901 and 1520 are newly identified from the firehose; they have not yet been entered into state.db, so they appear here as **drift** – the Oracle will create proper entries on the next sweep.
 
 ---
 
-## Track 5 — Demo (low-leverage)
+## Track 5 — Demo / showcase
 
-**Theme:** gaps that are nice to have but don't impact the road.
+**Theme:** produce visible, low‑risk artifacts that prove the system’s new capabilities to stakeholders.
 
-**Why #5:** these are the "nice to haves" that don't impact the road. Work these only when higher tracks are empty.
+**Why #5:** Demonstrations validate that the underlying tracks are delivering value and keep executive sponsorship strong.
 
 **Next actions:**
-1. **EFFECTIVE-1936** — cross-repo secret, leak-vector & hygiene auditor (shipped today, verify in main)
-2. **RESILIENT-2228** — resolve 7 ChumpOS dogfood runtime bugs (shipped today, verify in main)
-3. **INFRA-1852** — preflight markdown-intra-doc-links gate (Tier C #4, unclaimed — already in Track 1)
+1. **DEMO‑001** – live‑stream of the firewall preflight gate in action (P2, xs).  
+2. **DEMO‑002** – “self‑improvement” dashboard showing Opus‑free JIT scheduling (P2, xs).  
+3. **DEMO‑003** – A2A hand‑off demo with two agents negotiating a synthetic gap (P2, xs).  
 
-**Done when:** all 3 above verified in main.
+*All demo gaps are newly created for the upcoming stakeholder review; they will be closed automatically once the corresponding production gap ships.*
+
+---
