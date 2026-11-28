@@ -872,14 +872,14 @@ const CSS = `
     margin-bottom: 6px;
   }
 
-  /* ── PRODUCT-377: Focus Workspace (Default Simple Mode) ─────────────── */
+  /* ── PRODUCT-378: Dream -> Mission Architect -> Autonomous Factory Studio ── */
   .ws-shell {
-    max-width: 960px;
+    max-width: 1020px;
     margin: 0 auto;
-    padding: 28px 24px 48px;
+    padding: 28px 24px 56px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 22px;
   }
   .ws-hero {
     display: flex;
@@ -925,7 +925,7 @@ const CSS = `
     font-size: 28px;
     font-weight: 600;
     letter-spacing: -0.025em;
-    line-height: 1.18;
+    line-height: 1.16;
     color: var(--text);
   }
   .ws-subtitle {
@@ -933,46 +933,99 @@ const CSS = `
     font-size: 14px;
     line-height: 1.55;
     color: var(--text-secondary);
-    max-width: 760px;
+    max-width: 840px;
   }
-  .ws-steps-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 4px;
+
+  /* 3-Stage Pipeline Journey Strip */
+  .ws-journey {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 6px;
   }
-  .ws-step-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
+  .ws-stage {
+    padding: 10px 13px;
     border-radius: var(--radius-sm);
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    font-size: 12px;
-    color: var(--text-secondary);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
   }
-  .ws-step-num {
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--accent);
+  .ws-stage.active {
+    border-color: var(--accent);
     background: var(--accent-dim);
-    padding: 1px 6px;
+  }
+  .ws-stage-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
     border-radius: 999px;
+    flex-shrink: 0;
+  }
+  .ws-stage.active .ws-stage-num {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+  }
+  .ws-stage-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ws-stage-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .ws-stage-sub {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.35;
   }
 
+  /* Dream Intake Composer Card */
   .ws-composer-card {
     background: var(--bg-surface);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
-    padding: 18px 20px;
+    padding: 20px 22px;
     display: flex;
     flex-direction: column;
     gap: 14px;
   }
+  .ws-mode-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    align-self: flex-start;
+  }
+  .ws-mode-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 6px 13px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.14s, color 0.14s;
+  }
+  .ws-mode-tab.active {
+    background: var(--bg-surface);
+    color: var(--accent);
+    box-shadow: var(--shadow-card);
+  }
+
   .ws-repo-row {
     display: flex;
     align-items: center;
@@ -981,6 +1034,7 @@ const CSS = `
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
   }
+  .ws-repo-row[hidden] { display: none; }
   .ws-field-label {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -990,7 +1044,7 @@ const CSS = `
     color: var(--text-secondary);
   }
   .ws-repo-select {
-    padding: 6px 11px;
+    padding: 7px 12px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-strong);
     background: var(--bg);
@@ -998,7 +1052,7 @@ const CSS = `
     font-family: var(--font-sans);
     font-size: 13px;
     font-weight: 600;
-    min-width: 180px;
+    min-width: 210px;
     cursor: pointer;
   }
   .ws-repo-path {
@@ -1008,8 +1062,51 @@ const CSS = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 460px;
+    max-width: 340px;
   }
+  .ws-scout-btn {
+    margin-left: auto;
+    background: var(--bronze-dim);
+    border: 1px solid var(--bronze);
+    color: var(--bronze);
+    font-weight: 600;
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ws-scout-btn:hover {
+    background: var(--bronze);
+    color: var(--on-accent);
+  }
+
+  .ws-new-repo-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ws-new-repo-bar[hidden] { display: none; }
+  .ws-slug-prefix {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .ws-slug-input {
+    padding: 7px 11px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 220px;
+  }
+
   .ws-custom-repo {
     display: flex;
     align-items: center;
@@ -1034,8 +1131,8 @@ const CSS = `
 
   .ws-textarea {
     width: 100%;
-    min-height: 92px;
-    max-height: 240px;
+    min-height: 108px;
+    max-height: 280px;
     resize: vertical;
     padding: 12px 14px;
     border-radius: var(--radius-sm);
@@ -1086,7 +1183,7 @@ const CSS = `
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
-    padding-top: 8px;
+    padding-top: 10px;
     border-top: 1px solid var(--border);
   }
   .ws-runners {
@@ -1123,18 +1220,18 @@ const CSS = `
     margin-left: auto;
   }
   .ws-run-btn {
-    min-height: 42px;
+    min-height: 44px;
     padding: 9px 18px;
     font-size: 13.5px;
     font-weight: 600;
   }
   .ws-chat-btn {
-    min-height: 42px;
+    min-height: 44px;
     padding: 9px 14px;
     font-size: 13px;
   }
   .ws-feedback {
-    padding: 9px 12px;
+    padding: 10px 13px;
     border-radius: var(--radius-sm);
     font-size: 12.5px;
     background: var(--bg);
@@ -1153,67 +1250,149 @@ const CSS = `
     color: var(--error);
   }
 
-  .ws-lower-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    align-items: start;
-  }
-  @media (max-width: 820px) {
-    .ws-shell { padding: 18px 14px 36px; }
-    .ws-title { font-size: 22px; }
-    .ws-lower-grid { grid-template-columns: 1fr; }
-    .ws-cta-group { width: 100%; justify-content: flex-end; }
-  }
-
-  .ws-section-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-card);
+  /* Stage 2 & Stage 3: Draft Plan Approval + Live Running Mission Cards */
+  .msn-list {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    gap: 18px;
   }
-  .ws-section-head {
-    padding: 13px 16px;
+  .msn-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .msn-card.draft {
+    border: 2px solid var(--accent);
+  }
+  .msn-card.needs-decision {
+    border: 2px solid var(--bronze);
+  }
+  .msn-head {
+    padding: 16px 20px;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-surface);
+  }
+  .msn-head-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
+    flex-wrap: wrap;
   }
-  .ws-section-title {
-    font-family: var(--font-display);
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text);
+  .msn-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   }
-  .ws-section-count {
+  .ws-badge {
     font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 2px 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 3px 8px;
     border-radius: 999px;
     background: var(--bg-elevated);
     color: var(--text-secondary);
   }
-  .ws-section-body {
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  .ws-badge.ok { background: var(--tone-ok-bg); color: var(--success); }
+  .ws-badge.warn { background: var(--tone-warn-bg); color: var(--warn); }
+  .ws-badge.err { background: var(--tone-err-bg); color: var(--error); }
+  .ws-badge.accent { background: var(--accent-dim); color: var(--accent); }
+  .ws-badge.bronze { background: var(--bronze-dim); color: var(--bronze); }
+
+  .msn-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.015em;
   }
-  .ws-empty {
-    padding: 20px 14px;
-    text-align: center;
+  .msn-summary {
+    margin: 0;
     font-size: 13px;
     line-height: 1.5;
     color: var(--text-secondary);
-    background: var(--bg);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-sm);
   }
-  .ws-run-item, .ws-pr-item {
+
+  /* Progress bar */
+  .msn-progress-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 4px;
+  }
+  .msn-progress-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .msn-progress-bar {
+    height: 8px;
+    width: 100%;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+  }
+  .msn-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.35s ease;
+  }
+
+  /* Founder Decision Banner */
+  .msn-decision-box {
+    margin: 14px 20px 0;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--bronze-dim);
+    border: 1px solid var(--bronze);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .msn-decision-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--bronze);
+  }
+  .msn-decision-q {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .msn-decision-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .msn-decision-input {
+    flex: 1 1 260px;
+    padding: 8px 11px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface);
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  /* Live Activity & Log Stream */
+  .msn-live-box {
+    margin: 14px 20px 0;
     padding: 12px 14px;
     border-radius: var(--radius-sm);
     background: var(--bg);
@@ -1222,49 +1401,164 @@ const CSS = `
     flex-direction: column;
     gap: 8px;
   }
-  .ws-item-top {
+  .msn-live-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
-    flex-wrap: wrap;
-  }
-  .ws-item-id {
     font-family: var(--font-mono);
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--accent);
   }
-  .ws-item-badges {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .ws-badge {
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    padding: 2px 7px;
-    border-radius: 999px;
+  .msn-log-pre {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.45;
+    max-height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
-  .ws-badge.ok { background: var(--tone-ok-bg); color: var(--success); }
-  .ws-badge.warn { background: var(--tone-warn-bg); color: var(--warn); }
-  .ws-item-title {
+
+  /* Step list */
+  .msn-steps {
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .msn-step {
+    padding: 11px 13px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+  }
+  .msn-step.in_progress {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .msn-step.completed {
+    opacity: 0.92;
+  }
+  .msn-step.failed {
+    border-color: var(--tone-err-border);
+    background: var(--tone-err-bg);
+  }
+  .msn-step.disabled {
+    opacity: 0.52;
+  }
+  .msn-step-icon {
+    font-family: var(--font-mono);
     font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-    line-height: 1.4;
+    font-weight: 700;
+    min-width: 22px;
+    padding-top: 1px;
+    text-align: center;
   }
-  .ws-item-actions {
+  .msn-step-icon.ok { color: var(--success); }
+  .msn-step-icon.run { color: var(--accent); }
+  .msn-step-icon.err { color: var(--error); }
+  .msn-step-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .msn-step-top {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .msn-step-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.35;
+  }
+  .msn-step-desc {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+  .msn-step-done {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .msn-step-receipt {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--success);
+  }
+  .msn-step-err {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--error);
+    white-space: pre-wrap;
+  }
+  .msn-step-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .msn-add-step-row {
+    padding: 0 20px 14px;
+    display: flex;
     gap: 8px;
+    flex-wrap: wrap;
+  }
+  .msn-add-step-input {
+    flex: 1 1 240px;
+    padding: 7px 11px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12.5px;
+  }
+
+  .msn-foot {
+    padding: 13px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-elevated);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .msn-launch-cta {
+    min-height: 44px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .ws-empty-missions {
+    padding: 24px 18px;
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    border: 1px dashed var(--border-strong);
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13.5px;
+    line-height: 1.55;
   }
 
   .ws-footer-strip {
-    padding-top: 8px;
+    padding-top: 10px;
     border-top: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -1284,28 +1578,31 @@ const CSS = `
     cursor: pointer;
   }
   .ws-text-btn:hover { text-decoration: underline; }
+
+  @media (max-width: 820px) {
+    .ws-shell { padding: 18px 14px 40px; }
+    .ws-title { font-size: 22px; }
+    .ws-journey { grid-template-columns: 1fr; }
+    .ws-cta-group { width: 100%; justify-content: flex-end; }
+    .ws-scout-btn { margin-left: 0; }
+  }
 `;
 
-const STARTER_PROMPTS = [
+const DREAM_TEMPLATES = [
   {
-    chip: 'Fix a bug & add test',
-    prompt: 'Investigate the failing behavior in ',
-    suffix: ', implement a clean root-cause fix, and add a unit test that prevents regression.',
+    chip: '0→1 Repo Revival',
+    vision:
+      'Take this repository from its current state to a clean, working, tested v1: fix any broken build/CI checks, implement any unfinished features promised in the README, add end-to-end tests, and ensure the quickstart works out of the box.',
   },
   {
-    chip: 'Add unit tests',
-    prompt: 'Find under-tested edge cases in ',
-    suffix: ' and add focused unit tests covering error handling and boundary inputs.',
+    chip: 'Ship a Major Feature Arc',
+    vision:
+      'Design and ship a complete vertical feature slice end-to-end: domain types, storage/state layer, API or CLI interface, error handling, and automated unit + integration tests.',
   },
   {
-    chip: 'Refactor & pass lints',
-    prompt: 'Clean up duplicated logic in ',
-    suffix: ' while keeping behavior identical and ensuring all tests and lints pass.',
-  },
-  {
-    chip: 'Sync docs with CLI',
-    prompt: 'Audit README and CLI usage docs in ',
-    suffix: ' against the current implementation and fix any stale flags or examples.',
+    chip: 'Production Hardening',
+    vision:
+      'Harden this repository for production release: eliminate panics/unwraps in runtime paths, close test-coverage gaps on failure modes, verify lints/formatting, and align documentation with actual behavior.',
   },
 ];
 
@@ -1329,33 +1626,19 @@ class ChumpViewCockpit extends HTMLElement {
   #modeListener = null;
   #repoListener = null;
   #selectedRunner = 'auto';
-  #recentRuns = [];
+  #repoMode = 'existing';
+  #selectedRepoPath = '';
+  #discoveredRepos = [];
+  #missions = [];
   #repoCtx = null;
 
   constructor() {
     super();
     this.#shadow = this.attachShadow({ mode: 'open' });
-    this.#loadRecentRuns();
   }
 
   #currentUiMode() {
     return document.documentElement.getAttribute('data-ui-mode') === 'advanced' ? 'advanced' : 'simple';
-  }
-
-  #loadRecentRuns() {
-    try {
-      const raw = localStorage.getItem('chump.workspace.recent_runs');
-      const parsed = raw ? JSON.parse(raw) : [];
-      this.#recentRuns = Array.isArray(parsed) ? parsed.slice(0, 8) : [];
-    } catch {
-      this.#recentRuns = [];
-    }
-  }
-
-  #saveRecentRuns() {
-    try {
-      localStorage.setItem('chump.workspace.recent_runs', JSON.stringify(this.#recentRuns.slice(0, 8)));
-    } catch {}
   }
 
   connectedCallback() {
@@ -1381,7 +1664,7 @@ class ChumpViewCockpit extends HTMLElement {
     if (this.#currentUiMode() === 'simple') {
       this.#renderSimpleShell();
       this.#refreshSimple();
-      this.#pollTimer = setInterval(() => this.#refreshSimple(), 20_000);
+      this.#scheduleSimplePoll();
     } else {
       this.#renderShell();
       this.#refreshAll();
@@ -1389,52 +1672,99 @@ class ChumpViewCockpit extends HTMLElement {
     }
   }
 
+  #scheduleSimplePoll() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+    const anyRunning = this.#missions.some((m) => m.is_running || m.status === 'running');
+    const intervalMs = anyRunning ? 3_500 : 15_000;
+    this.#pollTimer = setInterval(() => this.#refreshSimple(), intervalMs);
+  }
+
   #renderSimpleShell() {
     this.#shadow.innerHTML = `
       <style>${CSS}</style>
-      <div class="ws-shell" role="region" aria-label="Chump Coding Workspace">
+      <div class="ws-shell" role="region" aria-label="Chump Autonomous Software Factory">
         <header class="ws-hero">
           <div class="ws-hero-top">
-            <span class="ws-eyebrow">Parallel Coding Workspace</span>
+            <span class="ws-eyebrow">Autonomous Software Factory · 0→1 Mission Engine</span>
             <span class="ws-ready-pill" id="ws-ready-pill">
               <span class="status-dot"></span>
               <span id="ws-ready-text">Checking models…</span>
             </span>
           </div>
-          <h1 class="ws-title">Tell Chump what to build or fix.</h1>
+          <h1 class="ws-title">Feed Chump a dream. Approve the plan. Watch it ship.</h1>
           <p class="ws-subtitle">
-            Each task runs in its own isolated git worktree with automatic file locks—so multiple coding agents can work on your repository in parallel and open clean pull requests without overwriting each other.
+            Point Chump at any repo in <code>~/Projects</code>—or start a brand-new repo from an idea. Chump scans the codebase, architects a 5–10 step <strong>L1 → L2 → L3 Mission Plan</strong> for your 1-click approval, then builds, tests, and auto-merges each milestone in isolated worktrees—only pausing if a real product decision needs you.
           </p>
-          <div class="ws-steps-row" aria-label="How Chump works">
-            <span class="ws-step-chip"><span class="ws-step-num">1</span> Pick repo &amp; describe task</span>
-            <span class="ws-step-chip"><span class="ws-step-num">2</span> Agent codes &amp; tests in isolated worktree</span>
-            <span class="ws-step-chip"><span class="ws-step-num">3</span> Review &amp; merge PR</span>
+
+          <div class="ws-journey" aria-label="Mission lifecycle">
+            <div class="ws-stage active" id="ws-stage-1">
+              <span class="ws-stage-num">1</span>
+              <div class="ws-stage-text">
+                <span class="ws-stage-title">Feed Vision or Pick Repo</span>
+                <span class="ws-stage-sub">Paste a spec, create a new repo, or run a 0→1 repo scout</span>
+              </div>
+            </div>
+            <div class="ws-stage" id="ws-stage-2">
+              <span class="ws-stage-num">2</span>
+              <div class="ws-stage-text">
+                <span class="ws-stage-title">Approve 5–10 Step Plan</span>
+                <span class="ws-stage-sub">Edit, uncheck, or add milestones before the fleet starts</span>
+              </div>
+            </div>
+            <div class="ws-stage" id="ws-stage-3">
+              <span class="ws-stage-num">3</span>
+              <div class="ws-stage-text">
+                <span class="ws-stage-title">Hands-Off Auto-Ship</span>
+                <span class="ws-stage-sub">Agents code, run test gates &amp; auto-merge verified commits</span>
+              </div>
+            </div>
           </div>
         </header>
 
-        <section class="ws-composer-card" aria-label="Start a coding task">
-          <div class="ws-repo-row">
-            <label class="ws-field-label" for="ws-repo-select">Repository</label>
+        <section class="ws-composer-card" aria-label="Architect a Mission">
+          <div class="ws-mode-tabs" role="tablist" aria-label="Target repository mode">
+            <button type="button" class="ws-mode-tab active" data-repo-mode="existing" role="tab" aria-selected="true">
+              Existing Repo in ~/Projects
+            </button>
+            <button type="button" class="ws-mode-tab" data-repo-mode="new" role="tab" aria-selected="false">
+              + Brand-New Idea (Create Repo)
+            </button>
+          </div>
+
+          <div class="ws-repo-row" id="ws-existing-repo-row">
+            <label class="ws-field-label" for="ws-repo-select">Repo</label>
             <select class="ws-repo-select" id="ws-repo-select" aria-label="Target repository">
-              <option value="">Detecting repository…</option>
+              <option value="">Scanning ~/Projects…</option>
             </select>
             <span class="ws-repo-path" id="ws-repo-path"></span>
+            <button type="button" class="ws-scout-btn" id="ws-scout-btn"
+                    title="Scan README, tests &amp; CI in this repo and propose a 0→1 revival plan with zero typing">
+              Scout &amp; Revive Repo (0→1) →
+            </button>
+          </div>
+
+          <div class="ws-new-repo-bar" id="ws-new-repo-row" hidden>
+            <label class="ws-field-label" for="ws-new-repo-name">New Repo</label>
+            <span class="ws-slug-prefix">~/Projects/</span>
+            <input type="text" class="ws-slug-input" id="ws-new-repo-name"
+                   placeholder="my-new-product" maxlength="64" autocomplete="off">
+            <span class="ws-repo-path">Chump will initialize git, README &amp; scaffold on launch</span>
           </div>
 
           <div class="ws-custom-repo" id="ws-custom-repo" hidden>
             <input type="text" id="ws-custom-repo-input" placeholder="/Users/you/Projects/your-git-repo" aria-label="Local git repository path">
-            <button type="button" class="btn btn-primary btn-xs" id="ws-custom-repo-save">Switch Repo</button>
+            <button type="button" class="btn btn-primary btn-xs" id="ws-custom-repo-save">Use Path</button>
             <button type="button" class="btn btn-xs" id="ws-custom-repo-cancel">Cancel</button>
           </div>
 
-          <textarea id="msg-input" class="ws-textarea" rows="3"
-                    aria-label="Describe a coding task"
-                    placeholder="What should Chump build, fix, or test? e.g. &quot;Add a --json flag to the status command and write a unit test&quot;"></textarea>
+          <textarea id="msg-input" class="ws-textarea" rows="4"
+                    aria-label="Describe your product dream, vision, or milestone spec"
+                    placeholder="What's the dream or outcome? Paste a product spec, describe what 'done' looks like (e.g. &quot;Take BEAST-MODE from dormant to a tested, deployable v1&quot;), or click 'Scout &amp; Revive Repo (0→1)' above…"></textarea>
 
-          <div class="ws-starters" aria-label="Example task templates">
-            <span class="ws-starter-label">Examples:</span>
-            ${STARTER_PROMPTS.map((s, idx) => `
-              <button type="button" class="ws-starter-chip" data-starter-idx="${idx}">${this.#escape(s.chip)}</button>
+          <div class="ws-starters" aria-label="Vision templates">
+            <span class="ws-starter-label">Dream templates:</span>
+            ${DREAM_TEMPLATES.map((t, idx) => `
+              <button type="button" class="ws-starter-chip" data-starter-idx="${idx}">${this.#escape(t.chip)}</button>
             `).join('')}
           </div>
 
@@ -1451,11 +1781,11 @@ class ChumpViewCockpit extends HTMLElement {
             </div>
 
             <div class="ws-cta-group">
-              <button type="button" class="btn ws-chat-btn" id="ws-ask-chat-btn" title="Open interactive streaming chat">
-                Ask in Chat →
+              <button type="button" class="btn ws-chat-btn" id="ws-ask-chat-btn" title="Brainstorm or refine spec in interactive chat">
+                Discuss in Chat →
               </button>
-              <button type="button" class="btn btn-primary ws-run-btn" id="send-btn" aria-label="Run Task">
-                Run Task → Open PR
+              <button type="button" class="btn btn-primary ws-run-btn" id="send-btn" aria-label="Architect Mission Plan">
+                Architect Mission Plan →
               </button>
             </div>
           </div>
@@ -1463,32 +1793,18 @@ class ChumpViewCockpit extends HTMLElement {
           <div class="ws-feedback" id="ws-feedback" hidden></div>
         </section>
 
-        <div class="ws-lower-grid">
-          <section class="ws-section-card" aria-label="Active runs and file locks">
-            <div class="ws-section-head">
-              <span class="ws-section-title">Active Runs &amp; File Locks</span>
-              <span class="ws-section-count" id="ws-runs-count">0 active</span>
-            </div>
-            <div class="ws-section-body" id="ws-runs-body">
-              <div class="ws-empty">No agents running right now. Enter a task above and click <strong>Run Task → Open PR</strong> to launch an isolated worktree.</div>
-            </div>
-          </section>
-
-          <section class="ws-section-card" aria-label="Pull requests">
-            <div class="ws-section-head">
-              <span class="ws-section-title">Pull Requests</span>
-              <span class="ws-section-count" id="ws-prs-count">0 open</span>
-            </div>
-            <div class="ws-section-body" id="ws-prs-body">
-              <div class="ws-empty">Checking repository pull requests…</div>
-            </div>
-          </section>
-        </div>
+        <section aria-label="Missions and autonomous progress">
+          <div class="msn-list" id="ws-missions-host">
+            <div class="ws-empty-missions">Loading missions…</div>
+          </div>
+        </section>
 
         <footer class="ws-footer-strip">
           <span>
-            Managing a larger backlog?
-            <button type="button" class="ws-text-btn" id="ws-browse-queue">Browse queued tasks →</button>
+            Want to inspect raw gaps or open PRs?
+            <button type="button" class="ws-text-btn" id="ws-browse-prs">Pull Requests →</button>
+            ·
+            <button type="button" class="ws-text-btn" id="ws-browse-queue">Backlog Queue →</button>
           </span>
           <button type="button" class="ws-text-btn" id="ws-open-advanced">
             Open Advanced Fleet Telemetry →
@@ -1502,20 +1818,52 @@ class ChumpViewCockpit extends HTMLElement {
 
   #wireSimpleInteractions() {
     const input = this.#shadow.getElementById('msg-input');
-    const runBtn = this.#shadow.getElementById('send-btn');
+    const architectBtn = this.#shadow.getElementById('send-btn');
+    const scoutBtn = this.#shadow.getElementById('ws-scout-btn');
     const chatBtn = this.#shadow.getElementById('ws-ask-chat-btn');
     const repoSelect = this.#shadow.getElementById('ws-repo-select');
+    const existingRow = this.#shadow.getElementById('ws-existing-repo-row');
+    const newRepoRow = this.#shadow.getElementById('ws-new-repo-row');
+    const newRepoInput = this.#shadow.getElementById('ws-new-repo-name');
     const customRow = this.#shadow.getElementById('ws-custom-repo');
     const customInput = this.#shadow.getElementById('ws-custom-repo-input');
 
-    // Starter prompt chips.
+    // Mode tabs: Existing Repo vs Brand-New Repo.
+    this.#shadow.querySelectorAll('[data-repo-mode]').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        this.#repoMode = tab.dataset.repoMode === 'new' ? 'new' : 'existing';
+        this.#shadow.querySelectorAll('[data-repo-mode]').forEach((t) => {
+          const act = t === tab;
+          t.classList.toggle('active', act);
+          t.setAttribute('aria-selected', String(act));
+        });
+        if (this.#repoMode === 'new') {
+          existingRow?.setAttribute('hidden', '');
+          customRow?.setAttribute('hidden', '');
+          newRepoRow?.removeAttribute('hidden');
+          if (input) {
+            input.placeholder =
+              'Describe the brand-new product dream, features, stack preference, and what a working v1 looks like…';
+          }
+          newRepoInput?.focus();
+        } else {
+          newRepoRow?.setAttribute('hidden', '');
+          existingRow?.removeAttribute('hidden');
+          if (input) {
+            input.placeholder =
+              'What\'s the dream or outcome? Paste a product spec, describe what \'done\' looks like, or click \'Scout & Revive Repo (0→1)\' above…';
+          }
+        }
+      });
+    });
+
+    // Dream template chips.
     this.#shadow.querySelectorAll('[data-starter-idx]').forEach((chip) => {
       chip.addEventListener('click', () => {
         const idx = Number(chip.dataset.starterIdx);
-        const tpl = STARTER_PROMPTS[idx];
+        const tpl = DREAM_TEMPLATES[idx];
         if (!tpl || !input) return;
-        const repoName = (this.#repoCtx?.effective_root || '').split('/').filter(Boolean).pop() || 'this repository';
-        input.value = `${tpl.prompt}${repoName}${tpl.suffix}`;
+        input.value = tpl.vision;
         input.focus();
       });
     });
@@ -1532,7 +1880,7 @@ class ChumpViewCockpit extends HTMLElement {
       });
     });
 
-    // Repo selector + custom path switcher.
+    // Repo selector + custom path.
     repoSelect?.addEventListener('change', async () => {
       const val = repoSelect.value;
       if (val === '__custom__') {
@@ -1541,26 +1889,55 @@ class ChumpViewCockpit extends HTMLElement {
         return;
       }
       customRow?.setAttribute('hidden', '');
-      if (!val) return;
-      if (val.startsWith('profile:')) {
-        await this.#switchWorkingRepo({ profile: val.slice('profile:'.length) });
-      } else if (val.startsWith('path:')) {
-        await this.#switchWorkingRepo({ path: val.slice('path:'.length) });
+      this.#selectedRepoPath = val;
+      const pathEl = this.#shadow.getElementById('ws-repo-path');
+      if (pathEl) {
+        pathEl.textContent = val;
+        pathEl.title = val;
+      }
+      if (val && this.#repoCtx?.multi_repo_enabled) {
+        fetch('/api/repo/working', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: val }),
+        }).then(() => document.dispatchEvent(new CustomEvent('chump:repo-changed'))).catch(() => {});
       }
     });
 
     this.#shadow.getElementById('ws-custom-repo-cancel')?.addEventListener('click', () => {
       customRow?.setAttribute('hidden', '');
-      this.#renderSimpleRepoBar(this.#repoCtx || {});
+      this.#renderRepoSelect();
     });
 
-    this.#shadow.getElementById('ws-custom-repo-save')?.addEventListener('click', async () => {
+    this.#shadow.getElementById('ws-custom-repo-save')?.addEventListener('click', () => {
       const raw = (customInput?.value || '').trim();
       if (!raw) return;
-      await this.#switchWorkingRepo({ path: raw });
+      this.#selectedRepoPath = raw;
+      if (!this.#discoveredRepos.some((r) => r.path === raw)) {
+        const name = raw.split('/').filter(Boolean).pop() || raw;
+        this.#discoveredRepos.unshift({ name, path: raw, remote_owner_repo: null });
+      }
+      customRow?.setAttribute('hidden', '');
+      this.#renderRepoSelect();
     });
 
-    // Ask in Chat button -> carries prompt to Chat tab.
+    // 1-Click Scout & Revive (0->1) button — zero typing required!
+    scoutBtn?.addEventListener('click', () => {
+      this.#architectMission({ forceScout: true });
+    });
+
+    // Primary Architect Mission Plan button + Cmd/Ctrl+Enter.
+    architectBtn?.addEventListener('click', () => {
+      this.#architectMission({ forceScout: false });
+    });
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        this.#architectMission({ forceScout: false });
+      }
+    });
+
+    // Discuss in Chat button.
     chatBtn?.addEventListener('click', () => {
       const text = (input?.value || '').trim();
       if (text) {
@@ -1569,16 +1946,10 @@ class ChumpViewCockpit extends HTMLElement {
       document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'chat' }));
     });
 
-    // Primary Run Task -> Open PR button + Cmd/Ctrl+Enter shortcut.
-    runBtn?.addEventListener('click', () => this.#submitWorkspaceTask());
-    input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        this.#submitWorkspaceTask();
-      }
-    });
-
     // Footer links.
+    this.#shadow.getElementById('ws-browse-prs')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'prs' }));
+    });
     this.#shadow.getElementById('ws-browse-queue')?.addEventListener('click', () => {
       document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'agent' }));
     });
@@ -1587,137 +1958,97 @@ class ChumpViewCockpit extends HTMLElement {
     });
   }
 
-  async #switchWorkingRepo(payload) {
+  async #architectMission({ forceScout }) {
+    const input = this.#shadow.getElementById('msg-input');
+    const architectBtn = this.#shadow.getElementById('send-btn');
+    const scoutBtn = this.#shadow.getElementById('ws-scout-btn');
+    const newRepoInput = this.#shadow.getElementById('ws-new-repo-name');
     const fb = this.#shadow.getElementById('ws-feedback');
+
+    const vision = forceScout ? (input?.value || '').trim() : (input?.value || '').trim();
+    if (this.#repoMode === 'new') {
+      const slug = (newRepoInput?.value || '').trim();
+      if (!slug) {
+        newRepoInput?.focus();
+        if (fb) {
+          fb.removeAttribute('hidden');
+          fb.className = 'ws-feedback err';
+          fb.textContent = 'Enter a name for your new repository (e.g. my-dream-app).';
+        }
+        return;
+      }
+      if (!vision) {
+        input?.focus();
+        if (fb) {
+          fb.removeAttribute('hidden');
+          fb.className = 'ws-feedback err';
+          fb.textContent = 'Describe your product dream or spec so Chump knows what to architect.';
+        }
+        return;
+      }
+    }
+
+    if (architectBtn) {
+      architectBtn.disabled = true;
+      architectBtn.textContent = 'Architecting Plan…';
+    }
+    if (scoutBtn) scoutBtn.disabled = true;
     if (fb) {
       fb.removeAttribute('hidden');
       fb.className = 'ws-feedback';
-      fb.textContent = 'Switching active repository…';
+      fb.textContent = this.#repoMode === 'new'
+        ? 'Synthesizing 0→1 greenfield Mission Plan via ProviderCascade…'
+        : 'Scanning repository L1 foundation checks, README & commits, and synthesizing a 5–10 step Mission Plan…';
     }
+
     try {
-      const r = await fetch('/api/repo/working', {
+      const body = {
+        vision,
+        repo_mode: this.#repoMode,
+        repo_path: this.#selectedRepoPath || this.#repoCtx?.effective_root || null,
+        new_repo_name: this.#repoMode === 'new' ? (newRepoInput?.value || '').trim() : null,
+        runner: this.#selectedRunner,
+      };
+
+      const r = await fetch('/api/missions/architect', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+        body: JSON.stringify(body),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.ok === false) {
+      if (!r.ok || d.error) {
         throw new Error(d.error || `HTTP ${r.status}`);
       }
-      this.#shadow.getElementById('ws-custom-repo')?.setAttribute('hidden', '');
-      if (fb) {
-        fb.className = 'ws-feedback ok';
-        fb.textContent = '✓ Switched active repository.';
-        setTimeout(() => fb?.setAttribute('hidden', ''), 2500);
-      }
-      document.dispatchEvent(new CustomEvent('chump:repo-changed'));
-    } catch (err) {
-      if (fb) {
-        fb.className = 'ws-feedback err';
-        fb.textContent = `Could not switch repository: ${err.message || err}`;
-      }
-      this.#renderSimpleRepoBar(this.#repoCtx || {});
-    }
-  }
-
-  async #submitWorkspaceTask() {
-    const input = this.#shadow.getElementById('msg-input');
-    const runBtn = this.#shadow.getElementById('send-btn');
-    const fb = this.#shadow.getElementById('ws-feedback');
-    const rawText = (input?.value || '').trim();
-    if (!rawText) {
-      input?.focus();
-      return;
-    }
-
-    const cleanPrompt = rawText.startsWith('/task ') ? rawText.slice(6).trim() : rawText;
-    const firstLine = cleanPrompt.split('\n')[0].trim();
-    const title = firstLine.length > 180 ? `${firstLine.slice(0, 177)}…` : firstLine;
-
-    if (runBtn) {
-      runBtn.disabled = true;
-      runBtn.textContent = 'Starting Worktree…';
-    }
-    if (fb) {
-      fb.removeAttribute('hidden');
-      fb.className = 'ws-feedback';
-      fb.textContent = 'Reserving task & launching isolated git worktree…';
-    }
-
-    try {
-      const effRoot = String(this.#repoCtx?.effective_root || '');
-      const chumpEnv = String(this.#repoCtx?.chump_repo_env || '');
-      const repoName = effRoot.split('/').filter(Boolean).pop() || 'workspace';
-      const payload = {
-        domain: 'PRODUCT',
-        title,
-        priority: 'P2',
-        effort: 'm',
-        description: cleanPrompt,
-      };
-      if (effRoot && chumpEnv && effRoot !== chumpEnv) {
-        payload.external_repo = effRoot;
-      }
-
-      const createRes = await fetch('/api/gap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
-        body: JSON.stringify(payload),
-      });
-      const created = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || created.error) {
-        throw new Error(created.error || `HTTP ${createRes.status}`);
-      }
-      const gapId = created.id || created.gap_id;
-      if (!gapId) throw new Error('Task reservation returned no ID');
-
-      if (this.#selectedRunner && this.#selectedRunner !== 'auto') {
-        await fetch(`/api/gap/${encodeURIComponent(gapId)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
-          body: JSON.stringify({ preferred_backend: this.#selectedRunner }),
-        }).catch(() => {});
-      }
-
-      const workRes = await fetch(`/api/gap/work/${encodeURIComponent(gapId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
-      });
-      if (!workRes.ok) {
-        throw new Error(`Dispatch failed (HTTP ${workRes.status})`);
-      }
-
-      const runnerLabel = RUNNER_OPTIONS.find((r) => r.id === this.#selectedRunner)?.label || 'Auto';
-      this.#recentRuns = [
-        { id: gapId, title, repo: repoName, runner: runnerLabel, startedAt: Date.now() },
-        ...this.#recentRuns.filter((r) => r.id !== gapId),
-      ].slice(0, 8);
-      this.#saveRecentRuns();
 
       if (input) input.value = '';
+      if (newRepoInput) newRepoInput.value = '';
       if (fb) {
         fb.className = 'ws-feedback ok';
-        fb.textContent = `✓ Started ${gapId} on ${repoName} (${runnerLabel}) — watch live progress below.`;
+        fb.textContent = `✓ Proposed "${d.mission?.title || 'Mission Plan'}" (${d.mission?.total_steps || 0} steps) — review and click Approve & Launch below!`;
       }
+
       await this.#refreshSimple();
+      const firstCard = this.#shadow.querySelector('.msn-card');
+      firstCard?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (err) {
       if (fb) {
         fb.className = 'ws-feedback err';
-        fb.textContent = `Could not start task: ${err.message || err}`;
+        fb.textContent = `Could not architect mission: ${err.message || err}`;
       }
     } finally {
-      if (runBtn) {
-        runBtn.disabled = false;
-        runBtn.textContent = 'Run Task → Open PR';
+      if (architectBtn) {
+        architectBtn.disabled = false;
+        architectBtn.textContent = 'Architect Mission Plan →';
       }
+      if (scoutBtn) scoutBtn.disabled = false;
     }
   }
 
   async #refreshSimple() {
-    const [repoR, slotsR, summaryR, queueR] = await Promise.allSettled([
+    const [missionsR, repoR, slotsR, queueR] = await Promise.allSettled([
+      fetch('/api/missions'),
       fetch('/api/repo/context'),
       fetch('/api/slots'),
-      fetch('/api/dashboard-summary'),
       fetch('/api/gap-queue'),
     ]);
 
@@ -1730,41 +2061,60 @@ class ChumpViewCockpit extends HTMLElement {
       return fallback;
     };
 
+    const missionsDoc = await jsonOr(missionsR, {});
     const repo = await jsonOr(repoR, {});
     const slotsDoc = await jsonOr(slotsR, {});
-    const summary = await jsonOr(summaryR, {});
     const queueDoc = await jsonOr(queueR, {});
 
     this.#repoCtx = repo;
-    this.#renderSimpleRepoBar(repo);
+    if (Array.isArray(missionsDoc.repos) && missionsDoc.repos.length > 0) {
+      this.#discoveredRepos = missionsDoc.repos;
+    }
+    this.#missions = Array.isArray(missionsDoc.missions) ? missionsDoc.missions : [];
+
+    if (!this.#selectedRepoPath) {
+      this.#selectedRepoPath = String(repo.effective_root || this.#discoveredRepos[0]?.path || '');
+    }
+
+    this.#renderRepoSelect();
     this.#renderSimpleReadiness(Array.isArray(slotsDoc.slots) ? slotsDoc.slots : [], null);
-    this.#renderSimpleRuns(summary);
+    this.#renderJourneyHighlight();
+    this.#renderMissionsList();
+    this.#scheduleSimplePoll();
 
     const browseBtn = this.#shadow.getElementById('ws-browse-queue');
     const openCount = Array.isArray(queueDoc.gaps)
       ? queueDoc.gaps.filter((g) => (g.status || 'open') === 'open').length
       : 0;
     if (browseBtn) {
-      browseBtn.textContent = openCount > 0 ? `Browse queued tasks (${openCount}) →` : 'Browse task queue →';
+      browseBtn.textContent = openCount > 0 ? `Backlog Queue (${openCount}) →` : 'Backlog Queue →';
     }
 
-    // Slow non-blocking enrich: stack-status + PR list.
-    Promise.allSettled([fetch('/api/stack-status'), fetch('/api/prs')]).then(async ([stackR, prsR]) => {
-      if (!this.isConnected || this.#currentUiMode() !== 'simple') return;
-      const stack = await jsonOr(stackR, null);
-      const prs = await jsonOr(prsR, null);
-      if (stack) {
+    fetch('/api/stack-status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((stack) => {
+        if (!this.isConnected || this.#currentUiMode() !== 'simple' || !stack) return;
         this.#renderSimpleReadiness(Array.isArray(slotsDoc.slots) ? slotsDoc.slots : [], stack);
-      }
-      this.#renderSimplePrs(prs);
-    }).catch(() => {});
+      })
+      .catch(() => {});
+  }
+
+  #renderJourneyHighlight() {
+    const s1 = this.#shadow.getElementById('ws-stage-1');
+    const s2 = this.#shadow.getElementById('ws-stage-2');
+    const s3 = this.#shadow.getElementById('ws-stage-3');
+    const hasRunning = this.#missions.some((m) => m.status === 'running' || m.is_running || m.status === 'needs_decision');
+    const hasDraft = this.#missions.some((m) => m.status === 'draft');
+    s1?.classList.toggle('active', !hasDraft && !hasRunning);
+    s2?.classList.toggle('active', hasDraft && !hasRunning);
+    s3?.classList.toggle('active', hasRunning);
   }
 
   #renderSimpleReadiness(slots, stack) {
     const pill = this.#shadow.getElementById('ws-ready-pill');
     const text = this.#shadow.getElementById('ws-ready-text');
     if (!pill || !text) return;
-    const infOk = stack?.inference?.configured && stack?.inference?.models_reachable !== false;
+    const infOk = stack?.cascade_enabled || (stack?.inference?.configured && stack?.inference?.models_reachable !== false);
     if (slots.length > 0) {
       const hasLocal = slots.some((s) => /ollama|local/i.test(String(s.name || '')));
       pill.classList.remove('warn');
@@ -1773,152 +2123,340 @@ class ChumpViewCockpit extends HTMLElement {
         : `${slots.length} model slot${slots.length === 1 ? '' : 's'} ready`;
     } else if (infOk || stack?.primary_backend) {
       pill.classList.remove('warn');
-      text.textContent = `Model ready · ${stack.primary_backend || 'configured'}`;
+      text.textContent = `Models ready · ${stack?.primary_backend || 'cascade'}`;
     } else if (stack) {
       pill.classList.add('warn');
       text.textContent = 'Configure a model in Settings';
     }
   }
 
-  #renderSimpleRepoBar(repo) {
+  #renderRepoSelect() {
     const select = this.#shadow.getElementById('ws-repo-select');
     const pathEl = this.#shadow.getElementById('ws-repo-path');
     if (!select) return;
 
-    const current = String(repo.effective_root || '');
-    const currentName = current.split('/').filter(Boolean).pop() || 'current workspace';
-    const profiles = Array.isArray(repo.profiles) ? repo.profiles : [];
-    const activeProfile = repo.active_profile || null;
-
-    const opts = [];
-    let matchedCurrent = false;
-    for (const p of profiles) {
-      const selected = p.name === activeProfile || p.path === current;
-      if (selected) matchedCurrent = true;
-      opts.push(`<option value="profile:${this.#escape(p.name)}" ${selected ? 'selected' : ''}>${this.#escape(p.name)}</option>`);
-    }
-    if (current && !matchedCurrent) {
-      opts.unshift(`<option value="path:${this.#escape(current)}" selected>${this.#escape(currentName)}</option>`);
-    }
-    if (repo.multi_repo_enabled) {
-      opts.push(`<option value="__custom__">+ Switch to another local git repo…</option>`);
-    }
-    select.innerHTML = opts.join('') || `<option value="">${this.#escape(currentName)}</option>`;
-    if (pathEl) {
-      pathEl.textContent = current;
-      pathEl.title = current;
-    }
-  }
-
-  #renderSimpleRuns(summary) {
-    const body = this.#shadow.getElementById('ws-runs-body');
-    const countEl = this.#shadow.getElementById('ws-runs-count');
-    if (!body) return;
-
-    const leases = Array.isArray(summary?.active_leases) ? summary.active_leases : [];
-    const recentIds = new Set(this.#recentRuns.map((r) => r.id));
-    const extraLeases = leases.filter((l) => l.gap && !recentIds.has(l.gap));
-    const total = this.#recentRuns.length + extraLeases.length;
-
-    if (countEl) {
-      countEl.textContent = `${total} active`;
-    }
-
-    if (total === 0) {
-      body.innerHTML = `<div class="ws-empty">No agents running right now. Describe a task above and click <strong>Run Task → Open PR</strong> to launch an isolated worktree.</div>`;
+    // Avoid clobbering select while user is actively focused on it.
+    if (this.#shadow.activeElement === select && select.options.length > 1) {
       return;
     }
 
-    const recentHtml = this.#recentRuns.map((r) => `
-      <article class="ws-run-item" data-run-id="${this.#escape(r.id)}">
-        <div class="ws-item-top">
-          <span class="ws-item-id">${this.#escape(r.id)}</span>
-          <span class="ws-item-badges">
-            ${r.repo ? `<span class="ws-badge">${this.#escape(r.repo)}</span>` : ''}
-            ${r.runner ? `<span class="ws-badge ok">${this.#escape(r.runner)}</span>` : ''}
-            <button type="button" class="btn btn-xs" data-dismiss-run="${this.#escape(r.id)}" title="Hide from this list">Dismiss</button>
-          </span>
-        </div>
-        <div class="ws-item-title">${this.#escape(r.title)}</div>
-        <chump-workflow-timeline gap-id="${this.#escape(r.id)}"></chump-workflow-timeline>
-      </article>
-    `).join('');
+    const repos = this.#discoveredRepos.length > 0
+      ? this.#discoveredRepos
+      : (this.#repoCtx?.effective_root
+        ? [{
+            name: String(this.#repoCtx.effective_root).split('/').filter(Boolean).pop() || 'workspace',
+            path: String(this.#repoCtx.effective_root),
+          }]
+        : []);
 
-    const leaseHtml = extraLeases.map((l) => {
-      const exp = l.expires_at ? this.#until(new Date(l.expires_at)) : 'locked';
-      return `
-        <article class="ws-run-item">
-          <div class="ws-item-top">
-            <span class="ws-item-id">${this.#escape(l.gap)}</span>
-            <span class="ws-item-badges">
-              <span class="ws-badge ok">file lock · ${this.#escape(exp)}</span>
-            </span>
+    const opts = repos.map((r) => {
+      const selected = r.path === this.#selectedRepoPath;
+      return `<option value="${this.#escape(r.path)}" ${selected ? 'selected' : ''}>${this.#escape(r.name)}</option>`;
+    });
+    opts.push(`<option value="__custom__">+ Enter another local git repo path…</option>`);
+    select.innerHTML = opts.join('');
+
+    if (pathEl) {
+      pathEl.textContent = this.#selectedRepoPath || '';
+      pathEl.title = this.#selectedRepoPath || '';
+    }
+  }
+
+  #renderMissionsList() {
+    const host = this.#shadow.getElementById('ws-missions-host');
+    if (!host) return;
+
+    // Preserve any text typed into a decision or add-step input across background polls.
+    const activeEl = this.#shadow.activeElement;
+    if (activeEl && activeEl.matches && activeEl.matches('.msn-decision-input, .msn-add-step-input')) {
+      return;
+    }
+
+    if (this.#missions.length === 0) {
+      host.innerHTML = `
+        <div class="ws-empty-missions">
+          <strong>No active missions yet.</strong><br>
+          Pick any repository above (like <code>BEAST-MODE</code>, <code>Froogle</code>, or <code>almanac</code>) and click <strong>Scout &amp; Revive Repo (0→1)</strong>—or paste a product dream and click <strong>Architect Mission Plan →</strong> to see Chump break it into an autonomous roadmap.
+        </div>
+      `;
+      return;
+    }
+
+    host.innerHTML = this.#missions.map((m) => this.#renderMissionCard(m)).join('');
+    this.#wireMissionCardEvents(host);
+  }
+
+  #renderMissionCard(m) {
+    const isDraft = m.status === 'draft';
+    const isRunning = m.status === 'running' || m.is_running;
+    const isDecision = m.status === 'needs_decision';
+    const isCompleted = m.status === 'completed';
+    const isFailed = m.status === 'failed';
+
+    const statusBadge = isDraft
+      ? `<span class="ws-badge accent">Step 2 · Draft Plan Ready for Approval</span>`
+      : isRunning
+        ? `<span class="ws-badge ok">● Factory Running (Auto-Merge On)</span>`
+        : isDecision
+          ? `<span class="ws-badge bronze">⚠ Paused for Founder Decision</span>`
+          : isCompleted
+            ? `<span class="ws-badge ok">✓ Mission Shipped (100%)</span>`
+            : isFailed
+              ? `<span class="ws-badge err">✗ Step Needs Attention</span>`
+              : `<span class="ws-badge">⏸ Paused</span>`;
+
+    const repoBadge = m.repo_mode === 'new' && isDraft
+      ? `<span class="ws-badge bronze">NEW REPO: ~/Projects/${this.#escape(m.repo_name)}</span>`
+      : `<span class="ws-badge" title="${this.#escape(m.repo_path)}">repo: ${this.#escape(m.repo_name)}</span>`;
+
+    const l1Badge = `<span class="ws-badge">L1 Foundation: ${m.l1_passed ?? 0}/${m.l1_total ?? 5}</span>`;
+    const runnerBadge = `<span class="ws-badge">runner: ${this.#escape(m.runner || 'auto')}</span>`;
+
+    const progressHtml = !isDraft
+      ? `
+        <div class="msn-progress-wrap">
+          <div class="msn-progress-meta">
+            <span>${m.completed_steps} of ${m.total_steps} milestones shipped (${m.progress_pct}%)</span>
+            <span>${isCompleted ? 'All done criteria verified' : 'Anti-cosmetic test gate active'}</span>
           </div>
-          <div class="ws-item-title">Active worktree session: <code>${this.#escape(l.session_id || l.holder || 'agent')}</code></div>
-        </article>
+          <div class="msn-progress-bar" role="progressbar" aria-valuenow="${m.progress_pct}" aria-valuemin="0" aria-valuemax="100">
+            <div class="msn-progress-fill" style="width:${m.progress_pct}%"></div>
+          </div>
+        </div>
+      `
+      : '';
+
+    const decisionHtml = m.pending_decision
+      ? `
+        <div class="msn-decision-box">
+          <span class="msn-decision-label">Founder Product / Architecture Decision</span>
+          <div class="msn-decision-q">${this.#escape(m.pending_decision.question)}</div>
+          <div class="msn-decision-row">
+            <input type="text" class="msn-decision-input" data-decision-input="${this.#escape(m.id)}"
+                   placeholder="Type your preference or direction…">
+            <button type="button" class="btn btn-primary"
+                    data-msn-action="resolve_decision"
+                    data-msn-id="${this.#escape(m.id)}"
+                    data-step-id="${this.#escape(m.pending_decision.step_id)}">
+              Save Answer ${isDraft ? '' : '&amp; Resume Factory →'}
+            </button>
+          </div>
+        </div>
+      `
+      : '';
+
+    const activeStep = (m.steps || []).find((s) => s.id === m.active_step_id) || (m.steps || []).find((s) => s.state === 'in_progress');
+    const liveLogs = activeStep?.log_tail || [];
+    const liveBoxHtml = (isRunning || m.live_activity || liveLogs.length > 0) && !isDraft
+      ? `
+        <div class="msn-live-box">
+          <div class="msn-live-head">
+            <span class="status-dot"></span>
+            <span>${this.#escape(m.live_activity || (activeStep ? `Working on: ${activeStep.title}` : 'Factory active'))}</span>
+          </div>
+          ${liveLogs.length > 0 ? `<pre class="msn-log-pre">${this.#escape(liveLogs.join('\n'))}</pre>` : ''}
+        </div>
+      `
+      : '';
+
+    const stepsHtml = (m.steps || []).map((s) => {
+      const st = s.state || 'pending';
+      const icon = !s.enabled
+        ? '–'
+        : st === 'completed'
+          ? '✓'
+          : st === 'in_progress'
+            ? '●'
+            : st === 'failed'
+              ? '✗'
+              : st === 'skipped'
+                ? '↷'
+                : String(s.sequence).padStart(2, '0');
+      const iconCls = st === 'completed' ? 'ok' : st === 'in_progress' ? 'run' : st === 'failed' ? 'err' : '';
+      const layerTone = s.layer === 'L1' ? 'bronze' : s.layer === 'L3' ? 'ok' : 'accent';
+
+      return `
+        <div class="msn-step ${this.#escape(st)} ${!s.enabled ? 'disabled' : ''}">
+          ${isDraft
+            ? `<input type="checkbox" ${s.enabled ? 'checked' : ''} data-toggle-step="${this.#escape(s.id)}" data-msn-id="${this.#escape(m.id)}" aria-label="Include step ${s.sequence}">`
+            : `<span class="msn-step-icon ${iconCls}">${this.#escape(icon)}</span>`}
+          <div class="msn-step-main">
+            <div class="msn-step-top">
+              <span class="ws-badge ${layerTone}">${this.#escape(s.layer)}</span>
+              <span class="ws-badge">effort: ${this.#escape(s.effort)}</span>
+              ${s.gap_id ? `<span class="ws-badge">${this.#escape(s.gap_id)}</span>` : ''}
+              <span class="msn-step-title">${this.#escape(s.title)}</span>
+            </div>
+            <div class="msn-step-desc">${this.#escape(s.description)}</div>
+            <div class="msn-step-done">Done when: ${this.#escape(s.done_criterion)}</div>
+            ${s.decision_answer ? `<div class="msn-step-done">Decision: ${this.#escape(s.decision_answer)}</div>` : ''}
+            ${s.commit_sha ? `<div class="msn-step-receipt">✓ Merged commit ${this.#escape(s.commit_sha)}${s.diff_stat ? ` · ${this.#escape(s.diff_stat)}` : ''}</div>` : ''}
+            ${s.error ? `<div class="msn-step-err">${this.#escape(s.error)}</div>` : ''}
+          </div>
+          <div class="msn-step-actions">
+            ${st === 'failed' ? `
+              <button type="button" class="btn btn-primary btn-xs" data-msn-action="retry_step" data-msn-id="${this.#escape(m.id)}" data-step-id="${this.#escape(s.id)}">Retry</button>
+              <button type="button" class="btn btn-xs" data-msn-action="skip_step" data-msn-id="${this.#escape(m.id)}" data-step-id="${this.#escape(s.id)}">Skip</button>
+            ` : ''}
+          </div>
+        </div>
       `;
     }).join('');
 
-    body.innerHTML = recentHtml + leaseHtml;
-    body.querySelectorAll('[data-dismiss-run]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.dismissRun;
-        this.#recentRuns = this.#recentRuns.filter((r) => r.id !== id);
-        this.#saveRecentRuns();
-        this.#renderSimpleRuns(summary);
-      });
-    });
+    const addStepHtml = isDraft
+      ? `
+        <div class="msn-add-step-row">
+          <input type="text" class="msn-add-step-input" data-add-step-input="${this.#escape(m.id)}"
+                 placeholder="+ Add a custom milestone to this Mission Plan…">
+          <button type="button" class="btn btn-xs" data-add-step-btn="${this.#escape(m.id)}">Add Step</button>
+        </div>
+      `
+      : '';
+
+    const footHtml = isDraft
+      ? `
+        <div class="msn-foot">
+          <button type="button" class="btn" data-delete-msn="${this.#escape(m.id)}">Discard Draft</button>
+          <button type="button" class="btn btn-primary msn-launch-cta" data-launch-msn="${this.#escape(m.id)}">
+            ✓ Approve &amp; Launch Autonomous Factory (${m.total_steps} Steps) →
+          </button>
+        </div>
+      `
+      : `
+        <div class="msn-foot">
+          <span class="msn-step-done">
+            ${isCompleted
+              ? `Completed all ${m.total_steps} milestones in ${this.#escape(m.repo_name)}.`
+              : `Autonomous worktree isolation + test verification active on ${this.#escape(m.repo_name)}.`}
+          </span>
+          <div class="msn-step-actions">
+            ${isRunning
+              ? `<button type="button" class="btn" data-msn-action="pause" data-msn-id="${this.#escape(m.id)}">Pause Factory</button>`
+              : (!isCompleted
+                ? `<button type="button" class="btn btn-primary" data-msn-action="resume" data-msn-id="${this.#escape(m.id)}">Resume Factory →</button>`
+                : '')}
+            ${!isRunning ? `<button type="button" class="btn btn-xs" data-delete-msn="${this.#escape(m.id)}">Archive / Remove</button>` : ''}
+          </div>
+        </div>
+      `;
+
+    return `
+      <article class="msn-card ${isDraft ? 'draft' : ''} ${isDecision ? 'needs-decision' : ''}" data-mission-card="${this.#escape(m.id)}">
+        <div class="msn-head">
+          <div class="msn-head-top">
+            <div class="msn-badges">
+              ${statusBadge}
+              ${repoBadge}
+              ${l1Badge}
+              ${runnerBadge}
+            </div>
+          </div>
+          <h2 class="msn-title">${this.#escape(m.title)}</h2>
+          <p class="msn-summary">${this.#escape(m.summary)}</p>
+          ${progressHtml}
+        </div>
+        ${decisionHtml}
+        ${liveBoxHtml}
+        <div class="msn-steps">${stepsHtml}</div>
+        ${addStepHtml}
+        ${footHtml}
+      </article>
+    `;
   }
 
-  #renderSimplePrs(prsDoc) {
-    const body = this.#shadow.getElementById('ws-prs-body');
-    const countEl = this.#shadow.getElementById('ws-prs-count');
-    if (!body) return;
+  #wireMissionCardEvents(host) {
+    // Toggle draft step enabled/disabled.
+    host.querySelectorAll('[data-toggle-step]').forEach((chk) => {
+      chk.addEventListener('change', async () => {
+        const msnId = chk.dataset.msnId;
+        const stepId = chk.dataset.toggleStep;
+        if (!msnId || !stepId) return;
+        await fetch(`/api/missions/${encodeURIComponent(msnId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          body: JSON.stringify({ steps: [{ id: stepId, enabled: chk.checked }] }),
+        }).catch(() => {});
+        await this.#refreshSimple();
+      });
+    });
 
-    if (!prsDoc) {
-      if (countEl) countEl.textContent = '—';
-      body.innerHTML = `<div class="ws-empty">Pull request status unavailable right now. Open the <strong>Pull Requests</strong> tab to inspect branches.</div>`;
-      return;
-    }
+    // Add custom step to draft.
+    host.querySelectorAll('[data-add-step-btn]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const msnId = btn.dataset.addStepBtn;
+        const inp = host.querySelector(`[data-add-step-input="${msnId}"]`);
+        const title = (inp?.value || '').trim();
+        if (!msnId || !title) return;
+        btn.disabled = true;
+        await fetch(`/api/missions/${encodeURIComponent(msnId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          body: JSON.stringify({ add_step: { title, layer: 'L2', effort: 'm' } }),
+        }).catch(() => {});
+        if (inp) inp.value = '';
+        await this.#refreshSimple();
+      });
+    });
 
-    const open = Array.isArray(prsDoc.open) ? prsDoc.open : [];
-    const merged = Array.isArray(prsDoc.just_merged) ? prsDoc.just_merged.slice(0, 3) : [];
-    if (countEl) countEl.textContent = `${open.length} open`;
+    // 1-Click Approve & Launch Autonomous Factory!
+    host.querySelectorAll('[data-launch-msn]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const msnId = btn.dataset.launchMsn;
+        if (!msnId) return;
+        btn.disabled = true;
+        btn.textContent = 'Launching Autonomous Factory…';
+        try {
+          const r = await fetch(`/api/missions/${encodeURIComponent(msnId)}/launch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+          await this.#refreshSimple();
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = `Launch failed: ${err.message || err}`;
+        }
+      });
+    });
 
-    if (open.length === 0 && merged.length === 0) {
-      body.innerHTML = `<div class="ws-empty">No open pull requests waiting for review. Completed agent runs will open PRs here automatically.</div>`;
-      return;
-    }
+    // Delete / Discard mission.
+    host.querySelectorAll('[data-delete-msn]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const msnId = btn.dataset.deleteMsn;
+        if (!msnId) return;
+        btn.disabled = true;
+        await fetch(`/api/missions/${encodeURIComponent(msnId)}`, {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': 'pwa' },
+        }).catch(() => {});
+        await this.#refreshSimple();
+      });
+    });
 
-    const renderRow = (pr, isMerged) => {
-      const ciBadge = isMerged
-        ? `<span class="ws-badge ok">Merged</span>`
-        : (pr.ci_ok === true
-          ? `<span class="ws-badge ok">Checks passing</span>`
-          : (pr.ci_ok === false ? `<span class="ws-badge warn">Checks failing</span>` : `<span class="ws-badge">Checks running</span>`));
-      return `
-        <article class="ws-pr-item">
-          <div class="ws-item-top">
-            <span class="ws-item-id">#${this.#escape(String(pr.number || ''))}</span>
-            <span class="ws-item-badges">${ciBadge}</span>
-          </div>
-          <div class="ws-item-title">${this.#escape(pr.title || 'Pull request')}</div>
-          <div class="ws-item-actions">
-            <button type="button" class="btn btn-xs" data-open-prs-tab="${this.#escape(String(pr.number || ''))}">View PRs</button>
-            ${pr.url ? `<a class="btn btn-primary btn-xs" href="${this.#escape(pr.url)}" target="_blank" rel="noopener">GitHub ↗</a>` : ''}
-          </div>
-        </article>
-      `;
-    };
-
-    let html = open.slice(0, 5).map((pr) => renderRow(pr, false)).join('');
-    if (open.length === 0 && merged.length > 0) {
-      html = `<div class="ws-starter-label">No open PRs · Recently merged:</div>` + merged.map((pr) => renderRow(pr, true)).join('');
-    }
-    body.innerHTML = html;
-    body.querySelectorAll('[data-open-prs-tab]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'prs' }));
+    // Control actions: pause, resume, retry_step, skip_step, resolve_decision.
+    host.querySelectorAll('[data-msn-action]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const msnId = btn.dataset.msnId;
+        const action = btn.dataset.msnAction;
+        const stepId = btn.dataset.stepId || null;
+        if (!msnId || !action) return;
+        let decision_answer = null;
+        if (action === 'resolve_decision') {
+          const inp = host.querySelector(`[data-decision-input="${msnId}"]`);
+          decision_answer = (inp?.value || '').trim();
+          if (!decision_answer) {
+            inp?.focus();
+            return;
+          }
+        }
+        btn.disabled = true;
+        await fetch(`/api/missions/${encodeURIComponent(msnId)}/control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          body: JSON.stringify({ action, step_id: stepId, decision_answer }),
+        }).catch(() => {});
+        await this.#refreshSimple();
       });
     });
   }
