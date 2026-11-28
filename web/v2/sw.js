@@ -1,5 +1,5 @@
 // Chump v2 service worker — network-first with cache:'no-cache' HTTP disk-cache bypass (PRODUCT-372).
-const CACHE = 'chump-v2-shell-6';
+const CACHE = 'chump-v2-shell-7';
 const SHELL = [
   '/v2/',
   '/v2/index.html',

@@ -14,6 +14,9 @@
 //     /api/shortcut/task) + tabbed Fleet / Daemons / Triage / Ambient telemetry
 
 const CSS = `
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
   :host {
     display: block;
     color: var(--text);
@@ -868,7 +871,451 @@ const CSS = `
     color: var(--text-secondary);
     margin-bottom: 6px;
   }
+
+  /* ── PRODUCT-377: Focus Workspace (Default Simple Mode) ─────────────── */
+  .ws-shell {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 28px 24px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .ws-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ws-hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .ws-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--bronze);
+  }
+  .ws-ready-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--tone-ok-bg);
+    border: 1px solid var(--tone-ok-border);
+    color: var(--success);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .ws-ready-pill.warn {
+    background: var(--tone-warn-bg);
+    border-color: var(--tone-warn-border);
+    color: var(--warn);
+  }
+  .ws-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.18;
+    color: var(--text);
+  }
+  .ws-subtitle {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    max-width: 760px;
+  }
+  .ws-steps-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .ws-step-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .ws-step-num {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 1px 6px;
+    border-radius: 999px;
+  }
+
+  .ws-composer-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .ws-repo-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ws-field-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+  }
+  .ws-repo-select {
+    padding: 6px 11px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 180px;
+    cursor: pointer;
+  }
+  .ws-repo-path {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 460px;
+  }
+  .ws-custom-repo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .ws-custom-repo[hidden] { display: none; }
+  .ws-custom-repo input {
+    flex: 1 1 260px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .ws-textarea {
+    width: 100%;
+    min-height: 92px;
+    max-height: 240px;
+    resize: vertical;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .ws-textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+  }
+
+  .ws-starters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .ws-starter-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    margin-right: 2px;
+  }
+  .ws-starter-chip {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: background 0.14s, color 0.14s, border-color 0.14s;
+  }
+  .ws-starter-chip:hover {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .ws-launch-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .ws-runners {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .ws-runner-pill {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.14s, color 0.14s, border-color 0.14s;
+  }
+  .ws-runner-pill:hover {
+    color: var(--text);
+    background: var(--bg-elevated);
+  }
+  .ws-runner-pill.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .ws-cta-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .ws-run-btn {
+    min-height: 42px;
+    padding: 9px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .ws-chat-btn {
+    min-height: 42px;
+    padding: 9px 14px;
+    font-size: 13px;
+  }
+  .ws-feedback {
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .ws-feedback[hidden] { display: none; }
+  .ws-feedback.ok {
+    background: var(--tone-ok-bg);
+    border-color: var(--tone-ok-border);
+    color: var(--success);
+  }
+  .ws-feedback.err {
+    background: var(--tone-err-bg);
+    border-color: var(--tone-err-border);
+    color: var(--error);
+  }
+
+  .ws-lower-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 820px) {
+    .ws-shell { padding: 18px 14px 36px; }
+    .ws-title { font-size: 22px; }
+    .ws-lower-grid { grid-template-columns: 1fr; }
+    .ws-cta-group { width: 100%; justify-content: flex-end; }
+  }
+
+  .ws-section-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .ws-section-head {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ws-section-title {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .ws-section-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+  }
+  .ws-section-body {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ws-empty {
+    padding: 20px 14px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .ws-run-item, .ws-pr-item {
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ws-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ws-item-id {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .ws-item-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ws-badge {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+  }
+  .ws-badge.ok { background: var(--tone-ok-bg); color: var(--success); }
+  .ws-badge.warn { background: var(--tone-warn-bg); color: var(--warn); }
+  .ws-item-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .ws-item-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .ws-footer-strip {
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .ws-text-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .ws-text-btn:hover { text-decoration: underline; }
 `;
+
+const STARTER_PROMPTS = [
+  {
+    chip: 'Fix a bug & add test',
+    prompt: 'Investigate the failing behavior in ',
+    suffix: ', implement a clean root-cause fix, and add a unit test that prevents regression.',
+  },
+  {
+    chip: 'Add unit tests',
+    prompt: 'Find under-tested edge cases in ',
+    suffix: ' and add focused unit tests covering error handling and boundary inputs.',
+  },
+  {
+    chip: 'Refactor & pass lints',
+    prompt: 'Clean up duplicated logic in ',
+    suffix: ' while keeping behavior identical and ensuring all tests and lints pass.',
+  },
+  {
+    chip: 'Sync docs with CLI',
+    prompt: 'Audit README and CLI usage docs in ',
+    suffix: ' against the current implementation and fix any stale flags or examples.',
+  },
+];
+
+const RUNNER_OPTIONS = [
+  { id: 'auto',    label: 'Auto (Best)' },
+  { id: 'claude',  label: 'Claude Ultra' },
+  { id: 'agy',     label: 'Gemini 4 (agy)' },
+  { id: 'cascade', label: 'Cloud Cascade' },
+  { id: 'ollama',  label: 'Local Offline' },
+];
 
 class ChumpViewCockpit extends HTMLElement {
   #shadow;
@@ -879,20 +1326,601 @@ class ChumpViewCockpit extends HTMLElement {
   #ambientMounted = false;
   #latestInputs = null;
   #pollTimer = null;
+  #modeListener = null;
+  #repoListener = null;
+  #selectedRunner = 'auto';
+  #recentRuns = [];
+  #repoCtx = null;
 
   constructor() {
     super();
     this.#shadow = this.attachShadow({ mode: 'open' });
+    this.#loadRecentRuns();
+  }
+
+  #currentUiMode() {
+    return document.documentElement.getAttribute('data-ui-mode') === 'advanced' ? 'advanced' : 'simple';
+  }
+
+  #loadRecentRuns() {
+    try {
+      const raw = localStorage.getItem('chump.workspace.recent_runs');
+      const parsed = raw ? JSON.parse(raw) : [];
+      this.#recentRuns = Array.isArray(parsed) ? parsed.slice(0, 8) : [];
+    } catch {
+      this.#recentRuns = [];
+    }
+  }
+
+  #saveRecentRuns() {
+    try {
+      localStorage.setItem('chump.workspace.recent_runs', JSON.stringify(this.#recentRuns.slice(0, 8)));
+    } catch {}
   }
 
   connectedCallback() {
-    this.#renderShell();
-    this.#refreshAll();
-    this.#pollTimer = setInterval(() => this.#refreshAll(), 30_000);
+    this.#bootCurrentMode();
+    this.#modeListener = () => this.#bootCurrentMode();
+    this.#repoListener = () => {
+      if (this.#currentUiMode() === 'simple') this.#refreshSimple();
+      else this.#refreshAll();
+    };
+    document.addEventListener('chump:ui-mode-changed', this.#modeListener);
+    document.addEventListener('chump:repo-changed', this.#repoListener);
   }
 
   disconnectedCallback() {
     if (this.#pollTimer) clearInterval(this.#pollTimer);
+    if (this.#modeListener) document.removeEventListener('chump:ui-mode-changed', this.#modeListener);
+    if (this.#repoListener) document.removeEventListener('chump:repo-changed', this.#repoListener);
+  }
+
+  #bootCurrentMode() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+    this.#ambientMounted = false;
+    if (this.#currentUiMode() === 'simple') {
+      this.#renderSimpleShell();
+      this.#refreshSimple();
+      this.#pollTimer = setInterval(() => this.#refreshSimple(), 20_000);
+    } else {
+      this.#renderShell();
+      this.#refreshAll();
+      this.#pollTimer = setInterval(() => this.#refreshAll(), 30_000);
+    }
+  }
+
+  #renderSimpleShell() {
+    this.#shadow.innerHTML = `
+      <style>${CSS}</style>
+      <div class="ws-shell" role="region" aria-label="Chump Coding Workspace">
+        <header class="ws-hero">
+          <div class="ws-hero-top">
+            <span class="ws-eyebrow">Parallel Coding Workspace</span>
+            <span class="ws-ready-pill" id="ws-ready-pill">
+              <span class="status-dot"></span>
+              <span id="ws-ready-text">Checking models…</span>
+            </span>
+          </div>
+          <h1 class="ws-title">Tell Chump what to build or fix.</h1>
+          <p class="ws-subtitle">
+            Each task runs in its own isolated git worktree with automatic file locks—so multiple coding agents can work on your repository in parallel and open clean pull requests without overwriting each other.
+          </p>
+          <div class="ws-steps-row" aria-label="How Chump works">
+            <span class="ws-step-chip"><span class="ws-step-num">1</span> Pick repo &amp; describe task</span>
+            <span class="ws-step-chip"><span class="ws-step-num">2</span> Agent codes &amp; tests in isolated worktree</span>
+            <span class="ws-step-chip"><span class="ws-step-num">3</span> Review &amp; merge PR</span>
+          </div>
+        </header>
+
+        <section class="ws-composer-card" aria-label="Start a coding task">
+          <div class="ws-repo-row">
+            <label class="ws-field-label" for="ws-repo-select">Repository</label>
+            <select class="ws-repo-select" id="ws-repo-select" aria-label="Target repository">
+              <option value="">Detecting repository…</option>
+            </select>
+            <span class="ws-repo-path" id="ws-repo-path"></span>
+          </div>
+
+          <div class="ws-custom-repo" id="ws-custom-repo" hidden>
+            <input type="text" id="ws-custom-repo-input" placeholder="/Users/you/Projects/your-git-repo" aria-label="Local git repository path">
+            <button type="button" class="btn btn-primary btn-xs" id="ws-custom-repo-save">Switch Repo</button>
+            <button type="button" class="btn btn-xs" id="ws-custom-repo-cancel">Cancel</button>
+          </div>
+
+          <textarea id="msg-input" class="ws-textarea" rows="3"
+                    aria-label="Describe a coding task"
+                    placeholder="What should Chump build, fix, or test? e.g. &quot;Add a --json flag to the status command and write a unit test&quot;"></textarea>
+
+          <div class="ws-starters" aria-label="Example task templates">
+            <span class="ws-starter-label">Examples:</span>
+            ${STARTER_PROMPTS.map((s, idx) => `
+              <button type="button" class="ws-starter-chip" data-starter-idx="${idx}">${this.#escape(s.chip)}</button>
+            `).join('')}
+          </div>
+
+          <div class="ws-launch-bar">
+            <div class="ws-runners" role="radiogroup" aria-label="Agent model runner">
+              ${RUNNER_OPTIONS.map((r) => `
+                <button type="button" class="ws-runner-pill ${r.id === this.#selectedRunner ? 'active' : ''}"
+                        data-runner="${r.id}"
+                        role="radio"
+                        aria-checked="${r.id === this.#selectedRunner}">
+                  ${this.#escape(r.label)}
+                </button>
+              `).join('')}
+            </div>
+
+            <div class="ws-cta-group">
+              <button type="button" class="btn ws-chat-btn" id="ws-ask-chat-btn" title="Open interactive streaming chat">
+                Ask in Chat →
+              </button>
+              <button type="button" class="btn btn-primary ws-run-btn" id="send-btn" aria-label="Run Task">
+                Run Task → Open PR
+              </button>
+            </div>
+          </div>
+
+          <div class="ws-feedback" id="ws-feedback" hidden></div>
+        </section>
+
+        <div class="ws-lower-grid">
+          <section class="ws-section-card" aria-label="Active runs and file locks">
+            <div class="ws-section-head">
+              <span class="ws-section-title">Active Runs &amp; File Locks</span>
+              <span class="ws-section-count" id="ws-runs-count">0 active</span>
+            </div>
+            <div class="ws-section-body" id="ws-runs-body">
+              <div class="ws-empty">No agents running right now. Enter a task above and click <strong>Run Task → Open PR</strong> to launch an isolated worktree.</div>
+            </div>
+          </section>
+
+          <section class="ws-section-card" aria-label="Pull requests">
+            <div class="ws-section-head">
+              <span class="ws-section-title">Pull Requests</span>
+              <span class="ws-section-count" id="ws-prs-count">0 open</span>
+            </div>
+            <div class="ws-section-body" id="ws-prs-body">
+              <div class="ws-empty">Checking repository pull requests…</div>
+            </div>
+          </section>
+        </div>
+
+        <footer class="ws-footer-strip">
+          <span>
+            Managing a larger backlog?
+            <button type="button" class="ws-text-btn" id="ws-browse-queue">Browse queued tasks →</button>
+          </span>
+          <button type="button" class="ws-text-btn" id="ws-open-advanced">
+            Open Advanced Fleet Telemetry →
+          </button>
+        </footer>
+      </div>
+    `;
+
+    this.#wireSimpleInteractions();
+  }
+
+  #wireSimpleInteractions() {
+    const input = this.#shadow.getElementById('msg-input');
+    const runBtn = this.#shadow.getElementById('send-btn');
+    const chatBtn = this.#shadow.getElementById('ws-ask-chat-btn');
+    const repoSelect = this.#shadow.getElementById('ws-repo-select');
+    const customRow = this.#shadow.getElementById('ws-custom-repo');
+    const customInput = this.#shadow.getElementById('ws-custom-repo-input');
+
+    // Starter prompt chips.
+    this.#shadow.querySelectorAll('[data-starter-idx]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const idx = Number(chip.dataset.starterIdx);
+        const tpl = STARTER_PROMPTS[idx];
+        if (!tpl || !input) return;
+        const repoName = (this.#repoCtx?.effective_root || '').split('/').filter(Boolean).pop() || 'this repository';
+        input.value = `${tpl.prompt}${repoName}${tpl.suffix}`;
+        input.focus();
+      });
+    });
+
+    // Runner pills.
+    this.#shadow.querySelectorAll('[data-runner]').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        this.#selectedRunner = pill.dataset.runner || 'auto';
+        this.#shadow.querySelectorAll('[data-runner]').forEach((p) => {
+          const isAct = p === pill;
+          p.classList.toggle('active', isAct);
+          p.setAttribute('aria-checked', String(isAct));
+        });
+      });
+    });
+
+    // Repo selector + custom path switcher.
+    repoSelect?.addEventListener('change', async () => {
+      const val = repoSelect.value;
+      if (val === '__custom__') {
+        customRow?.removeAttribute('hidden');
+        customInput?.focus();
+        return;
+      }
+      customRow?.setAttribute('hidden', '');
+      if (!val) return;
+      if (val.startsWith('profile:')) {
+        await this.#switchWorkingRepo({ profile: val.slice('profile:'.length) });
+      } else if (val.startsWith('path:')) {
+        await this.#switchWorkingRepo({ path: val.slice('path:'.length) });
+      }
+    });
+
+    this.#shadow.getElementById('ws-custom-repo-cancel')?.addEventListener('click', () => {
+      customRow?.setAttribute('hidden', '');
+      this.#renderSimpleRepoBar(this.#repoCtx || {});
+    });
+
+    this.#shadow.getElementById('ws-custom-repo-save')?.addEventListener('click', async () => {
+      const raw = (customInput?.value || '').trim();
+      if (!raw) return;
+      await this.#switchWorkingRepo({ path: raw });
+    });
+
+    // Ask in Chat button -> carries prompt to Chat tab.
+    chatBtn?.addEventListener('click', () => {
+      const text = (input?.value || '').trim();
+      if (text) {
+        try { sessionStorage.setItem('chump.pending_chat_prompt', text); } catch {}
+      }
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'chat' }));
+    });
+
+    // Primary Run Task -> Open PR button + Cmd/Ctrl+Enter shortcut.
+    runBtn?.addEventListener('click', () => this.#submitWorkspaceTask());
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        this.#submitWorkspaceTask();
+      }
+    });
+
+    // Footer links.
+    this.#shadow.getElementById('ws-browse-queue')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'agent' }));
+    });
+    this.#shadow.getElementById('ws-open-advanced')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:set-ui-mode', { detail: 'advanced' }));
+    });
+  }
+
+  async #switchWorkingRepo(payload) {
+    const fb = this.#shadow.getElementById('ws-feedback');
+    if (fb) {
+      fb.removeAttribute('hidden');
+      fb.className = 'ws-feedback';
+      fb.textContent = 'Switching active repository…';
+    }
+    try {
+      const r = await fetch('/api/repo/working', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) {
+        throw new Error(d.error || `HTTP ${r.status}`);
+      }
+      this.#shadow.getElementById('ws-custom-repo')?.setAttribute('hidden', '');
+      if (fb) {
+        fb.className = 'ws-feedback ok';
+        fb.textContent = '✓ Switched active repository.';
+        setTimeout(() => fb?.setAttribute('hidden', ''), 2500);
+      }
+      document.dispatchEvent(new CustomEvent('chump:repo-changed'));
+    } catch (err) {
+      if (fb) {
+        fb.className = 'ws-feedback err';
+        fb.textContent = `Could not switch repository: ${err.message || err}`;
+      }
+      this.#renderSimpleRepoBar(this.#repoCtx || {});
+    }
+  }
+
+  async #submitWorkspaceTask() {
+    const input = this.#shadow.getElementById('msg-input');
+    const runBtn = this.#shadow.getElementById('send-btn');
+    const fb = this.#shadow.getElementById('ws-feedback');
+    const rawText = (input?.value || '').trim();
+    if (!rawText) {
+      input?.focus();
+      return;
+    }
+
+    const cleanPrompt = rawText.startsWith('/task ') ? rawText.slice(6).trim() : rawText;
+    const firstLine = cleanPrompt.split('\n')[0].trim();
+    const title = firstLine.length > 180 ? `${firstLine.slice(0, 177)}…` : firstLine;
+
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.textContent = 'Starting Worktree…';
+    }
+    if (fb) {
+      fb.removeAttribute('hidden');
+      fb.className = 'ws-feedback';
+      fb.textContent = 'Reserving task & launching isolated git worktree…';
+    }
+
+    try {
+      const effRoot = String(this.#repoCtx?.effective_root || '');
+      const chumpEnv = String(this.#repoCtx?.chump_repo_env || '');
+      const repoName = effRoot.split('/').filter(Boolean).pop() || 'workspace';
+      const payload = {
+        domain: 'PRODUCT',
+        title,
+        priority: 'P2',
+        effort: 'm',
+        description: cleanPrompt,
+      };
+      if (effRoot && chumpEnv && effRoot !== chumpEnv) {
+        payload.external_repo = effRoot;
+      }
+
+      const createRes = await fetch('/api/gap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+        body: JSON.stringify(payload),
+      });
+      const created = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || created.error) {
+        throw new Error(created.error || `HTTP ${createRes.status}`);
+      }
+      const gapId = created.id || created.gap_id;
+      if (!gapId) throw new Error('Task reservation returned no ID');
+
+      if (this.#selectedRunner && this.#selectedRunner !== 'auto') {
+        await fetch(`/api/gap/${encodeURIComponent(gapId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+          body: JSON.stringify({ preferred_backend: this.#selectedRunner }),
+        }).catch(() => {});
+      }
+
+      const workRes = await fetch(`/api/gap/work/${encodeURIComponent(gapId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+      });
+      if (!workRes.ok) {
+        throw new Error(`Dispatch failed (HTTP ${workRes.status})`);
+      }
+
+      const runnerLabel = RUNNER_OPTIONS.find((r) => r.id === this.#selectedRunner)?.label || 'Auto';
+      this.#recentRuns = [
+        { id: gapId, title, repo: repoName, runner: runnerLabel, startedAt: Date.now() },
+        ...this.#recentRuns.filter((r) => r.id !== gapId),
+      ].slice(0, 8);
+      this.#saveRecentRuns();
+
+      if (input) input.value = '';
+      if (fb) {
+        fb.className = 'ws-feedback ok';
+        fb.textContent = `✓ Started ${gapId} on ${repoName} (${runnerLabel}) — watch live progress below.`;
+      }
+      await this.#refreshSimple();
+    } catch (err) {
+      if (fb) {
+        fb.className = 'ws-feedback err';
+        fb.textContent = `Could not start task: ${err.message || err}`;
+      }
+    } finally {
+      if (runBtn) {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run Task → Open PR';
+      }
+    }
+  }
+
+  async #refreshSimple() {
+    const [repoR, slotsR, summaryR, queueR] = await Promise.allSettled([
+      fetch('/api/repo/context'),
+      fetch('/api/slots'),
+      fetch('/api/dashboard-summary'),
+      fetch('/api/gap-queue'),
+    ]);
+
+    const jsonOr = async (settled, fallback) => {
+      try {
+        if (settled.status === 'fulfilled' && settled.value.ok) {
+          return await settled.value.json();
+        }
+      } catch {}
+      return fallback;
+    };
+
+    const repo = await jsonOr(repoR, {});
+    const slotsDoc = await jsonOr(slotsR, {});
+    const summary = await jsonOr(summaryR, {});
+    const queueDoc = await jsonOr(queueR, {});
+
+    this.#repoCtx = repo;
+    this.#renderSimpleRepoBar(repo);
+    this.#renderSimpleReadiness(Array.isArray(slotsDoc.slots) ? slotsDoc.slots : [], null);
+    this.#renderSimpleRuns(summary);
+
+    const browseBtn = this.#shadow.getElementById('ws-browse-queue');
+    const openCount = Array.isArray(queueDoc.gaps)
+      ? queueDoc.gaps.filter((g) => (g.status || 'open') === 'open').length
+      : 0;
+    if (browseBtn) {
+      browseBtn.textContent = openCount > 0 ? `Browse queued tasks (${openCount}) →` : 'Browse task queue →';
+    }
+
+    // Slow non-blocking enrich: stack-status + PR list.
+    Promise.allSettled([fetch('/api/stack-status'), fetch('/api/prs')]).then(async ([stackR, prsR]) => {
+      if (!this.isConnected || this.#currentUiMode() !== 'simple') return;
+      const stack = await jsonOr(stackR, null);
+      const prs = await jsonOr(prsR, null);
+      if (stack) {
+        this.#renderSimpleReadiness(Array.isArray(slotsDoc.slots) ? slotsDoc.slots : [], stack);
+      }
+      this.#renderSimplePrs(prs);
+    }).catch(() => {});
+  }
+
+  #renderSimpleReadiness(slots, stack) {
+    const pill = this.#shadow.getElementById('ws-ready-pill');
+    const text = this.#shadow.getElementById('ws-ready-text');
+    if (!pill || !text) return;
+    const infOk = stack?.inference?.configured && stack?.inference?.models_reachable !== false;
+    if (slots.length > 0) {
+      const hasLocal = slots.some((s) => /ollama|local/i.test(String(s.name || '')));
+      pill.classList.remove('warn');
+      text.textContent = hasLocal
+        ? `${slots.length} model slots ready · Cloud + Offline`
+        : `${slots.length} model slot${slots.length === 1 ? '' : 's'} ready`;
+    } else if (infOk || stack?.primary_backend) {
+      pill.classList.remove('warn');
+      text.textContent = `Model ready · ${stack.primary_backend || 'configured'}`;
+    } else if (stack) {
+      pill.classList.add('warn');
+      text.textContent = 'Configure a model in Settings';
+    }
+  }
+
+  #renderSimpleRepoBar(repo) {
+    const select = this.#shadow.getElementById('ws-repo-select');
+    const pathEl = this.#shadow.getElementById('ws-repo-path');
+    if (!select) return;
+
+    const current = String(repo.effective_root || '');
+    const currentName = current.split('/').filter(Boolean).pop() || 'current workspace';
+    const profiles = Array.isArray(repo.profiles) ? repo.profiles : [];
+    const activeProfile = repo.active_profile || null;
+
+    const opts = [];
+    let matchedCurrent = false;
+    for (const p of profiles) {
+      const selected = p.name === activeProfile || p.path === current;
+      if (selected) matchedCurrent = true;
+      opts.push(`<option value="profile:${this.#escape(p.name)}" ${selected ? 'selected' : ''}>${this.#escape(p.name)}</option>`);
+    }
+    if (current && !matchedCurrent) {
+      opts.unshift(`<option value="path:${this.#escape(current)}" selected>${this.#escape(currentName)}</option>`);
+    }
+    if (repo.multi_repo_enabled) {
+      opts.push(`<option value="__custom__">+ Switch to another local git repo…</option>`);
+    }
+    select.innerHTML = opts.join('') || `<option value="">${this.#escape(currentName)}</option>`;
+    if (pathEl) {
+      pathEl.textContent = current;
+      pathEl.title = current;
+    }
+  }
+
+  #renderSimpleRuns(summary) {
+    const body = this.#shadow.getElementById('ws-runs-body');
+    const countEl = this.#shadow.getElementById('ws-runs-count');
+    if (!body) return;
+
+    const leases = Array.isArray(summary?.active_leases) ? summary.active_leases : [];
+    const recentIds = new Set(this.#recentRuns.map((r) => r.id));
+    const extraLeases = leases.filter((l) => l.gap && !recentIds.has(l.gap));
+    const total = this.#recentRuns.length + extraLeases.length;
+
+    if (countEl) {
+      countEl.textContent = `${total} active`;
+    }
+
+    if (total === 0) {
+      body.innerHTML = `<div class="ws-empty">No agents running right now. Describe a task above and click <strong>Run Task → Open PR</strong> to launch an isolated worktree.</div>`;
+      return;
+    }
+
+    const recentHtml = this.#recentRuns.map((r) => `
+      <article class="ws-run-item" data-run-id="${this.#escape(r.id)}">
+        <div class="ws-item-top">
+          <span class="ws-item-id">${this.#escape(r.id)}</span>
+          <span class="ws-item-badges">
+            ${r.repo ? `<span class="ws-badge">${this.#escape(r.repo)}</span>` : ''}
+            ${r.runner ? `<span class="ws-badge ok">${this.#escape(r.runner)}</span>` : ''}
+            <button type="button" class="btn btn-xs" data-dismiss-run="${this.#escape(r.id)}" title="Hide from this list">Dismiss</button>
+          </span>
+        </div>
+        <div class="ws-item-title">${this.#escape(r.title)}</div>
+        <chump-workflow-timeline gap-id="${this.#escape(r.id)}"></chump-workflow-timeline>
+      </article>
+    `).join('');
+
+    const leaseHtml = extraLeases.map((l) => {
+      const exp = l.expires_at ? this.#until(new Date(l.expires_at)) : 'locked';
+      return `
+        <article class="ws-run-item">
+          <div class="ws-item-top">
+            <span class="ws-item-id">${this.#escape(l.gap)}</span>
+            <span class="ws-item-badges">
+              <span class="ws-badge ok">file lock · ${this.#escape(exp)}</span>
+            </span>
+          </div>
+          <div class="ws-item-title">Active worktree session: <code>${this.#escape(l.session_id || l.holder || 'agent')}</code></div>
+        </article>
+      `;
+    }).join('');
+
+    body.innerHTML = recentHtml + leaseHtml;
+    body.querySelectorAll('[data-dismiss-run]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.dismissRun;
+        this.#recentRuns = this.#recentRuns.filter((r) => r.id !== id);
+        this.#saveRecentRuns();
+        this.#renderSimpleRuns(summary);
+      });
+    });
+  }
+
+  #renderSimplePrs(prsDoc) {
+    const body = this.#shadow.getElementById('ws-prs-body');
+    const countEl = this.#shadow.getElementById('ws-prs-count');
+    if (!body) return;
+
+    if (!prsDoc) {
+      if (countEl) countEl.textContent = '—';
+      body.innerHTML = `<div class="ws-empty">Pull request status unavailable right now. Open the <strong>Pull Requests</strong> tab to inspect branches.</div>`;
+      return;
+    }
+
+    const open = Array.isArray(prsDoc.open) ? prsDoc.open : [];
+    const merged = Array.isArray(prsDoc.just_merged) ? prsDoc.just_merged.slice(0, 3) : [];
+    if (countEl) countEl.textContent = `${open.length} open`;
+
+    if (open.length === 0 && merged.length === 0) {
+      body.innerHTML = `<div class="ws-empty">No open pull requests waiting for review. Completed agent runs will open PRs here automatically.</div>`;
+      return;
+    }
+
+    const renderRow = (pr, isMerged) => {
+      const ciBadge = isMerged
+        ? `<span class="ws-badge ok">Merged</span>`
+        : (pr.ci_ok === true
+          ? `<span class="ws-badge ok">Checks passing</span>`
+          : (pr.ci_ok === false ? `<span class="ws-badge warn">Checks failing</span>` : `<span class="ws-badge">Checks running</span>`));
+      return `
+        <article class="ws-pr-item">
+          <div class="ws-item-top">
+            <span class="ws-item-id">#${this.#escape(String(pr.number || ''))}</span>
+            <span class="ws-item-badges">${ciBadge}</span>
+          </div>
+          <div class="ws-item-title">${this.#escape(pr.title || 'Pull request')}</div>
+          <div class="ws-item-actions">
+            <button type="button" class="btn btn-xs" data-open-prs-tab="${this.#escape(String(pr.number || ''))}">View PRs</button>
+            ${pr.url ? `<a class="btn btn-primary btn-xs" href="${this.#escape(pr.url)}" target="_blank" rel="noopener">GitHub ↗</a>` : ''}
+          </div>
+        </article>
+      `;
+    };
+
+    let html = open.slice(0, 5).map((pr) => renderRow(pr, false)).join('');
+    if (open.length === 0 && merged.length > 0) {
+      html = `<div class="ws-starter-label">No open PRs · Recently merged:</div>` + merged.map((pr) => renderRow(pr, true)).join('');
+    }
+    body.innerHTML = html;
+    body.querySelectorAll('[data-open-prs-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'prs' }));
+      });
+    });
   }
 
   #renderShell() {
@@ -909,6 +1937,7 @@ class ChumpViewCockpit extends HTMLElement {
             </div>
           </div>
           <div class="cmd-controls">
+            <button type="button" class="btn" id="cmd-simple-mode-btn" title="Return to simple coding workspace">← Simple Workspace</button>
             <span class="autopilot-pill" id="cmd-autopilot-pill">
               <span class="status-dot"></span>
               <span id="cmd-autopilot-label">Autopilot: Parked</span>
@@ -1193,6 +2222,9 @@ class ChumpViewCockpit extends HTMLElement {
     });
 
     // Header Refresh + Fleet CTA + Reserve drawer toggle.
+    this.#shadow.getElementById('cmd-simple-mode-btn')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:set-ui-mode', { detail: 'simple' }));
+    });
     this.#shadow.getElementById('cmd-refresh-btn')?.addEventListener('click', () => {
       this.#refreshAll();
     });

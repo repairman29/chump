@@ -440,32 +440,53 @@ const CHUMP_VIEW_TO_CADENCE = (() => {
   return out;
 })();
 
+// PRODUCT-377: Clean primary navigation for Focus Workspace (default simple mode).
+const SIMPLE_NAV_TABS = [
+  { id: 'cockpit',  label: 'Home' },
+  { id: 'chat',     label: 'Chat', elemId: 'sessions-toggle' },
+  { id: 'prs',      label: 'Pull Requests' },
+  { id: 'tasks',    label: 'Tasks' },
+  { id: 'settings', label: 'Models & Settings' },
+];
+
 class ChumpNav extends HTMLElement {
   #lastCadenceAt = 0;
   #activeCadence = null;
   #activeView = null;
   #internalDispatch = false;
+  #uiMode = 'simple';
 
   connectedCallback() {
-    // Resolve initial cadence: URL ?cadence > URL ?view→cadence map > chumpPrefs > 'now'.
     const url = new URLSearchParams(location.search);
+    const modeParam = url.get('mode');
     const cadenceFromUrl = url.get('cadence');
     const viewFromUrl = url.get('view');
+    const storedMode = window.chumpPrefs?.get('ui_mode', null);
+    this.#uiMode = (modeParam === 'advanced' || modeParam === 'simple')
+      ? modeParam
+      : (cadenceFromUrl ? 'advanced' : (storedMode === 'advanced' ? 'advanced' : 'simple'));
+    document.documentElement.setAttribute('data-ui-mode', this.#uiMode);
+
     const storedCadence = window.chumpPrefs?.get('last_cadence', null);
-    const initial = (cadenceFromUrl && CHUMP_CADENCES.find(c => c.id === cadenceFromUrl)?.id)
+    const initialCadence = (cadenceFromUrl && CHUMP_CADENCES.find(c => c.id === cadenceFromUrl)?.id)
       || (viewFromUrl && CHUMP_VIEW_TO_CADENCE[viewFromUrl])
       || storedCadence
       || 'now';
+    const initialView = viewFromUrl || 'cockpit';
 
-    this.#renderShell();
-    this.#activateCadence(initial, viewFromUrl);
-    this.#wireClicks();
+    this.#renderForMode(initialCadence, initialView);
     this.#wireShortcuts();
 
     // Sync nav highlight when external buttons (header Settings, footer slots, Cockpit actions) navigate.
     document.addEventListener('chump:navigate', (e) => {
       if (this.#internalDispatch) return;
       const viewId = e.detail;
+      this.#activeView = viewId;
+      if (this.#uiMode === 'simple') {
+        this.querySelectorAll('.nav-simple-bar [data-view]').forEach((b) => b.removeAttribute('aria-current'));
+        this.querySelector(`.nav-simple-bar [data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
+        return;
+      }
       const targetCad = CHUMP_VIEW_TO_CADENCE[viewId];
       if (!targetCad) return;
       if (targetCad !== this.#activeCadence) {
@@ -475,10 +496,70 @@ class ChumpNav extends HTMLElement {
         this.querySelector(`[data-cadence="${targetCad}"]`)?.setAttribute('aria-current', 'page');
         this.#renderSubtabs(targetCad);
       }
-      this.#activeView = viewId;
       this.querySelectorAll('#chump-nav-subtabs [data-view]').forEach((b) => b.removeAttribute('aria-current'));
       this.querySelector(`#chump-nav-subtabs [data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
     });
+
+    document.addEventListener('chump:set-ui-mode', (e) => {
+      const next = e.detail === 'advanced' ? 'advanced' : 'simple';
+      this.#setUiMode(next);
+    });
+  }
+
+  #setUiMode(next) {
+    if (next !== 'simple' && next !== 'advanced') return;
+    this.#uiMode = next;
+    document.documentElement.setAttribute('data-ui-mode', next);
+    window.chumpPrefs?.set('ui_mode', next);
+    try {
+      const url = new URL(location.href);
+      if (next === 'advanced') {
+        url.searchParams.set('mode', 'advanced');
+      } else {
+        url.searchParams.delete('mode');
+        url.searchParams.delete('cadence');
+      }
+      history.replaceState(null, '', url.toString());
+    } catch {}
+    const keepView = this.#activeView || 'cockpit';
+    const keepCadence = CHUMP_VIEW_TO_CADENCE[keepView] || this.#activeCadence || 'now';
+    this.#renderForMode(keepCadence, keepView);
+    document.dispatchEvent(new CustomEvent('chump:ui-mode-changed', { detail: next }));
+  }
+
+  #renderForMode(cadenceId, viewId) {
+    if (this.#uiMode === 'simple') {
+      this.innerHTML = `
+        <div class="nav-simple-bar" role="tablist" aria-label="Workspace navigation">
+          ${SIMPLE_NAV_TABS.map((t) => `
+            <button class="nav-item" role="tab"
+                    ${t.elemId ? `id="${t.elemId}"` : ''}
+                    data-view="${t.id}"
+                    aria-label="${t.label}"
+                    title="${t.label}">
+              <span class="nav-label">${t.label}</span>
+            </button>
+          `).join('')}
+          <span class="nav-mode-spacer" aria-hidden="true"></span>
+          <button type="button" class="nav-mode-btn" id="ui-mode-toggle"
+                  title="Show multi-agent fleet telemetry, 4-pillar grades, daemons &amp; ambient event stream">
+            Advanced Fleet UI →
+          </button>
+        </div>
+      `;
+      this.querySelector('.nav-simple-bar')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-view]');
+        if (!btn) return;
+        this.#activateView(btn.dataset.view);
+      });
+      this.querySelector('#ui-mode-toggle')?.addEventListener('click', () => this.#setUiMode('advanced'));
+      this.#activateView(viewId || 'cockpit');
+      return;
+    }
+
+    this.#renderShell();
+    this.#activateCadence(cadenceId || 'now', viewId);
+    this.#wireClicks();
   }
 
   #renderShell() {
@@ -496,6 +577,10 @@ class ChumpNav extends HTMLElement {
       </div>
       <div class="nav-divider" aria-hidden="true"></div>
       <div class="nav-subtabs" role="tablist" aria-label="Sub-view" id="chump-nav-subtabs"></div>
+      <button type="button" class="nav-mode-btn is-advanced" id="ui-mode-toggle"
+              title="Return to clean single-repo coding workspace">
+        ← Simple Workspace
+      </button>
     `;
   }
 
@@ -505,6 +590,7 @@ class ChumpNav extends HTMLElement {
     if (!cad || !bar) return;
     bar.innerHTML = cad.subtabs.map(t => `
       <button class="nav-item" role="tab"
+              ${t.id === 'chat' ? 'id="sessions-toggle"' : ''}
               data-view="${t.id}"
               aria-label="${t.label}"
               title="${t.label}">
@@ -525,12 +611,16 @@ class ChumpNav extends HTMLElement {
       if (!btn) return;
       this.#activateView(btn.dataset.view);
     });
+    this.querySelector('#ui-mode-toggle')?.addEventListener('click', () => this.#setUiMode('simple'));
   }
 
   #wireShortcuts() {
     document.addEventListener('keydown', (e) => {
-      // Ignore when typing in inputs.
-      if (e.target.matches('input, textarea, [contenteditable]')) return;
+      if (this.#uiMode !== 'advanced') return;
+      // Ignore when typing in inputs or shadow-DOM inputs.
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : [e.target];
+      const topEl = path[0];
+      if (topEl && topEl.matches && topEl.matches('input, textarea, select, [contenteditable]')) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const cad = CHUMP_CADENCES.find(c => c.shortcut === e.key.toLowerCase());
       if (cad) {
@@ -576,9 +666,9 @@ class ChumpNav extends HTMLElement {
 
   #activateView(viewId, skipUrlPush = false) {
     this.#activeView = viewId;
-    // Update sub-tab visual state.
-    this.querySelectorAll('#chump-nav-subtabs [data-view]').forEach((b) => b.removeAttribute('aria-current'));
-    this.querySelector(`#chump-nav-subtabs [data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
+    // Update tab visual state in whichever nav bar is active.
+    this.querySelectorAll('[data-view]').forEach((b) => b.removeAttribute('aria-current'));
+    this.querySelector(`[data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
 
     // Dispatch the legacy chump:navigate event the router has always consumed.
     this.#internalDispatch = true;
@@ -872,16 +962,16 @@ const FIRSTRUN_STEPS = [
   {
     id: 'model',
     title: 'LLM ready',
-    detail: 'Detect an LLM at /api/stack-status (ollama / mistral.rs / OpenAI-compat)',
+    detail: 'Detect an LLM at /api/stack-status (ProviderCascade / ollama / OpenAI-compat)',
     detect: async () => {
       try {
         const r = await fetch('/api/stack-status'); if (!r.ok) return null;
         const d = await r.json();
         const inf = d.inference || {};
-        if (inf.configured && inf.models_reachable !== false) {
-          return { ok: true, label: d.llm_last_completion?.label || d.primary_backend || 'ready' };
+        if (d.cascade_enabled || (inf.configured && inf.models_reachable !== false)) {
+          return { ok: true, label: d.llm_last_completion?.label || d.primary_backend || (d.cascade_enabled ? 'cascade' : 'ready') };
         }
-        return { ok: false, hint: 'No model reachable — install ollama + pull a model, or set OPENAI_API_BASE' };
+        return { ok: false, hint: 'No model reachable — install ollama + pull a model, or configure ~/.chump/config.toml' };
       } catch { return null; }
     },
     cta: { href: 'https://github.com/repairman29/chump#install', label: 'Install guide' },
@@ -893,7 +983,7 @@ const FIRSTRUN_STEPS = [
       try {
         const r = await fetch('/api/repo/context'); if (!r.ok) return null;
         const d = await r.json();
-        const repo = d.current_repo || d.repo || d.path;
+        const repo = d.effective_root || d.current_repo || d.repo || d.path;
         return repo ? { ok: true, label: repo } : { ok: false, hint: 'Set CHUMP_REPO or cd into a git repo before running chump --web' };
       } catch { return null; }
     },
@@ -1894,10 +1984,13 @@ customElements.define('chump-auth-toast', ChumpAuthToast);
 class ChumpRepoSwitcher extends HTMLElement {
   #enabled = false;
   #current = '';
+  #profiles = [];
+  #activeProfile = null;
   #dialogOpen = false;
 
   async connectedCallback() {
     this.innerHTML = '';
+    document.addEventListener('chump:repo-changed', () => this.#refresh());
     await this.#refresh();
   }
 
@@ -1912,6 +2005,8 @@ class ChumpRepoSwitcher extends HTMLElement {
     }
     this.#enabled = !!ctx.multi_repo_enabled;
     this.#current = String(ctx.effective_root || '');
+    this.#profiles = Array.isArray(ctx.profiles) ? ctx.profiles : [];
+    this.#activeProfile = ctx.active_profile || null;
     this.#renderChip();
   }
 
@@ -1943,21 +2038,30 @@ class ChumpRepoSwitcher extends HTMLElement {
     dlg.setAttribute('role', 'dialog');
     dlg.setAttribute('aria-modal', 'true');
     dlg.setAttribute('aria-label', 'Switch working repo');
+    const profilesHtml = this.#profiles.length > 0
+      ? `<div class="repo-dialog-label">Quick switch repository</div>
+         <div class="repo-profile-list">
+           ${this.#profiles.map((p) => {
+             const isAct = p.name === this.#activeProfile || p.path === this.#current;
+             return `<button type="button" class="repo-profile-btn ${isAct ? 'active' : ''}" data-profile="${this.#esc(p.name)}" title="${this.#esc(p.path)}">${this.#esc(p.name)}</button>`;
+           }).join('')}
+         </div>`
+      : '';
     dlg.innerHTML = `
       <div class="repo-dialog-inner">
-        <div class="repo-dialog-head"><strong>Switch working repo</strong></div>
+        <div class="repo-dialog-head"><strong>Switch working repository</strong></div>
+        ${profilesHtml}
         <label class="repo-dialog-label">
-          Repo root path
+          Custom git repository path
           <input type="text" class="repo-dialog-path" placeholder="${this.#esc(this.#current)}" autocomplete="off">
         </label>
         <div class="repo-dialog-warn">
-          ⚠ In-flight workflows continue against the previous repo.
-          Only newly started tasks use the new binding.
+          In-flight worktrees continue on their original repo. Newly started tasks target the selected repository.
         </div>
         <div class="repo-dialog-error" style="display:none"></div>
         <div class="repo-dialog-actions">
-          <button type="button" class="repo-dialog-save">Save</button>
-          <button type="button" class="repo-dialog-cancel">Cancel</button>
+          <button type="button" class="repo-dialog-save">Switch Path</button>
+          <button type="button" class="repo-dialog-cancel">Close</button>
         </div>
       </div>
     `;
@@ -1973,15 +2077,8 @@ class ChumpRepoSwitcher extends HTMLElement {
     };
     cancel.addEventListener('click', close);
     dlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-    input.focus();
 
-    save.addEventListener('click', async () => {
-      const raw = (input.value || '').trim();
-      if (!raw) {
-        errDiv.textContent = 'Path required';
-        errDiv.style.display = 'block';
-        return;
-      }
+    const applyWorking = async (payload) => {
       save.disabled = true;
       errDiv.style.display = 'none';
       let resp, body;
@@ -1989,7 +2086,7 @@ class ChumpRepoSwitcher extends HTMLElement {
         resp = await fetch('/api/repo/working', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: raw }),
+          body: JSON.stringify(payload),
         });
         body = await resp.json();
       } catch (e) {
@@ -1999,7 +2096,6 @@ class ChumpRepoSwitcher extends HTMLElement {
         return;
       }
       if (resp.status === 200 && body.ok === true) {
-        // Success — reload so all views re-fetch against the new repo.
         location.reload();
         return;
       }
@@ -2009,6 +2105,25 @@ class ChumpRepoSwitcher extends HTMLElement {
         : `Could not switch repo (HTTP ${resp.status})`;
       errDiv.textContent = msg;
       errDiv.style.display = 'block';
+    };
+
+    dlg.querySelectorAll('[data-profile]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const prof = btn.dataset.profile;
+        if (prof) applyWorking({ profile: prof });
+      });
+    });
+
+    input.focus();
+
+    save.addEventListener('click', () => {
+      const raw = (input.value || '').trim();
+      if (!raw) {
+        errDiv.textContent = 'Path required';
+        errDiv.style.display = 'block';
+        return;
+      }
+      applyWorking({ path: raw });
     });
   }
 
@@ -5812,29 +5927,79 @@ const VIEWS = {
   brief:         () => document.createElement('chump-view-brief'),           // PRODUCT-078
 };
 
-document.addEventListener('chump:navigate', (e) => {
+function mountRouteView(rawViewId) {
   const main = document.getElementById('main-content');
   if (!main) return;
-  const viewId = VIEWS[e.detail] ? e.detail : 'tasks';
-  const factory = VIEWS[viewId] ?? VIEWS.tasks;
+  const viewId = VIEWS[rawViewId] ? rawViewId : 'cockpit';
+  const factory = VIEWS[viewId] ?? VIEWS.cockpit;
   document.body.dataset.activeView = viewId;
   main.innerHTML = '';
   main.appendChild(factory());
   window.chumpPrefs?.set('last-view', viewId);
+}
+
+document.addEventListener('chump:navigate', (e) => {
+  mountRouteView(e.detail);
 });
+
+// PRODUCT-377: Ensure Simple Mode chrome rules + header brand apply even before
+// a previously installed Service Worker finishes refreshing cached index.html.
+function ensureSimpleModeChromeSync() {
+  if (!document.getElementById('chump-simple-mode-runtime-css')) {
+    const st = document.createElement('style');
+    st.id = 'chump-simple-mode-runtime-css';
+    st.textContent = `
+      html[data-ui-mode="simple"] > body > chump-doctor-banner,
+      html[data-ui-mode="simple"] > body > chump-quick-actions,
+      html[data-ui-mode="simple"] > body > chump-status-footer { display: none !important; }
+      html[data-ui-mode="simple"]:not([data-welcome-force="1"]) > body > chump-first-run-wizard { display: none !important; }
+      chump-nav .nav-simple-bar { display: flex; align-items: center; gap: 6px; flex: 1; width: 100%; min-width: 0; }
+      chump-nav .nav-mode-spacer { flex: 1; min-width: 8px; }
+      chump-nav .nav-mode-btn { margin-left: auto; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); border-radius: 999px; padding: 4px 11px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    `;
+    document.head.appendChild(st);
+  }
+  const syncBrand = () => {
+    const sub = document.querySelector('#app-title .brand-sub');
+    if (sub) {
+      const mode = document.documentElement.getAttribute('data-ui-mode') || 'simple';
+      sub.textContent = mode === 'advanced' ? 'Operator Console' : 'Workspace';
+    }
+  };
+  syncBrand();
+  document.addEventListener('chump:ui-mode-changed', syncBrand);
+}
+ensureSimpleModeChromeSync();
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
+  navigator.serviceWorker.register('sw.js?v=375', { scope: './' })
+    .then((reg) => reg?.update().catch(() => {}))
+    .catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    try {
+      if (!sessionStorage.getItem('chump.sw_refreshed_375')) {
+        sessionStorage.setItem('chump.sw_refreshed_375', '1');
+        location.reload();
+      }
+    } catch {}
+  });
 }
 
-// Initial view fallback (only if <chump-nav> has not already mounted a view).
-window.addEventListener('DOMContentLoaded', () => {
+// Reconcile initial route: <chump-nav> runs connectedCallback earlier in app.js
+// before the router listener above was attached, so mount whichever tab <chump-nav>
+// selected (defaulting to 'cockpit').
+function reconcileInitialRoute() {
+  const urlView = new URLSearchParams(location.search).get('view');
+  const navActive = document.querySelector('chump-nav [aria-current="page"][data-view]')?.dataset?.view;
+  const target = urlView || navActive || 'cockpit';
   const main = document.getElementById('main-content');
-  if (main && main.children.length === 0) {
-    const lastView = window.chumpPrefs?.get('last-view', 'cockpit') ?? 'cockpit';
-    const viewId = VIEWS[lastView] ? lastView : 'cockpit';
-    document.body.dataset.activeView = viewId;
-    main.appendChild((VIEWS[viewId] ?? VIEWS.cockpit)());
+  if (main && (main.children.length === 0 || document.body.dataset.activeView !== target)) {
+    mountRouteView(target);
   }
-});
+}
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', reconcileInitialRoute);
+} else {
+  reconcileInitialRoute();
+}
