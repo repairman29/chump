@@ -5973,13 +5973,13 @@ ensureSimpleModeChromeSync();
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js?v=375', { scope: './' })
+  navigator.serviceWorker.register('sw.js?v=376', { scope: './' })
     .then((reg) => reg?.update().catch(() => {}))
     .catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     try {
-      if (!sessionStorage.getItem('chump.sw_refreshed_375')) {
-        sessionStorage.setItem('chump.sw_refreshed_375', '1');
+      if (!sessionStorage.getItem('chump.sw_refreshed_376')) {
+        sessionStorage.setItem('chump.sw_refreshed_376', '1');
         location.reload();
       }
     } catch {}

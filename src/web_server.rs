@@ -9392,6 +9392,8 @@ async fn spawn_gap_workflow_inner(
         let mut cmd = Command::new(&chump_bin);
         cmd.arg("claim")
             .arg(gap_id)
+            .arg("--role")
+            .arg("worker")
             .current_dir(&repo_root)
             .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
         configure_agent_credentials(&mut cmd);
@@ -9981,6 +9983,25 @@ fn build_api_router() -> Router {
         // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
+        // PRODUCT-378: Dream -> Mission Architect -> 1-Click Autonomous Factory API.
+        .route("/api/missions", get(routes::missions::handle_missions_list))
+        .route(
+            "/api/missions/architect",
+            post(routes::missions::handle_missions_architect),
+        )
+        .route(
+            "/api/missions/{id}",
+            patch(routes::missions::handle_mission_patch)
+                .delete(routes::missions::handle_mission_delete),
+        )
+        .route(
+            "/api/missions/{id}/launch",
+            post(routes::missions::handle_mission_launch),
+        )
+        .route(
+            "/api/missions/{id}/control",
+            post(routes::missions::handle_mission_control),
+        )
         // INFRA-1563: operator-decision queue (sibling to /api/roadmap).
         .route(
             "/api/decisions",
